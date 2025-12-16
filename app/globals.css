@@ -1,21 +1,27 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* Deep Ocean Palette */
+  --color-deep-ocean-900: #0f172a;
+  --color-deep-ocean-800: #1e293b;
+  --color-deep-ocean-500: #3b82f6;
+
+  /* Soft Sand Palette */
+  --color-soft-sand-100: #f5f5f4;
+  --color-soft-sand-200: #e7e5e4;
+  --color-soft-sand-300: #d6d3d1;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: var(--color-deep-ocean-900);
+  --foreground: var(--color-soft-sand-100);
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
