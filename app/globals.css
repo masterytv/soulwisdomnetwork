@@ -1,20 +1,26 @@
 @import "tailwindcss";
 
 @theme {
-  /* Deep Ocean Palette */
-  --color-deep-ocean-900: #0f172a;
-  --color-deep-ocean-800: #1e293b;
-  --color-deep-ocean-500: #3b82f6;
+  /* Mystic Indigo Palette (Backgrounds) */
+  --color-mystic-indigo-900: #1e1035;
+  /* Deepest Indigo */
+  --color-mystic-indigo-800: #2e1a4d;
+  /* Secondary Dark */
+  --color-mystic-indigo-500: #6d28d9;
+  /* Highlights */
 
-  /* Soft Sand Palette */
-  --color-soft-sand-100: #f5f5f4;
-  --color-soft-sand-200: #e7e5e4;
-  --color-soft-sand-300: #d6d3d1;
+  /* Celestial Gold Palette (Text/Accents) */
+  --color-celestial-gold-100: #fefce8;
+  /* Primary Text */
+  --color-celestial-gold-200: #fef08a;
+  /* Warm Highlights */
+  --color-celestial-gold-400: #d4af37;
+  /* Classic Gold */
 }
 
 :root {
-  --background: var(--color-deep-ocean-900);
-  --foreground: var(--color-soft-sand-100);
+  --background: var(--color-mystic-indigo-900);
+  --foreground: var(--color-celestial-gold-100);
 }
 
 body {
@@ -24,4 +30,3 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-
