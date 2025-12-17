@@ -1,32 +1,84 @@
 @import "tailwindcss";
 
 @theme {
-  /* Mystic Indigo Palette (Backgrounds) */
-  --color-mystic-indigo-900: #1e1035;
-  /* Deepest Indigo */
-  --color-mystic-indigo-800: #2e1a4d;
-  /* Secondary Dark */
-  --color-mystic-indigo-500: #6d28d9;
-  /* Highlights */
+  /* Core Palette: Mystic Purple (from Logo background) */
+  --color-ocean-50: #f5f3ff;
+  --color-ocean-100: #ede9fe;
+  --color-ocean-200: #ddd6fe;
+  --color-ocean-300: #c4b5fd;
+  --color-ocean-400: #a78bfa;
+  --color-ocean-500: #8b5cf6;
+  --color-ocean-600: #7c3aed;
+  --color-ocean-700: #6d28d9;
+  --color-ocean-800: #5b21b6;
+  --color-ocean-900: #1b0e33;
+  /* Deep Purple from Logo */
+  --color-ocean-950: #13092b;
+  /* Even darker background */
 
-  /* Celestial Gold Palette (Text/Accents) */
-  --color-celestial-gold-100: #fefce8;
-  /* Primary Text */
-  --color-celestial-gold-200: #fef08a;
-  /* Warm Highlights */
-  --color-celestial-gold-400: #d4af37;
-  /* Classic Gold */
+  /* Core Palette: Sand (Warm Cream) */
+  --color-sand-50: #ffffff;
+  --color-sand-100: #fdfaf3;
+  /* Main Background */
+  --color-sand-200: #f9f6e9;
+  --color-sand-300: #f1ebd4;
+  --color-sand-400: #e5d9b6;
+  --color-sand-500: #d8c38c;
+
+  /* Core Palette: Antique Gold (from metallic logo rim) */
+  --color-gold-50: #fbf8f0;
+  --color-gold-100: #f4efd5;
+  --color-gold-200: #e9deab;
+  --color-gold-300: #d9c576;
+  --color-gold-400: #dfc58f;
+  --color-gold-500: #c5a059;
+  /* Core Antique Gold */
+  --color-gold-600: #a27f3d;
 }
 
 :root {
-  --background: var(--color-mystic-indigo-900);
-  --foreground: var(--color-celestial-gold-100);
+  --background: var(--color-sand-100);
+  --foreground: var(--color-ocean-900);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: var(--color-ocean-950);
+    --foreground: var(--color-gold-100);
+  }
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+h1,
+h2,
+h3,
+h4,
+.font-serif {
+  font-family: var(--font-cinzel), serif;
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(197, 160, 89, 0.2);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(197, 160, 89, 0.4);
 }
