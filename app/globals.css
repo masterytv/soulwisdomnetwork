@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* Core Palette: Mystic Purple (from Logo background) */
+  /* Core Palette: Mystic Aubergine (Primary Dark Background) */
   --color-ocean-50: #f5f3ff;
   --color-ocean-100: #ede9fe;
   --color-ocean-200: #ddd6fe;
@@ -12,40 +12,32 @@
   --color-ocean-700: #6d28d9;
   --color-ocean-800: #5b21b6;
   --color-ocean-900: #1b0e33;
-  /* Deep Purple from Logo */
+  /* Aubergine from Reference */
   --color-ocean-950: #13092b;
-  /* Even darker background */
+  /* Deepest Base */
 
-  /* Core Palette: Sand (Warm Cream) */
+  /* Core Palette: Gold (Primary Accent) */
+  --color-gold-50: #fffbeb;
+  --color-gold-100: #fef3c7;
+  --color-gold-200: #fde68a;
+  --color-gold-300: #fcd34d;
+  /* Bright Gold from Reference */
+  --color-gold-400: #fbbf24;
+  --color-gold-500: #f59e0b;
+  /* Button Gold */
+  --color-gold-600: #d97706;
+  /* Button Deep Gold */
+
+  /* Surface Colors */
   --color-sand-50: #ffffff;
   --color-sand-100: #fdfaf3;
-  /* Main Background */
   --color-sand-200: #f9f6e9;
-  --color-sand-300: #f1ebd4;
-  --color-sand-400: #e5d9b6;
-  --color-sand-500: #d8c38c;
-
-  /* Core Palette: Antique Gold (from metallic logo rim) */
-  --color-gold-50: #fbf8f0;
-  --color-gold-100: #f4efd5;
-  --color-gold-200: #e9deab;
-  --color-gold-300: #d9c576;
-  --color-gold-400: #dfc58f;
-  --color-gold-500: #c5a059;
-  /* Core Antique Gold */
-  --color-gold-600: #a27f3d;
 }
 
 :root {
-  --background: var(--color-sand-100);
-  --foreground: var(--color-ocean-900);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: var(--color-ocean-950);
-    --foreground: var(--color-gold-100);
-  }
+  /* Dark Mode by Default based on the Reference Image */
+  --background: var(--color-ocean-900);
+  --foreground: var(--color-sand-50);
 }
 
 body {
@@ -61,8 +53,9 @@ h1,
 h2,
 h3,
 h4,
-.font-serif {
-  font-family: var(--font-cinzel), serif;
+.font-heading {
+  font-family: var(--font-outfit), var(--font-geist-sans), sans-serif;
+  letter-spacing: -0.02em;
 }
 
 /* Custom Scrollbar */
@@ -75,10 +68,10 @@ h4,
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(197, 160, 89, 0.2);
+  background: rgba(252, 211, 77, 0.1);
   border-radius: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(197, 160, 89, 0.4);
+  background: rgba(252, 211, 77, 0.2);
 }
