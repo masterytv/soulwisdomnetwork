@@ -1,117 +1,103 @@
-import Image from "next/image";
-import Link from "next/link";
+import React from 'react';
+import Link from 'next/link';
+import { BookOpen, Sparkles, Users, Video } from 'lucide-react';
 
 export default function Home() {
-  return (
-    <div className="min-h-screen font-sans selection:bg-gold-500/30 selection:text-white">
-      {/* Hero Section */}
-      <section className="relative flex min-h-[90vh] flex-col items-center justify-center overflow-hidden px-4 text-center">
-        {/* Subtle Background Glow */}
-        <div className="absolute top-1/2 left-1/2 h-[600px] w-[600px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold-400/5 blur-[120px] pointer-events-none" />
+    return (
+        <div className="min-h-screen bg-[#130b29] text-gray-100 font-sans selection:bg-amber-500/30">
 
-        {/* Logo */}
-        <div className="mb-0 animate-fade-in-down">
-          <img
-            src="/logo.png"
-            alt="Soul Wisdom Collective Logo"
-            className="w-80 h-auto mb-16"
-          />
-        </div>
-
-        <h1 className="mb-6 text-6xl font-extrabold tracking-tight sm:text-8xl flex flex-col gap-2">
-          <span className="text-gold-300">
-            Connect Deeper.
-          </span>
-          <span className="text-white">
-            Ascend Higher.
-          </span>
-        </h1>
-        <p className="mb-12 max-w-xl text-lg text-ocean-100/70 sm:text-lg leading-relaxed">
-          The premier network for spiritual growth, connection, and wisdom.
-          Join a collective dedicated to elevating consciousness.
-        </p>
-        <Link
-          href="/login"
-          className="group relative inline-flex items-center justify-center overflow-hidden rounded-full bg-gradient-to-b from-gold-400 to-gold-600 px-12 py-4 font-bold text-ocean-950 shadow-xl shadow-gold-500/10 transition-all duration-300 hover:scale-105 hover:shadow-gold-500/30"
-        >
-          <span className="relative">Join the Collective</span>
-        </Link>
-      </section>
-
-      {/* Features Section */}
-      <section className="px-4 py-32 bg-ocean-950/30">
-        <div className="mx-auto grid max-w-6xl gap-8 md:grid-cols-3">
-          {/* Feature 1 */}
-          <div className="rounded-3xl border border-ocean-800 bg-ocean-900/50 p-8 shadow-2xl backdrop-blur-sm transition-transform hover:-translate-y-2 hover:border-gold-500/50">
-            <div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-100 dark:bg-gold-900/20 text-gold-600 dark:text-gold-400">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-              </svg>
+            {/* Background Glows */}
+            <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+                <div className="absolute top-[-20%] left-[20%] w-[60%] h-[60%] bg-purple-900/20 rounded-full blur-[120px] opacity-40 animate-pulse-slow"></div>
+                <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-900/10 rounded-full blur-[100px] opacity-30"></div>
             </div>
-            <h3 className="mb-3 text-xl font-bold text-ocean-100">Curated Wisdom</h3>
-            <p className="text-ocean-100/70">
-              Access exclusive content, courses, and teachings from world-renowned spiritual masters.
-            </p>
-          </div>
 
-          {/* Feature 2 */}
-          <div className="rounded-3xl border border-ocean-800 bg-ocean-900/50 p-8 shadow-2xl backdrop-blur-sm transition-transform hover:-translate-y-2 hover:border-gold-500/50">
-            <div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-100 dark:bg-gold-900/20 text-gold-600 dark:text-gold-400">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
+            <div className="relative z-10 max-w-7xl mx-auto px-6 py-8 flex flex-col min-h-screen">
+
+                {/* --- Hero Section --- */}
+                <div className="text-center space-y-6 max-w-3xl mx-auto mb-24 animate-fade-in-up pt-24">
+                    <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-tight">
+                        <span className="block text-amber-400">Connect Deeper.</span>
+                        <span className="block text-white">Ascend Higher.</span>
+                    </h1>
+
+                    <p className="text-lg text-gray-400 max-w-xl mx-auto leading-relaxed">
+                        The premier network for spiritual growth, connection, and wisdom. Join a collective dedicated to elevating consciousness.
+                    </p>
+
+                    <div className="pt-8 flex justify-center gap-4">
+                        <button className="px-8 py-4 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 active:scale-95">
+                            Join the Collective
+                        </button>
+
+                        <Link href="/daily" className="px-8 py-4 border border-white/10 text-white font-bold rounded-full hover:bg-white/5 transition-all">
+                            Daily Wisdom
+                        </Link>
+                    </div>
+                </div>
+
+                {/* --- Feature Grid --- */}
+                <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto w-full mb-32">
+
+                    {/* Card 1: Signal (Curated Wisdom) */}
+                    <Link href="/signal" className="group p-8 rounded-2xl bg-[#1E1035]/50 border border-white/5 hover:border-amber-500/30 hover:bg-[#1E1035] transition-all duration-300">
+                        <div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <BookOpen className="w-5 h-5 text-amber-400" />
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-3 group-hover:text-amber-400 transition-colors">Curated Wisdom</h3>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                            Access exclusive content, courses, and teachings from world-renowned spiritual masters.
+                        </p>
+                    </Link>
+
+                    {/* Card 2: Daily (Daily Harvest) */}
+                    <Link href="/daily" className="group p-8 rounded-2xl bg-[#1E1035]/50 border border-white/5 hover:border-purple-500/30 hover:bg-[#1E1035] transition-all duration-300">
+                        <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                            <Sparkles className="w-5 h-5 text-purple-400" />
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-3 group-hover:text-purple-400 transition-colors">Daily Deep Harvest</h3>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                            Wake up to high-signal videos harvested daily by our AI agent. Your morning wisdom routine.
+                        </p>
+                    </Link>
+
+                    {/* Card 3: Community (Placeholder) */}
+                    <div className="group p-8 rounded-2xl bg-[#1E1035]/50 border border-white/5 hover:border-blue-500/30 hover:bg-[#1E1035] transition-all duration-300 cursor-default opacity-80">
+                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center mb-6">
+                            <Users className="w-5 h-5 text-blue-400" />
+                        </div>
+                        <h3 className="text-xl font-bold text-white mb-3">Community Connection</h3>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                            Find your soul tribe. Connect with like-minded seekers on the same path of ascension.
+                        </p>
+                    </div>
+
+                </div>
+
+                {/* --- Mission Section --- */}
+                <div className="flex justify-end mb-24 max-w-5xl mx-auto w-full">
+                    <div className="max-w-md text-right space-y-6">
+                        <h2 className="text-2xl font-bold text-amber-400">The Soul Wisdom Mission</h2>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                            We believe that we are all interconnected. The Soul Wisdom Network is built to facilitate the flow of ancient wisdom into the modern world.
+                        </p>
+                        <p className="text-sm text-gray-400 leading-relaxed">
+                            Our platform uses technology not to distract, but to deepen. Every feature is designed with the intention of supporting your spiritual journey and connecting you with the truth of who you are.
+                        </p>
+                    </div>
+                </div>
+
+                {/* --- Footer --- */}
+                <footer className="mt-auto border-t border-white/5 py-8 text-center text-xs text-gray-600">
+                    <p>&copy; 2026 Soul Wisdom Network. All rights reserved.</p>
+                    <div className="flex justify-center gap-4 mt-2">
+                        <span className="hover:text-gray-400 cursor-pointer">Privacy Policy</span>
+                        <span className="hover:text-gray-400 cursor-pointer">Terms of Service</span>
+                        <span className="hover:text-gray-400 cursor-pointer">Contact</span>
+                    </div>
+                </footer>
+
             </div>
-            <h3 className="mb-3 text-xl font-bold text-ocean-100">Community Connection</h3>
-            <p className="text-ocean-100/70">
-              Find your soul tribe. Connect with like-minded seekers on the same path of ascension.
-            </p>
-          </div>
-
-          {/* Feature 3 */}
-          <div className="rounded-3xl border border-ocean-800 bg-ocean-900/50 p-8 shadow-2xl backdrop-blur-sm transition-transform hover:-translate-y-2 hover:border-gold-500/50">
-            <div className="mb-6 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gold-100 dark:bg-gold-900/20 text-gold-600 dark:text-gold-400">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="mb-3 text-xl font-bold text-ocean-100">Live Events</h3>
-            <p className="text-ocean-100/70">
-              Participate in global meditations, workshops, and live streams to elevate your frequency.
-            </p>
-          </div>
         </div>
-      </section>
-
-      {/* About Section */}
-      <section className="relative overflow-hidden py-24">
-        <div className="absolute inset-0 -z-10 bg-ocean-950/80" />
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-12 px-4 lg:flex-row">
-          <div className="flex-1">
-            <div className="aspect-square w-full max-w-md rounded-full bg-gradient-to-tr from-gold-500/20 to-ocean-500/10 blur-3xl animate-pulse" />
-          </div>
-          <div className="flex-1">
-            <h2 className="mb-6 text-3xl font-bold text-ocean-50 sm:text-4xl">The Soul Wisdom Mission</h2>
-            <p className="mb-6 text-lg text-ocean-100/70">
-              We believe that we are all interconnected. The Soul Wisdom Network is built to facilitate the flow of ancient wisdom into the modern world.
-            </p>
-            <p className="text-lg text-ocean-100/70">
-              Our platform uses technology not to distract, but to deepen. Every feature is designed with the intention of supporting your spiritual journey and connecting you with the truth of who you are.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-ocean-800/30 bg-ocean-950 py-12">
-        <div className="mx-auto max-w-6xl px-4 text-center text-ocean-100/30">
-          <p className="mb-4">&copy; 2025 Soul Wisdom Network. All rights reserved.</p>
-          <div className="flex justify-center gap-6">
-            <Link href="#" className="hover:text-gold-500 transition-colors">Privacy Policy</Link>
-            <Link href="#" className="hover:text-gold-500 transition-colors">Terms of Service</Link>
-            <Link href="#" className="hover:text-gold-500 transition-colors">Contact</Link>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
+    );
 }

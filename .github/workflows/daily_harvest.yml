@@ -1,0 +1,32 @@
+name: Daily Content Harvest
+
+on:
+  schedule:
+    # 6:00 AM ET is 11:00 AM UTC (Standard Time) or 10:00 AM UTC (Daylight Time).
+    # Setting to 11:00 UTC as a base.
+    - cron: '0 11 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Run Content Scout Agent
+      env:
+        YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+      run: npx ts-node agent/src/scout.ts

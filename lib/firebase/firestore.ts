@@ -5,6 +5,7 @@ import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 export const usersCol = collection(db, "users");
 export const postsCol = collection(db, "posts");
 export const commentsCol = collection(db, "comments");
+export const feedItemsCol = collection(db, "feed_items");
 
 // Types (to be expanded)
 export interface UserProfile {

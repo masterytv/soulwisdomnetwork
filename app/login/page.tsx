@@ -146,7 +146,10 @@ export default function LoginPage() {
                 <div className="mt-6 text-center text-sm text-ocean-600 dark:text-ocean-400">
                     {isRegistering ? "Already have an account?" : "Don't have an account?"}{" "}
                     <button
-                        onClick={() => setIsRegistering(!isRegistering)}
+                        onClick={() => {
+                            setIsRegistering(!isRegistering);
+                            setError("");
+                        }}
                         className="text-gold-600 hover:text-gold-500 font-medium"
                     >
                         {isRegistering ? "Sign In" : "Sign Up"}

@@ -22,7 +22,7 @@ export default function Navbar() {
         <nav className="bg-ocean-950 backdrop-blur-md border-b border-ocean-800/30 px-4 py-3 sticky top-0 z-50 shadow-2xl">
             <div className="max-w-6xl mx-auto flex justify-between items-center">
                 <div className="flex items-center gap-8">
-                    <Link href={user ? "/dashboard" : "/"} className="flex items-center gap-2 group">
+                    <Link href="/" className="flex items-center gap-2 group">
                         <img
                             src="/logo.png"
                             alt="Soul Wisdom Collective"
@@ -30,25 +30,32 @@ export default function Navbar() {
                         />
                     </Link>
 
-                    {user && (
-                        <div className="flex gap-1">
-                            {navItems.map((item) => {
-                                const isActive = pathname.startsWith(item.href);
-                                return (
-                                    <Link
-                                        key={item.href}
-                                        href={item.href}
-                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${isActive
-                                            ? "bg-gold-500/10 text-gold-400"
-                                            : "text-ocean-300 hover:bg-ocean-900/50 hover:text-gold-300"
-                                            }`}
-                                    >
-                                        {item.name}
-                                    </Link>
-                                );
-                            })}
-                        </div>
-                    )}
+                    {/* Public Links (Always Visible) */}
+                    <div className="flex gap-1">
+                        <Link href="/signal" className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${pathname.startsWith('/signal') ? "text-gold-400" : "text-ocean-300 hover:text-gold-300"}`}>
+                            Signal
+                        </Link>
+                        <Link href="/daily" className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${pathname.startsWith('/daily') ? "text-gold-400" : "text-ocean-300 hover:text-gold-300"}`}>
+                            Daily
+                        </Link>
+
+                        {/* Private Links (Logged In Only) */}
+                        {user && navItems.map((item) => {
+                            const isActive = pathname.startsWith(item.href);
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${isActive
+                                        ? "bg-gold-500/10 text-gold-400"
+                                        : "text-ocean-300 hover:bg-ocean-900/50 hover:text-gold-300"
+                                        }`}
+                                >
+                                    {item.name}
+                                </Link>
+                            );
+                        })}
+                    </div>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -84,7 +91,7 @@ export default function Navbar() {
                             href="/login"
                             className="bg-gradient-to-b from-gold-400 to-gold-600 hover:scale-105 active:scale-95 text-ocean-950 font-bold py-2 px-6 rounded-full transition-all text-sm shadow-lg shadow-gold-500/10"
                         >
-                            Sign In
+                            Join / Log In
                         </Link>
                     )}
                 </div>
