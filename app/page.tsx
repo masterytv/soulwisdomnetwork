@@ -26,9 +26,9 @@ export default function Home() {
                     </p>
 
                     <div className="pt-8 flex justify-center gap-4">
-                        <button className="px-8 py-4 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 active:scale-95">
+                        <Link href="/login" className="px-8 py-4 bg-gradient-to-r from-amber-500 to-yellow-600 text-black font-bold rounded-full hover:shadow-[0_0_20px_rgba(245,158,11,0.4)] transition-all transform hover:scale-105 active:scale-95">
                             Join the Collective
-                        </button>
+                        </Link>
 
                         <Link href="/daily" className="px-8 py-4 border border-white/10 text-white font-bold rounded-full hover:bg-white/5 transition-all">
                             Daily Wisdom
