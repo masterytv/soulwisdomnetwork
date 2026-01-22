@@ -33,4 +33,13 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Connectivity check (safe for client)
+if (typeof window !== "undefined") {
+    if (!firebaseConfig.apiKey) {
+        console.warn("Firebase API Key is missing in client-side bundle.");
+    } else {
+        console.log("Firebase initialized successfully.");
+    }
+}
+
 export { app, auth, db };
