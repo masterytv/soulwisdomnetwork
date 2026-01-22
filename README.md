@@ -35,5 +35,6 @@ npx firebase-tools deploy
 ```
 
 ## Documentation
+- [Collaboration Guide](docs/COLLABORATION.md)
 - [Onboarding Guide](docs/ONBOARDING.md)
 - [Design Spec](docs/specs/002-design-update.md)
