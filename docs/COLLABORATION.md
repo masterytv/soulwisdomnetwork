@@ -8,7 +8,14 @@ This project is built using **Antigravity**. To maintain code quality and preven
 ```bash
 git clone <repository-url>
 cd soulwisdomnetwork
+npm install
 ```
+
+### Firebase Login
+```bash
+npx firebase login
+```
+This ensures you have the necessary permissions to interact with the project's backend.
 
 ### Environment Variables
 1. Copy the template: `cp .env.example .env.local`
