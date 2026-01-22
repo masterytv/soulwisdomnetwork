@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth";
 import { auth, db } from "@/lib/firebase/config";
 import { useRouter } from "next/navigation";
 import { doc, setDoc, getDoc, serverTimestamp } from "firebase/firestore";
@@ -32,6 +32,7 @@ export default function LoginPage() {
                     photoURL: user.photoURL,
                     createdAt: serverTimestamp(),
                     bio: "",
+                    role: "user",
                 });
             }
 
@@ -57,7 +58,12 @@ export default function LoginPage() {
                     photoURL: null,
                     createdAt: serverTimestamp(),
                     bio: "",
+                    role: "user",
                 });
+
+                // Send Verification Email
+                await sendEmailVerification(user);
+                alert("Account created! Please check your email inbox to verify your account."); // Simple visual feedback
             } else {
                 await signInWithEmailAndPassword(auth, email, password);
             }
