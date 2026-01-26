@@ -36,11 +36,14 @@ const db = getFirestore(app);
 // Connectivity check (safe for client)
 if (typeof window !== "undefined") {
     console.log("🔍 Firebase Configuration Check:");
-    console.log(`- API Key present: ${!!firebaseConfig.apiKey} (Length: ${firebaseConfig.apiKey?.length || 0})`);
+    console.log(`- API Key present: ${!!firebaseConfig.apiKey} (Len: ${firebaseConfig.apiKey?.length || 0})`);
     console.log(`- Project ID: ${firebaseConfig.projectId}`);
 
-    if (!firebaseConfig.apiKey) {
-        console.warn("❌ Firebase API Key is missing in client-side bundle.");
+    // Check for common bundling issues
+    if (firebaseConfig.apiKey === "undefined") {
+        console.error("❌ ERROR: API Key is the literal string 'undefined'!");
+    } else if (!firebaseConfig.apiKey) {
+        console.warn("❌ Firebase API Key is missing in bundle.");
     } else {
         console.log("✅ Firebase initialized successfully.");
     }
