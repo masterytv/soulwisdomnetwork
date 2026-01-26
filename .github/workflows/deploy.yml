@@ -35,6 +35,18 @@ jobs:
           echo "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}" >> .env.production
           echo "NEXT_PUBLIC_FIREBASE_APP_ID=${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}" >> .env.production
 
+      - name: Verify Environment Setup
+        run: |
+          echo "Checking .env.production existence..."
+          if [ -f .env.production ]; then
+            echo "✅ .env.production exists."
+            echo "First 15 chars of API key in file (for verification):"
+            grep NEXT_PUBLIC_FIREBASE_API_KEY .env.production | cut -c1-40
+          else
+            echo "❌ .env.production MISSING!"
+            exit 1
+          fi
+
       - name: Install Dependencies
         run: npm ci
 

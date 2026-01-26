@@ -2,6 +2,12 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// EXTREME DIAGNOSTICS (Top-level)
+if (typeof window !== "undefined") {
+    console.log("%c🚀 [DEPLOY_DEBUG] VER 1.1 LOADED", "color: yellow; background: black; font-size: 20px;");
+    console.log("📍 API Key Check (Direct Env):", process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.substring(0, 10) + "...");
+}
+
 let firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
