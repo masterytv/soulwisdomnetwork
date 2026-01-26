@@ -29,4 +29,4 @@ jobs:
         YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-      run: npx ts-node agent/src/scout.ts
+      run: npx tsx agent/src/scout.ts

@@ -43,7 +43,7 @@ async function main() {
     const targetEmail = process.argv[2];
 
     if (!targetEmail) {
-        console.error("Usage: ts-node scripts/make_admin.ts <email>");
+        console.error("Usage: npx tsx scripts/make_admin.ts <email>");
         process.exit(1);
     }
 
