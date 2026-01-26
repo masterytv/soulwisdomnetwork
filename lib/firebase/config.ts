@@ -2,12 +2,6 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// EXTREME DIAGNOSTICS (Top-level)
-if (typeof window !== "undefined") {
-    console.log("%c🚀 [DEPLOY_DEBUG] VER 1.1 LOADED", "color: yellow; background: black; font-size: 20px;");
-    console.log("📍 API Key Check (Direct Env):", process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.substring(0, 10) + "...");
-}
-
 let firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -18,6 +12,7 @@ let firebaseConfig = {
 };
 
 // Fallback for Firebase App Hosting environment
+// This automatically picks up configuration provided securely by the Firebase platform
 if (!firebaseConfig.apiKey && process.env.FIREBASE_WEBAPP_CONFIG) {
     try {
         const parsedConfig = JSON.parse(process.env.FIREBASE_WEBAPP_CONFIG);
@@ -38,21 +33,5 @@ if (!firebaseConfig.apiKey && process.env.FIREBASE_WEBAPP_CONFIG) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// Connectivity check (safe for client)
-if (typeof window !== "undefined") {
-    console.log("🔍 Firebase Configuration Check:");
-    console.log(`- API Key present: ${!!firebaseConfig.apiKey} (Len: ${firebaseConfig.apiKey?.length || 0})`);
-    console.log(`- Project ID: ${firebaseConfig.projectId}`);
-
-    // Check for common bundling issues
-    if (firebaseConfig.apiKey === "undefined") {
-        console.error("❌ ERROR: API Key is the literal string 'undefined'!");
-    } else if (!firebaseConfig.apiKey) {
-        console.warn("❌ Firebase API Key is missing in bundle.");
-    } else {
-        console.log("✅ Firebase initialized successfully.");
-    }
-}
 
 export { app, auth, db };
