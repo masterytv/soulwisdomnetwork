@@ -24,7 +24,8 @@ type VideoEvaluation = {
     score: number;
     verdict: 'KEEP' | 'DISCARD';
     reasoning: string;
-    summary?: string; // New field
+    summary?: string;
+    isTrusted?: boolean; // Flag to indicate if from trusted channel
 };
 
 // --- Helper Functions ---
@@ -93,7 +94,7 @@ async function evaluateVideo(video: Video, trusted: string[], blocked: string[])
         // For now, let's fast pass but we miss the summary. 
         // BETTER STRATEGY: Run AI even for Trusted, but give it a starting boost.
         // But for cost saving, we'll implement that later. For now, basic trusted pass.
-        return { video, score: 95, verdict: 'KEEP', reasoning: 'Channel is on the Trusted List', summary: 'Trusted Channel Content.' };
+        return { video, score: 95, verdict: 'KEEP', reasoning: 'Channel is on the Trusted List', summary: 'Trusted Channel Content.', isTrusted: true };
     }
 
     if (blocked.includes(video.channelName)) {
@@ -209,7 +210,9 @@ async function saveToDatabase(evaluation: VideoEvaluation) {
             return;
         }
 
-        await feedRef.add({
+        // Determine status based on whether it's from a trusted channel
+        const status = evaluation.isTrusted ? 'approved' : 'pending_review';
+        const docData: any = {
             videoId: evaluation.video.id,
             title: evaluation.video.title,
             url: `https://www.youtube.com/watch?v=${evaluation.video.id}`,
@@ -224,9 +227,17 @@ async function saveToDatabase(evaluation: VideoEvaluation) {
             ai_summary: evaluation.summary || "No summary available.",
 
             // System Data
-            status: 'pending_review',
+            status: status,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
+
+        // If auto-approved (trusted channel), add approvedAt timestamp
+        if (evaluation.isTrusted) {
+            docData.approvedAt = admin.firestore.FieldValue.serverTimestamp();
+            console.log(`  ✅ Auto-approved (Trusted Channel)`);
+        }
+
+        await feedRef.add(docData);
 
         console.log(`  ✅ Saved successfully!`);
 

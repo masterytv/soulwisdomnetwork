@@ -18,6 +18,7 @@ type FeedItem = {
     ai_summary?: string;
     publishedAt: string;
     createdAt: Timestamp;
+    approvedAt?: Timestamp;
 };
 
 export default function DailyBoard() {
@@ -32,14 +33,15 @@ export default function DailyBoard() {
         const start = startOfDay(selectedDate);
         const end = endOfDay(selectedDate);
 
-        // Query: items created within this day window, ordered by score descending
+        // Query: items approved within this day window, ordered by score descending
         const q = query(
             feedItemsCol,
-            where('createdAt', '>=', start),
-            where('createdAt', '<=', end),
-            orderBy('createdAt', 'desc')
-            // Note: We might need a composite index for createdAt + ai_score if we want to sort by score.
-            // For now let's just sort in memory if the list is small.
+            where('status', '==', 'approved'),
+            where('approvedAt', '>=', start),
+            where('approvedAt', '<=', end),
+            orderBy('approvedAt', 'desc')
+            // Note: This requires a composite index on (status, approvedAt).
+            // Firestore will provide a link to create it when you first run this query.
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
