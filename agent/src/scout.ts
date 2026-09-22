@@ -161,8 +161,8 @@ async function evaluateVideo(video: Video, trusted: string[], blocked: string[])
 }
 
 // --- The "Hands": Database Saver ---
-import admin from 'firebase-admin';
-import { getApps } from 'firebase-admin/app';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 
 // Initialize Firebase Admin (Only once)
 // Initialize Firebase Admin (Only once)
@@ -191,11 +191,11 @@ if (!getApps().length) {
     }
 
     // Initialize with the resolved credentials
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+    initializeApp({
+        credential: cert(serviceAccount)
     });
 }
-const db = admin.firestore();
+const db = getFirestore();
 
 async function saveToDatabase(evaluation: VideoEvaluation) {
     console.log(`  💾 Saving to Firestore: ${evaluation.video.title}`);
@@ -228,12 +228,12 @@ async function saveToDatabase(evaluation: VideoEvaluation) {
 
             // System Data
             status: status,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: FieldValue.serverTimestamp()
         };
 
         // If auto-approved (trusted channel), add approvedAt timestamp
         if (evaluation.isTrusted) {
-            docData.approvedAt = admin.firestore.FieldValue.serverTimestamp();
+            docData.approvedAt = FieldValue.serverTimestamp();
             console.log(`  ✅ Auto-approved (Trusted Channel)`);
         }
 

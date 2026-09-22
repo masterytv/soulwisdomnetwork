@@ -1,16 +1,16 @@
 
-import admin from 'firebase-admin';
-import { getApps } from 'firebase-admin/app';
+import { initializeApp, cert, getApps } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import * as fs from 'fs';
 import * as path from 'path';
 
 if (!getApps().length) {
     const serviceAccount = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'serviceAccountKey.json'), 'utf-8'));
-    admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
+    initializeApp({
+        credential: cert(serviceAccount)
     });
 }
-const db = admin.firestore();
+const db = getFirestore();
 
 async function checkDb() {
     console.log("🕵️ Checking Firestore 'feed_items'...");
