@@ -21,7 +21,7 @@ This document specifies a pipeline that takes a raw Zoom recording and produces 
 
 | Measure | Target |
 |---|---|
-| Backlog published | All 20 episodes live on YouTube |
+| Backlog | All 20 episodes published, at one a week |
 | Human time per episode, steady state | Under 45 minutes |
 | Time from recording to published | Under 48 hours |
 | Cost per episode in software and AI | Under $5, excluding subscriptions |
@@ -41,7 +41,7 @@ Fourteen steps. The numbers in brackets map to the ten steps discussed in planni
 | 4 | **Checkpoint A — confirm speaker names** | Human, ~10 min | 1 |
 | 5 | AI produces summary, tags, themes, topics, chapters, key quotes, title options, description, the "In this episode" teaser script, and b-roll suggestions **[3]** | Automatic | 1 |
 | 6 | **Checkpoint B — approve the plan:** metadata, teaser copy, and which b-roll goes where | Human, ~10 min | 1 |
-| 7 | Generate the approved b-roll assets, with AI watermarking applied **[5]** | Automatic | 1 |
+| 7 | Generate the approved b-roll assets **[5]** | Automatic | 1 |
 | 8 | Pipeline pushes media into Descript and triggers filler-word removal and Studio Sound **[4]** | Automatic | 1 |
 | 9 | **Checkpoint C — the human edit.** Taste cuts, b-roll placement, fixes | Human, 20-40 min | 1 |
 | 10 | Pipeline pulls the finished cut back, assembles **intro + teaser + body + outro**, normalizes loudness **[3][6]** | Automatic | 1 |
@@ -63,7 +63,7 @@ The fix costs 25 cents. **The raw transcript drives the editing decisions. The f
 
 ---
 
-## 3. B-roll: options and the watermark rule
+## 3. B-roll options
 
 Step 5 in planning — showing a visual while a speaker describes something. This is the highest-variance part of the whole system: it has the widest cost range, the highest brand risk, and the most options.
 
@@ -72,9 +72,9 @@ Step 5 in planning — showing a visual while a speaker describes something. Thi
 | Option | Cost per episode (6 visuals) | Quality | Control | Verdict |
 |---|---|---|---|---|
 | **A. AI-generated images with slow pan and zoom** | **~$0.25** | Good. Avoids the uncanny motion that makes cheap AI video look bad | Full — we render it | **MVP default** |
-| B. Licensed stock footage | $0 on free libraries, up to ~$30/month for premium | Real footage, but generic and often obviously stock | Full | Option, no watermark needed |
+| B. Licensed stock footage | $0 on free libraries, up to ~$30/month for premium | Real footage, but generic and often obviously stock | Full | Option |
 | C. AI-generated video clips | $0.90 to $22 depending on model tier | Best when it works; uncanny when it doesn't | Full | Later option |
-| D. Descript's built-in AI b-roll | Included, but draws on a shared monthly AI credit pool | Good, 5-second clips | Low — non-deterministic, no watermark control | Fallback only |
+| D. Descript's built-in AI b-roll | Included, but draws on a shared monthly AI credit pool | Good, 5-second clips | Low — non-deterministic, runs inside Descript | Fallback only |
 
 **We start with option A.** It is roughly the cost of a rounding error, it renders deterministically so the same episode always produces the same output, and a well-chosen still with gentle motion reads as intentional where mediocre AI video reads as cheap. On a show about spiritual experience, a bad AI rendering of something sacred is worse than no visual at all.
 
@@ -82,22 +82,14 @@ Options B and C stay designed-for from day one: the pipeline treats a b-roll ass
 
 **Note on model choice for option C:** pricing ranges from about $0.03 to $0.75 per second of output depending on tier and resolution. Do not build on OpenAI's Sora 2 — it is scheduled for removal on 24 September 2026.
 
-### 3.2 The AI watermark rule
+### 3.2 Labelling AI-generated elements
 
-**Any segment containing AI-generated imagery carries a visible label.** This is non-negotiable and applies to options A, C and D.
+**Labelling is handled when each AI element is created, not by the pipeline.** Whoever produces an AI visual applies whatever label that asset needs at the point of making it. The pipeline treats the finished asset as given and does not add, move or verify any overlay.
 
-| Requirement | Specification |
-|---|---|
-| **What** | A small persistent label reading "AI-generated", with a subtle shadow so it stays legible over both light and dark imagery |
-| **Where** | Positioned inside the vertical safe area, so it survives the 9:16 crop when a segment is reused in a short |
-| **When** | Burned in at the long-form render, not added later. This means shorts inherit it automatically — one implementation, no way to forget |
-| **Scope** | Applied to the AI segment only, not the whole episode |
-| **Platform disclosure** | YouTube's "altered or synthetic content" flag set at upload |
-| **Provenance record** | Every generated asset logs its model, prompt, generation date and cost against the episode |
+Two things the pipeline does still do, because they cost nothing and are needed elsewhere:
 
-The provenance record is not bureaucracy. It is what lets us regenerate a visual later, answer a question about how something was made, and track what AI generation is actually costing us.
-
-**Open question for discussion:** AI-generated *thumbnails* are recorded in provenance but we have not decided whether they carry a visible label. A thumbnail is marketing rather than content, and a watermark hurts click-through. Recommend: no visible label on thumbnails, provenance recorded, and no photorealistic depictions of real people or events.
+- **Provenance record.** Every generated asset logs its model, prompt, generation date and cost against the episode. This is what feeds the per-episode spending cap and lets us regenerate a visual later.
+- **Platform disclosure.** Where an episode contains AI-generated imagery, the upload step sets YouTube's "altered or synthetic content" flag. This is a platform obligation independent of anything visible in the frame.
 
 ---
 
@@ -151,24 +143,26 @@ Dependency updates (one package is end-of-life), service accounts, the four Zoom
 
 **Also required here:** intro file, outro file, music licence confirmation, brand colours and fonts for thumbnails and captions.
 
-### Stage 1 — MVP: the backlog, end to end (9-12 days)
+### Stage 1 — MVP: the system, end to end (9-12 days)
 
-**Everything in section 2, steps 1 to 13, working for all 20 backlog episodes.**
+**Everything in section 2, steps 1 to 13, working end to end on a real episode.**
 
 Approvals happen on a single minimal review page — a list of episodes by status, and one screen per episode holding all four checkpoints. Deliberately not the full searchable website; it is a strict subset of it, so nothing built here is thrown away in Stage 3.
 
-**Definition of done:** all 20 backlog episodes published to YouTube with captions, chapters, thumbnails and correct speaker attribution, and one new episode processed start to finish to prove the path works for ongoing production.
+**Definition of done:** the first backlog episode is published to YouTube with captions, chapters, a chosen thumbnail and correct speaker attribution; a second episode runs through needing no code changes; and the weekly slot is scheduled.
 
-**Cost:** about $35 in AI and storage for all 20 episodes.
+### The backlog rhythm — one episode a week, about five months
 
-**Human time:** this is the decision worth making consciously.
+The backlog is an **operating rhythm, not a project phase.** It starts the week Stage 1 ships and runs alongside Stages 2, 3 and 4.
 
-| Path | Per episode | 20 episodes | Trade-off |
+| | Per episode | Per week | Across all 20 |
 |---|---|---|---|
-| **Light** — skip the Descript edit, publish with automatic cleanup only | ~30 min | **~10 hours** | Good enough for back catalogue that is currently earning nothing |
-| **Full** — including a human taste pass in Descript | ~60 min | **~20 hours** | Better episodes, double the time |
+| Human time | ~60 min | ~1 hour | ~20 hours |
+| AI and storage | ~$2 | ~$2 | ~$35 |
 
-Recommend the **light path for the backlog** and the full path for new episodes. Getting 20 episodes published this month beats getting 8 published perfectly.
+**The full path is now the right choice.** An earlier draft recommended skipping the human edit on backlog episodes to get all 20 out quickly. At one a week that reasoning no longer holds — the full path costs about an hour a week, which is affordable, and the episodes are better for it. **Recommend the full path for backlog and new episodes alike.**
+
+**Peak load worth planning for.** During the drain we publish one backlog episode a week *plus* the 2-4 new episodes a month — **six to eight episodes a month**, roughly double the steady-state volume this system was sized for. That means about 5-7 hours of human time a month, and it is the point at which monthly subscription allowances get tested. Both the editing and clipping tools have headroom at that rate, but the first month should be watched rather than assumed.
 
 ### Stage 2 — Shorts and social (3-4 days)
 
@@ -210,9 +204,11 @@ Weekly pull of views, watch time, retention and click-through from YouTube and I
 
 **Human time per episode, steady state: about 45 minutes** across five checkpoints.
 
-**One-time:** 16-22 days of build, plus roughly $35 and 10-20 hours to process the backlog.
+**One-time:** 16-22 days of build. The backlog adds roughly $35 and about 20 hours, but spread across five months at one episode a week rather than paid up front.
 
-A note on scope: this is roughly double the build estimate in the executive report. That report scoped transcripts, metadata, a website and shorts. This document adds b-roll generation and watermarking, thumbnails, final assembly with intro and outro, loudness normalization, the second transcription pass, captions, failure handling and analytics. The additions are real work and real value — but they are additions, and the estimate moved accordingly.
+**During the backlog drain,** throughput runs at six to eight episodes a month against a steady state of three. Budget for roughly double the per-episode figures above for that period.
+
+A note on scope: this is roughly double the build estimate in the executive report. That report scoped transcripts, metadata, a website and shorts. This document adds b-roll generation, thumbnails, final assembly with intro and outro, loudness normalization, the second transcription pass, captions, failure handling and analytics. The additions are real work and real value — but they are additions, and the estimate moved accordingly.
 
 ---
 
@@ -231,12 +227,12 @@ A note on scope: this is roughly double the build estimate in the executive repo
 
 ## 9. Decisions needed before Stage 1 starts
 
-1. **Light or full path for the backlog?** 10 hours versus 20. Recommend light.
-2. **Do AI-generated thumbnails carry a visible watermark?** Recommend no, with provenance recorded.
-3. **Intro, outro and music** — who produces them, and by when? Stage 1 cannot ship without them.
-4. **Who owns the checkpoints?** One person for all five, or split by type?
-5. **Publish backlog episodes public or unlisted first?** Recommend unlisted for the first three, then public once we trust the output.
-6. **Brand assets for thumbnails and captions** — colours, fonts, logo treatment.
+1. **Intro, outro and music** — who produces them, and by when? Stage 1 cannot ship without them.
+2. **Who owns the checkpoints?** One person for all five, or split by type?
+3. **Which day of the week is backlog day?** A fixed slot makes the rhythm stick; an unscheduled one will slip.
+4. **Publish backlog episodes public or unlisted first?** Recommend unlisted for the first three, then public once we trust the output.
+5. **Brand assets for thumbnails and captions** — colours, fonts, logo treatment.
+6. **Which order do the 20 backlog episodes go in?** Best-first builds an audience faster than chronological.
 
 ---
 
