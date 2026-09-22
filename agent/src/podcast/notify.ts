@@ -4,7 +4,7 @@ export interface Failure {
     episode: string;
     stage: string;
     message: string;
-    folderId: string;
+    fileId: string;
 }
 
 // Emails a summary of permanent failures through Resend. Without a key it only logs:
@@ -13,7 +13,7 @@ export async function sendFailureAlert(config: Config, failures: Failure[]) {
     if (failures.length === 0) return;
 
     const lines = failures.map(f =>
-        `• ${f.episode}\n  Stage: ${f.stage}\n  Error: ${f.message}\n  Retry: run "Podcast Ingest" with retry_folder_id = ${f.folderId}`,
+        `• ${f.episode}\n  Stage: ${f.stage}\n  Error: ${f.message}\n  Retry: run "Podcast Ingest" with retry_file_id = ${f.fileId}`,
     );
     const text = [
         `${failures.length} podcast episode(s) stopped and need attention.`,

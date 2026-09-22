@@ -13,11 +13,11 @@ import * as path from 'path';
 import type { Episode, EpisodeStage } from '../../../types/episode';
 import { ASSEMBLYAI_USD_PER_HOUR, HOSTS, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
-    createDrive, downloadFile, isVideo, listEpisodeFolders, listFolderFiles, moveFolder, readParticipants,
-    type DriveFile,
+    checkFolderAccess, createDrive, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
 } from './drive';
 import { PermanentError, withRetry } from './errors';
 import { makeAudio, makeProxy, probeDuration } from './media';
+import { episodeTitle, recordedAt } from './naming';
 import { sendFailureAlert, type Failure } from './notify';
 import { createAssemblyAI, hasFailed, submitTranscription, summariseSpeakers, waitForTranscript } from './transcribe';
 
@@ -29,8 +29,6 @@ const db = getFirestore();
 const bucket = getStorage().bucket();
 const drive = createDrive(serviceAccount);
 const assembly = createAssemblyAI(config.assemblyAiKey);
-
-const PARTICIPANTS_FILE = /^participants(\.txt)?$/i;
 
 async function storageHas(objectPath: string | undefined) {
     if (!objectPath) return false;
@@ -47,25 +45,19 @@ function touch(ref: DocumentReference, fields: Record<string, unknown>) {
     return withRetry('Firestore update', () => ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() }));
 }
 
-async function processEpisode(folder: DriveFile): Promise<Failure | null> {
-    const folderId = folder.id!;
-    const title = folder.name ?? folderId;
-    const files = await listFolderFiles(drive, folderId);
+async function processEpisode(video: DriveFile): Promise<Failure | null> {
+    const fileId = video.id!;
+    const fileName = video.name ?? fileId;
+    const title = episodeTitle(fileName);
 
-    const settleCutoff = Date.now() - SETTLE_MINUTES * 60_000;
     // createdTime too: an upload can keep the file's original modifiedTime.
-    const lastChange = (f: DriveFile) => Math.max(Date.parse(f.createdTime ?? '') || 0, Date.parse(f.modifiedTime ?? '') || 0);
-    if (files.some(f => lastChange(f) > settleCutoff)) {
-        console.log(`⏳ ${title}: changed in the last ${SETTLE_MINUTES} min, waiting for the next run.`);
-        return null;
-    }
-    const videos = files.filter(isVideo);
-    if (videos.length === 0) {
-        console.log(`⏳ ${title}: no video yet, skipping.`);
+    const lastChange = Math.max(Date.parse(video.createdTime ?? '') || 0, Date.parse(video.modifiedTime ?? '') || 0);
+    if (lastChange > Date.now() - SETTLE_MINUTES * 60_000) {
+        console.log(`⏳ ${title}: added in the last ${SETTLE_MINUTES} min, waiting for the next run.`);
         return null;
     }
 
-    const ref = db.collection('episodes').doc(folderId);
+    const ref = db.collection('episodes').doc(fileId);
     const existing = (await ref.get()).data() as Episode | undefined;
 
     if (existing?.error?.permanent) {
@@ -74,19 +66,17 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
     }
     if (existing?.status === 'awaiting_speaker_review') {
         // Finished on an earlier run but the Drive move did not happen.
-        await moveFolder(drive, folderId, config.toProcessFolderId, config.processedFolderId);
+        await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
         console.log(`📁 ${title}: already transcribed, moved to Processed.`);
         return null;
     }
 
-    const video = videos[0];
-    const participantsFile = files.find(f => PARTICIPANTS_FILE.test(f.name ?? ''));
-    const participants = participantsFile ? await readParticipants(drive, participantsFile) : [];
-    const candidates = [...new Set([...HOSTS, ...participants])];
+    // Guests are not known up front; they are named at Checkpoint A.
+    const candidates = HOSTS;
 
     if (config.dryRun) {
-        console.log(`🔎 [dry run] ${title}: would ingest "${video.name}" (${video.mimeType}, ${video.size} bytes) ` +
-            `with candidates ${candidates.join(', ')}${existing ? ` — resuming from "${existing.stage}"` : ''}`);
+        console.log(`🔎 [dry run] "${title}": would ingest "${fileName}" (${video.mimeType}, ${video.size} bytes)` +
+            `${existing ? ` — resuming from "${existing.stage}"` : ''}`);
         return null;
     }
 
@@ -94,15 +84,14 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
     if (!existing) {
         const episode: Episode = {
             title,
+            recordedAt: recordedAt(fileName),
             status: 'ingesting',
             stage: 'copy',
             drive: {
-                folderId,
-                folderName: title,
-                videoFileId: video.id!,
-                videoName: video.name ?? 'video',
-                videoMimeType: video.mimeType ?? 'video/mp4',
-                videoSizeBytes: Number(video.size ?? 0),
+                fileId,
+                fileName,
+                mimeType: video.mimeType ?? 'video/mp4',
+                sizeBytes: Number(video.size ?? 0),
             },
             candidateSpeakers: candidates,
             costs: { items: [], totalUsd: 0 },
@@ -111,38 +100,31 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
             updatedAt: FieldValue.serverTimestamp(),
         };
         await ref.set(episode);
-    } else if (!existing.transcription?.transcriptId) {
-        // participants.txt may have been corrected before a retry.
-        await touch(ref, { candidateSpeakers: candidates });
     }
 
-    const workDir = path.join(config.workDir, 'podcast', folderId);
+    const workDir = path.join(config.workDir, 'podcast', fileId);
     fs.mkdirSync(workDir, { recursive: true });
-    const localSource = path.join(workDir, `source${path.extname(video.name ?? '') || '.mp4'}`);
+    const localSource = path.join(workDir, `source${path.extname(fileName) || '.mp4'}`);
     const localProxy = path.join(workDir, 'proxy_720p.mp4');
     const localAudio = path.join(workDir, 'audio.m4a');
-    const prefix = `episodes/${folderId}`;
+    const prefix = `episodes/${fileId}`;
     let stage: EpisodeStage = existing?.stage ?? 'copy';
 
     const ensureLocalSource = async () => {
         if (!fs.existsSync(localSource)) {
-            console.log(`  ⬇️ Downloading "${video.name}" from Drive`);
-            await downloadFile(drive, video.id!, localSource);
+            console.log(`  ⬇️ Downloading "${fileName}" from Drive`);
+            await downloadFile(drive, fileId, localSource);
         }
     };
 
     try {
-        if (videos.length > 1) {
-            throw new PermanentError(`Expected one video in the folder, found ${videos.length}: ${videos.map(v => v.name).join(', ')}`);
-        }
-
         // 1. Copy the original to Cloud Storage.
         stage = 'copy';
         let media = existing?.media ?? {};
         if (!(await storageHas(media.sourcePath))) {
             await ensureLocalSource();
             console.log('  ☁️ Uploading original to Cloud Storage');
-            const sourcePath = await upload(localSource, `${prefix}/source/${video.name}`, video.mimeType ?? 'video/mp4');
+            const sourcePath = await upload(localSource, `${prefix}/source/${fileName}`, video.mimeType ?? 'video/mp4');
             media = { ...media, sourcePath };
             await touch(ref, { status: 'ingesting', stage, 'media.sourcePath': sourcePath });
         }
@@ -199,7 +181,7 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
         const speakers = summariseSpeakers(transcript);
         const speakerId = transcript.speech_understanding?.response?.speaker_identification;
 
-        // 4. Ready for Checkpoint A; move the folder out of the inbox.
+        // 4. Ready for Checkpoint A; move the video out of the inbox.
         stage = 'finalize';
         await touch(ref, {
             status: 'awaiting_speaker_review',
@@ -210,7 +192,7 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
             'transcription.speakerMapping': speakerId?.mapping ?? {},
             'transcription.speakers': speakers,
         });
-        await moveFolder(drive, folderId, config.toProcessFolderId, config.processedFolderId);
+        await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
         console.log(`  ✅ ${title}: ${speakers.length} speaker(s) detected, ready for speaker review.`);
         return null;
     } catch (error) {
@@ -223,7 +205,7 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
             stage,
             error: { stage, message, permanent, attempts, at: FieldValue.serverTimestamp() },
         });
-        return permanent ? { episode: title, stage, message, folderId } : null;
+        return permanent ? { episode: title, stage, message, fileId } : null;
     } finally {
         fs.rmSync(workDir, { recursive: true, force: true });
     }
@@ -232,29 +214,37 @@ async function processEpisode(folder: DriveFile): Promise<Failure | null> {
 async function main() {
     console.log(`🤖 Podcast ingest starting${config.dryRun ? ' [dry run]' : ''}`);
 
-    if (config.retryFolderId) {
-        const ref = db.collection('episodes').doc(config.retryFolderId);
+    if (config.retryFileId) {
+        const ref = db.collection('episodes').doc(config.retryFileId);
         if ((await ref.get()).exists) {
             await touch(ref, { error: null });
-            console.log(`🔁 Cleared the error on ${config.retryFolderId}; it will be retried now.`);
+            console.log(`🔁 Cleared the error on ${config.retryFileId}; it will be retried now.`);
         } else {
-            console.warn(`⚠️ No episode with folder ID ${config.retryFolderId}.`);
+            console.warn(`⚠️ No episode with file ID ${config.retryFileId}.`);
         }
     }
 
-    const folders = await listEpisodeFolders(drive, config.toProcessFolderId);
-    console.log(`📂 ${folders.length} folder(s) in "To Process"`);
+    const inboxName = await checkFolderAccess(drive, config.toProcessFolderId, 'To Process');
+    const doneName = await checkFolderAccess(drive, config.processedFolderId, 'Processed');
+    console.log(`🔑 Drive access OK: "${inboxName}" and "${doneName}"`);
+
+    // One video file = one episode. Anything else in the inbox is left alone.
+    const videos = (await listFolderFiles(drive, config.toProcessFolderId)).filter(isVideo);
+    console.log(`📂 ${videos.length} video(s) in "${inboxName}"`);
+    for (const sub of await listSubfolders(drive, config.toProcessFolderId)) {
+        console.warn(`⚠️ Subfolder "${sub.name}" is ignored — drop video files straight into "${inboxName}".`);
+    }
 
     const failures: Failure[] = [];
-    for (const folder of folders) {
+    for (const video of videos) {
         try {
-            const failure = await processEpisode(folder);
+            const failure = await processEpisode(video);
             if (failure) failures.push(failure);
         } catch (error) {
             // Failed before an episode document existed (e.g. Drive unreachable).
             const message = error instanceof Error ? error.message : String(error);
-            console.error(`❌ ${folder.name}: ${message}`);
-            failures.push({ episode: folder.name ?? folder.id!, stage: 'copy', message, folderId: folder.id! });
+            console.error(`❌ ${video.name}: ${message}`);
+            failures.push({ episode: video.name ?? video.id!, stage: 'copy', message, fileId: video.id! });
         }
     }
 
@@ -266,7 +256,7 @@ async function main() {
 main().catch(async error => {
     console.error('❌ Podcast ingest crashed:', error);
     await sendFailureAlert(config, [{
-        episode: '(whole run)', stage: 'startup', message: error instanceof Error ? error.message : String(error), folderId: '',
+        episode: '(whole run)', stage: 'startup', message: error instanceof Error ? error.message : String(error), fileId: '',
     }]).catch(() => {});
     process.exit(1);
 });

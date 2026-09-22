@@ -1,4 +1,4 @@
-// Firestore `episodes/{driveFolderId}` — written by agent/src/podcast/ingest.ts via the
+// Firestore `episodes/{driveFileId}` — written by agent/src/podcast/ingest.ts via the
 // Admin SDK. See docs/specs/005-podcast-production-pipeline.md, steps 1-3.
 
 export type EpisodeStatus =
@@ -32,18 +32,17 @@ export interface DetectedSpeaker {
 }
 
 export interface Episode {
-    title: string;                        // the Drive subfolder name
+    title: string;                        // from the file name, Zoom prefix stripped
+    recordedAt: string | null;            // ISO date from a Zoom file name, if present
     status: EpisodeStatus;
     stage: EpisodeStage;                  // the stage in progress, or the last one reached
     drive: {
-        folderId: string;
-        folderName: string;
-        videoFileId: string;
-        videoName: string;
-        videoMimeType: string;
-        videoSizeBytes: number;
+        fileId: string;
+        fileName: string;
+        mimeType: string;
+        sizeBytes: number;
     };
-    candidateSpeakers: string[];          // hosts + participants.txt
+    candidateSpeakers: string[];          // names offered to AssemblyAI (the hosts)
     media?: {
         sourcePath?: string;              // Cloud Storage object paths
         proxyPath?: string;               // 720p H.264

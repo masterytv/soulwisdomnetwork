@@ -10,8 +10,8 @@ on:
     - cron: '17 */3 * * *'
   workflow_dispatch:
     inputs:
-      retry_folder_id:
-        description: 'Drive folder ID of a failed episode to retry (optional)'
+      retry_file_id:
+        description: 'Drive file ID of a failed episode to retry (optional)'
         required: false
         default: ''
       dry_run:
@@ -31,10 +31,10 @@ jobs:
 
     steps:
     - name: Checkout Code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
 
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v7
       with:
         node-version: '24'
         cache: 'npm'
@@ -53,7 +53,7 @@ jobs:
         DRIVE_TO_PROCESS_FOLDER_ID: ${{ vars.DRIVE_TO_PROCESS_FOLDER_ID }}
         DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
-        RETRY_FOLDER_ID: ${{ inputs.retry_folder_id }}
+        RETRY_FILE_ID: ${{ inputs.retry_file_id }}
         DRY_RUN: ${{ inputs.dry_run }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: npx tsx agent/src/podcast/ingest.ts
