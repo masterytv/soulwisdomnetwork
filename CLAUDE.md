@@ -17,6 +17,7 @@ components/   auth/ curate/ daily/ feed/
 lib/firebase/ config.ts (client init), firestore.ts, messaging.ts
 context/      React context providers
 agent/src/    scout.ts — YouTube scorer, runs in GitHub Actions, NOT on App Hosting
+              podcast/ingest.ts — spec 005 steps 1-3, also GitHub Actions only
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-005
 types/
@@ -66,6 +67,12 @@ The agent's keys (`YOUTUBE_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_SERVICE_ACCOUNT
 **GitHub repo secrets**, not Secret Manager, because the agent runs in Actions. They are
 deliberately absent from `apphosting.yaml`.
 
+The podcast ingest job (`podcast_ingest.yml`) uses its own service account
+(`podcast-pipeline@`, roles: Cloud Datastore User + Storage Object Admin, Content manager
+on the pipeline shared drive), not the Firebase admin key. Secrets: `PODCAST_SA_JSON`,
+`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`. Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
+`DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
+
 ### Firestore
 
 `firestore.rules` and `firestore.indexes.json` are the source of truth. Nothing deploys
@@ -76,7 +83,7 @@ firebase deploy --only firestore:rules,firestore:indexes --project soulwisdomnet
 ```
 
 Collections: `users`, `posts`, `comments`, `conversations`, `messages`, `feed_items`,
-`channels`.
+`channels`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`).
 
 Two rules are load-bearing and easy to break:
 
@@ -120,7 +127,7 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 ## Known state
 
 - `@google/generative-ai` is end-of-life; migrate to `@google/genai`.
-- `firebase-admin@14` and `openai@7` need Node 22+. The runtime is Node 24, so both
-  upgrades are unblocked.
+- `firebase-admin` is on v14, which removed the namespaced API (`admin.firestore()`,
+  `admin.credential`). Import from `firebase-admin/app` and `firebase-admin/firestore`.
 - `/curate` and `/daily` are disabled stubs; `daily_harvest.yml` is manual-trigger only.
 - `agent/src/test_gemini.ts` reads `GEMINI_API_KEY`, which no longer exists anywhere.
