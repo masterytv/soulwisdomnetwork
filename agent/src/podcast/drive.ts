@@ -60,7 +60,7 @@ export async function checkFolderAccess(drive: Drive, folderId: string, label: s
     }
 }
 
-export function listEpisodeFolders(drive: Drive, parentId: string) {
+export function listSubfolders(drive: Drive, parentId: string) {
     return listChildren(drive, parentId, ` and mimeType = '${FOLDER_MIME}'`);
 }
 
@@ -82,23 +82,9 @@ export async function downloadFile(drive: Drive, fileId: string, dest: string) {
     });
 }
 
-// participants.txt may be a plain text file or a Google Doc; either way, one name per line.
-export async function readParticipants(drive: Drive, file: DriveFile): Promise<string[]> {
-    const res = await withRetry('Drive read participants', () =>
-        file.mimeType === 'application/vnd.google-apps.document'
-            ? drive.files.export({ fileId: file.id!, mimeType: 'text/plain' }, { responseType: 'text' })
-            : drive.files.get({ fileId: file.id!, alt: 'media', supportsAllDrives: true }, { responseType: 'text' }),
-    );
-    return String(res.data)
-        .replace(/^﻿/, '')
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(Boolean);
-}
-
-export async function moveFolder(drive: Drive, folderId: string, fromParent: string, toParent: string) {
+export async function moveItem(drive: Drive, fileId: string, fromParent: string, toParent: string) {
     await withRetry('Drive move', () => drive.files.update({
-        fileId: folderId,
+        fileId,
         addParents: toParent,
         removeParents: fromParent,
         supportsAllDrives: true,
