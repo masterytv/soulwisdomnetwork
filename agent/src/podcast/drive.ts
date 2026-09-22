@@ -54,7 +54,7 @@ export async function checkFolderAccess(drive: Drive, folderId: string, label: s
         const status = Number(e.status ?? e.response?.status ?? e.code);
         if (status === 404 || status === 403) {
             throw new PermanentError(`Cannot open ${label} folder ${folderId}: check the folder ID and that the ` +
-                `service account is a member of the shared drive`);
+                `folder (or its shared drive) is shared with the service account as Editor/Content manager`);
         }
         throw error;
     }

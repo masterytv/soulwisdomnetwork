@@ -249,6 +249,13 @@ async function main() {
     const folders = await listEpisodeFolders(drive, config.toProcessFolderId);
     console.log(`📂 ${folders.length} folder(s) in "${inboxName}"`);
 
+    // Each episode needs its own subfolder; a video dropped straight in is easy to do by mistake.
+    const loose = (await listFolderFiles(drive, config.toProcessFolderId)).filter(isVideo);
+    for (const file of loose) {
+        console.warn(`⚠️ "${file.name}" is loose in "${inboxName}" and will be ignored. ` +
+            'Put each episode in its own subfolder.');
+    }
+
     const failures: Failure[] = [];
     for (const folder of folders) {
         try {
