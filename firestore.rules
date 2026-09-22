@@ -60,5 +60,11 @@ service cloud.firestore {
       allow read:  if signedIn();
       allow write: if false;
     }
+
+    // Podcast pipeline state, written by agent/src/podcast/ingest.ts via the Admin SDK.
+    // No client access until the review page exists; it will read through the server.
+    match /episodes/{episodeId} {
+      allow read, write: if false;
+    }
   }
 }
