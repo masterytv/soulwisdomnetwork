@@ -13,7 +13,7 @@ import * as path from 'path';
 import type { Episode, EpisodeStage } from '../../../types/episode';
 import { ASSEMBLYAI_USD_PER_HOUR, HOSTS, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
-    createDrive, downloadFile, isVideo, listEpisodeFolders, listFolderFiles, moveFolder, readParticipants,
+    checkFolderAccess, createDrive, downloadFile, isVideo, listEpisodeFolders, listFolderFiles, moveFolder, readParticipants,
     type DriveFile,
 } from './drive';
 import { PermanentError, withRetry } from './errors';
@@ -242,8 +242,12 @@ async function main() {
         }
     }
 
+    const inboxName = await checkFolderAccess(drive, config.toProcessFolderId, 'To Process');
+    const doneName = await checkFolderAccess(drive, config.processedFolderId, 'Processed');
+    console.log(`🔑 Drive access OK: "${inboxName}" and "${doneName}"`);
+
     const folders = await listEpisodeFolders(drive, config.toProcessFolderId);
-    console.log(`📂 ${folders.length} folder(s) in "To Process"`);
+    console.log(`📂 ${folders.length} folder(s) in "${inboxName}"`);
 
     const failures: Failure[] = [];
     for (const folder of folders) {

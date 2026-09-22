@@ -2,7 +2,7 @@ import { drive as driveApi, auth, drive_v3 } from '@googleapis/drive';
 import * as fs from 'fs';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
-import { withRetry } from './errors';
+import { PermanentError, withRetry } from './errors';
 
 // Folders live in a shared drive, so every call needs the all-drives flags.
 const ALL_DRIVES = { supportsAllDrives: true, includeItemsFromAllDrives: true, corpora: 'allDrives' } as const;
@@ -37,6 +37,27 @@ async function listChildren(drive: Drive, parentId: string, extraQuery = ''): Pr
         pageToken = res.data.nextPageToken ?? undefined;
     } while (pageToken);
     return files;
+}
+
+// Listing a folder the service account cannot see returns nothing rather than an error,
+// which looks exactly like an empty inbox. Opening it directly fails loudly instead.
+export async function checkFolderAccess(drive: Drive, folderId: string, label: string) {
+    try {
+        const res = await withRetry('Drive get folder', () => drive.files.get({
+            fileId: folderId, supportsAllDrives: true, fields: 'id, name, mimeType',
+        }));
+        if (res.data.mimeType !== FOLDER_MIME) throw new PermanentError(`${label} (${folderId}) is not a folder`);
+        return res.data.name ?? folderId;
+    } catch (error) {
+        if (error instanceof PermanentError) throw error;
+        const e = error as { status?: unknown; code?: unknown; response?: { status?: unknown } };
+        const status = Number(e.status ?? e.response?.status ?? e.code);
+        if (status === 404 || status === 403) {
+            throw new PermanentError(`Cannot open ${label} folder ${folderId}: check the folder ID and that the ` +
+                `service account is a member of the shared drive`);
+        }
+        throw error;
+    }
 }
 
 export function listEpisodeFolders(drive: Drive, parentId: string) {
