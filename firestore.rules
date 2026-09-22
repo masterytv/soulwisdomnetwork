@@ -2,31 +2,63 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    match /{document=**} {
-      allow read, write: if false;
+
+    function signedIn() {
+      return request.auth != null;
     }
-    
-    // User Profiles
+
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // Profiles: any signed-in user can read; only you can write yours.
     match /users/{userId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == userId;
+      allow read:           if signedIn();
+      allow create, update: if signedIn() && request.auth.uid == userId;
+      allow delete:         if false;
     }
 
-    // Agent Feed Items
-    match /feed_items/{itemId} {
-      allow read, write: if true;
-    }
-
-    // Channel Preferences (White/Black/Gray lists)
-    match /channels/{channelId} {
-      allow read, write: if true;
-    }
-    
-    // Main Posts
+    // Posts: public to read. Author creates and edits their own. Any signed-in
+    // user may bump ONLY the counters, because the like and comment buttons do.
     match /posts/{postId} {
-      allow read: if true;
-      allow create: if request.auth != null;
+      allow read:   if true;
+      allow create: if signedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update: if signedIn() && (
+                      resource.data.authorId == request.auth.uid
+                      || onlyChanges(['commentCount', 'likesCount'])
+                    );
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    match /comments/{commentId} {
+      allow read:           if true;
+      allow create:         if signedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.authorId == request.auth.uid;
+    }
+
+    // Direct messages: participants only.
+    match /conversations/{convId} {
+      allow read, update: if signedIn() && request.auth.uid in resource.data.participants;
+      allow create:       if signedIn() && request.auth.uid in request.resource.data.participants;
+      allow delete:       if false;
+    }
+
+    match /messages/{messageId} {
+      allow read: if signedIn() && request.auth.uid in
+        get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data.participants;
+      allow create:         if signedIn() && request.resource.data.senderId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Written by the scout agent via the Admin SDK, which bypasses these rules.
+    // No client writes are needed.
+    match /feed_items/{itemId} {
+      allow read:  if signedIn();
+      allow write: if false;
+    }
+    match /channels/{channelId} {
+      allow read:  if signedIn();
+      allow write: if false;
     }
   }
 }
