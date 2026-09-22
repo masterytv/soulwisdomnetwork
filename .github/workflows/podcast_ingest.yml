@@ -1,0 +1,59 @@
+# Spec 005 steps 1-3: Drive -> Cloud Storage -> proxy + audio -> AssemblyAI -> Firestore.
+# Scheduled workflows only run from the default branch, so the schedule starts once this
+# is on main. Until then (or any time), run it by hand from the Actions tab.
+
+name: Podcast Ingest
+
+on:
+  schedule:
+    # Every 3 hours, off the top of the hour when Actions is busiest.
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+    inputs:
+      retry_folder_id:
+        description: 'Drive folder ID of a failed episode to retry (optional)'
+        required: false
+        default: ''
+      dry_run:
+        description: 'List what would be ingested without changing anything'
+        type: boolean
+        default: false
+
+# Never run two ingests at once; a second trigger waits for the first to finish.
+concurrency:
+  group: podcast-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Install ffmpeg
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+    - name: Run Podcast Ingest
+      env:
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        DRIVE_TO_PROCESS_FOLDER_ID: ${{ vars.DRIVE_TO_PROCESS_FOLDER_ID }}
+        DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        RETRY_FOLDER_ID: ${{ inputs.retry_folder_id }}
+        DRY_RUN: ${{ inputs.dry_run }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/podcast/ingest.ts
