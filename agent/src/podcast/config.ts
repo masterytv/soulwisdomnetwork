@@ -1,7 +1,7 @@
 import * as dotenv from 'dotenv';
 dotenv.config({ path: '.env.local' });
 
-// Always offered to AssemblyAI as candidate names, in addition to participants.txt.
+// Always offered to AssemblyAI as candidate names. Guests are named at Checkpoint A.
 export const HOSTS = ['Daniel Endy', 'Tom Wood'];
 
 // AssemblyAI: $0.21 transcription + $0.02 diarization + $0.02 speaker ID per audio hour
@@ -12,8 +12,7 @@ export const ASSEMBLYAI_USD_PER_HOUR = 0.25;
 // treated as permanent and alerted.
 export const MAX_ATTEMPTS = 3;
 
-// Skip an episode folder if anything in it changed this recently — gives whoever is
-// uploading time to add participants.txt after the video.
+// Skip a video added this recently, so a file still uploading is never picked up.
 export const SETTLE_MINUTES = 15;
 
 function required(name: string): string {
@@ -33,7 +32,7 @@ export function loadConfig() {
             .split(',').map(s => s.trim()).filter(Boolean),
         costCapUsd: Number(process.env.PODCAST_EPISODE_COST_CAP_USD || 5),
         workDir: process.env.RUNNER_TEMP || '/tmp',
-        retryFolderId: process.env.RETRY_FOLDER_ID || '',
+        retryFileId: process.env.RETRY_FILE_ID || '',
         dryRun: process.env.DRY_RUN === 'true',
         runUrl: process.env.GITHUB_RUN_URL || '',
         alert: {
