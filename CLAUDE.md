@@ -120,7 +120,7 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 ## Known state
 
 - `@google/generative-ai` is end-of-life; migrate to `@google/genai`.
-- `firebase-admin@14` and `openai@7` need Node 22+. The runtime is Node 24, so both
-  upgrades are unblocked.
+- `firebase-admin` is on v14, which removed the namespaced API (`admin.firestore()`,
+  `admin.credential`). Import from `firebase-admin/app` and `firebase-admin/firestore`.
 - `/curate` and `/daily` are disabled stubs; `daily_harvest.yml` is manual-trigger only.
 - `agent/src/test_gemini.ts` reads `GEMINI_API_KEY`, which no longer exists anywhere.
