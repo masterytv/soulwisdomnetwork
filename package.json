@@ -10,6 +10,7 @@
     "video": "npm --prefix remotion run dev"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@google/generative-ai": "^0.24.1",
     "@googleapis/drive": "^26.0.0",
     "@opentelemetry/api": "^1.9.0",
@@ -22,7 +23,8 @@
     "next": "16.0.10",
     "openai": "^7.22.0",
     "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react-dom": "19.2.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

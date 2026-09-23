@@ -20,8 +20,9 @@ app/api/      server routes; every one must call requireRole() (see Roles below)
 context/      React context providers
 agent/src/    scout.ts — YouTube scorer, runs in GitHub Actions, NOT on App Hosting
               podcast/ingest.ts — spec 005 steps 1-3, also GitHub Actions only
+              podcast/notes.ts — spec 005 step 5 (show notes with Claude), GitHub Actions only
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-005
+docs/specs/   numbered specs, 001-007
 types/
 ```
 
@@ -74,7 +75,9 @@ The podcast ingest job (`podcast_ingest.yml`) uses its own service account
 `SWC Podcast Pipeline` Drive folder), not the Firebase admin key. One video file dropped
 into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 Processed`
 when transcribed, and a "ready for speaker review" email with the readable transcript goes
-to `ALERT_EMAIL`. The transcript Google Doc beside the video only works in a shared drive:
+to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
+(`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
+(`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
 `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`. Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
 `DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
