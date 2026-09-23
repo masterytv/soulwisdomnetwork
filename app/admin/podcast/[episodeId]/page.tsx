@@ -42,7 +42,8 @@ export default function SpeakerReviewPage() {
 
     const video = useRef<HTMLVideoElement>(null);
     const version = useRef(0);
-    const pending = useRef<TranscriptCorrections | null>(null);
+    const pending = useRef<TranscriptCorrections | null>(null);   // edits not yet sent
+    const current = useRef<TranscriptCorrections | null>(null);   // latest edits, sent or not
     const inflight = useRef<Promise<void> | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const flagCursor = useRef(-1);
@@ -53,6 +54,8 @@ export default function SpeakerReviewPage() {
             const data = await studioFetch<EpisodeReview>(`/api/studio/episodes/${episodeId}`);
             setReview(data);
             setCorrections(data.corrections);
+            current.current = data.corrections;
+            pending.current = null;
             version.current = data.version;
             setSaveState("saved");
             setError("");
@@ -66,9 +69,15 @@ export default function SpeakerReviewPage() {
     }, [loading, allowed, load]);
 
     // Saves the latest corrections; changes made while a save is running go in the next one.
-    const flush = useCallback(() => {
+    // `inflight` is set before the first await and cleared in `finally`, so it can never be
+    // left pointing at a finished save (which would silently stop all later saves).
+    const flush = useCallback(async (): Promise<void> => {
         if (timer.current) clearTimeout(timer.current);
-        inflight.current ??= (async () => {
+        while (inflight.current) await inflight.current;
+        if (!pending.current) return;
+        let finished = () => {};
+        inflight.current = new Promise<void>(resolve => { finished = resolve; });
+        try {
             while (pending.current) {
                 const next = pending.current;
                 pending.current = null;
@@ -85,27 +94,28 @@ export default function SpeakerReviewPage() {
                     pending.current ??= next;
                     setSaveState("error");
                     setNotice(`⚠️ Not saved: ${(e as Error).message}`);
-                    inflight.current = null;
                     return;
                 }
             }
             setSaveState("saved");
+        } finally {
             inflight.current = null;
-        })();
-        return inflight.current;
+            finished();
+        }
     }, [episodeId]);
 
+    // The edit is applied here, outside React's state updater, so the change to save is
+    // known immediately rather than whenever React next renders.
     const update = useCallback((fn: (c: TranscriptCorrections) => TranscriptCorrections) => {
-        setCorrections(c => {
-            if (!c) return c;
-            const next = fn(c);
-            pending.current = next;
-            return next;
-        });
+        if (!current.current) return;
+        const next = fn(current.current);
+        current.current = next;
+        pending.current = next;
+        setCorrections(next);
         setSaveState("unsaved");
         setNotice("");
         if (timer.current) clearTimeout(timer.current);
-        timer.current = setTimeout(flush, 800);
+        timer.current = setTimeout(() => { void flush(); }, 800);
     }, [flush]);
 
     // Warn before leaving with changes that haven't reached the server.
@@ -208,7 +218,6 @@ export default function SpeakerReviewPage() {
         setAccepting(true);
         setNotice("");
         try {
-            await inflight.current;
             await flush();
             if (pending.current) throw new Error(`Your latest changes could not be saved: ${saveError.current}`);
             const res = await studioFetch<{ docUpdated: boolean; docError: string | null }>(
@@ -342,7 +351,7 @@ export default function SpeakerReviewPage() {
                             <span className={`text-sm ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-green-300" : "text-gray-400"}`}>
                                 {saveState === "saved" ? "✓ " : ""}{saveLabel}
                             </span>
-                            {saveState === "error" && <button onClick={() => flush()} className={secondary}>Try again</button>}
+                            {saveState === "error" && <button onClick={() => { void flush(); }} className={secondary}>Try again</button>}
                             {notice ? (
                                 <span className={`text-sm ${notice.startsWith("⚠️") ? "text-red-300" : "text-green-300"}`}>{notice}</span>
                             ) : (
