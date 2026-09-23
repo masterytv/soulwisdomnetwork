@@ -7,9 +7,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import AuthGuard from "@/components/auth/AuthGuard";
+import { BrollImageView, useBroll } from "@/components/studio/broll";
 import { ago, minutes } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useAuth } from "@/context/AuthContext";
+import { BROLL_USD_PER_IMAGE } from "@/lib/broll";
 import { locate, mmss, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { studioFetch } from "@/lib/studioClient";
 import type { EpisodeNotesView } from "@/types/studio";
@@ -80,6 +82,7 @@ export default function ShowNotesPage() {
     }, [episodeId]);
     const autosave = useAutosave(save);
     const { reset, change, flush } = autosave;
+    const broll = useBroll(episodeId, !loading && allowed);
 
     const load = useCallback(async () => {
         try {
@@ -256,6 +259,9 @@ export default function ShowNotesPage() {
     const status = view?.notes?.status;
     const approved = view?.notes?.approved;
     const upToDate = status === "approved" && approved?.version === autosave.savedVersion && autosave.saveState === "saved";
+    // Images are made from the approved ideas, so only offered when the page shows exactly those.
+    const brollChanged = notes ? notes.broll.filter((b, i) => broll.image(i)?.idea !== b.idea.trim()).length : 0;
+    const brollBlocked = !upToDate || broll.working || broll.starting;
     const saveLabel = {
         saved: "Draft saved to the database", unsaved: "Unsaved changes…", saving: "Saving draft…", error: "Draft not saved",
     }[autosave.saveState];
@@ -487,7 +493,7 @@ export default function ShowNotesPage() {
                                     ))}
                                 </Section>
 
-                                <Section title="B-roll ideas" hint="Still images with a slow pan and zoom (spec 005, option A). Nothing is generated until a later step.">
+                                <Section title="B-roll" hint="Still images with a slow pan and zoom (spec 005, option A), made by AI from the approved ideas. They go to Descript with the episode.">
                                     {notes.broll.map((b, i) => (
                                         <div key={`${i}-${b.startMs}`} className="flex flex-col gap-1.5 border-l-2 border-sky-500/30 pl-3">
                                             <div className="flex items-center gap-2 text-xs">
@@ -512,6 +518,17 @@ export default function ShowNotesPage() {
                                                 className={field}
                                             />
                                             <p className={small}>{b.why}</p>
+                                            <BrollImageView broll={broll} index={i} idea={b.idea} />
+                                            {broll.image(i) && (
+                                                <button
+                                                    onClick={() => broll.generate(i)}
+                                                    disabled={brollBlocked}
+                                                    className={`${secondary} self-start`}
+                                                    title={upToDate ? "Make a new image for this idea" : "Approve the show notes first"}
+                                                >
+                                                    Regenerate this image
+                                                </button>
+                                            )}
                                         </div>
                                     ))}
                                     <button
@@ -520,6 +537,29 @@ export default function ShowNotesPage() {
                                     >
                                         + Add at video time
                                     </button>
+                                    <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-3">
+                                        <button
+                                            onClick={() => broll.generate(null)}
+                                            disabled={brollBlocked || brollChanged === 0}
+                                            className={primary}
+                                        >
+                                            {broll.working ? "Generating images…" : brollChanged === 0 && notes.broll.length
+                                                ? "✓ All images generated"
+                                                : `Generate ${brollChanged === notes.broll.length ? "b-roll images" : `${brollChanged} new image${brollChanged === 1 ? "" : "s"}`}`}
+                                        </button>
+                                        <span className={small}>
+                                            {broll.working
+                                                ? "About a minute per image; this page updates by itself."
+                                                : !upToDate
+                                                    ? "Approve the show notes first; images are made from the approved ideas."
+                                                    : brollChanged
+                                                        ? `About $${(brollChanged * BROLL_USD_PER_IMAGE).toFixed(2)} with OpenAI's image model. Ideas that already have an image are left alone.`
+                                                        : ""}
+                                        </span>
+                                    </div>
+                                    {(broll.error || broll.view?.error) && (
+                                        <p className="text-sm text-red-300">{broll.error || broll.view?.error}</p>
+                                    )}
                                 </Section>
                             </div>
                         </div>

@@ -64,6 +64,32 @@ export interface EpisodeNotes {
     approvedVersion?: number;
 }
 
+// One generated b-roll still (spec 005 step 7; docs/specs/008-broll-images.md), with its
+// provenance record. Keyed by the index of the approved idea it was made from.
+export interface BrollImage {
+    index: number;
+    idea: string;                         // the approved idea it was made from
+    startMs: number;
+    durationSeconds: number;
+    prompt: string;                       // exactly what was sent to the model
+    model: string;
+    quality: string;
+    size: string;
+    path: string;                         // Cloud Storage object path, PNG
+    usd: number;
+    createdAt: unknown;                   // Firestore Timestamp
+}
+
+export interface EpisodeBroll {
+    status: 'queued' | 'generating' | 'ready' | 'failed';
+    only: number | null;                  // one image being regenerated, or null for the set
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    images?: Record<string, BrollImage>;
+}
+
 export interface Episode {
     title: string;                        // from the file name, Zoom prefix stripped
     recordedAt: string | null;            // ISO date from a Zoom file name, if present
@@ -101,6 +127,7 @@ export interface Episode {
         acceptedVersion?: number;         // correctionsVersion that was accepted
     };
     notes?: EpisodeNotes;                 // show notes, spec 005 step 5 and Checkpoint B
+    broll?: EpisodeBroll;                 // b-roll images, spec 005 step 7
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };

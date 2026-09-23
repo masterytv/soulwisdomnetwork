@@ -1,5 +1,5 @@
 // Starts and watches the Podcast Ingest workflow (.github/workflows/podcast_ingest.yml)
-// and starts Podcast Show Notes (podcast_notes.yml), with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
+// and starts Podcast Show Notes (podcast_notes.yml) and Podcast B-roll (podcast_broll.yml), with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
 
 const REPO = 'masterytv/soulwisdomnetwork';
 const WORKFLOW = 'podcast_ingest.yml';
@@ -57,5 +57,13 @@ export async function startNotes(episodeId: string) {
     await github('/actions/workflows/podcast_notes.yml/dispatches', {
         method: 'POST',
         body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId } }),
+    });
+}
+
+// Generates b-roll stills for one episode (spec 005 step 7); `index` regenerates just one.
+export async function startBroll(episodeId: string, index: number | null) {
+    await github('/actions/workflows/podcast_broll.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId, index: index === null ? '' : String(index) } }),
     });
 }
