@@ -39,19 +39,36 @@ export async function waitForTranscript(client: Client, id: string): Promise<Tra
     return transcript;
 }
 
-// One entry per diarized voice with a few sample lines, for Checkpoint A.
-export function summariseSpeakers(transcript: Transcript): DetectedSpeaker[] {
-    // The mapping goes from diarization label to identified name. utterance.speaker may hold
-    // either, so accept both; a label is preferred because two voices can map to one name.
+// Diarization label for an utterance. The speaker-ID mapping goes from label to identified
+// name, and utterance.speaker may hold either; a label is preferred because two voices can
+// map to one name.
+export function labelResolver(transcript: Transcript) {
     const mapping = transcript.speech_understanding?.response?.speaker_identification?.mapping ?? {};
     const labelFor = new Map(Object.entries(mapping).map(([label, name]) => [name, label]));
+    return {
+        mapping,
+        labelOf: (speaker: string) => speaker in mapping ? speaker : (labelFor.get(speaker) ?? speaker),
+    };
+}
 
-    const bySpeaker = new Map<string, DetectedSpeaker>();
+function clip(text: string, maxWords: number) {
+    const words = text.split(/\s+/);
+    return words.length > maxWords ? `${words.slice(0, maxWords).join(' ')}…` : text;
+}
+
+// One entry per diarized voice with a few sample lines, for Checkpoint A.
+export function summariseSpeakers(transcript: Transcript): DetectedSpeaker[] {
+    const { mapping, labelOf } = labelResolver(transcript);
+    const bySpeaker = new Map<string, DetectedSpeaker & { fallback: DetectedSpeaker['samples'] }>();
     for (const u of transcript.utterances ?? []) {
-        const label = u.speaker in mapping ? u.speaker : (labelFor.get(u.speaker) ?? u.speaker);
+        const label = labelOf(u.speaker);
         let s = bySpeaker.get(label);
         if (!s) {
-            s = { label, suggestedName: mapping[label] ?? null, wordCount: 0, talkSeconds: 0, samples: [] };
+            s = {
+                // An unmatched voice comes back mapped to its own letter ("D": "D").
+                label, suggestedName: mapping[label] && mapping[label] !== label ? mapping[label] : null, firstMs: u.start,
+                wordCount: 0, talkSeconds: 0, samples: [], fallback: [],
+            };
             bySpeaker.set(label, s);
         }
         const words = u.words?.length ?? u.text.split(/\s+/).length;
@@ -61,8 +78,14 @@ export function summariseSpeakers(transcript: Transcript): DetectedSpeaker[] {
         if (s.samples.length < 3 && words >= 8 && words <= 40) {
             s.samples.push({ text: u.text, startMs: u.start });
         }
+        // A video clip is often one long stretch, so keep its opening lines too.
+        if (s.fallback.length < 3) s.fallback.push({ text: clip(u.text, 40), startMs: u.start });
     }
     return [...bySpeaker.values()]
-        .map(s => ({ ...s, talkSeconds: Math.round(s.talkSeconds) }))
+        .map(({ fallback, ...s }) => ({
+            ...s,
+            samples: s.samples.length ? s.samples : fallback,
+            talkSeconds: Math.round(s.talkSeconds),
+        }))
         .sort((a, b) => b.talkSeconds - a.talkSeconds);
 }
