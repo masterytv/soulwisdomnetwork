@@ -42,7 +42,7 @@ interface ReviewedLine { name: string; clip: boolean; start: number; text: strin
 function transcriptForPrompt(lines: ReviewedLine[]) {
     const paragraphs: { start: number; who: string; text: string[] }[] = [];
     for (const l of lines) {
-        const who = l.clip ? `${l.name} (clip played during the episode)` : l.name;
+        const who = l.clip ? `${l.name} (clip played during the episode)` : l.name;   // quotable too
         const last = paragraphs[paragraphs.length - 1];
         if (last?.who === who) last.text.push(l.text);
         else paragraphs.push({ start: l.start, who, text: [l.text] });
@@ -53,7 +53,7 @@ function transcriptForPrompt(lines: ReviewedLine[]) {
 function speakerList(lines: ReviewedLine[]) {
     const seen = new Map<string, boolean>();
     for (const l of lines) if (!seen.has(l.name)) seen.set(l.name, l.clip);
-    return [...seen].map(([name, clip]) => (clip ? `${name} (only in clips)` : name)).join(', ');
+    return [...seen].map(([name, clip]) => (clip ? `${name} (guest, heard in a recording played during the episode)` : name)).join(', ');
 }
 
 const SYSTEM = `You write show notes for the Soul Wisdom Collective podcast, hosted by ${HOSTS.join(' and ')}. \
@@ -66,9 +66,13 @@ Never claim as fact what a speaker offered as belief or experience; attribute it
 Timestamps: every paragraph of the transcript starts with its time in milliseconds, e.g. [65000ms 1:05]. \
 Use those numbers for startMs. Chapters and b-roll must start at a paragraph's time; quotes at the paragraph they come from.
 
-Quotes and teaser clips must be copied exactly from the transcript, from a host or guest, with the speaker name \
-exactly as the transcript gives it. Lines marked "(clip played during the episode)" \
-are recordings of other people: never quote them, though chapters and summaries may mention what they said.
+Quotes and teaser clips must be copied exactly from the transcript, with the speaker name exactly as the \
+transcript gives it. Lines marked "(clip played during the episode)" are recordings of guests played during the \
+show; they are part of the story, so quote them and use them in the teaser like anyone else. Every guest, \
+whether in the room or in a recording, should have at least one or two quotes.
+
+Quotes are raw material for shorts: give up to twenty, from a single striking sentence to a passage of up to two \
+minutes that stands on its own. Producers find it easier to delete than to add, so err towards more.
 
 The YouTube description is written to be found and clicked: front-load the hook and keywords in the first two lines, \
 because only those show before "more". The site link (${SITE_URL}), chapters, subscribe line and hashtags are added \
@@ -97,9 +101,10 @@ async function main() {
     console.log(`📝 ${episode.title}: ${lines.length} lines, ${transcript.length} characters`);
 
     const client = new Anthropic({ apiKey: required('ANTHROPIC_API_KEY') });
-    const response = await client.beta.messages.parse({
+    // Streamed: twenty long quotes need more output than a single non-streamed request allows.
+    const response = await client.beta.messages.stream({
         model: MODEL,
-        max_tokens: 16000,
+        max_tokens: 64000,
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         thinking: { type: 'adaptive' },
@@ -111,7 +116,7 @@ async function main() {
                 `Speakers: ${speakerList(lines)}.\n\n` +
                 `<transcript>\n${transcript}\n</transcript>\n\nWrite the show notes.`,
         }],
-    });
+    }).finalMessage();
 
     if (response.stop_reason === 'refusal') throw new Error('Claude declined to write notes for this transcript');
     if (response.stop_reason === 'max_tokens') throw new Error('The notes were cut off (max_tokens); try again');

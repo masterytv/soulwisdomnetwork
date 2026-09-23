@@ -2,7 +2,7 @@
 // them, load and save a producer's edits, and approve them (Checkpoint B).
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { parseShowNotes, StoredShowNotesSchema, type ShowNotes, type SpokenWord } from '@/lib/showNotes';
+import { fillMissingEnds, parseShowNotes, StoredShowNotesSchema, type ShowNotes, type SpokenWord } from '@/lib/showNotes';
 import type { Episode, EpisodeNotes } from '@/types/episode';
 import type { EpisodeNotesView } from '@/types/studio';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -74,10 +74,10 @@ async function acceptedWords(episode: Episode): Promise<SpokenWord[]> {
 
 // Drafts saved before a field existed get its default (e.g. no teaser clips), so the page
 // always receives the current shape. Returned as stored if it does not parse at all.
-function upgrade(draft: ShowNotes | undefined): ShowNotes | null {
+function upgrade(draft: ShowNotes | undefined, words: SpokenWord[]): ShowNotes | null {
     if (!draft) return null;
     const parsed = StoredShowNotesSchema.safeParse(draft);
-    return parsed.success ? parsed.data : draft;
+    return parsed.success ? fillMissingEnds(parsed.data, words) : draft;
 }
 
 export async function getNotes(id: string): Promise<EpisodeNotesView> {
@@ -103,7 +103,7 @@ export async function getNotes(id: string): Promise<EpisodeNotesView> {
         notes: n ? {
             // A request whose run died reads as failed, so the page offers a retry.
             status: (n.status === 'queued' || n.status === 'generating') && !busy(n) ? 'failed' : n.status,
-            draft: upgrade(n.draft),
+            draft: upgrade(n.draft, words),
             version: n.version ?? 0,
             model: n.model ?? null,
             unverifiedQuotes: n.unverifiedQuotes ?? [],
