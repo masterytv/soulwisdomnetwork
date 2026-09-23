@@ -85,7 +85,9 @@ export default function ShowNotesPage() {
         try {
             const data = await studioFetch<EpisodeNotesView>(`/api/studio/episodes/${episodeId}/notes`);
             setView(data);
-            setNotes(data.notes?.draft ?? null);
+            const draft = data.notes?.draft;
+            // Belt and braces for drafts older than teaser clips and hashtags.
+            setNotes(draft ? { ...draft, teaserClips: draft.teaserClips ?? [], hashtags: draft.hashtags ?? [] } : null);
             reset(data.notes?.version ?? 0);
             setLoadedAt(Date.now());
             setError("");
