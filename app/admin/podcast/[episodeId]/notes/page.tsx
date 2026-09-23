@@ -10,7 +10,7 @@ import AuthGuard from "@/components/auth/AuthGuard";
 import { ago, minutes } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useAuth } from "@/context/AuthContext";
-import { chapterList, mmss, type ShowNotes } from "@/lib/showNotes";
+import { locate, mmss, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { studioFetch } from "@/lib/studioClient";
 import type { EpisodeNotesView } from "@/types/studio";
 
@@ -114,13 +114,87 @@ export default function ShowNotesPage() {
         change(next);
     }
 
+    const queue = useRef<TeaserClip[]>([]);
+    const stopAt = useRef<number | null>(null);
     const seek = (ms: number) => {
         const v = video.current;
         if (!v) return;
+        queue.current = [];
+        stopAt.current = null;
         v.currentTime = ms / 1000;
         v.play().catch(() => {});
     };
     const now = () => Math.round((video.current?.currentTime ?? 0) * 1000);
+
+    // Plays clips one after another, stopping at each clip's end.
+    const playClips = (clips: TeaserClip[]) => {
+        if (!clips[0]) return;
+        seek(clips[0].startMs);
+        queue.current = clips.slice(1);
+        stopAt.current = clips[0].endMs;
+    };
+    const onTime = () => {
+        const v = video.current;
+        if (!v || stopAt.current === null || v.currentTime * 1000 < stopAt.current) return;
+        const next = queue.current.shift();
+        if (next) {
+            stopAt.current = next.endMs;
+            v.currentTime = next.startMs / 1000;
+        } else {
+            stopAt.current = null;
+            v.pause();
+        }
+    };
+
+    const findInTranscript = (text: string) => (view?.words.length ? locate(text, view.words) : true);
+
+    // New text for a quote or clip, with times and speaker taken from the transcript when
+    // the words are found there.
+    const anchored = (text: string, nearMs: number, withEnd: boolean) => {
+        const found = view?.words.length ? locate(text, view.words, nearMs) : null;
+        if (!found) return { text };
+        return withEnd ? { text, ...found } : { text, startMs: found.startMs, speaker: found.speaker };
+    };
+
+    // The sentence being spoken at the video's current time (hosts and guests only).
+    const lineAtVideo = (maxWords: number) => {
+        const spoken = (view?.words ?? []).filter(w => !w.clip);
+        const t = now();
+        let i = spoken.findIndex(w => w.end >= t);
+        if (i < 0) return null;
+        const ends = (w: { text: string }) => /[.?!]["')\]]*$/.test(w.text);
+        while (i > 0 && !ends(spoken[i - 1]) && spoken[i - 1].speaker === spoken[i].speaker && t - spoken[i - 1].start < 15000) i--;
+        let j = i;
+        while (j + 1 < spoken.length && j - i + 1 < maxWords && !ends(spoken[j]) && spoken[j + 1].speaker === spoken[i].speaker) j++;
+        const picked = spoken.slice(i, j + 1);
+        return { text: picked.map(w => w.text).join(" "), startMs: picked[0].start, endMs: picked[picked.length - 1].end, speaker: picked[0].speaker };
+    };
+
+    function editClip(i: number, patch: Partial<TeaserClip>) {
+        edit(n => ({ ...n, teaserClips: n.teaserClips.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
+    }
+    function moveClip(i: number, by: number) {
+        edit(n => {
+            const clips = [...n.teaserClips];
+            const [c] = clips.splice(i, 1);
+            clips.splice(i + by, 0, c);
+            return { ...n, teaserClips: clips };
+        });
+    }
+    function addClip() {
+        const line = lineAtVideo(25);
+        if (!line) return setNotice("⚠️ Move the video to the line you want first.");
+        edit(n => ({ ...n, teaserClips: [...n.teaserClips, line] }));
+    }
+    function editQuote(i: number, patch: Partial<ShowNotes["quotes"][number]>) {
+        edit(n => ({ ...n, quotes: n.quotes.map((q, j) => (j === i ? { ...q, ...patch } : q)) }));
+    }
+    function addQuote() {
+        const line = lineAtVideo(40);
+        if (!line) return setNotice("⚠️ Move the video to the line you want first.");
+        const quote = { text: line.text, speaker: line.speaker, startMs: line.startMs };
+        edit(n => ({ ...n, quotes: [...n.quotes, quote].sort((a, b) => a.startMs - b.startMs) }));
+    }
 
     async function run(fn: () => Promise<string>) {
         setBusy(true);
@@ -153,8 +227,8 @@ export default function ShowNotesPage() {
 
     const copyDescription = () => {
         if (!notes) return;
-        void navigator.clipboard.writeText(`${notes.description}\n\n${chapterList(notes)}`);
-        setNotice("Description and chapters copied.");
+        void navigator.clipboard.writeText(youtubeDescription(notes));
+        setNotice("Full description copied.");
     };
 
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
@@ -173,7 +247,6 @@ export default function ShowNotesPage() {
     const status = view?.notes?.status;
     const approved = view?.notes?.approved;
     const upToDate = status === "approved" && approved?.version === autosave.savedVersion && autosave.saveState === "saved";
-    const unverified = new Set(view?.notes?.unverifiedQuotes ?? []);
     const saveLabel = {
         saved: "Draft saved to the database", unsaved: "Unsaved changes…", saving: "Saving draft…", error: "Draft not saved",
     }[autosave.saveState];
@@ -226,7 +299,7 @@ export default function ShowNotesPage() {
                         <div className="grid gap-6 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)] items-start">
                             <div className="flex flex-col gap-4 lg:sticky lg:top-20">
                                 {view.videoUrl && (
-                                    <video ref={video} src={view.videoUrl} controls preload="metadata" className="w-full rounded-xl bg-black aspect-video" />
+                                    <video ref={video} src={view.videoUrl} controls preload="metadata" onTimeUpdate={onTime} className="w-full rounded-xl bg-black aspect-video" />
                                 )}
                                 <p className={small}>
                                     Click ▶ beside a chapter, quote or b-roll idea to check it against the video.
@@ -261,16 +334,67 @@ export default function ShowNotesPage() {
                                     <button onClick={() => edit(n => ({ ...n, titles: [...n.titles, ""] }))} className={`${secondary} self-start`}>+ Add a title</button>
                                 </Section>
 
-                                <Section title="“In this episode” teaser" hint="Read over the intro music. Aim for 40–60 words.">
-                                    <textarea value={notes.teaser} onChange={e => edit(n => ({ ...n, teaser: e.target.value }))} rows={3} className={field} />
-                                    <p className={small}>{words(notes.teaser)} words</p>
+                                <Section
+                                    title="“In this episode” clips"
+                                    hint="Played in order under an “In this episode” title. Leave them wanting more: end on a question or cut before the answer."
+                                >
+                                    {notes.teaserClips.length > 0 && (
+                                        <div className="flex items-center gap-3">
+                                            <button onClick={() => playClips(notes.teaserClips)} className={primary}>▶ Play the teaser</button>
+                                            <span className={small}>{Math.round(notes.teaserClips.reduce((t, c) => t + c.endMs - c.startMs, 0) / 1000)} seconds in total; aim for 20–40</span>
+                                        </div>
+                                    )}
+                                    {!notes.teaserClips.length && (
+                                        <p className={small}>No clips yet. Add them from the video below, or draft again with Claude.</p>
+                                    )}
+                                    {notes.teaserClips.map((c, i) => (
+                                        <div key={`${i}-${c.startMs}-${c.endMs}`} className="flex flex-col gap-1.5 border-l-2 border-amber-500/40 pl-3">
+                                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                <span className="text-gray-500 w-4">{i + 1}</span>
+                                                <button onClick={() => playClips([c])} className="text-gray-400 hover:text-amber-300" title="Play this clip">▶</button>
+                                                <TimeInput ms={c.startMs} onChange={ms => editClip(i, { startMs: ms })} />
+                                                <span className="text-gray-500">to</span>
+                                                <TimeInput ms={c.endMs} onChange={ms => editClip(i, { endMs: ms })} />
+                                                <span className="text-gray-300">{c.speaker}</span>
+                                                <span className="text-gray-500">{((c.endMs - c.startMs) / 1000).toFixed(1)}s</span>
+                                                <span className="ml-auto flex gap-2">
+                                                    <button onClick={() => moveClip(i, -1)} disabled={i === 0} className="text-gray-400 hover:text-white disabled:opacity-30" title="Earlier">▲</button>
+                                                    <button onClick={() => moveClip(i, 1)} disabled={i === notes.teaserClips.length - 1} className="text-gray-400 hover:text-white disabled:opacity-30" title="Later">▼</button>
+                                                    <button onClick={() => edit(n => ({ ...n, teaserClips: n.teaserClips.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-300">Remove</button>
+                                                </span>
+                                            </div>
+                                            <textarea value={c.text} onChange={e => editClip(i, anchored(e.target.value, c.startMs, true))} rows={2} className={field} />
+                                            {!findInTranscript(c.text) && (
+                                                <p className="text-xs text-orange-300">Not found word for word in the transcript, so the times were not updated. Check the words or set the times by hand.</p>
+                                            )}
+                                        </div>
+                                    ))}
+                                    <button onClick={() => addClip()} disabled={!view.words.length} className={`${secondary} self-start`}>
+                                        + Add the line at video time
+                                    </button>
                                 </Section>
 
-                                <Section title="YouTube description" hint="The chapter list is added underneath automatically.">
+                                <Section title="YouTube description" hint="Hook and keywords in the first two lines: that is all YouTube shows before “more”.">
                                     <textarea value={notes.description} onChange={e => edit(n => ({ ...n, description: e.target.value }))} rows={8} className={field} />
+                                    <label className="flex flex-col gap-1">
+                                        <span className="text-xs text-gray-400">Hashtags (three; YouTube shows them above the title)</span>
+                                        <input
+                                            key={loadedAt}
+                                            defaultValue={notes.hashtags.join(" ")}
+                                            onChange={e => {
+                                                const list = e.target.value.split(/[\s,]+/).filter(Boolean).map(h => (h.startsWith("#") ? h : `#${h}`));
+                                                edit(n => ({ ...n, hashtags: list }));
+                                            }}
+                                            className={field}
+                                        />
+                                    </label>
+                                    <details className="text-sm">
+                                        <summary className="cursor-pointer text-gray-300">Preview the full description as it goes on YouTube</summary>
+                                        <pre className="mt-2 whitespace-pre-wrap font-sans text-gray-300 bg-[#130b29] border border-white/5 rounded-lg p-3">{youtubeDescription(notes)}</pre>
+                                    </details>
                                     <div className="flex items-center gap-3">
-                                        <p className={small}>{words(notes.description)} words</p>
-                                        <button onClick={copyDescription} className={secondary}>Copy description + chapters</button>
+                                        <p className={small}>{words(notes.description)} words, plus the site link, chapters, subscribe line and hashtags</p>
+                                        <button onClick={copyDescription} className={secondary}>Copy full description</button>
                                     </div>
                                 </Section>
 
@@ -307,20 +431,24 @@ export default function ShowNotesPage() {
                                         <div key={i} className="flex flex-col gap-1.5 border-l-2 border-amber-500/30 pl-3">
                                             <textarea
                                                 value={q.text}
-                                                onChange={e => edit(n => ({ ...n, quotes: n.quotes.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)) }))}
+                                                onChange={e => editQuote(i, anchored(e.target.value, q.startMs, false))}
                                                 rows={2}
                                                 className={field}
                                             />
                                             <div className="flex flex-wrap items-center gap-2 text-xs">
                                                 <button onClick={() => seek(q.startMs)} className="text-gray-400 hover:text-amber-300">▶ {mmss(q.startMs)}</button>
                                                 <span className="text-gray-300">{q.speaker}</span>
-                                                {unverified.has(q.text) && (
+                                                {!findInTranscript(q.text) && (
                                                     <span className="text-orange-300">Not found word for word in the transcript: check it.</span>
                                                 )}
                                                 <button onClick={() => edit(n => ({ ...n, quotes: n.quotes.filter((_, j) => j !== i) }))} className="ml-auto text-gray-500 hover:text-red-300">Remove</button>
                                             </div>
                                         </div>
                                     ))}
+                                    <button onClick={() => addQuote()} disabled={!view.words.length} className={`${secondary} self-start`}>
+                                        + Add the line at video time
+                                    </button>
+                                    <p className={small}>Pause the video where the quote starts, add it, then trim the words to the quote.</p>
                                 </Section>
 
                                 <Section title="Tags, themes and topics" hint="Separate with commas.">

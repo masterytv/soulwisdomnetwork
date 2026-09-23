@@ -2,7 +2,7 @@
 // them, load and save a producer's edits, and approve them (Checkpoint B).
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { parseShowNotes } from '@/lib/showNotes';
+import { parseShowNotes, type SpokenWord } from '@/lib/showNotes';
 import type { Episode, EpisodeNotes } from '@/types/episode';
 import type { EpisodeNotesView } from '@/types/studio';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -53,15 +53,37 @@ export async function requestNotes(id: string, { force = false } = {}) {
     }
 }
 
+// reviewed.json is rewritten on every Accept, so it is cached by path and acceptance time.
+const wordCache = new Map<string, SpokenWord[]>();
+
+async function acceptedWords(episode: Episode): Promise<SpokenWord[]> {
+    const path = episode.review?.reviewedPath;
+    if (!path) return [];
+    const key = `${path}@${millis(episode.review?.acceptedAt)}`;
+    const cached = wordCache.get(key);
+    if (cached) return cached;
+    const [raw] = await adminBucket().file(path).download();
+    const lines = (JSON.parse(raw.toString('utf8')) as {
+        lines: { name: string; clip: boolean; words: { text: string; start: number; end: number }[] }[];
+    }).lines;
+    const words = lines.flatMap(l => l.words.map(w => ({ text: w.text, start: w.start, end: w.end, speaker: l.name, clip: l.clip })));
+    if (wordCache.size >= 5) wordCache.delete(wordCache.keys().next().value!);
+    wordCache.set(key, words);
+    return words;
+}
+
 export async function getNotes(id: string): Promise<EpisodeNotesView> {
     const snap = await episodeRef(id).get();
     if (!snap.exists) throw new HttpError(404, 'Episode not found');
     const episode = snap.data() as Episode;
     const n = episode.notes;
-    const videoUrl = episode.media?.proxyPath
-        ? (await adminBucket().file(episode.media.proxyPath)
-            .getSignedUrl({ action: 'read', expires: Date.now() + VIDEO_LINK_MS }))[0]
-        : null;
+    const [videoUrl, words] = await Promise.all([
+        episode.media?.proxyPath
+            ? adminBucket().file(episode.media.proxyPath)
+                .getSignedUrl({ action: 'read', expires: Date.now() + VIDEO_LINK_MS }).then(([url]) => url)
+            : Promise.resolve(null),
+        acceptedWords(episode),
+    ]);
     return {
         id,
         title: episode.title,
@@ -69,6 +91,7 @@ export async function getNotes(id: string): Promise<EpisodeNotesView> {
         durationSeconds: episode.media?.durationSeconds ?? null,
         videoUrl,
         transcriptAccepted: episode.status === 'speakers_confirmed',
+        words,
         notes: n ? {
             // A request whose run died reads as failed, so the page offers a retry.
             status: (n.status === 'queued' || n.status === 'generating') && !busy(n) ? 'failed' : n.status,

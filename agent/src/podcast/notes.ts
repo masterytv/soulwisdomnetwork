@@ -8,7 +8,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { mmss, parseShowNotes, ShowNotesSchema, unverifiedQuotes } from '../../../lib/showNotes';
+import { anchorToTranscript, mmss, parseShowNotes, ShowNotesSchema, SITE_URL, type SpokenWord } from '../../../lib/showNotes';
 import type { Episode } from '../../../types/episode';
 import { HOSTS, loadAlert } from './config';
 import { sendEmail } from './notify';
@@ -35,7 +35,7 @@ initializeApp({
 const ref = getFirestore().collection('episodes').doc(episodeId);
 let approved = false;   // never overwrite approved notes, even to record a failure
 
-interface ReviewedLine { name: string; clip: boolean; start: number; text: string }
+interface ReviewedLine { name: string; clip: boolean; start: number; text: string; words: { text: string; start: number; end: number }[] }
 
 // Consecutive lines from one voice become one paragraph, each stamped with its start in
 // milliseconds so Claude can return exact chapter, quote and b-roll times.
@@ -50,6 +50,12 @@ function transcriptForPrompt(lines: ReviewedLine[]) {
     return paragraphs.map(p => `[${p.start}ms ${mmss(p.start)}] ${p.who}: ${p.text.join(' ')}`).join('\n\n');
 }
 
+function speakerList(lines: ReviewedLine[]) {
+    const seen = new Map<string, boolean>();
+    for (const l of lines) if (!seen.has(l.name)) seen.set(l.name, l.clip);
+    return [...seen].map(([name, clip]) => (clip ? `${name} (only in clips)` : name)).join(', ');
+}
+
 const SYSTEM = `You write show notes for the Soul Wisdom Collective podcast, hosted by ${HOSTS.join(' and ')}. \
 The show explores near-death experiences, consciousness and the meaning of life with warmth and curiosity, \
 for listeners who are spiritually open but not dogmatic.
@@ -60,8 +66,13 @@ Never claim as fact what a speaker offered as belief or experience; attribute it
 Timestamps: every paragraph of the transcript starts with its time in milliseconds, e.g. [65000ms 1:05]. \
 Use those numbers for startMs. Chapters and b-roll must start at a paragraph's time; quotes at the paragraph they come from.
 
-Quotes must be copied exactly from the transcript, from a host or guest. Lines marked "(clip played during the episode)" \
-are recordings of other people: never quote them, though chapters and summaries may mention what they said.`;
+Quotes and teaser clips must be copied exactly from the transcript, from a host or guest, with the speaker name \
+exactly as the transcript gives it. Lines marked "(clip played during the episode)" \
+are recordings of other people: never quote them, though chapters and summaries may mention what they said.
+
+The YouTube description is written to be found and clicked: front-load the hook and keywords in the first two lines, \
+because only those show before "more". The site link (${SITE_URL}), chapters, subscribe line and hashtags are added \
+automatically, so do not write them yourself.`;
 
 async function main() {
     const episode = (await ref.get()).data() as Episode | undefined;
@@ -96,7 +107,8 @@ async function main() {
         system: SYSTEM,
         messages: [{
             role: 'user',
-            content: `Episode: "${episode.title}"${episode.recordedAt ? `, recorded ${episode.recordedAt.slice(0, 10)}` : ''}.\n\n` +
+            content: `Episode: "${episode.title}"${episode.recordedAt ? `, recorded ${episode.recordedAt.slice(0, 10)}` : ''}.\n` +
+                `Speakers: ${speakerList(lines)}.\n\n` +
                 `<transcript>\n${transcript}\n</transcript>\n\nWrite the show notes.`,
         }],
     });
@@ -106,7 +118,9 @@ async function main() {
     if (!response.parsed_output) throw new Error('Claude returned notes in an unexpected shape');
 
     const notes = parseShowNotes(response.parsed_output);
-    const unverified = unverifiedQuotes(notes, lines.filter(l => !l.clip).map(l => l.text).join(' ')).map(q => q.text);
+    // Quotes and teaser clips get their exact times and speaker from the transcript words.
+    const words: SpokenWord[] = lines.flatMap(l => l.words.map(w => ({ ...w, speaker: l.name, clip: l.clip })));
+    const unverified = anchorToTranscript(notes, words);
     const { input_tokens, output_tokens } = response.usage;
     const usd = Math.round((input_tokens * USD_PER_MTOK.input + output_tokens * USD_PER_MTOK.output) / 1e4) / 100;
     console.log(`✅ ${response.model}: ${input_tokens} in, ${output_tokens} out, ~$${usd}; ${unverified.length} quote(s) not found verbatim`);
@@ -131,6 +145,9 @@ async function main() {
         `Review and approve them: ${SITE}/admin/podcast/${episodeId}/notes`,
         '',
         `Suggested title: ${notes.titles[0]}`,
+        '',
+        'In this episode:',
+        ...notes.teaserClips.map(c => `  [${mmss(c.startMs)}] ${c.speaker}: "${c.text}"`),
         '',
         notes.summary,
     ].join('\n'));
