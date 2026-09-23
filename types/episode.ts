@@ -26,6 +26,7 @@ export interface CostItem {
 export interface DetectedSpeaker {
     label: string;        // diarization label from AssemblyAI, e.g. 'A'
     suggestedName: string | null;
+    firstMs: number;      // start of this voice's first line
     wordCount: number;
     talkSeconds: number;
     samples: { text: string; startMs: number }[];
@@ -57,6 +58,11 @@ export interface Episode {
         speakerIdStatus?: string | null;
         speakerMapping?: Record<string, string>;
         speakers?: DetectedSpeaker[];
+    };
+    review?: {
+        transcriptTextPath?: string;      // readable transcript in Cloud Storage
+        docUrl?: string;                  // same transcript as a Google Doc next to the video
+        notifiedAt?: unknown;             // "ready for review" email sent
     };
     costs: { items: CostItem[]; totalUsd: number };
     error: EpisodeError | null;

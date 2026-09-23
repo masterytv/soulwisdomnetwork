@@ -94,3 +94,15 @@ export async function moveItem(drive: Drive, fileId: string, fromParent: string,
         fields: 'id',
     }));
 }
+
+// Converts plain text into a Google Doc. Fails in a My Drive folder: service accounts have
+// no Drive storage of their own, so they can only create files inside a shared drive.
+export async function createGoogleDoc(drive: Drive, parentId: string, name: string, text: string) {
+    const res = await withRetry('Drive create doc', () => drive.files.create({
+        supportsAllDrives: true,
+        requestBody: { name, parents: [parentId], mimeType: 'application/vnd.google-apps.document' },
+        media: { mimeType: 'text/plain', body: text },
+        fields: 'id, webViewLink',
+    }));
+    return res.data.webViewLink ?? `https://docs.google.com/document/d/${res.data.id}`;
+}
