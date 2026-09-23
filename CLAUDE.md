@@ -117,10 +117,15 @@ browser's role check only decides what to show. **Every API route must call
 with the Admin SDK. Producers get the Podcast Studio (`/admin/podcast`); only admins manage
 members.
 
+Speaker review (`/admin/podcast/[episodeId]`) never edits `raw.json`: fixes are saved on the
+episode as `corrections` (`types/episode.ts`), and `lib/transcript.ts` rebuilds the lines
+from both. The page and the Accept route share that file, so what is accepted is what was
+on screen.
+
 Server routes run as the App Hosting service account
 (`firebase-app-hosting-compute@`), not a key file. It has Cloud Datastore User, Storage
-Object Viewer, Service Account Token Creator, and Content manager on the pipeline shared
-drive. `GITHUB_ACTIONS_TOKEN` (Secret Manager) lets it start the ingest workflow.
+Object User (Accept writes `transcripts/reviewed.json`), Service Account Token Creator, and
+Content manager on the pipeline shared drive. `GITHUB_ACTIONS_TOKEN` (Secret Manager) lets it start the ingest workflow.
 
 ### Auth
 

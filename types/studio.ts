@@ -1,6 +1,7 @@
 // Shapes returned by the Podcast Studio API (app/api/studio) to the dashboard.
 
-import type { EpisodeStage, EpisodeStatus } from './episode';
+import type { ReviewUtterance } from '@/lib/transcript';
+import type { DetectedSpeaker, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -39,4 +40,21 @@ export interface Pipeline {
     episodes: EpisodeSummary[];
     runs: IngestRun[];
     monthCostUsd: number;
+}
+
+// GET /api/studio/episodes/[id]: everything the speaker review page needs.
+export interface EpisodeReview {
+    id: string;
+    title: string;
+    status: EpisodeStatus;
+    recordedAt: string | null;
+    durationSeconds: number | null;
+    docUrl: string | null;
+    videoUrl: string | null;       // signed link to the 720p proxy, valid for a few hours
+    voices: DetectedSpeaker[];
+    utterances: ReviewUtterance[];
+    corrections: TranscriptCorrections;
+    version: number;               // send back when saving; a mismatch means someone else saved
+    accepted: { by: string; at: number } | null;
+    knownNames: string[];          // offered when renaming a voice
 }
