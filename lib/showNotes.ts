@@ -33,14 +33,17 @@ export const ShowNotesSchema = z.object({
         startMs: ms,
         title: z.string().describe('Two to six words'),
     })).describe('YouTube chapters in order. The first starts at 0. Five to twelve, each at least a minute long.'),
-    quotes: z.array(clip.omit({ endMs: true }).extend({
-        text: z.string().describe('Copied word for word from the transcript'),
-    })).describe('Five to eight quotable lines from the hosts or guests, never from a clip'),
+    quotes: z.array(clip.extend({
+        text: z.string().describe('Copied word for word from the transcript; a sentence up to a passage of two minutes (about 300 words)'),
+    })).describe(
+        'Up to twenty quotable moments for shorts and social posts, in episode order. Aim for twenty; ' +
+        'fewer only if there are not that many good ones. Every guest gets at least one or two, including ' +
+        'guests heard in recordings played during the episode. Each should stand on its own without context.'),
     teaserClips: z.array(clip).describe(
         'The "In this episode" cold open: three or four short clips from the episode played in order under an ' +
         '"In this episode" title, 20-40 seconds in total. Pick striking lines that make people want to watch; ' +
         'at least one should end on an unanswered question or cut off just before the answer (for example ' +
-        '"I think the meaning of life is..."). Never give away the conclusion. Hosts and guests only, never a clip.'),
+        '"I think the meaning of life is..."). Never give away the conclusion.'),
     tags: z.array(z.string()).describe('10-15 YouTube tags, lower case'),
     themes: z.array(z.string()).describe('Three to five broad themes, e.g. "purpose", "life review"'),
     topics: z.array(z.string()).describe('Specific people, books, studies, places and ideas discussed'),
@@ -54,6 +57,8 @@ export const ShowNotesSchema = z.object({
 
 // What is stored and edited. Notes drafted before teaser clips and hashtags existed still load.
 export const StoredShowNotesSchema = ShowNotesSchema.extend({
+    // Quotes had no end time before they could be long; -1 means "work it out from the transcript".
+    quotes: z.array(clip.extend({ endMs: ms.default(-1) })),
     hashtags: z.array(z.string()).default([]),
     teaserClips: z.array(clip).default([]),
 });
@@ -69,7 +74,7 @@ export function parseShowNotes(input: unknown): ShowNotes {
     long(notes.description, 5000, 'Description');
     long(notes.summary, 5000, 'Summary');
     for (const [list, max, what] of [
-        [notes.titles, 10, 'titles'], [notes.chapters, 40, 'chapters'], [notes.quotes, 30, 'quotes'],
+        [notes.titles, 10, 'titles'], [notes.chapters, 40, 'chapters'], [notes.quotes, 40, 'quotes'],
         [notes.tags, 40, 'tags'], [notes.themes, 20, 'themes'], [notes.topics, 60, 'topics'], [notes.broll, 30, 'b-roll ideas'], [notes.teaserClips, 10, 'teaser clips'], [notes.hashtags, 15, 'hashtags'],
     ] as const) {
         if (list.length > max) throw new Error(`Too many ${what}`);
@@ -81,7 +86,7 @@ export function parseShowNotes(input: unknown): ShowNotes {
     if (notes.chosenTitle < 0 || notes.chosenTitle >= notes.titles.length) notes.chosenTitle = 0;
     // Bounds live here rather than in the schema: structured outputs support few keywords.
     for (const t of [...notes.chapters, ...notes.quotes, ...notes.broll, ...notes.teaserClips]) t.startMs = Math.max(0, t.startMs);
-    for (const c of notes.teaserClips) c.endMs = Math.max(c.startMs, c.endMs);
+    for (const c of [...notes.teaserClips, ...notes.quotes]) c.endMs = Math.max(c.startMs, c.endMs);
     notes.hashtags = clean(notes.hashtags).map(h => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, ''));
     for (const b of notes.broll) b.durationSeconds = Math.min(15, Math.max(3, b.durationSeconds));
     return notes;
@@ -93,21 +98,42 @@ export interface SpokenWord { text: string; start: number; end: number; speaker:
 const token = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 const tokens = (s: string) => s.replace(/(\.\.\.|…)\s*$/, '').split(/\s+/).map(token).filter(Boolean);
 
-// Finds `text` word for word among the words hosts and guests spoke (clips excluded) and
-// returns its exact times and speaker, or null if it was not said.
-export function locate(text: string, words: SpokenWord[], nearMs = 0) {
-    const want = tokens(text);
-    if (!want.length) return null;
-    const spoken = words.filter(w => !w.clip);
-    const have = spoken.map(w => token(w.text));
-    let best: { startMs: number; endMs: number; speaker: string } | null = null;
+type Found = { startMs: number; endMs: number; speaker: string };
+
+function find(want: string[], spoken: SpokenWord[], have: string[], nearMs: number) {
+    let best: { i: number; found: Found } | null = null;
     for (let i = 0; i + want.length <= have.length; i++) {
         if (want.every((t, k) => have[i + k] === t)) {
             const found = { startMs: spoken[i].start, endMs: spoken[i + want.length - 1].end, speaker: spoken[i].speaker };
-            if (!best || Math.abs(found.startMs - nearMs) < Math.abs(best.startMs - nearMs)) best = found;
+            if (!best || Math.abs(found.startMs - nearMs) < Math.abs(best.found.startMs - nearMs)) best = { i, found };
         }
     }
     return best;
+}
+
+const EDGE = 6;               // words matched at each end of a long passage
+const LONGEST_MS = 3 * 60_000;
+
+// Finds `text` word for word in the transcript and returns its exact times and speaker, or
+// null if it was not said. A long passage that differs somewhere in the middle (a word
+// Claude tidied up) is still found by its first and last words, and `text` is then the
+// transcript's own wording.
+export function locate(text: string, words: SpokenWord[], nearMs = 0): (Found & { text?: string }) | null {
+    const want = tokens(text);
+    if (!want.length) return null;
+    const have = words.map(w => token(w.text));
+    const exact = find(want, words, have, nearMs);
+    if (exact) return exact.found;
+    if (want.length < EDGE * 3) return null;
+    const head = find(want.slice(0, EDGE), words, have, nearMs);
+    if (!head) return null;
+    const rest = words.slice(head.i);
+    const tail = find(want.slice(-EDGE), rest, have.slice(head.i), head.found.startMs);
+    if (!tail) return null;
+    const last = head.i + tail.i + EDGE - 1;
+    const span = words.slice(head.i, last + 1);
+    if (span[span.length - 1].end - span[0].start > LONGEST_MS) return null;
+    return { ...head.found, endMs: span[span.length - 1].end, text: span.map(w => w.text).join(' ') };
 }
 
 // Puts quotes and teaser clips on the exact words and speaker from the transcript. Returns
@@ -116,12 +142,27 @@ export function anchorToTranscript(notes: ShowNotes, words: SpokenWord[]) {
     const unverified: string[] = [];
     for (const item of [...notes.quotes, ...notes.teaserClips]) {
         const found = locate(item.text, words, item.startMs);
-        if (!found) { unverified.push(item.text); continue; }
+        if (!found) {
+            unverified.push(item.text);
+            item.endMs = Math.max(item.startMs, item.endMs);
+            continue;
+        }
         item.startMs = found.startMs;
+        item.endMs = found.endMs;
         item.speaker = found.speaker;
-        if ('endMs' in item) item.endMs = found.endMs;
+        if (found.text) item.text = found.text;
     }
     return unverified;
+}
+
+// Quotes saved before they had end times get one from the transcript.
+export function fillMissingEnds(notes: ShowNotes, words: SpokenWord[]) {
+    for (const q of notes.quotes) {
+        if (q.endMs > q.startMs) continue;
+        const found = locate(q.text, words, q.startMs);
+        q.endMs = found ? found.endMs : q.startMs;
+    }
+    return notes;
 }
 
 export function mmss(ms: number) {

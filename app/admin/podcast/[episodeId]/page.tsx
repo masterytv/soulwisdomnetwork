@@ -236,7 +236,7 @@ export default function SpeakerReviewPage() {
             await load();
             setNotice(res.docError
                 ? `⚠️ Transcript accepted, but the Google Doc could not be updated: ${res.docError}`
-                : `Transcript accepted${res.docUpdated ? " and the Google Doc updated" : ""}.${res.notesStarted ? " Claude is drafting the show notes (about two minutes)." : ""}`);
+                : `Transcript accepted${res.docUpdated ? " and the Google Doc updated" : ""}.${res.notesStarted ? " Claude is drafting the show notes (a few minutes)." : ""}`);
         } catch (e) {
             setNotice(`⚠️ ${(e as Error).message}`);
         } finally {
