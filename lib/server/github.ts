@@ -1,5 +1,5 @@
 // Starts and watches the Podcast Ingest workflow (.github/workflows/podcast_ingest.yml)
-// with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
+// and starts Podcast Show Notes (podcast_notes.yml), with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
 
 const REPO = 'masterytv/soulwisdomnetwork';
 const WORKFLOW = 'podcast_ingest.yml';
@@ -49,5 +49,13 @@ export async function startIngest(inputs: { skip_wait?: boolean; dry_run?: boole
     await github(`/actions/workflows/${WORKFLOW}/dispatches`, {
         method: 'POST',
         body: JSON.stringify({ ref: 'main', inputs: wire }),
+    });
+}
+
+// Drafts show notes for one episode (spec 005 step 5).
+export async function startNotes(episodeId: string) {
+    await github('/actions/workflows/podcast_notes.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId } }),
     });
 }

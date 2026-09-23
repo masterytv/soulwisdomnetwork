@@ -17,6 +17,14 @@ const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled
 const primary = `${button} border-amber-500/40 text-amber-300 hover:bg-amber-500/10`;
 const secondary = `${button} border-white/10 text-gray-300 hover:bg-white/10`;
 
+const NOTES_LABEL: Record<NonNullable<EpisodeSummary["notesStatus"]>, { text: string; tone: string }> = {
+    queued: { text: "waiting to start…", tone: "text-gray-400" },
+    generating: { text: "Claude is drafting…", tone: "text-gray-400" },
+    ready: { text: "ready for you to review", tone: "text-amber-300" },
+    failed: { text: "drafting failed, open to retry", tone: "text-red-300" },
+    approved: { text: "approved", tone: "text-green-300" },
+};
+
 function Column({ title, count, hint, children }: { title: string; count: number; hint?: string; children: React.ReactNode }) {
     return (
         <section className="bg-[#1E1035]/30 border border-white/5 rounded-2xl p-4 flex flex-col gap-3 min-w-0">
@@ -71,13 +79,15 @@ export default function PodcastStudioPage() {
         || data.episodes.some(e => e.status === "ingesting" || e.status === "transcribing")
     );
 
+    const drafting = !!data?.episodes.some(e => e.notesStatus === "queued" || e.notesStatus === "generating");
+
     // Refresh often while something is happening, occasionally otherwise.
     useEffect(() => {
         if (loading || !allowed) return;
         load();
-        const timer = setInterval(load, running ? 10_000 : 60_000);
+        const timer = setInterval(load, running || drafting ? 10_000 : 60_000);
         return () => clearInterval(timer);
-    }, [loading, allowed, running, load]);
+    }, [loading, allowed, running, drafting, load]);
 
     async function act(key: string, fn: () => Promise<string>) {
         setBusy(key);
@@ -269,7 +279,11 @@ export default function PodcastStudioPage() {
                             {!accepted.length && <Empty>None yet.</Empty>}
                             {accepted.map(e => (
                                 <EpisodeCard key={e.id} e={e}>
+                                    {e.notesStatus && (
+                                        <p className={`text-xs mt-2 ${NOTES_LABEL[e.notesStatus].tone}`}>Show notes: {NOTES_LABEL[e.notesStatus].text}</p>
+                                    )}
                                     <div className="flex flex-wrap gap-2 mt-2">
+                                        <Link href={`/admin/podcast/${e.id}/notes`} className={e.notesStatus === "ready" ? primary : secondary}>Show notes</Link>
                                         <Link href={`/admin/podcast/${e.id}`} className={secondary}>Open review</Link>
                                         {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={secondary}>Transcript Doc</a>}
                                     </div>
