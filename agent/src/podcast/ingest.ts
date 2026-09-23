@@ -125,7 +125,7 @@ async function processEpisode(video: DriveFile): Promise<Failure | null> {
 
     // createdTime too: an upload can keep the file's original modifiedTime.
     const lastChange = Math.max(Date.parse(video.createdTime ?? '') || 0, Date.parse(video.modifiedTime ?? '') || 0);
-    if (lastChange > Date.now() - SETTLE_MINUTES * 60_000) {
+    if (!config.skipWait && lastChange > Date.now() - SETTLE_MINUTES * 60_000) {
         console.log(`⏳ ${title}: added in the last ${SETTLE_MINUTES} min, waiting for the next run.`);
         return null;
     }
@@ -291,7 +291,7 @@ async function processEpisode(video: DriveFile): Promise<Failure | null> {
 }
 
 async function main() {
-    console.log(`🤖 Podcast ingest starting${config.dryRun ? ' [dry run]' : ''}`);
+    console.log(`🤖 Podcast ingest starting${config.dryRun ? ' [dry run]' : ''}${config.skipWait ? ' [skipping the upload wait]' : ''}`);
 
     if (config.retryFileId) {
         const ref = db.collection('episodes').doc(config.retryFileId);
