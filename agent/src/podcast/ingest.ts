@@ -224,6 +224,7 @@ async function main() {
         }
     }
 
+    console.log(`🔑 Using service account ${serviceAccount.client_email}`);
     const inboxName = await checkFolderAccess(drive, config.toProcessFolderId, 'To Process');
     const doneName = await checkFolderAccess(drive, config.processedFolderId, 'Processed');
     console.log(`🔑 Drive access OK: "${inboxName}" and "${doneName}"`);
