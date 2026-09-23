@@ -33,6 +33,16 @@ export interface DetectedSpeaker {
     samples: { text: string; startMs: number }[];
 }
 
+// Fixes made in the Podcast Studio's speaker review. Keyed by diarization label; lines by
+// `${utterance index}:${first word index}` (see lib/transcript.ts).
+export interface TranscriptCorrections {
+    speakers: Record<string, { name: string; clip: boolean }>;  // includes voices added by hand
+    mergedInto: Record<string, string>;   // label -> the label it is the same person as
+    splits: Record<string, number[]>;     // utterance index -> word indices that start a new line
+    reassign: Record<string, string>;     // line id -> label
+    dismissed: string[];                  // flagged line ids a person said are fine
+}
+
 export interface Episode {
     title: string;                        // from the file name, Zoom prefix stripped
     recordedAt: string | null;            // ISO date from a Zoom file name, if present
@@ -64,7 +74,12 @@ export interface Episode {
         transcriptTextPath?: string;      // readable transcript in Cloud Storage
         docUrl?: string;                  // same transcript as a Google Doc next to the video
         notifiedAt?: unknown;             // "ready for review" email sent
+        reviewedPath?: string;            // transcripts/reviewed.json, written on Accept
+        acceptedBy?: { uid: string; name: string };
+        acceptedAt?: unknown;
     };
+    corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
+    correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };
     error: EpisodeError | null;
     createdAt: unknown;

@@ -79,8 +79,9 @@ rename list.
 The website runs on App Hosting as `firebase-app-hosting-compute@soulwisdomnetwork`.
 It needs:
 
-- Cloud Datastore User, Storage Object Viewer, and Service Account Token Creator (to sign
-  short-lived links for the preview video; Storage stays closed to browsers).
+- Cloud Datastore User, Storage Object User (Accept writes `reviewed.json`), and Service
+  Account Token Creator (to sign short-lived links for the preview video; Storage stays
+  closed to browsers).
 - Content manager on the pipeline shared drive (list Backlog, move files, update Docs).
 - Secret `GITHUB_ACTIONS_TOKEN`: a fine-grained token for this repository with Actions
   read and write, to start the ingest workflow and read its status.
@@ -92,8 +93,8 @@ It needs:
 | 0 | Lock `role` in Firestore rules (done) |
 | 1 | Server foundation: admin/producer auth on API routes; Drive, Storage, Firestore and GitHub access from the website |
 | 2 | Pipeline dashboard |
-| 3 | Speaker review page and Accept |
-| 4 | Flagged lines, people directory, optional guest names at queue time, custom vocabulary for AssemblyAI |
+| 3 | Speaker review page and Accept, with flagged lines (built early: it was the main problem on the first episodes) |
+| 4 | People directory, optional guest names at queue time, custom vocabulary for AssemblyAI |
 
 ## Decided
 
