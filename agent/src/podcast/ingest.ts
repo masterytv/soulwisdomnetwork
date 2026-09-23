@@ -5,20 +5,22 @@
 // Every step records its output on the episode document before moving on, so a failed or
 // interrupted run resumes where it stopped and never pays for the same transcript twice.
 
+import type { Transcript } from 'assemblyai';
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore, FieldValue, type DocumentReference } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { Episode, EpisodeStage } from '../../../types/episode';
+import type { DetectedSpeaker, Episode, EpisodeStage } from '../../../types/episode';
 import { ASSEMBLYAI_USD_PER_HOUR, HOSTS, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
-    checkFolderAccess, createDrive, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
+    checkFolderAccess, createDrive, createGoogleDoc, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
 } from './drive';
 import { PermanentError, withRetry } from './errors';
 import { makeAudio, makeProxy, probeDuration } from './media';
 import { episodeTitle, recordedAt } from './naming';
-import { sendFailureAlert, type Failure } from './notify';
+import { sendEmail, sendFailureAlert, type Failure } from './notify';
+import { readableTranscript, speakerSummary } from './readable';
 import { createAssemblyAI, hasFailed, submitTranscription, summariseSpeakers, waitForTranscript } from './transcribe';
 
 const config = loadConfig();
@@ -43,6 +45,77 @@ async function upload(local: string, destination: string, contentType: string) {
 
 function touch(ref: DocumentReference, fields: Record<string, unknown>) {
     return withRetry('Firestore update', () => ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() }));
+}
+
+// Checkpoint A hand-off: a readable transcript in Storage, a Google Doc next to the video
+// (shared drives only), and one "ready for review" email. Each part is recorded so a rerun
+// never sends a second email or makes a second Doc.
+async function publishReview(ref: DocumentReference, episode: Episode, speakers: DetectedSpeaker[], transcript: Transcript) {
+    const review = episode.review ?? {};
+    const text = readableTranscript(
+        { title: episode.title, recordedAt: episode.recordedAt, durationSeconds: episode.media?.durationSeconds },
+        speakers, transcript,
+    );
+
+    if (!review.transcriptTextPath) {
+        const local = path.join(config.workDir, `${ref.id}-transcript.txt`);
+        fs.writeFileSync(local, text);
+        review.transcriptTextPath = await upload(local, `episodes/${ref.id}/transcripts/raw.txt`, 'text/plain; charset=utf-8');
+        fs.rmSync(local, { force: true });
+        await touch(ref, { 'review.transcriptTextPath': review.transcriptTextPath });
+    }
+
+    if (!review.docUrl) {
+        try {
+            review.docUrl = await createGoogleDoc(drive, config.processedFolderId, `${episode.title} — transcript`, text);
+            await touch(ref, { 'review.docUrl': review.docUrl });
+            console.log(`  📄 Transcript Doc: ${review.docUrl}`);
+        } catch (error) {
+            console.warn(`  ⚠️ Could not create the transcript Doc (needs the folders in a shared drive): ` +
+                `${(error as Error).message}`);
+        }
+    }
+
+    if (!review.notifiedAt) {
+        const body = [
+            `"${episode.title}" is transcribed and ready for speaker review.`,
+            '',
+            review.docUrl ? `Transcript (Google Doc): ${review.docUrl}` : 'The full transcript is attached.',
+            '',
+            'Each speaker below shows when they first speak and two sample lines. Jump to those times in',
+            'the video to check the names. "Speaker X (unknown)" means no name was matched, and',
+            '"Name - 1" / "Name - 2" means two voices both sounded like that person.',
+            '',
+            speakerSummary(speakers),
+        ].join('\n');
+        const sent = await sendEmail(config, `Ready for speaker review: ${episode.title}`, body,
+            [{ filename: `${episode.title} - transcript.txt`, content: text }]);
+        if (sent) await touch(ref, { 'review.notifiedAt': FieldValue.serverTimestamp() });
+    }
+}
+
+// Episodes that finished before the review hand-off existed, or whose email or Doc failed.
+async function catchUpReviews() {
+    const snap = await db.collection('episodes').where('status', '==', 'awaiting_speaker_review').get();
+    for (const doc of snap.docs) {
+        const episode = doc.data() as Episode;
+        if (episode.review?.notifiedAt && episode.review?.docUrl) continue;
+        if (!episode.transcription?.transcriptPath) continue;
+        try {
+            const [raw] = await withRetry('Storage download', () => bucket.file(episode.transcription!.transcriptPath!).download());
+            const transcript = JSON.parse(raw.toString('utf-8')) as Transcript;
+            let speakers = episode.transcription.speakers ?? [];
+            if (!episode.review?.notifiedAt) {
+                // Nobody has reviewed yet, so refresh the summary with the current rules.
+                speakers = summariseSpeakers(transcript);
+                await touch(doc.ref, { 'transcription.speakers': speakers });
+            }
+            console.log(`📨 ${episode.title}: catching up the review hand-off`);
+            await publishReview(doc.ref, episode, speakers, transcript);
+        } catch (error) {
+            console.error(`❌ ${episode.title}: review hand-off failed: ${(error as Error).message}`);
+        }
+    }
 }
 
 async function processEpisode(video: DriveFile): Promise<Failure | null> {
@@ -194,6 +267,12 @@ async function processEpisode(video: DriveFile): Promise<Failure | null> {
         });
         await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
         console.log(`  ✅ ${title}: ${speakers.length} speaker(s) detected, ready for speaker review.`);
+        try {
+            await publishReview(ref, (await ref.get()).data() as Episode, speakers, transcript);
+        } catch (error) {
+            // The episode itself is done; the next run's catch-up retries the hand-off.
+            console.warn(`  ⚠️ Review hand-off failed, will retry next run: ${(error as Error).message}`);
+        }
         return null;
     } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -224,6 +303,7 @@ async function main() {
         }
     }
 
+    console.log(`🔑 Using service account ${serviceAccount.client_email}`);
     const inboxName = await checkFolderAccess(drive, config.toProcessFolderId, 'To Process');
     const doneName = await checkFolderAccess(drive, config.processedFolderId, 'Processed');
     console.log(`🔑 Drive access OK: "${inboxName}" and "${doneName}"`);
@@ -247,6 +327,8 @@ async function main() {
             failures.push({ episode: video.name ?? video.id!, stage: 'copy', message, fileId: video.id! });
         }
     }
+
+    if (!config.dryRun) await catchUpReviews();
 
     await sendFailureAlert(config, failures);
     if (failures.length > 0) process.exit(1);

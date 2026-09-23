@@ -53,8 +53,11 @@ export async function checkFolderAccess(drive: Drive, folderId: string, label: s
         const e = error as { status?: unknown; code?: unknown; response?: { status?: unknown } };
         const status = Number(e.status ?? e.response?.status ?? e.code);
         if (status === 404 || status === 403) {
-            throw new PermanentError(`Cannot open ${label} folder ${folderId}: check the folder ID and that the ` +
-                `folder (or its shared drive) is shared with the service account as Editor/Content manager`);
+            // 403 also covers "Drive API not enabled", so pass Google's own reason through.
+            const reason = (error as Error).message;
+            throw new PermanentError(`Cannot open ${label} folder ${folderId} (${status}: ${reason}). Check the ` +
+                'folder ID, that the Google Drive API is enabled in the project, and that the folder is shared ' +
+                'with the service account as Editor');
         }
         throw error;
     }
@@ -90,4 +93,16 @@ export async function moveItem(drive: Drive, fileId: string, fromParent: string,
         supportsAllDrives: true,
         fields: 'id',
     }));
+}
+
+// Converts plain text into a Google Doc. Fails in a My Drive folder: service accounts have
+// no Drive storage of their own, so they can only create files inside a shared drive.
+export async function createGoogleDoc(drive: Drive, parentId: string, name: string, text: string) {
+    const res = await withRetry('Drive create doc', () => drive.files.create({
+        supportsAllDrives: true,
+        requestBody: { name, parents: [parentId], mimeType: 'application/vnd.google-apps.document' },
+        media: { mimeType: 'text/plain', body: text },
+        fields: 'id, webViewLink',
+    }));
+    return res.data.webViewLink ?? `https://docs.google.com/document/d/${res.data.id}`;
 }

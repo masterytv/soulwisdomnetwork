@@ -23,10 +23,20 @@ export async function sendFailureAlert(config: Config, failures: Failure[]) {
         config.runUrl ? `Run log: ${config.runUrl}` : '',
     ].join('\n');
 
+    await sendEmail(config, `Podcast pipeline: ${failures.length} episode(s) failed`, text);
+}
+
+export interface Attachment {
+    filename: string;
+    content: string;      // plain text; base64-encoded on the way out
+}
+
+// Sends through Resend. Returns false (and logs the message) when email is not configured.
+export async function sendEmail(config: Config, subject: string, text: string, attachments: Attachment[] = []) {
     const { resendApiKey, to, from } = config.alert;
     if (!resendApiKey || !to) {
-        console.warn('⚠️ RESEND_API_KEY or ALERT_EMAIL not set; skipping alert email.\n' + text);
-        return;
+        console.warn(`⚠️ RESEND_API_KEY or ALERT_EMAIL not set; not emailing "${subject}".\n${text}`);
+        return false;
     }
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -35,10 +45,18 @@ export async function sendFailureAlert(config: Config, failures: Failure[]) {
         body: JSON.stringify({
             from,
             to: [to],
-            subject: `Podcast pipeline: ${failures.length} episode(s) failed`,
+            subject,
             text,
+            attachments: attachments.map(a => ({
+                filename: a.filename,
+                content: Buffer.from(a.content, 'utf-8').toString('base64'),
+            })),
         }),
     });
-    if (!res.ok) console.error(`❌ Alert email failed: ${res.status} ${await res.text()}`);
-    else console.log(`📧 Alert sent to ${to}`);
+    if (!res.ok) {
+        console.error(`❌ Email "${subject}" failed: ${res.status} ${await res.text()}`);
+        return false;
+    }
+    console.log(`📧 Emailed "${subject}" to ${to}`);
+    return true;
 }
