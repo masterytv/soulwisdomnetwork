@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -7,10 +8,36 @@ import { auth } from "@/lib/firebase/config";
 import { signOut } from "firebase/auth";
 
 export default function Navbar() {
-    const { user, loading } = useAuth();
+    const { user, profile, loading } = useAuth();
     const pathname = usePathname();
+    const [menuOpen, setMenuOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+
+    // Close the avatar menu on outside click or Escape (menu links close it themselves).
+    useEffect(() => {
+        if (!menuOpen) return;
+        const onClick = (e: MouseEvent) => {
+            if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+        };
+        const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
+        document.addEventListener("mousedown", onClick);
+        document.addEventListener("keydown", onKey);
+        return () => {
+            document.removeEventListener("mousedown", onClick);
+            document.removeEventListener("keydown", onKey);
+        };
+    }, [menuOpen]);
 
     if (loading) return null;
+
+    // Only decides which links to show; the pages and their API routes check roles themselves.
+    const isAdmin = profile?.role === "admin";
+    const isStudio = isAdmin || profile?.role === "producer";
+    const menuItems = user ? [
+        { name: "My profile", href: `/profile/${user.uid}` },
+        ...(isStudio ? [{ name: "Podcast Studio", href: "/admin/podcast" }] : []),
+        ...(isAdmin ? [{ name: "Admin console", href: "/admin" }] : []),
+    ] : [];
 
     const navItems = user ? [
         { name: "Feed", href: "/dashboard" },
@@ -59,21 +86,64 @@ export default function Navbar() {
                 <div className="flex items-center gap-4">
                     {user ? (
                         <>
-                            <Link
-                                href={`/profile/${user.uid}`}
-                                className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-ocean-900/50 transition-all border border-transparent hover:border-ocean-800"
+                            <div
+                                ref={menuRef}
+                                className="relative"
+                                onMouseEnter={() => setMenuOpen(true)}
+                                onMouseLeave={() => setMenuOpen(false)}
                             >
-                                {user.photoURL ? (
-                                    <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-ocean-700" />
-                                ) : (
-                                    <div className="w-8 h-8 rounded-full bg-gold-500/10 flex items-center justify-center text-gold-400 font-bold text-xs">
-                                        {(user.displayName?.[0] || user.email?.[0] || "U").toUpperCase()}
+                                <button
+                                    type="button"
+                                    onClick={() => setMenuOpen(open => !open)}
+                                    aria-haspopup="menu"
+                                    aria-expanded={menuOpen}
+                                    className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-ocean-900/50 transition-all border border-transparent hover:border-ocean-800"
+                                >
+                                    {user.photoURL ? (
+                                        <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-ocean-700" />
+                                    ) : (
+                                        <div className="w-8 h-8 rounded-full bg-gold-500/10 flex items-center justify-center text-gold-400 font-bold text-xs">
+                                            {(user.displayName?.[0] || user.email?.[0] || "U").toUpperCase()}
+                                        </div>
+                                    )}
+                                    <span className="hidden md:inline text-sm font-bold text-ocean-100">
+                                        {user.displayName || "Member"}
+                                    </span>
+                                    <svg className={`w-3 h-3 text-ocean-400 transition-transform ${menuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+
+                                {menuOpen && (
+                                    // pt-2 bridges the gap so hover doesn't drop between button and menu.
+                                    <div className="absolute right-0 top-full pt-2 w-52" role="menu">
+                                        <div className="bg-ocean-950 border border-ocean-800 rounded-xl shadow-2xl py-1 overflow-hidden">
+                                            {menuItems.map(item => (
+                                                <Link
+                                                    key={item.href}
+                                                    href={item.href}
+                                                    role="menuitem"
+                                                    onClick={() => setMenuOpen(false)}
+                                                    className={`block px-4 py-2 text-sm font-bold transition-colors ${pathname === item.href
+                                                        ? "text-gold-400 bg-gold-500/10"
+                                                        : "text-ocean-200 hover:bg-ocean-900/60 hover:text-gold-300"
+                                                        }`}
+                                                >
+                                                    {item.name}
+                                                </Link>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => signOut(auth)}
+                                                className="w-full text-left px-4 py-2 text-sm font-bold text-ocean-300 hover:bg-red-950/30 hover:text-red-400 transition-colors border-t border-ocean-800/60"
+                                            >
+                                                Sign out
+                                            </button>
+                                        </div>
                                     </div>
                                 )}
-                                <span className="hidden md:inline text-sm font-bold text-ocean-100">
-                                    {user.displayName || "Member"}
-                                </span>
-                            </Link>
+                            </div>
                             <button
                                 onClick={() => signOut(auth)}
                                 className="p-2 text-ocean-400 hover:text-red-400 transition-colors rounded-lg hover:bg-red-950/20"
