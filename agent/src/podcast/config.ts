@@ -34,6 +34,8 @@ export function loadConfig() {
         workDir: process.env.RUNNER_TEMP || '/tmp',
         retryFileId: process.env.RETRY_FILE_ID || '',
         dryRun: process.env.DRY_RUN === 'true',
+        // Manual runs only; scheduled runs always wait, since a file may still be uploading.
+        skipWait: process.env.SKIP_WAIT === 'true',
         runUrl: process.env.GITHUB_RUN_URL || '',
         alert: {
             resendApiKey: process.env.RESEND_API_KEY || '',
