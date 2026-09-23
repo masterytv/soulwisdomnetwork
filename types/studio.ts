@@ -1,7 +1,8 @@
 // Shapes returned by the Podcast Studio API (app/api/studio) to the dashboard.
 
+import type { ShowNotes } from '@/lib/showNotes';
 import type { ReviewUtterance } from '@/lib/transcript';
-import type { DetectedSpeaker, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
+import type { DetectedSpeaker, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -22,7 +23,8 @@ export interface EpisodeSummary {
     docUrl: string | null;
     createdAt: number | null;      // epoch ms
     updatedAt: number | null;
-    stuck: boolean;                // in progress and unchanged for 24 hours (spec 005 section 5)
+    stuck: boolean;
+    notesStatus: EpisodeNotes['status'] | null;   // show notes, once the transcript is accepted                // in progress and unchanged for 24 hours (spec 005 section 5)
 }
 
 export interface IngestRun {
@@ -57,4 +59,25 @@ export interface EpisodeReview {
     version: number;               // send back when saving; a mismatch means someone else saved
     accepted: { by: string; at: number; version: number | null } | null;   // version null: accepted before it was recorded
     knownNames: string[];          // offered when renaming a voice
+}
+
+// GET /api/studio/episodes/[id]/notes: the Checkpoint B page.
+export interface EpisodeNotesView {
+    id: string;
+    title: string;
+    recordedAt: string | null;
+    durationSeconds: number | null;
+    videoUrl: string | null;
+    transcriptAccepted: boolean;
+    notes: {
+        status: EpisodeNotes['status'];
+        draft: ShowNotes | null;
+        version: number;
+        model: string | null;
+        unverifiedQuotes: string[];
+        error: string | null;
+        requestedAt: number | null;
+        generatedAt: number | null;
+        approved: { by: string; at: number; version: number } | null;
+    } | null;
 }

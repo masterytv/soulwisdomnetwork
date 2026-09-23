@@ -53,6 +53,7 @@ function summarise(id: string, e: Episode): EpisodeSummary {
         docUrl: e.review?.docUrl ?? null,
         createdAt: millis(e.createdAt),
         updatedAt,
+        notesStatus: e.notes?.status ?? null,
         stuck: inProgress && updatedAt !== null && Date.now() - updatedAt > STUCK_MS,
     };
 }

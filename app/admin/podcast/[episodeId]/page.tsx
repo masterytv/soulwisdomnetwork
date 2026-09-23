@@ -223,14 +223,14 @@ export default function SpeakerReviewPage() {
         try {
             await flush();
             if (pending.current) throw new Error(`Your latest changes could not be saved: ${saveError.current}`);
-            const res = await studioFetch<{ docUpdated: boolean; docError: string | null }>(
+            const res = await studioFetch<{ docUpdated: boolean; docError: string | null; notesStarted: boolean }>(
                 `/api/studio/episodes/${episodeId}/accept`,
                 { method: "POST", body: JSON.stringify({ version: version.current }) },
             );
             await load();
             setNotice(res.docError
                 ? `⚠️ Transcript accepted, but the Google Doc could not be updated: ${res.docError}`
-                : `Transcript accepted${res.docUpdated ? " and the Google Doc updated" : ""}.`);
+                : `Transcript accepted${res.docUpdated ? " and the Google Doc updated" : ""}.${res.notesStarted ? " Claude is drafting the show notes (about two minutes)." : ""}`);
         } catch (e) {
             setNotice(`⚠️ ${(e as Error).message}`);
         } finally {
@@ -272,6 +272,12 @@ export default function SpeakerReviewPage() {
                                         <>
                                             {" · "}
                                             <a href={review.docUrl} target="_blank" rel="noreferrer" className="hover:text-white underline-offset-2 hover:underline">Transcript Doc</a>
+                                        </>
+                                    )}
+                                    {review.accepted && (
+                                        <>
+                                            {" · "}
+                                            <Link href={`/admin/podcast/${episodeId}/notes`} className="text-amber-300 hover:underline">Show notes →</Link>
                                         </>
                                     )}
                                 </p>

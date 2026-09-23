@@ -12,6 +12,7 @@ import {
 import type { Episode } from '@/types/episode';
 import type { EpisodeReview } from '@/types/studio';
 import { studioDrive } from './drive';
+import { requestNotes } from './notes';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
 
@@ -195,5 +196,16 @@ export async function acceptReview(id: string, version: unknown, user: { uid: st
         'review.acceptedVersion': episode.correctionsVersion ?? 0,
         updatedAt: FieldValue.serverTimestamp(),
     });
-    return { docUpdated: !!docId && !docError, docError };
+
+    // Spec 005 step 5 follows Checkpoint A automatically the first time (or after a failure).
+    let notesStarted = false;
+    if (!episode.notes || episode.notes.status === 'failed') {
+        try {
+            await requestNotes(id);
+            notesStarted = true;
+        } catch (error) {
+            console.error('Could not start show notes', error);
+        }
+    }
+    return { docUpdated: !!docId && !docError, docError, notesStarted };
 }

@@ -1,3 +1,5 @@
+import type { ShowNotes } from '../lib/showNotes';
+
 // Firestore `episodes/{driveFileId}` — written by agent/src/podcast/ingest.ts via the
 // Admin SDK. See docs/specs/005-podcast-production-pipeline.md, steps 1-3.
 
@@ -43,6 +45,25 @@ export interface TranscriptCorrections {
     dismissed: string[];                  // flagged line ids a person said are fine
 }
 
+// Show notes (docs/specs/007-show-notes.md). `generated` is what Claude wrote and is kept
+// unchanged; `draft` is what producers edit; approving freezes the draft as the record.
+export interface EpisodeNotes {
+    status: 'queued' | 'generating' | 'ready' | 'failed' | 'approved';
+    generated?: ShowNotes;
+    draft?: ShowNotes;
+    approved?: ShowNotes;                 // the draft as it was approved; later steps read this
+    version?: number;                     // bumped on every save, as with corrections
+    model?: string;
+    unverifiedQuotes?: string[];          // quotes Claude returned that are not in the transcript
+    requestedAt?: unknown;                // asked for from the Studio
+    startedAt?: unknown;                  // the drafting run began
+    generatedAt?: unknown;
+    error?: string | null;
+    approvedBy?: { uid: string; name: string };
+    approvedAt?: unknown;
+    approvedVersion?: number;
+}
+
 export interface Episode {
     title: string;                        // from the file name, Zoom prefix stripped
     recordedAt: string | null;            // ISO date from a Zoom file name, if present
@@ -79,6 +100,7 @@ export interface Episode {
         acceptedAt?: unknown;
         acceptedVersion?: number;         // correctionsVersion that was accepted
     };
+    notes?: EpisodeNotes;                 // show notes, spec 005 step 5 and Checkpoint B
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };

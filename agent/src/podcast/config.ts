@@ -21,6 +21,15 @@ function required(name: string): string {
     return value;
 }
 
+// Failure and "ready" emails, shared by every podcast job.
+export function loadAlert() {
+    return {
+        resendApiKey: process.env.RESEND_API_KEY || '',
+        to: process.env.ALERT_EMAIL || '',
+        from: process.env.ALERT_FROM || 'Soul Wisdom Pipeline <pipeline@soulwisdomcollective.com>',
+    };
+}
+
 export function loadConfig() {
     return {
         serviceAccountJson: required('PODCAST_SA_JSON'),
@@ -37,11 +46,7 @@ export function loadConfig() {
         // Manual runs only; scheduled runs always wait, since a file may still be uploading.
         skipWait: process.env.SKIP_WAIT === 'true',
         runUrl: process.env.GITHUB_RUN_URL || '',
-        alert: {
-            resendApiKey: process.env.RESEND_API_KEY || '',
-            to: process.env.ALERT_EMAIL || '',
-            from: process.env.ALERT_FROM || 'Soul Wisdom Pipeline <pipeline@soulwisdomcollective.com>',
-        },
+        alert: loadAlert(),
     };
 }
 
