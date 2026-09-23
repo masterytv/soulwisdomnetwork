@@ -2,7 +2,7 @@
 
 import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { ReviewUtterance } from '@/lib/transcript';
-import type { DetectedSpeaker, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
+import type { DetectedSpeaker, EpisodeBroll, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -81,4 +81,21 @@ export interface EpisodeNotesView {
         generatedAt: number | null;
         approved: { by: string; at: number; version: number } | null;
     } | null;
+}
+
+// GET /api/studio/episodes/[id]/broll: the b-roll images on the Checkpoint B page.
+export interface BrollView {
+    status: EpisodeBroll['status'] | null;
+    only: number | null;
+    error: string | null;
+    notesApproved: boolean;
+    images: {
+        index: number;
+        idea: string;
+        url: string;               // signed, a few hours
+        model: string;
+        prompt: string;
+        usd: number;
+        createdAt: number | null;
+    }[];
 }

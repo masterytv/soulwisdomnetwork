@@ -21,7 +21,7 @@ checking edits on the server, and by the page):
 | Field | What |
 |---|---|
 | `titles`, `chosenTitle` | Five title options; the producer picks one |
-| `teaserClips` | The "In this episode" cold open: 3-4 clips from the episode (20-40 s) played under an "In this episode" title; at least one cuts off before the answer |
+| `teaserClips` | The "In this episode" cold open: 3-4 suggested clips from the episode (20-40 s); at least one cuts off before the answer. They go to Descript as separate files, where the producer has the final say |
 | `description`, `hashtags` | YouTube description, 150-300 words, hook and keywords in the first two lines; three hashtags |
 | `summary` | Two or three paragraphs for the website episode page |
 | `chapters` | Start time and title; first at 0:00 |
@@ -84,5 +84,5 @@ On `episodes/{id}` (`types/episode.ts`, `EpisodeNotes`): `notes.status` (`queued
 ## Later
 
 - Feed approved notes into the YouTube upload (step 13) and teaser card (step 10).
-- Generate the approved b-roll images (step 7).
+- Generate the approved b-roll images (step 7): built, `docs/specs/008-broll-images.md`.
 - A house style for descriptions (standard sign-off, links) once we know what we want.
