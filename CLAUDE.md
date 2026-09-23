@@ -15,6 +15,8 @@ App Hosting) · Node 24
 app/          routes (dashboard, members, messages, profile, signal, admin, login)
 components/   auth/ curate/ daily/ feed/
 lib/firebase/ config.ts (client init), firestore.ts, messaging.ts
+lib/server/   Admin SDK, Drive and GitHub helpers for API routes; requireRole() in staff.ts
+app/api/      server routes; every one must call requireRole() (see Roles below)
 context/      React context providers
 agent/src/    scout.ts — YouTube scorer, runs in GitHub Actions, NOT on App Hosting
               podcast/ingest.ts — spec 005 steps 1-3, also GitHub Actions only
@@ -104,6 +106,20 @@ Never use Firestore "Test mode". It permits unrestricted reads and writes from a
 
 Adding a query with `where` + `orderBy` on different fields needs a composite index in
 `firestore.indexes.json`, or it throws at runtime.
+
+### Roles
+
+`users/{uid}.role` is `'user' | 'producer' | 'admin'`. Members cannot change their own role
+(`firestore.rules`); admins change roles from `/admin`, which calls a server route. The
+browser's role check only decides what to show. **Every API route must call
+`requireRole()`** (`lib/server/staff.ts`), which verifies the ID token and reads the role
+with the Admin SDK. Producers get the Podcast Studio (`/admin/podcast`); only admins manage
+members.
+
+Server routes run as the App Hosting service account
+(`firebase-app-hosting-compute@`), not a key file. It has Cloud Datastore User, Storage
+Object Viewer, Service Account Token Creator, and Content manager on the pipeline shared
+drive. `GITHUB_ACTIONS_TOKEN` (Secret Manager) lets it start the ingest workflow.
 
 ### Auth
 

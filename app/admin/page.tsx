@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, getDocs, updateDoc, doc } from "firebase/firestore";
-import { UserProfile } from "@/types/user";
+import { collection, getDocs } from "firebase/firestore";
+import Link from "next/link";
+import { UserProfile, UserRole } from "@/types/user";
+import { studioFetch } from "@/lib/studioClient";
 
 export default function AdminPage() {
     const { profile, loading } = useAuth();
@@ -33,19 +35,17 @@ export default function AdminPage() {
         }
     };
 
-    const toggleRole = async (userId: string, currentRole: string) => {
-        const newRole = currentRole === 'admin' ? 'user' : 'admin';
+    // Roles change on the server; members cannot change their own (firestore.rules).
+    const changeRole = async (userId: string, role: UserRole) => {
         try {
-            await updateDoc(doc(db, "users", userId), {
-                role: newRole
+            await studioFetch("/api/admin/users/role", {
+                method: "POST",
+                body: JSON.stringify({ uid: userId, role }),
             });
-            // Optimistic update
-            setUsers(prev => prev.map(u =>
-                u.uid === userId ? { ...u, role: newRole } : u
-            ));
+            setUsers(prev => prev.map(u => (u.uid === userId ? { ...u, role } : u)));
         } catch (error) {
             console.error("Error updating role:", error);
-            alert("Failed to update role");
+            alert(`Failed to update role: ${(error as Error).message}`);
         }
     };
 
@@ -66,7 +66,12 @@ export default function AdminPage() {
         <AuthGuard>
             <div className="min-h-screen bg-[#130b29] text-gray-100 p-8">
                 <div className="max-w-6xl mx-auto">
-                    <h1 className="text-3xl font-bold text-amber-400 mb-8">Admin Console</h1>
+                    <div className="flex items-center justify-between mb-8">
+                        <h1 className="text-3xl font-bold text-amber-400">Admin Console</h1>
+                        <Link href="/admin/podcast" className="text-sm px-4 py-2 rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 transition-colors">
+                            Podcast Studio →
+                        </Link>
+                    </div>
 
                     <div className="bg-[#1E1035]/50 border border-white/5 rounded-2xl overflow-hidden">
                         <div className="overflow-x-auto">
@@ -87,19 +92,24 @@ export default function AdminPage() {
                                             <td className="p-4">
                                                 <span className={`px-2 py-1 rounded-full text-xs font-bold ${user.role === 'admin'
                                                         ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                                                        : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                        : user.role === 'producer'
+                                                            ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                                                            : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                                                     }`}>
                                                     {user.role}
                                                 </span>
                                             </td>
                                             <td className="p-4 text-right">
                                                 {user.uid !== profile.uid && ( // Prevent self-demotion
-                                                    <button
-                                                        onClick={() => toggleRole(user.uid, user.role)}
-                                                        className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 transition-colors"
+                                                    <select
+                                                        value={user.role}
+                                                        onChange={e => changeRole(user.uid, e.target.value as UserRole)}
+                                                        className="text-xs px-2 py-1.5 rounded-lg bg-[#1E1035] border border-white/10 hover:bg-white/10 transition-colors"
                                                     >
-                                                        {user.role === 'admin' ? 'Revoke Admin' : 'Make Admin'}
-                                                    </button>
+                                                        <option value="user">Member</option>
+                                                        <option value="producer">Producer (Podcast Studio)</option>
+                                                        <option value="admin">Admin</option>
+                                                    </select>
                                                 )}
                                             </td>
                                         </tr>
