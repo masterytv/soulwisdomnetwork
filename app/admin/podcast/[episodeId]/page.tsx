@@ -254,7 +254,7 @@ export default function SpeakerReviewPage() {
     // Accepted and nothing changed since: the official transcript and the Doc match the page.
     const upToDate = !!review?.accepted && review.accepted.version === savedVersion && saveState === "saved";
     const shown = onlyFlagged ? lines.filter(l => flags.has(l.id)) : lines;
-    const saveLabel = { saved: "All changes saved", unsaved: "Unsaved changes…", saving: "Saving…", error: "Not saved" }[saveState];
+    const saveLabel = { saved: "Draft saved to the database", unsaved: "Unsaved changes…", saving: "Saving draft…", error: "Draft not saved" }[saveState];
 
     return (
         <AuthGuard>
@@ -364,10 +364,10 @@ export default function SpeakerReviewPage() {
                                     {unnamed.length
                                         ? `Name every voice to finish: ${unnamed.map(r => r.name).join(", ")}`
                                         : upToDate
-                                            ? `Accepted by ${review.accepted!.by}. The official transcript and the Google Doc match this page.`
+                                            ? `Accepted by ${review.accepted!.by}. The official transcript (Cloud Storage) and the Google Doc match this page.`
                                             : review.accepted
-                                                ? "Changed since it was accepted. Accept the changes to update the official transcript and the Google Doc."
-                                                : "Changes save as you go. Accept when every line has the right speaker: it becomes the official transcript and goes into the Google Doc."}
+                                                ? "Accept the changes to update the official transcript (Cloud Storage) and the Google Doc."
+                                                : "Accept when every line has the right speaker, to save the official transcript (Cloud Storage) and update the Google Doc."}
                                 </span>
                             )}
                             <button
