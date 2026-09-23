@@ -31,10 +31,10 @@ export async function requireRole(request: Request, allowed: UserRole[]) {
 }
 
 // Wraps a route handler: turns HttpError into a JSON error response, anything else into 500.
-export function handle(fn: (request: Request) => Promise<Response>) {
-    return async (request: Request) => {
+export function handle<Context = unknown>(fn: (request: Request, context: Context) => Promise<Response>) {
+    return async (request: Request, context: Context) => {
         try {
-            return await fn(request);
+            return await fn(request, context);
         } catch (error) {
             if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
             console.error(error);

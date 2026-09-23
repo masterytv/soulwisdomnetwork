@@ -258,8 +258,7 @@ export default function PodcastStudioPage() {
                             {review.map(e => (
                                 <EpisodeCard key={e.id} e={e}>
                                     <div className="flex flex-wrap gap-2 mt-2">
-                                        {/* The review page arrives in the next PR (spec 006, PR 3). */}
-                                        <span className={`${primary} opacity-40 cursor-not-allowed`} title="Coming in the next update">Review speakers</span>
+                                        <Link href={`/admin/podcast/${e.id}`} className={primary}>Review speakers</Link>
                                         {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={secondary}>Transcript Doc</a>}
                                     </div>
                                 </EpisodeCard>
@@ -270,7 +269,10 @@ export default function PodcastStudioPage() {
                             {!accepted.length && <Empty>None yet.</Empty>}
                             {accepted.map(e => (
                                 <EpisodeCard key={e.id} e={e}>
-                                    {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={`${secondary} inline-block mt-2`}>Transcript Doc</a>}
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        <Link href={`/admin/podcast/${e.id}`} className={secondary}>Open review</Link>
+                                        {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={secondary}>Transcript Doc</a>}
+                                    </div>
                                 </EpisodeCard>
                             ))}
                         </Column>
