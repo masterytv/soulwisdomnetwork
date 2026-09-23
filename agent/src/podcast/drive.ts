@@ -53,8 +53,11 @@ export async function checkFolderAccess(drive: Drive, folderId: string, label: s
         const e = error as { status?: unknown; code?: unknown; response?: { status?: unknown } };
         const status = Number(e.status ?? e.response?.status ?? e.code);
         if (status === 404 || status === 403) {
-            throw new PermanentError(`Cannot open ${label} folder ${folderId}: check the folder ID and that the ` +
-                `folder (or its shared drive) is shared with the service account as Editor/Content manager`);
+            // 403 also covers "Drive API not enabled", so pass Google's own reason through.
+            const reason = (error as Error).message;
+            throw new PermanentError(`Cannot open ${label} folder ${folderId} (${status}: ${reason}). Check the ` +
+                'folder ID, that the Google Drive API is enabled in the project, and that the folder is shared ' +
+                'with the service account as Editor');
         }
         throw error;
     }
