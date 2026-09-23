@@ -148,9 +148,15 @@ export default function SpeakerReviewPage() {
     const rows: VoiceRow[] = useMemo(() => {
         if (!review || !corrections) return [];
         // AssemblyAI names one person heard as two voices "Tom Wood - 1" and "Tom Wood - 2".
-        const base = (label: string) => speakerName(review.voices, corrections, label).match(/^(.+?) - \d+$/)?.[1] ?? null;
+        // Near-identical names ("Tom Wood" and "Tom Woods") are almost always one person typed twice.
+        const name = (label: string) => speakerName(review.voices, corrections, label);
+        const base = (label: string) => name(label).match(/^(.+?) - \d+$/)?.[1] ?? null;
+        const key = (label: string) => (base(label) ?? name(label)).toLowerCase().replace(/[^a-z]/g, "").replace(/s$/, "");
+        const talk = (label: string) => lines.filter(l => l.label === label).reduce((s, l) => s + l.end - l.start, 0);
         return roots.map(label => {
-            const twin = base(label) ? roots.find(l => l !== label && base(l) === base(label)) : undefined;
+            const twin = roots.find(l => l !== label && key(l) === key(label) && !/^speaker/.test(key(l)));
+            // Merge under the name of whichever voice talks more, without any " - 2" suffix.
+            const keep = twin && talk(twin) >= talk(label) ? twin : label;
             const detected = review.voices.find(v => v.label === label);
             const own = lines.filter(l => l.label === label);
             const ownName = (l: string) => corrections.speakers[l]?.name
@@ -168,7 +174,7 @@ export default function SpeakerReviewPage() {
                 sampleMs: own[0]?.start ?? null,
                 merged: labels.filter(l => l !== label && corrections.mergedInto[l] && rootLabel(corrections, l) === label)
                     .map(l => ({ label: l, name: ownName(l) })),
-                sameAs: twin ? { label: twin, name: speakerName(review.voices, corrections, twin), base: base(label)! } : null,
+                sameAs: twin ? { label: twin, name: name(twin), base: base(keep) ?? name(keep) } : null,
             };
         });
     }, [review, corrections, roots, labels, lines, colorOf]);

@@ -1,6 +1,6 @@
 // Shapes returned by the Podcast Studio API (app/api/studio) to the dashboard.
 
-import type { ShowNotes } from '@/lib/showNotes';
+import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { ReviewUtterance } from '@/lib/transcript';
 import type { DetectedSpeaker, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
@@ -69,6 +69,7 @@ export interface EpisodeNotesView {
     durationSeconds: number | null;
     videoUrl: string | null;
     transcriptAccepted: boolean;
+    words: SpokenWord[];           // the accepted transcript, to place quotes and teaser clips
     notes: {
         status: EpisodeNotes['status'];
         draft: ShowNotes | null;
