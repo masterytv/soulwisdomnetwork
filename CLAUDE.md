@@ -89,7 +89,8 @@ firebase deploy --only firestore:rules,firestore:indexes --project soulwisdomnet
 ```
 
 Collections: `users`, `posts`, `comments`, `conversations`, `messages`, `feed_items`,
-`channels`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`).
+`channels`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`),
+`studio` (Podcast Studio settings such as the backlog order, Admin SDK only).
 
 Two rules are load-bearing and easy to break:
 

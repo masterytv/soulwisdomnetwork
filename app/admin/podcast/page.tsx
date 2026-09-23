@@ -1,46 +1,135 @@
 "use client";
 
-// Podcast Studio (docs/specs/006-podcast-studio.md). For now: a setup check of every
-// service the Studio relies on. The pipeline dashboard and speaker review build on this.
+// Podcast Studio dashboard (docs/specs/006-podcast-studio.md): what is waiting in Drive,
+// what the pipeline is doing, and the buttons that move an episode along.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
+import SetupCheck from "@/components/studio/SetupCheck";
+import { ago, megabytes, minutes, STAGE_LABEL, usd } from "@/components/studio/format";
 import { useAuth } from "@/context/AuthContext";
 import { studioFetch } from "@/lib/studioClient";
+import type { DriveVideo, EpisodeSummary, Pipeline } from "@/types/studio";
 
-type Check = { ok: boolean; detail: string };
-type Health = { checks: Record<string, Check> };
+const card = "bg-[#1E1035]/60 border border-white/5 rounded-xl p-3";
+const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
+const primary = `${button} border-amber-500/40 text-amber-300 hover:bg-amber-500/10`;
+const secondary = `${button} border-white/10 text-gray-300 hover:bg-white/10`;
 
-const LABELS: Record<string, string> = {
-    firestore: "Database (Firestore)",
-    storage: "Video storage (Cloud Storage)",
-    drive: "Google Drive folders",
-    github: "Processing jobs (GitHub)",
-};
+function Column({ title, count, hint, children }: { title: string; count: number; hint?: string; children: React.ReactNode }) {
+    return (
+        <section className="bg-[#1E1035]/30 border border-white/5 rounded-2xl p-4 flex flex-col gap-3 min-w-0">
+            <header>
+                <h2 className="font-semibold text-gray-100">
+                    {title} <span className="text-gray-500 font-normal">{count}</span>
+                </h2>
+                {hint && <p className="text-xs text-gray-500 mt-0.5">{hint}</p>}
+            </header>
+            {children}
+        </section>
+    );
+}
+
+function Empty({ children }: { children: React.ReactNode }) {
+    return <p className="text-sm text-gray-500 italic">{children}</p>;
+}
+
+function EpisodeCard({ e, children }: { e: EpisodeSummary; children?: React.ReactNode }) {
+    return (
+        <div className={card}>
+            <p className="font-medium text-sm break-words">{e.title}</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+                {[e.recordedAt?.slice(0, 10), minutes(e.durationSeconds), e.costUsd ? usd(e.costUsd) : ""].filter(Boolean).join(" · ")}
+            </p>
+            {children}
+        </div>
+    );
+}
 
 export default function PodcastStudioPage() {
     const { profile, loading } = useAuth();
-    const [health, setHealth] = useState<Health | null>(null);
-    const [error, setError] = useState("");
-    const [checking, setChecking] = useState(false);
     const allowed = profile?.role === "admin" || profile?.role === "producer";
 
-    const runChecks = useCallback(async () => {
-        setChecking(true);
-        setError("");
+    const [data, setData] = useState<Pipeline | null>(null);
+    const [error, setError] = useState("");
+    const [busy, setBusy] = useState<string | null>(null);   // which action is running
+    const [notice, setNotice] = useState("");
+    const dragFrom = useRef<number | null>(null);
+
+    const load = useCallback(async () => {
         try {
-            setHealth(await studioFetch<Health>("/api/studio/health"));
+            setData(await studioFetch<Pipeline>("/api/studio/pipeline"));
+            setError("");
         } catch (e) {
             setError((e as Error).message);
-        } finally {
-            setChecking(false);
         }
     }, []);
 
+    const running = !!data && (
+        data.runs.some(r => r.status !== "completed")
+        || data.episodes.some(e => e.status === "ingesting" || e.status === "transcribing")
+    );
+
+    // Refresh often while something is happening, occasionally otherwise.
     useEffect(() => {
-        if (!loading && allowed) runChecks();
-    }, [loading, allowed, runChecks]);
+        if (loading || !allowed) return;
+        load();
+        const timer = setInterval(load, running ? 10_000 : 60_000);
+        return () => clearInterval(timer);
+    }, [loading, allowed, running, load]);
+
+    async function act(key: string, fn: () => Promise<string>) {
+        setBusy(key);
+        setNotice("");
+        try {
+            setNotice(await fn());
+            await load();
+        } catch (e) {
+            setNotice(`⚠️ ${(e as Error).message}`);
+        } finally {
+            setBusy(null);
+        }
+    }
+
+    const queue = (fileId?: string) => act(`queue:${fileId ?? "next"}`, async () => {
+        const { queued } = await studioFetch<{ queued: DriveVideo }>("/api/studio/backlog/queue", {
+            method: "POST",
+            body: JSON.stringify(fileId ? { fileId } : {}),
+        });
+        return `Moved "${queued.name}" to To Process. Press "Process now" to start it.`;
+    });
+
+    const processNow = (retryFileId?: string) => act(retryFileId ? `retry:${retryFileId}` : "process", async () => {
+        await studioFetch("/api/studio/ingest", {
+            method: "POST",
+            body: JSON.stringify(retryFileId ? { retryFileId } : {}),
+        });
+        return retryFileId
+            ? "Retry started. It usually takes 5–20 minutes."
+            : "Processing started. Episodes appear under Processing within a minute or two.";
+    });
+
+    async function saveOrder(backlog: DriveVideo[]) {
+        setData(d => (d ? { ...d, backlog } : d));
+        try {
+            await studioFetch("/api/studio/backlog/order", {
+                method: "POST",
+                body: JSON.stringify({ order: backlog.map(v => v.id) }),
+            });
+        } catch (e) {
+            setNotice(`⚠️ Could not save the order: ${(e as Error).message}`);
+            load();
+        }
+    }
+
+    function move(from: number, to: number) {
+        if (!data || from === to || to < 0 || to >= data.backlog.length) return;
+        const next = [...data.backlog];
+        const [item] = next.splice(from, 1);
+        next.splice(to, 0, item);
+        saveOrder(next);
+    }
 
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
 
@@ -55,48 +144,153 @@ export default function PodcastStudioPage() {
         );
     }
 
+    const by = (status: EpisodeSummary["status"] | EpisodeSummary["status"][]) =>
+        (data?.episodes ?? []).filter(e => ([] as string[]).concat(status).includes(e.status));
+    const processing = by(["ingesting", "transcribing"]);
+    const review = by("awaiting_speaker_review");
+    const accepted = by("speakers_confirmed");
+    const failed = by("failed");
+    const lastRun = data?.runs[0];
+
     return (
         <AuthGuard>
             <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
-                <div className="max-w-4xl mx-auto">
-                    <div className="flex items-center justify-between mb-8">
-                        <h1 className="text-3xl font-bold text-amber-400">Podcast Studio</h1>
-                        {profile?.role === "admin" && (
-                            <Link href="/admin" className="text-sm text-gray-400 hover:text-white">← Admin</Link>
-                        )}
+                <div className="max-w-7xl mx-auto flex flex-col gap-6">
+                    <div className="flex flex-wrap items-end justify-between gap-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-amber-400">Podcast Studio</h1>
+                            <p className="text-sm text-gray-400 mt-1">
+                                {data ? `${usd(data.monthCostUsd)} spent this month` : "Loading…"}
+                                {lastRun && (
+                                    <>
+                                        {" · "}
+                                        <a href={lastRun.url} target="_blank" rel="noreferrer" className="hover:text-white underline-offset-2 hover:underline">
+                                            {lastRun.status !== "completed"
+                                                ? "Processing is running…"
+                                                : `Last processing run ${lastRun.conclusion === "success" ? "succeeded" : lastRun.conclusion} ${ago(lastRun.createdAt)}`}
+                                        </a>
+                                    </>
+                                )}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button onClick={load} className={secondary}>Refresh</button>
+                            <button
+                                onClick={() => processNow()}
+                                disabled={busy !== null || running || !data?.toProcess.length}
+                                className={primary}
+                                title={data?.toProcess.length ? "" : "Nothing in To Process"}
+                            >
+                                {busy === "process" ? "Starting…" : running ? "Processing…" : "Process now"}
+                            </button>
+                            {profile?.role === "admin" && (
+                                <Link href="/admin" className="text-sm text-gray-400 hover:text-white ml-2">← Admin</Link>
+                            )}
+                        </div>
                     </div>
 
-                    <section className="bg-[#1E1035]/50 border border-white/5 rounded-2xl p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-lg font-semibold">Setup check</h2>
+                    {error && <p className="text-red-400 text-sm">{error}</p>}
+                    {notice && (
+                        <p className={`text-sm rounded-lg px-4 py-2 ${notice.startsWith("⚠️") ? "bg-red-900/20 text-red-300" : "bg-green-900/20 text-green-300"}`}>
+                            {notice}
+                        </p>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <Column title="Backlog" count={data?.backlog.length ?? 0} hint="Drag to set the order. The top one goes next.">
                             <button
-                                onClick={runChecks}
-                                disabled={checking}
-                                className="text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 disabled:opacity-50 transition-colors"
+                                onClick={() => queue()}
+                                disabled={busy !== null || !data?.backlog.length}
+                                className={`${primary} self-start`}
                             >
-                                {checking ? "Checking…" : "Check again"}
+                                {busy === "queue:next" ? "Moving…" : "Queue next"}
                             </button>
-                        </div>
-
-                        {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
-
-                        <ul className="divide-y divide-white/5">
-                            {Object.entries(LABELS).map(([key, label]) => {
-                                const c = health?.checks[key];
-                                return (
-                                    <li key={key} className="py-3 flex items-start gap-3">
-                                        <span className={`mt-0.5 ${!c ? "text-gray-500" : c.ok ? "text-green-400" : "text-red-400"}`}>
-                                            {!c ? "…" : c.ok ? "✓" : "✗"}
-                                        </span>
-                                        <div className="min-w-0">
-                                            <p className="font-medium">{label}</p>
-                                            <p className="text-sm text-gray-400 break-words">{c?.detail ?? (checking ? "Checking…" : "")}</p>
+                            {data && !data.backlog.length && <Empty>Nothing in 00 Backlog.</Empty>}
+                            <ol className="flex flex-col gap-2">
+                                {data?.backlog.map((v, i) => (
+                                    <li
+                                        key={v.id}
+                                        draggable
+                                        onDragStart={() => { dragFrom.current = i; }}
+                                        onDragOver={e => e.preventDefault()}
+                                        onDrop={() => { if (dragFrom.current !== null) move(dragFrom.current, i); dragFrom.current = null; }}
+                                        className={`${card} flex items-center gap-2 cursor-grab active:cursor-grabbing`}
+                                    >
+                                        <span className="text-gray-500 text-xs w-5 shrink-0">{i + 1}</span>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-sm break-words">{v.name}</p>
+                                            <p className="text-xs text-gray-500">{megabytes(v.sizeBytes)}</p>
                                         </div>
+                                        <div className="flex flex-col shrink-0">
+                                            <button onClick={() => move(i, i - 1)} disabled={i === 0} className="text-gray-400 hover:text-white disabled:opacity-20 px-1" aria-label="Move up">▲</button>
+                                            <button onClick={() => move(i, i + 1)} disabled={i === data.backlog.length - 1} className="text-gray-400 hover:text-white disabled:opacity-20 px-1" aria-label="Move down">▼</button>
+                                        </div>
+                                        <button onClick={() => queue(v.id)} disabled={busy !== null} className={secondary}>
+                                            {busy === `queue:${v.id}` ? "…" : "Queue"}
+                                        </button>
                                     </li>
-                                );
-                            })}
-                        </ul>
-                    </section>
+                                ))}
+                            </ol>
+                        </Column>
+
+                        <Column title="To Process" count={data?.toProcess.length ?? 0} hint="Waiting in 01 To Process. Press Process now, or it starts within 3 hours.">
+                            {data && !data.toProcess.length && <Empty>Nothing waiting.</Empty>}
+                            {data?.toProcess.map(v => (
+                                <div key={v.id} className={card}>
+                                    <p className="text-sm break-words">{v.name}</p>
+                                    <p className="text-xs text-gray-500">{megabytes(v.sizeBytes)} · added {ago(v.addedAt)}</p>
+                                </div>
+                            ))}
+                        </Column>
+
+                        <Column title="Processing" count={processing.length} hint="Copying, making the preview, transcribing. About 5–20 minutes each.">
+                            {!processing.length && <Empty>Nothing processing.</Empty>}
+                            {processing.map(e => (
+                                <EpisodeCard key={e.id} e={e}>
+                                    <p className="text-xs text-amber-300 mt-2">{STAGE_LABEL[e.stage] ?? e.stage}… <span className="text-gray-500">updated {ago(e.updatedAt)}</span></p>
+                                    {e.stuck && <p className="text-xs text-red-400 mt-1">⚠️ No progress for over 24 hours.</p>}
+                                </EpisodeCard>
+                            ))}
+                        </Column>
+
+                        <Column title="Needs review" count={review.length} hint="Check the speaker names, then accept the transcript.">
+                            {!review.length && <Empty>Nothing to review.</Empty>}
+                            {review.map(e => (
+                                <EpisodeCard key={e.id} e={e}>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {/* The review page arrives in the next PR (spec 006, PR 3). */}
+                                        <span className={`${primary} opacity-40 cursor-not-allowed`} title="Coming in the next update">Review speakers</span>
+                                        {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={secondary}>Transcript Doc</a>}
+                                    </div>
+                                </EpisodeCard>
+                            ))}
+                        </Column>
+
+                        <Column title="Accepted" count={accepted.length} hint="Speakers confirmed. Ready for the next steps.">
+                            {!accepted.length && <Empty>None yet.</Empty>}
+                            {accepted.map(e => (
+                                <EpisodeCard key={e.id} e={e}>
+                                    {e.docUrl && <a href={e.docUrl} target="_blank" rel="noreferrer" className={`${secondary} inline-block mt-2`}>Transcript Doc</a>}
+                                </EpisodeCard>
+                            ))}
+                        </Column>
+
+                        <Column title="Failed" count={failed.length} hint="Stopped with an error. Fix the cause, then retry.">
+                            {!failed.length && <Empty>No failures.</Empty>}
+                            {failed.map(e => (
+                                <EpisodeCard key={e.id} e={e}>
+                                    <p className="text-xs text-red-300 mt-2 break-words">
+                                        {STAGE_LABEL[e.error?.stage ?? ""] ?? e.error?.stage}: {e.error?.message}
+                                    </p>
+                                    <button onClick={() => processNow(e.id)} disabled={busy !== null || running} className={`${secondary} mt-2`}>
+                                        {busy === `retry:${e.id}` ? "Starting…" : "Retry"}
+                                    </button>
+                                </EpisodeCard>
+                            ))}
+                        </Column>
+                    </div>
+
+                    <SetupCheck />
                 </div>
             </div>
         </AuthGuard>

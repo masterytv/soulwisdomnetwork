@@ -5,6 +5,7 @@ export type EpisodeStatus =
     | 'ingesting'                // copying from Drive and making the proxy + audio files
     | 'transcribing'             // submitted to AssemblyAI, waiting for the result
     | 'awaiting_speaker_review'  // Checkpoint A: a person confirms the speaker names
+    | 'speakers_confirmed'       // transcript accepted in the Podcast Studio
     | 'failed';
 
 export type EpisodeStage = 'copy' | 'media' | 'transcribe' | 'finalize';
