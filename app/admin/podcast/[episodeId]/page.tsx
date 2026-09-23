@@ -46,6 +46,7 @@ export default function SpeakerReviewPage() {
     const inflight = useRef<Promise<void> | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const flagCursor = useRef(-1);
+    const saveError = useRef("");
 
     const load = useCallback(async () => {
         try {
@@ -78,7 +79,9 @@ export default function SpeakerReviewPage() {
                         body: JSON.stringify({ corrections: next, version: version.current }),
                     });
                     version.current = res.version;
+                    saveError.current = "";
                 } catch (e) {
+                    saveError.current = (e as Error).message;
                     pending.current ??= next;
                     setSaveState("error");
                     setNotice(`⚠️ Not saved: ${(e as Error).message}`);
@@ -207,7 +210,7 @@ export default function SpeakerReviewPage() {
         try {
             await inflight.current;
             await flush();
-            if (pending.current) throw new Error("Your latest changes could not be saved");
+            if (pending.current) throw new Error(`Your latest changes could not be saved: ${saveError.current}`);
             const res = await studioFetch<{ docUpdated: boolean; docError: string | null }>(
                 `/api/studio/episodes/${episodeId}/accept`,
                 { method: "POST", body: JSON.stringify({ version: version.current }) },
