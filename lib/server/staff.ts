@@ -36,7 +36,10 @@ export function handle<Context = unknown>(fn: (request: Request, context: Contex
         try {
             return await fn(request, context);
         } catch (error) {
-            if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
+            if (error instanceof HttpError) {
+                console.warn(`${request.method} ${new URL(request.url).pathname}: ${error.status} ${error.message}`);
+                return Response.json({ error: error.message }, { status: error.status });
+            }
             console.error(error);
             return Response.json({ error: 'Something went wrong' }, { status: 500 });
         }
