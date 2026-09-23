@@ -21,6 +21,10 @@ env:
     secret: GITHUB_ACTIONS_TOKEN
     availability:
       - RUNTIME
+  - variable: DRIVE_BACKLOG_FOLDER_ID
+    value: 1I_ptlY4leCFrA3a15wNO7ArXym1d76D1
+    availability:
+      - RUNTIME
   - variable: DRIVE_TO_PROCESS_FOLDER_ID
     value: 1AzhAVI3z7w2iGzj0Du_XeEDyysbL2wew
     availability:
