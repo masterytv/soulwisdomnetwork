@@ -1,4 +1,5 @@
-export type UserRole = 'admin' | 'user';
+// 'producer' can use the Podcast Studio; 'admin' can also manage members.
+export type UserRole = 'admin' | 'producer' | 'user';
 
 export interface UserProfile {
     uid: string;

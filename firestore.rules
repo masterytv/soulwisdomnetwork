@@ -11,11 +11,16 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-    // Profiles: any signed-in user can read; only you can write yours.
+    // Profiles: any signed-in user can read; only you can write yours. `role` gates the
+    // admin area, so a new profile must start as 'user' and nobody can change their own.
+    // Roles are changed only through the Admin SDK or the Firebase console.
     match /users/{userId} {
-      allow read:           if signedIn();
-      allow create, update: if signedIn() && request.auth.uid == userId;
-      allow delete:         if false;
+      allow read:   if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId
+                    && request.resource.data.get('role', 'user') == 'user';
+      allow update: if signedIn() && request.auth.uid == userId
+                    && request.resource.data.get('role', null) == resource.data.get('role', null);
+      allow delete: if false;
     }
 
     // Posts: public to read. Author creates and edits their own. Any signed-in
