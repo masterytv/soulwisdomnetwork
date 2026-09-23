@@ -93,14 +93,18 @@ export function buildLines(utterances: ReviewUtterance[], voices: DetectedSpeake
 const SHORT_WORDS = 4;
 
 // Lines that are probably given to the wrong voice: the "Boom" pattern, a short line from
-// one voice between two lines of another.
+// one voice inside another voice's sentence or clip. A short reply between two complete
+// sentences ("Yeah." "Agreed.") is normal conversation and is not flagged.
 export function findFlags(lines: Line[], c: TranscriptCorrections): Map<string, Flag> {
     const flags = new Map<string, Flag>();
     for (let i = 1; i < lines.length - 1; i++) {
         const [prev, line, next] = [lines[i - 1], lines[i], lines[i + 1]];
         if (c.dismissed.includes(line.id) || line.changed) continue;
-        if (line.words.length <= SHORT_WORDS && prev.label === next.label && line.label !== prev.label) {
-            flags.set(line.id, { toLabel: prev.label, reason: `Short line between two lines from ${prev.name}` });
+        if (line.words.length > SHORT_WORDS || prev.label !== next.label || line.label === prev.label) continue;
+        if (prev.clip) {
+            flags.set(line.id, { toLabel: prev.label, reason: `Short line in the middle of the ${prev.name} clip` });
+        } else if (!/[.!?]["')\]]*$/.test(prev.text) || /^[a-z]/.test(next.text)) {
+            flags.set(line.id, { toLabel: prev.label, reason: `Short line in the middle of a sentence from ${prev.name}` });
         }
     }
     return flags;

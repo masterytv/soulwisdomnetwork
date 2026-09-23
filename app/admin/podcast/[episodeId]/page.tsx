@@ -100,6 +100,7 @@ export default function SpeakerReviewPage() {
             return next;
         });
         setSaveState("unsaved");
+        setNotice("");
         if (timer.current) clearTimeout(timer.current);
         timer.current = setTimeout(flush, 800);
     }, [flush]);
@@ -240,7 +241,7 @@ export default function SpeakerReviewPage() {
 
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
+            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 pb-28 sm:p-8 sm:pb-28">
                 <div className="max-w-7xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                         <div className="min-w-0">
@@ -259,34 +260,14 @@ export default function SpeakerReviewPage() {
                                 </p>
                             )}
                         </div>
-                        {review && (
-                            <div className="flex items-center gap-3">
-                                <span className={`text-xs ${saveState === "error" ? "text-red-300" : "text-gray-500"}`}>{saveLabel}</span>
-                                {saveState === "error" && <button onClick={() => flush()} className={secondary}>Try again</button>}
-                                <button
-                                    onClick={accept}
-                                    disabled={accepting || unnamed.length > 0}
-                                    className={primary}
-                                    title={unnamed.length ? `Name every voice first: ${unnamed.map(r => r.name).join(", ")}` : ""}
-                                >
-                                    {accepting ? "Accepting…" : review.status === "speakers_confirmed" ? "Accept again" : "Accept transcript"}
-                                </button>
-                            </div>
-                        )}
                     </div>
 
                     {error && <p className="text-red-400 text-sm">{error}</p>}
-                    {notice && (
-                        <p className={`text-sm rounded-lg px-4 py-2 ${notice.startsWith("⚠️") ? "bg-red-900/20 text-red-300" : "bg-green-900/20 text-green-300"}`}>
-                            {notice}
-                        </p>
-                    )}
-
                     {!review && !error && <p className="text-gray-400">Loading transcript…</p>}
 
                     {review && corrections && (
                         <div className="grid gap-6 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] items-start">
-                            <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
+                            <div className="flex flex-col gap-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-11rem)] lg:overflow-y-auto">
                                 {review.videoUrl ? (
                                     <video
                                         ref={video}
@@ -351,6 +332,35 @@ export default function SpeakerReviewPage() {
                         </div>
                     )}
                 </div>
+                {/* Always in view: where your changes are, and the button that finishes the review. */}
+                {review && (
+                    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-[#130b29]/95 backdrop-blur">
+                        <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <span className={`text-sm ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-green-300" : "text-gray-400"}`}>
+                                {saveState === "saved" ? "✓ " : ""}{saveLabel}
+                            </span>
+                            {saveState === "error" && <button onClick={() => flush()} className={secondary}>Try again</button>}
+                            {notice ? (
+                                <span className={`text-sm ${notice.startsWith("⚠️") ? "text-red-300" : "text-green-300"}`}>{notice}</span>
+                            ) : (
+                                <span className="text-xs text-gray-500">
+                                    {unnamed.length
+                                        ? `Name every voice to finish: ${unnamed.map(r => r.name).join(", ")}`
+                                        : review.status === "speakers_confirmed"
+                                            ? "Accepted. If you change anything, accept again to update the Doc."
+                                            : "Changes save as you go. Accept when every line has the right speaker."}
+                                </span>
+                            )}
+                            <button
+                                onClick={accept}
+                                disabled={accepting || unnamed.length > 0}
+                                className={`${primary} ml-auto !text-sm !px-4 !py-2`}
+                            >
+                                {accepting ? "Accepting…" : review.status === "speakers_confirmed" ? "Accept again" : "Accept transcript"}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
         </AuthGuard>
     );
