@@ -25,7 +25,7 @@ checking edits on the server, and by the page):
 | `description`, `hashtags` | YouTube description, 150-300 words, hook and keywords in the first two lines; three hashtags |
 | `summary` | Two or three paragraphs for the website episode page |
 | `chapters` | Start time and title; first at 0:00 |
-| `quotes` | Word for word, hosts and guests only, never clips; producers can add their own |
+| `quotes` | Up to 20, word for word, a sentence to a two-minute passage; every guest gets one or two, including guests heard in recordings played during the episode. Producers can add their own and send any quote to the teaser |
 | `tags`, `themes`, `topics` | YouTube tags; broad themes; specific people, books and ideas |
 | `broll` | Six still-image ideas with start time and duration (spec 005 section 3, option A) |
 
@@ -33,14 +33,16 @@ The transcript is sent with each paragraph stamped in milliseconds. Quotes and t
 are then matched word for word against the accepted transcript's words (`locate` in
 `lib/showNotes.ts`), which sets their exact start and end times and the speaker name from
 the transcript rather than from Claude. Anything not found word for word is flagged on the
-page. Voices marked as clips at Checkpoint A are labelled in the prompt and never quoted.
+page. A long passage that differs in the middle is still found by its first and last six words and takes
+the transcript's wording. Voices marked as clips at Checkpoint A are labelled as recordings played during
+the episode; they are guests, so they are quoted too (decided 23 Sept 2026, changing spec 006).
 
 The full YouTube description is assembled in code (`youtubeDescription`): the text, then the
 link to soulwisdomcollective.com, the chapters, a subscribe line and the hashtags. The link
 is always there, whatever the text says.
 
 **Model:** Claude Opus 5 (`claude-opus-5`), adaptive thinking, effort `high`, structured
-outputs, with server-side refusal fallback on. About $0.10–0.25 per episode, recorded in the
+outputs, streamed (up to 64k output tokens for twenty long quotes), with server-side refusal fallback on. About $0.30–0.60 per episode, recorded in the
 episode's costs as `show_notes`.
 
 ## Flow

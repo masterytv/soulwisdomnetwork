@@ -155,12 +155,20 @@ export default function ShowNotesPage() {
     const anchored = (text: string, nearMs: number, withEnd: boolean) => {
         const found = view?.words.length ? locate(text, view.words, nearMs) : null;
         if (!found) return { text };
-        return withEnd ? { text, ...found } : { text, startMs: found.startMs, speaker: found.speaker };
+        // Keep what the person typed; only the times and speaker come from the transcript.
+        const { startMs, endMs, speaker } = found;
+        return withEnd ? { text, startMs, endMs, speaker } : { text, startMs, speaker };
     };
 
-    // The sentence being spoken at the video's current time (hosts and guests only).
+    const inTeaser = (q: TeaserClip) => notes?.teaserClips.some(c => c.startMs === q.startMs && c.endMs === q.endMs) ?? false;
+    function addQuoteToTeaser(q: TeaserClip) {
+        edit(n => ({ ...n, teaserClips: [...n.teaserClips, { ...q }] }));
+        setNotice(`Added to the “In this episode” clips (${((q.endMs - q.startMs) / 1000).toFixed(0)}s). Trim it there.`);
+    }
+
+    // The sentence being spoken at the video's current time.
     const lineAtVideo = (maxWords: number) => {
-        const spoken = (view?.words ?? []).filter(w => !w.clip);
+        const spoken = view?.words ?? [];
         const t = now();
         let i = spoken.findIndex(w => w.end >= t);
         if (i < 0) return null;
@@ -194,8 +202,7 @@ export default function ShowNotesPage() {
     function addQuote() {
         const line = lineAtVideo(40);
         if (!line) return setNotice("⚠️ Move the video to the line you want first.");
-        const quote = { text: line.text, speaker: line.speaker, startMs: line.startMs };
-        edit(n => ({ ...n, quotes: [...n.quotes, quote].sort((a, b) => a.startMs - b.startMs) }));
+        edit(n => ({ ...n, quotes: [...n.quotes, line].sort((a, b) => a.startMs - b.startMs) }));
     }
 
     async function run(fn: () => Promise<string>) {
@@ -214,7 +221,7 @@ export default function ShowNotesPage() {
         if (view?.notes?.draft && !confirm("Draft new show notes? Claude's new draft replaces everything on this page, including your edits.")) return "";
         await studioFetch(`/api/studio/episodes/${episodeId}/notes/generate`, { method: "POST", body: JSON.stringify({ force }) });
         await load();
-        return "Claude is drafting the show notes. This usually takes a minute or two.";
+        return "Claude is drafting the show notes. This usually takes two to five minutes.";
     });
 
     const approve = () => run(async () => {
@@ -286,7 +293,7 @@ export default function ShowNotesPage() {
                     {view?.transcriptAccepted && !notes && (
                         <div className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-6 flex flex-col gap-3 items-start">
                             {drafting ? (
-                                <p className="text-gray-300">Claude is drafting the show notes. This usually takes a minute or two; this page updates by itself.</p>
+                                <p className="text-gray-300">Claude is drafting the show notes. This usually takes two to five minutes; this page updates by itself.</p>
                             ) : (
                                 <>
                                     {status === "failed" && <p className="text-sm text-red-300">Drafting failed: {view.notes?.error}</p>}
@@ -428,18 +435,26 @@ export default function ShowNotesPage() {
                                     </button>
                                 </Section>
 
-                                <Section title="Key quotes" hint="Word for word. Used later for shorts and social posts.">
+                                <Section title="Key quotes" hint={`Word for word, up to two minutes each. Raw material for shorts and social posts; delete the ones you don't want.${notes.quotes.length ? ` ${notes.quotes.length} quotes from ${new Set(notes.quotes.map(q => q.speaker)).size} speakers.` : ""}`}>
                                     {notes.quotes.map((q, i) => (
                                         <div key={i} className="flex flex-col gap-1.5 border-l-2 border-amber-500/30 pl-3">
                                             <textarea
                                                 value={q.text}
-                                                onChange={e => editQuote(i, anchored(e.target.value, q.startMs, false))}
-                                                rows={2}
+                                                onChange={e => editQuote(i, anchored(e.target.value, q.startMs, true))}
+                                                rows={Math.min(8, Math.max(2, Math.ceil(q.text.length / 110)))}
                                                 className={field}
                                             />
                                             <div className="flex flex-wrap items-center gap-2 text-xs">
-                                                <button onClick={() => seek(q.startMs)} className="text-gray-400 hover:text-amber-300">▶ {mmss(q.startMs)}</button>
+                                                <button onClick={() => playClips([q])} className="text-gray-400 hover:text-amber-300" title="Play this quote">
+                                                    ▶ {mmss(q.startMs)}{q.endMs > q.startMs ? `–${mmss(q.endMs)}` : ""}
+                                                </button>
                                                 <span className="text-gray-300">{q.speaker}</span>
+                                                {q.endMs > q.startMs && <span className="text-gray-500">{Math.round((q.endMs - q.startMs) / 1000)}s</span>}
+                                                {inTeaser(q) ? (
+                                                    <span className="text-green-300">✓ In the teaser</span>
+                                                ) : (
+                                                    <button onClick={() => addQuoteToTeaser(q)} className="text-amber-300 hover:underline">+ Add to “In this episode”</button>
+                                                )}
                                                 {!findInTranscript(q.text) && (
                                                     <span className="text-orange-300">Not found word for word in the transcript: check it.</span>
                                                 )}
