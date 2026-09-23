@@ -77,6 +77,7 @@ export interface Episode {
         reviewedPath?: string;            // transcripts/reviewed.json, written on Accept
         acceptedBy?: { uid: string; name: string };
         acceptedAt?: unknown;
+        acceptedVersion?: number;         // correctionsVersion that was accepted
     };
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting

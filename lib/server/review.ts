@@ -80,7 +80,7 @@ export async function getReview(id: string): Promise<EpisodeReview> {
             : Promise.resolve(null),
     ]);
     const accepted = episode.review?.acceptedBy
-        ? { by: episode.review.acceptedBy.name, at: millis(episode.review.acceptedAt) }
+        ? { by: episode.review.acceptedBy.name, at: millis(episode.review.acceptedAt), version: episode.review.acceptedVersion ?? null }
         : null;
     return {
         id,
@@ -192,6 +192,7 @@ export async function acceptReview(id: string, version: unknown, user: { uid: st
         'review.reviewedPath': reviewedPath,
         'review.acceptedBy': acceptedBy,
         'review.acceptedAt': FieldValue.serverTimestamp(),
+        'review.acceptedVersion': episode.correctionsVersion ?? 0,
         updatedAt: FieldValue.serverTimestamp(),
     });
     return { docUpdated: !!docId && !docError, docError };

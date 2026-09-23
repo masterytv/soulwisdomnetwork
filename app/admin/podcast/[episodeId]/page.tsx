@@ -39,6 +39,7 @@ export default function SpeakerReviewPage() {
     const [splitting, setSplitting] = useState<string | null>(null);
     const [onlyFlagged, setOnlyFlagged] = useState(false);
     const [follow, setFollow] = useState(false);
+    const [savedVersion, setSavedVersion] = useState(0);   // corrections version on the server
 
     const video = useRef<HTMLVideoElement>(null);
     const version = useRef(0);
@@ -57,6 +58,7 @@ export default function SpeakerReviewPage() {
             current.current = data.corrections;
             pending.current = null;
             version.current = data.version;
+            setSavedVersion(data.version);
             setSaveState("saved");
             setError("");
         } catch (e) {
@@ -88,6 +90,7 @@ export default function SpeakerReviewPage() {
                         body: JSON.stringify({ corrections: next, version: version.current }),
                     });
                     version.current = res.version;
+                    setSavedVersion(res.version);
                     saveError.current = "";
                 } catch (e) {
                     saveError.current = (e as Error).message;
@@ -213,8 +216,8 @@ export default function SpeakerReviewPage() {
 
     async function accept() {
         if (!review) return;
-        const doc = review.docUrl ? " It replaces the text of the Google Doc (Drive keeps the old version in its history)." : "";
-        if (!confirm(`Accept this transcript for "${review.title}"?${doc}`)) return;
+        const doc = review.docUrl ? " and replaces the text of the Google Doc (Drive keeps the old version in its history)" : "";
+        if (!confirm(`Accept this transcript for "${review.title}"? It becomes the official transcript for the next steps${doc}.`)) return;
         setAccepting(true);
         setNotice("");
         try {
@@ -248,6 +251,8 @@ export default function SpeakerReviewPage() {
         );
     }
 
+    // Accepted and nothing changed since: the official transcript and the Doc match the page.
+    const upToDate = !!review?.accepted && review.accepted.version === savedVersion && saveState === "saved";
     const shown = onlyFlagged ? lines.filter(l => flags.has(l.id)) : lines;
     const saveLabel = { saved: "All changes saved", unsaved: "Unsaved changes…", saving: "Saving…", error: "Not saved" }[saveState];
 
@@ -358,17 +363,19 @@ export default function SpeakerReviewPage() {
                                 <span className="text-xs text-gray-500">
                                     {unnamed.length
                                         ? `Name every voice to finish: ${unnamed.map(r => r.name).join(", ")}`
-                                        : review.status === "speakers_confirmed"
-                                            ? "Accepted. If you change anything, accept again to update the Doc."
-                                            : "Changes save as you go. Accept when every line has the right speaker."}
+                                        : upToDate
+                                            ? `Accepted by ${review.accepted!.by}. The official transcript and the Google Doc match this page.`
+                                            : review.accepted
+                                                ? "Changed since it was accepted. Accept the changes to update the official transcript and the Google Doc."
+                                                : "Changes save as you go. Accept when every line has the right speaker: it becomes the official transcript and goes into the Google Doc."}
                                 </span>
                             )}
                             <button
                                 onClick={accept}
-                                disabled={accepting || unnamed.length > 0}
+                                disabled={accepting || unnamed.length > 0 || upToDate}
                                 className={`${primary} ml-auto !text-sm !px-4 !py-2`}
                             >
-                                {accepting ? "Accepting…" : review.status === "speakers_confirmed" ? "Accept again" : "Accept transcript"}
+                                {accepting ? "Accepting…" : upToDate ? "✓ Accepted" : review.accepted ? "Accept changes" : "Accept transcript"}
                             </button>
                         </div>
                     </div>

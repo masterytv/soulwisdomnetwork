@@ -55,6 +55,6 @@ export interface EpisodeReview {
     utterances: ReviewUtterance[];
     corrections: TranscriptCorrections;
     version: number;               // send back when saving; a mismatch means someone else saved
-    accepted: { by: string; at: number } | null;
+    accepted: { by: string; at: number; version: number | null } | null;   // version null: accepted before it was recorded
     knownNames: string[];          // offered when renaming a voice
 }
