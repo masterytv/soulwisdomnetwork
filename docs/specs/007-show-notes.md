@@ -21,17 +21,23 @@ checking edits on the server, and by the page):
 | Field | What |
 |---|---|
 | `titles`, `chosenTitle` | Five title options; the producer picks one |
-| `teaser` | The "In this episode" script read over the intro music, 40-60 words |
-| `description` | YouTube description, 120-250 words; the chapter list is appended when copied |
+| `teaserClips` | The "In this episode" cold open: 3-4 clips from the episode (20-40 s) played under an "In this episode" title; at least one cuts off before the answer |
+| `description`, `hashtags` | YouTube description, 150-300 words, hook and keywords in the first two lines; three hashtags |
 | `summary` | Two or three paragraphs for the website episode page |
 | `chapters` | Start time and title; first at 0:00 |
-| `quotes` | Word for word, hosts and guests only, never clips |
+| `quotes` | Word for word, hosts and guests only, never clips; producers can add their own |
 | `tags`, `themes`, `topics` | YouTube tags; broad themes; specific people, books and ideas |
 | `broll` | Six still-image ideas with start time and duration (spec 005 section 3, option A) |
 
-The transcript is sent with each paragraph stamped in milliseconds so times come back exact.
-Voices marked as clips at Checkpoint A are labelled in the prompt and never quoted. Quotes
-that are not found word for word in the transcript are flagged on the page.
+The transcript is sent with each paragraph stamped in milliseconds. Quotes and teaser clips
+are then matched word for word against the accepted transcript's words (`locate` in
+`lib/showNotes.ts`), which sets their exact start and end times and the speaker name from
+the transcript rather than from Claude. Anything not found word for word is flagged on the
+page. Voices marked as clips at Checkpoint A are labelled in the prompt and never quoted.
+
+The full YouTube description is assembled in code (`youtubeDescription`): the text, then the
+link to soulwisdomcollective.com, the chapters, a subscribe line and the hashtags. The link
+is always there, whatever the text says.
 
 **Model:** Claude Opus 5 (`claude-opus-5`), adaptive thinking, effort `high`, structured
 outputs, with server-side refusal fallback on. About $0.10–0.25 per episode, recorded in the
@@ -48,7 +54,9 @@ episode's costs as `show_notes`.
    `status: 'ready'`, and emails `ALERT_EMAIL` a link. Failures set `status: 'failed'` with
    the error and email too.
 3. `/admin/podcast/[episodeId]/notes` shows the draft beside the video. Every field is
-   editable; ▶ plays the video from a chapter, quote or b-roll time. Edits autosave to
+   editable; ▶ plays the video from a chapter, quote or b-roll time, and "Play the teaser"
+   plays the clips in order, stopping at each end. "Add the line at video time" adds the
+   sentence being spoken as a new quote or teaser clip. Edits autosave to
    `notes.draft` with the same version check as speaker review.
 4. **Approve** copies the draft to `notes.approved` and records who and when. Later edits
    show "Approve changes" until approved again. **Draft again with Claude** replaces the draft
