@@ -41,15 +41,24 @@ Fourteen steps. The numbers in brackets map to the ten steps discussed in planni
 | 4 | **Checkpoint A — confirm speaker names** | Human, ~10 min | 1 |
 | 5 | AI produces summary, tags, themes, topics, chapters, key quotes, title options, description, the "In this episode" teaser script, and b-roll suggestions **[3]** | Automatic | 1 |
 | 6 | **Checkpoint B — approve the plan:** metadata, teaser copy, and which b-roll goes where | Human, ~10 min | 1 |
-| 7 | Generate the approved b-roll assets **[5]** | Automatic | 1 |
-| 8 | Pipeline pushes media into Descript and triggers filler-word removal and Studio Sound **[4]** | Automatic | 1 |
-| 9 | **Checkpoint C — the human edit.** Taste cuts, b-roll placement, fixes | Human, 20-40 min | 1 |
-| 10 | Pipeline pulls the finished cut back, assembles **intro + teaser + body + outro**, normalizes loudness **[3][6]** | Automatic | 1 |
-| 11 | **Re-transcribe the finished video.** This becomes the permanent record | Automatic | 1 |
+| 7 | Generate the approved b-roll images, one button on the notes page (`docs/specs/008-broll-images.md`) **[5]** | Human starts, then automatic | 1 |
+| 8 | Pipeline creates one Descript project with the episode (filler words removed, Studio Sound), each approved "In this episode" clip as its own file, the b-roll images, intro, outro and a notes file **[4]** | Automatic | 1 |
+| 9 | **Checkpoint C — the human edit, in Descript.** Descript is the final say: arrange the teaser clips, place b-roll, taste cuts, fixes | Human, 20-40 min | 1 |
+| 10 | Pipeline pulls the finished cut back and normalizes loudness **[6]** | Automatic | 1 |
+| 11 | **Re-transcribe the finished video.** This becomes the permanent record, and fixes the chapter times | Automatic | 1 |
 | 12 | Generate 3 thumbnail options; **Checkpoint D — pick one and approve the episode** **[7]** | Human, ~7 min | 1 |
 | 13 | Publish to YouTube with captions, chapters and thumbnail **[8]** | Automatic | 1 |
 | 14 | Cut shorts, **Checkpoint E — review**, distribute to social **[9]** | Human, ~10 min | 2 |
 | 15 | Everything stored, searchable, linked to published media **[10]**; performance pulled back weekly | Automatic | 3 & 4 |
+
+**Descript is the final say (decided 23 Sept 2026).** Small editing choices are easier made by hand
+than described to an AI, so the pipeline prepares everything and the producer assembles it in
+Descript (step 9), including the teaser and intro/outro. The pipeline no longer assembles the cut
+itself; step 10 only normalizes loudness. The pipeline uses Descript's REST API with an API token
+(GitHub secret `DESCRIPT_API_TOKEN`, tied to the shared Descript drive), not the Descript MCP
+server, which needs a browser sign-in and suits hands-on editing with an AI assistant. The API
+cannot place clips on the timeline, so the teaser clips arrive as separate, numbered files.
+Imports and edits draw on the Descript plan's media minutes and AI credits.
 
 ### Why we transcribe twice
 
@@ -101,7 +110,7 @@ Built separately by us as fixed video assets with licensed music, versioned in s
 **Required before Stage 1 ships:** the intro file (~3 seconds), the outro file, and written confirmation of the music licence covering both.
 
 ### The "In this episode" teaser
-AI drafts the script from the transcript; a human approves the wording at Checkpoint B. Built as a text-and-music card over the intro for the MVP. A clip-montage version is a Stage 2+ enhancement.
+AI suggests three or four clips from the episode; a producer adjusts them at Checkpoint B (spec 007). They go to Descript as separate files (step 8) and are placed by hand at Checkpoint C.
 
 ### Loudness normalization
 Zoom recordings vary wildly in level. Every finished episode is normalized to the broadcast target YouTube expects, applied at final assembly as a safety net regardless of what happened upstream. Descript's Studio Sound handles noise and room echo; this handles level.
