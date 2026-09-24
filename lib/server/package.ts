@@ -28,6 +28,11 @@ function busy(p: EpisodePackage | undefined) {
     return Date.now() - since < STALE_MS;
 }
 
+// Packages built before the Descript step kept their clips only in Drive.
+function clipsStored(episode: Episode) {
+    return (episode.package?.clipPaths?.length ?? -1) === (episode.notes?.approved?.teaserClips.length ?? 0);
+}
+
 function descriptBusy(d: EpisodeDescript | undefined) {
     if (d?.status !== 'queued' && d?.status !== 'importing' && d?.status !== 'cleaning') return false;
     const since = Math.max(millis(d.requestedAt) ?? 0, millis(d.startedAt) ?? 0);
@@ -47,6 +52,7 @@ export async function requestDescript(id: string, { again = false } = {}) {
             throw new HttpError(409, 'The notes changed since the edit package was built; rebuild it first');
         }
         if (busy(episode.package)) throw new HttpError(409, 'The edit package is being rebuilt');
+        if (!clipsStored(episode)) throw new HttpError(409, 'The edit package was built before clips were kept for Descript; rebuild it first');
         if (descriptBusy(episode.descript)) throw new HttpError(409, 'Already sending to Descript');
         if (episode.descript?.projectUrl && !again) throw new HttpError(409, 'There is already a Descript project for this episode');
         tx.set(ref, {
@@ -104,6 +110,7 @@ export async function getPackage(id: string): Promise<PackageView> {
         builtFromVersion: p?.notesVersion ?? null,
         notesApproved: episode.notes?.status === 'approved',
         approvedVersion: episode.notes?.approvedVersion ?? null,
+        clipsStored: clipsStored(episode),
         descript: {
             status: dLost ? 'failed' : d?.status ?? null,
             error: d?.error ?? (dLost ? 'Sending did not finish. Check the Podcast Descript run in GitHub Actions and the project in Descript.' : null),
