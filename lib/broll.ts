@@ -16,7 +16,8 @@ export function brollPrompt(idea: string) {
         '',
         'Style: natural, cinematic photograph; soft natural light; calm and contemplative; landscape ' +
         'composition with the subject away from the edges.',
-        'Do not include any text, captions, logos or watermarks. No recognisable real people. Do not depict ' +
-        'God, angels, heaven or the afterlife literally; suggest them with light, nature and everyday things instead.',
+        'Do not include any text, captions, logos or watermarks. No recognisable real people.',
+        'Angels, heaven and the afterlife may be shown in traditional, reverent ways. Never show God as a person ' +
+        '(for example an old man with a beard): God is always shown as a bright, radiant light.',
     ].join('\n');
 }

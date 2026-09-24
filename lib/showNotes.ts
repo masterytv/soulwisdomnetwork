@@ -52,7 +52,7 @@ export const ShowNotesSchema = z.object({
         durationSeconds: z.number().int().describe('3 to 15'),
         idea: z.string().describe('What the image shows, concretely enough to generate it'),
         why: z.string().describe('What is being said at that moment that the image supports'),
-    })).describe('Six still-image b-roll ideas (spec 005 section 3, option A). Nothing that depicts God, angels or the afterlife literally.'),
+    })).describe('Six still-image b-roll ideas (spec 005 section 3, option A). Angels, heaven and the afterlife may be shown in traditional ways where they fit; God is always a bright light, never a person such as an old man.'),
 });
 
 // What is stored and edited. Notes drafted before teaser clips and hashtags existed still load.

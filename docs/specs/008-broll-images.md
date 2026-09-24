@@ -36,9 +36,13 @@ blocks a retry.
 ## The prompt
 
 `brollPrompt` in `lib/broll.ts` wraps the idea: a calm, cinematic, natural-light photograph
-for a documentary-style podcast; no text, logos or recognisable real people; nothing that
-depicts God, angels, heaven or the afterlife literally, only suggested through light, nature
-and everyday things (spec 005 section 3). The exact prompt is shown under each image.
+for a documentary-style podcast; no text, logos or recognisable real people. The exact prompt
+is shown under each image.
+
+**Sacred subjects (decided 24 Sept 2026):** angels, heaven and the afterlife may be shown in
+traditional, reverent ways where they fit. God is never shown as a person (such as an old man
+with a beard); God is always a bright, radiant light. The same rule is in the b-roll ideas
+Claude drafts (`lib/showNotes.ts`).
 
 ## Data and provenance
 
