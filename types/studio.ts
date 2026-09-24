@@ -92,6 +92,7 @@ export interface BrollView {
     images: {
         index: number;
         idea: string;
+        style: 'photo' | 'digital';
         url: string;               // signed, a few hours
         model: string;
         prompt: string;

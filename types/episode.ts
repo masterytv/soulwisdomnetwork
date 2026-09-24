@@ -69,6 +69,7 @@ export interface EpisodeNotes {
 export interface BrollImage {
     index: number;
     idea: string;                         // the approved idea it was made from
+    style?: 'photo' | 'digital';          // brand style (lib/broll.ts); photo before styles existed
     startMs: number;
     durationSeconds: number;
     prompt: string;                       // exactly what was sent to the model

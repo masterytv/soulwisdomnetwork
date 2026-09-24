@@ -3,6 +3,7 @@
 // producer saves edits, and what the Checkpoint B page edits.
 
 import { z } from 'zod';
+import { BROLL_STYLE_IDS } from './broll';
 
 const ms = z.number().int().describe('Milliseconds from the start of the episode');
 
@@ -52,7 +53,10 @@ export const ShowNotesSchema = z.object({
         durationSeconds: z.number().int().describe('3 to 15'),
         idea: z.string().describe('What the image shows, concretely enough to generate it'),
         why: z.string().describe('What is being said at that moment that the image supports'),
-    })).describe('Six still-image b-roll ideas (spec 005 section 3, option A). Nothing that depicts God, angels or the afterlife literally.'),
+        style: z.enum(BROLL_STYLE_IDS).describe(
+            '"photo" (photorealistic) for everyday objects, people and places; "digital" (luminous digital painting) for ' +
+            'spiritual, cosmic or otherworldly moments such as angels, heaven or light beyond death'),
+    })).describe('Six still-image b-roll ideas (spec 005 section 3, option A). Angels, heaven and the afterlife may be shown in traditional ways where they fit; God is always a bright light, never a person such as an old man.'),
 });
 
 // What is stored and edited. Notes drafted before teaser clips and hashtags existed still load.
@@ -61,6 +65,8 @@ export const StoredShowNotesSchema = ShowNotesSchema.extend({
     quotes: z.array(clip.extend({ endMs: ms.default(-1) })),
     hashtags: z.array(z.string()).default([]),
     teaserClips: z.array(clip).default([]),
+    // B-roll ideas drafted before styles existed are photoreal until someone picks.
+    broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).default('photo') })),
 });
 
 export type ShowNotes = z.infer<typeof StoredShowNotesSchema>;

@@ -11,7 +11,7 @@ import { BrollImageView, useBroll } from "@/components/studio/broll";
 import { ago, minutes } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useAuth } from "@/context/AuthContext";
-import { BROLL_USD_PER_IMAGE } from "@/lib/broll";
+import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
 import { locate, mmss, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { studioFetch } from "@/lib/studioClient";
 import type { EpisodeNotesView } from "@/types/studio";
@@ -90,7 +90,12 @@ export default function ShowNotesPage() {
             setView(data);
             const draft = data.notes?.draft;
             // Belt and braces for drafts older than teaser clips and hashtags.
-            setNotes(draft ? { ...draft, teaserClips: draft.teaserClips ?? [], hashtags: draft.hashtags ?? [] } : null);
+            setNotes(draft ? {
+                ...draft,
+                teaserClips: draft.teaserClips ?? [],
+                hashtags: draft.hashtags ?? [],
+                broll: (draft.broll ?? []).map(b => ({ ...b, style: b.style ?? "photo" })),
+            } : null);
             reset(data.notes?.version ?? 0);
             setLoadedAt(Date.now());
             setError("");
@@ -260,7 +265,10 @@ export default function ShowNotesPage() {
     const approved = view?.notes?.approved;
     const upToDate = status === "approved" && approved?.version === autosave.savedVersion && autosave.saveState === "saved";
     // Images are made from the approved ideas, so only offered when the page shows exactly those.
-    const brollChanged = notes ? notes.broll.filter((b, i) => broll.image(i)?.idea !== b.idea.trim()).length : 0;
+    const brollChanged = notes ? notes.broll.filter((b, i) => {
+        const image = broll.image(i);
+        return image?.idea !== b.idea.trim() || image.style !== b.style;
+    }).length : 0;
     const brollBlocked = !upToDate || broll.working || broll.starting;
     const saveLabel = {
         saved: "Draft saved to the database", unsaved: "Unsaved changes…", saving: "Saving draft…", error: "Draft not saved",
@@ -509,6 +517,15 @@ export default function ShowNotesPage() {
                                                     className="w-16 bg-[#130b29] border border-white/10 rounded px-2 py-1"
                                                 />
                                                 <span className="text-gray-400">seconds</span>
+                                                <select
+                                                    value={b.style}
+                                                    onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, style: e.target.value as BrollStyle } : x)) }))}
+                                                    className="bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                    aria-label="Image style"
+                                                    title="Photoreal for everyday things and places; Digital for spiritual and otherworldly moments"
+                                                >
+                                                    {BROLL_STYLE_IDS.map(id => <option key={id} value={id}>{BROLL_STYLES[id].label}</option>)}
+                                                </select>
                                                 <button onClick={() => edit(n => ({ ...n, broll: n.broll.filter((_, j) => j !== i) }))} className="ml-auto text-gray-500 hover:text-red-300">Remove</button>
                                             </div>
                                             <textarea
@@ -518,7 +535,7 @@ export default function ShowNotesPage() {
                                                 className={field}
                                             />
                                             <p className={small}>{b.why}</p>
-                                            <BrollImageView broll={broll} index={i} idea={b.idea} />
+                                            <BrollImageView broll={broll} index={i} idea={b.idea} style={b.style} />
                                             {broll.image(i) && (
                                                 <button
                                                     onClick={() => broll.generate(i)}
@@ -532,7 +549,7 @@ export default function ShowNotesPage() {
                                         </div>
                                     ))}
                                     <button
-                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand" }] }))}
+                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand", style: "photo" }] }))}
                                         className={`${secondary} self-start`}
                                     >
                                         + Add at video time

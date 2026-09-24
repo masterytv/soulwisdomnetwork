@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "@/components/studio/format";
+import { BROLL_STYLES, type BrollStyle } from "@/lib/broll";
 import { studioFetch } from "@/lib/studioClient";
 import type { BrollView } from "@/types/studio";
 
@@ -52,7 +53,7 @@ export function useBroll(episodeId: string, enabled: boolean) {
 export type Broll = ReturnType<typeof useBroll>;
 
 // The generated image for one idea, or where it stands.
-export function BrollImageView({ broll, index, idea }: { broll: Broll; index: number; idea: string }) {
+export function BrollImageView({ broll, index, idea, style }: { broll: Broll; index: number; idea: string; style: BrollStyle }) {
     const image = broll.image(index);
     const pending = broll.working && (broll.view?.only === null || broll.view?.only === index);
     if (!image) {
@@ -69,7 +70,10 @@ export function BrollImageView({ broll, index, idea }: { broll: Broll; index: nu
                 {image.idea !== idea.trim() && (
                     <span className="text-amber-300">The idea has changed since this image was made.</span>
                 )}
-                <span>{image.model} · ${image.usd.toFixed(2)}{image.createdAt ? ` · ${ago(image.createdAt)}` : ""}</span>
+                {image.style !== style && (
+                    <span className="text-amber-300">Made in the {BROLL_STYLES[image.style].label} style; this idea is now {BROLL_STYLES[style].label}.</span>
+                )}
+                <span>{BROLL_STYLES[image.style].label} · {image.model} · ${image.usd.toFixed(2)}{image.createdAt ? ` · ${ago(image.createdAt)}` : ""}</span>
                 <details>
                     <summary className="cursor-pointer hover:text-gray-300">Prompt</summary>
                     <p className="whitespace-pre-wrap mt-1">{image.prompt}</p>
