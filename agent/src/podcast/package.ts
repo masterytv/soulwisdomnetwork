@@ -1,0 +1,205 @@
+// Spec 005 step 8, part 1: the edit package. Gathers everything for the Descript edit into
+// one Drive folder, "03 For Descript/<episode>", from the approved show notes:
+//   00 the full episode (a Drive copy of the original)
+//   01 each "In this episode" clip, cut from the original, numbered in order
+//   02 each b-roll image, named with where it goes
+//   Notes: title, clip order, chapters, b-roll timings and key quotes
+// Runs in GitHub Actions (.github/workflows/podcast_package.yml), started from the show notes
+// page. Rebuilding replaces the files in place. docs/specs/009-edit-package.md
+
+import * as fs from 'fs';
+import * as path from 'path';
+import { cert, initializeApp } from 'firebase-admin/app';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import { BROLL_STYLES } from '../../../lib/broll';
+import { chapterList, mmss, type ShowNotes } from '../../../lib/showNotes';
+import type { Episode } from '../../../types/episode';
+import { loadAlert } from './config';
+import { copyFile, createDrive, ensureFolder, findFile, listFolderFiles, parentOf, putFile, trashFile } from './drive';
+import { withRetry } from './errors';
+import { cutClip } from './media';
+import { sendEmail } from './notify';
+
+// Breathing room around each clip, so no word is cut short; trim it in Descript.
+const CLIP_LEAD_MS = 300;
+const CLIP_TAIL_MS = 600;
+const SITE = 'https://soulwisdomcollective.com';
+
+function required(name: string) {
+    const value = process.env[name];
+    if (!value) throw new Error(`Missing required environment variable ${name}`);
+    return value;
+}
+
+const episodeId = required('EPISODE_ID');
+if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${episodeId}`);
+const alert = loadAlert();
+const runUrl = process.env.GITHUB_RUN_URL || '';
+const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
+initializeApp({
+    credential: cert(serviceAccount),
+    storageBucket: process.env.PODCAST_STORAGE_BUCKET || 'soulwisdomnetwork.firebasestorage.app',
+});
+const ref = getFirestore().collection('episodes').doc(episodeId);
+const bucket = getStorage().bucket();
+const drive = createDrive(serviceAccount);
+const workDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'package', episodeId);
+
+// Drive allows almost anything in a name, but the folder gets downloaded to Macs and PCs.
+const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
+const at = (ms: number) => mmss(ms).replace(/:/g, '.');
+
+function notesText(episode: Episode, notes: ShowNotes, clips: string[], broll: string[]) {
+    const title = notes.titles[notes.chosenTitle] ?? episode.title;
+    const lines = [
+        title,
+        '='.repeat(Math.min(title.length, 80)),
+        '',
+        `Episode: ${episode.title}${episode.recordedAt ? ` (recorded ${episode.recordedAt.slice(0, 10)})` : ''}`,
+        `Show notes: ${SITE}/admin/podcast/${episodeId}/notes`,
+        '',
+        'Times below are in the full, unedited episode. They shift once filler words and cuts are made.',
+        '',
+        'IN THIS EPISODE (cold open, in order)',
+        ...(notes.teaserClips.length ? notes.teaserClips.map((c, i) =>
+            `  ${i + 1}. [${mmss(c.startMs)}–${mmss(c.endMs)}] ${c.speaker}: "${c.text}"\n     File: ${clips[i] ?? '(not cut)'}`) : ['  (none)']),
+        '',
+        'CHAPTERS',
+        ...chapterList(notes).split('\n').map(l => `  ${l}`),
+        '',
+        'B-ROLL (place over the moment, with a slow pan and zoom)',
+        ...(notes.broll.length ? notes.broll.map((b, i) =>
+            `  ${i + 1}. At ${mmss(b.startMs)} for ${b.durationSeconds}s (${BROLL_STYLES[b.style ?? 'photo'].label}): ${b.idea}\n` +
+            `     Why: ${b.why}\n     File: ${broll[i] ?? '(no image yet)'}`) : ['  (none)']),
+        '',
+        'KEY QUOTES (for shorts)',
+        ...(notes.quotes.length ? notes.quotes.map((q, i) => `  ${i + 1}. [${mmss(q.startMs)}–${mmss(q.endMs)}] ${q.speaker}: "${q.text}"`) : ['  (none)']),
+        '',
+    ];
+    return lines.join('\n');
+}
+
+async function main() {
+    const episode = (await ref.get()).data() as Episode | undefined;
+    if (!episode) throw new Error(`Episode ${episodeId} not found`);
+    const notes = episode.notes?.status === 'approved' ? episode.notes.approved : undefined;
+    if (!notes) throw new Error('Approve the show notes first');
+    await ref.update({
+        'package.status': 'building', 'package.startedAt': FieldValue.serverTimestamp(), 'package.error': null,
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // "03 For Descript" sits beside "02 Processed" unless a folder is set explicitly.
+    const root = process.env.DRIVE_DESCRIPT_FOLDER_ID
+        || await ensureFolder(drive, await parentOf(drive, required('DRIVE_PROCESSED_FOLDER_ID')), '03 For Descript');
+    const folderId = await ensureFolder(drive, root, safe(episode.title));
+    const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
+    await ref.update({ 'package.folderId': folderId, 'package.folderUrl': folderUrl });
+    console.log(`📦 ${episode.title} → ${folderUrl}`);
+    fs.mkdirSync(workDir, { recursive: true });
+
+    const keep: string[] = [];
+    const warnings: string[] = [];
+
+    // 00: the full episode, copied inside Drive (the original stays in 02 Processed).
+    const ext = path.extname(episode.drive.fileName) || '.mp4';
+    const fullName = `00 Full episode - ${safe(episode.title)}${ext}`;
+    if (await findFile(drive, folderId, fullName)) console.log('  ✔ Full episode already there');
+    else {
+        try {
+            await copyFile(drive, episodeId, folderId, fullName);
+            console.log('  ✅ Full episode copied');
+        } catch (error) {
+            warnings.push(`The full episode could not be copied from Drive (${(error as Error).message}); add it by hand.`);
+        }
+    }
+    keep.push(fullName);
+
+    // 01: teaser clips, cut from the original at full quality.
+    const clips: string[] = [];
+    if (notes.teaserClips.length) {
+        const sourcePath = episode.media?.sourcePath;
+        if (!sourcePath) throw new Error('The original video is not in Cloud Storage');
+        const localSource = path.join(workDir, `source${ext}`);
+        if (!fs.existsSync(localSource)) {
+            console.log('  ⬇️ Downloading the original');
+            await withRetry('Storage download', () => bucket.file(sourcePath).download({ destination: localSource }));
+        }
+        for (const [i, c] of notes.teaserClips.entries()) {
+            const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
+            const end = Math.max(c.endMs, c.startMs + 1000) + CLIP_TAIL_MS;
+            const name = `01 In this episode - clip ${i + 1} (${at(c.startMs)}-${at(c.endMs)}) ${safe(c.speaker)}.mp4`;
+            const local = path.join(workDir, `clip-${i + 1}.mp4`);
+            await cutClip(localSource, local, start / 1000, (end - start) / 1000);
+            await putFile(drive, folderId, name, 'video/mp4', local);
+            clips.push(name);
+            keep.push(name);
+            console.log(`  ✅ ${name}`);
+        }
+    }
+
+    // 02: b-roll images, named with where they go. Stale or missing images are reported.
+    const broll: string[] = [];
+    for (const [i, b] of notes.broll.entries()) {
+        const image = episode.broll?.images?.[i];
+        if (!image) {
+            warnings.push(`B-roll ${i + 1} has no image yet.`);
+            continue;
+        }
+        if (image.idea !== b.idea.trim() || (image.style ?? 'photo') !== (b.style ?? 'photo')) {
+            warnings.push(`B-roll ${i + 1}'s image was made for an older idea or style; regenerate it and rebuild.`);
+        }
+        const name = `02 B-roll ${i + 1} at ${at(b.startMs)} for ${b.durationSeconds}s.png`;
+        const local = path.join(workDir, `broll-${i + 1}.png`);
+        await withRetry('Storage download', () => bucket.file(image.path).download({ destination: local }));
+        await putFile(drive, folderId, name, 'image/png', local);
+        broll[i] = name;
+        keep.push(name);
+        console.log(`  ✅ ${name}`);
+    }
+
+    const notesName = `Notes - ${safe(episode.title)}.txt`;
+    const localNotes = path.join(workDir, 'notes.txt');
+    fs.writeFileSync(localNotes, notesText(episode, notes, clips, broll));
+    await putFile(drive, folderId, notesName, 'text/plain', localNotes);
+    keep.push(notesName);
+
+    // Files from an earlier build that no longer belong (a clip or idea was removed).
+    for (const f of await listFolderFiles(drive, folderId)) {
+        if (f.id && f.name && !keep.includes(f.name) && /^(0[12] |Notes - )/.test(f.name)) {
+            await trashFile(drive, f.id).catch(e => warnings.push(`Could not remove the old "${f.name}" (${(e as Error).message}).`));
+        }
+    }
+
+    await ref.update({
+        'package.status': 'ready',
+        'package.files': keep,
+        'package.warnings': warnings,
+        'package.notesVersion': episode.notes?.approvedVersion ?? 0,
+        'package.finishedAt': FieldValue.serverTimestamp(),
+        'package.error': null,
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+    console.log(`✅ ${keep.length} files${warnings.length ? `; ${warnings.length} warning(s):\n  ${warnings.join('\n  ')}` : ''}`);
+
+    await sendEmail({ alert }, `Edit package ready: ${episode.title}`, [
+        `Everything for the Descript edit of "${episode.title}" is in one folder:`,
+        folderUrl,
+        '',
+        ...keep.map(n => `  ${n}`),
+        ...(warnings.length ? ['', 'Check:', ...warnings.map(w => `  - ${w}`)] : []),
+    ].join('\n'));
+}
+
+main().catch(async error => {
+    const message = (error as Error).message;
+    console.error(`❌ ${message}`);
+    await ref.update({
+        'package.status': 'failed', 'package.error': message, 'package.finishedAt': FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+    }).catch(() => {});
+    await sendEmail({ alert }, `Edit package failed: ${episodeId}`,
+        `The edit package could not be built.\n\nError: ${message}\n\nTry again from the show notes page.${runUrl ? `\n\nRun log: ${runUrl}` : ''}`);
+    process.exit(1);
+});
