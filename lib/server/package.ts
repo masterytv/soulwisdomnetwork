@@ -10,7 +10,7 @@ import { startDescript, startPackage } from './github';
 import { HttpError } from './staff';
 
 // A request that has not finished by now is treated as lost and can be retried.
-const STALE_MS = 70 * 60_000;
+const STALE_MS = 160 * 60_000;       // the workflow's own limit is 150 minutes
 const DESCRIPT_STALE_MS = 250 * 60_000;     // the workflow's own limit is 240 minutes
 
 function episodeRef(id: string) {

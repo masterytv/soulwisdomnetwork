@@ -18,7 +18,7 @@ API (part 2). The folder also works on its own: download it and drag it into Des
 
 | File | What |
 |---|---|
-| `00 Full episode - <title>.mp4` | A Drive copy of the original recording (server-side; nothing is downloaded) |
+| `00 Full episode - <title>.mp4` | A Drive copy of the original recording (server-side), or its 1920x1080 fill when the recording is not 16:9 (below) |
 | `00 Intro - Soul Wisdom Collective.mp4` | The show's 3-second intro, from `assets/podcast/intro.mp4` in the repo |
 | `01 In this episode - clip N (m.ss-m.ss) <speaker>.mp4` | Each approved teaser clip, cut from the original at full quality, in order, with 0.3 s before and 0.6 s after so no word is clipped |
 | `02 B-roll N at m.ss for Ns.png` | Each b-roll image, named with where it goes and for how long |
@@ -40,7 +40,23 @@ Times are in the full, unedited episode; they shift once filler words and cuts a
    again since the last build.
 
 Missing or out-of-date b-roll images do not stop the build; they are listed as warnings on
-the page and in the email. A request that has not finished within 70 minutes counts as failed.
+the page and in the email. A request that has not finished within 160 minutes counts as failed
+(the workflow's limit is 150).
+
+## Filling the frame (decided 24 Sept 2026)
+
+Zoom recordings come in odd sizes (1920x1044, 1920x1120, 1920x1036), which show thin bars in
+a 1920x1080 timeline. When the original is not 16:9 (to within 0.5%), the package makes a
+1920x1080 copy that fills the frame: pixels made square, the picture **scaled evenly** until
+it covers the frame, and the overflow **trimmed equally from the edges**. It is never
+stretched or squashed. For 1920x1044 that is a 3.4% enlargement and about 33 px trimmed from
+each side; for 1920x1120, about 20 px from top and bottom with no scaling. The teaser clips
+are cut the same way. Recordings that are already 16:9 (including 640x360) are left as they
+are; Descript enlarges those evenly.
+
+The fill (`episodes/{id}/package/episode-1080p.mp4`, H.264 CRF 18, audio copied) is made
+once and reused by rebuilds; it adds roughly a third of the episode's length to the first
+build. `media.ts`: `videoSize`, `isWidescreen`, `fillFrame`, `cutClip(…, fill)`.
 
 ## The intro
 
@@ -54,7 +70,8 @@ the new one. A package built without it (the file missing) says so in its warnin
 On `episodes/{id}` (`types/episode.ts`, `EpisodePackage`): `package.status` (`queued`,
 `building`, `ready`, `failed`), `requestedAt`, `startedAt`, `finishedAt`, `error`,
 `folderId`, `folderUrl`, `notesVersion` (the approved notes version it was built from),
-`files`, `warnings`.
+`files`, `warnings`, `clipPaths`, `introPath`, `episodePath` (the fill, or null),
+`sourceSize`.
 
 ## Setup
 
