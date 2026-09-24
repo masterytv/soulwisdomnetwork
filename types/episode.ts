@@ -103,7 +103,28 @@ export interface EpisodePackage {
     folderUrl?: string;
     notesVersion?: number;                // the approved notes it was built from
     files?: string[];                     // names, in folder order
+    clipPaths?: string[];                 // teaser clips in Cloud Storage, in order
     warnings?: string[];
+}
+
+// The Descript project (spec 005 step 8, part 2; docs/specs/009-edit-package.md), made through
+// Descript's API from the edit package.
+export interface EpisodeDescript {
+    status: 'queued' | 'importing' | 'cleaning' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    projectId?: string;
+    projectUrl?: string;
+    compositionId?: string;
+    importJobId?: string;
+    agentJobId?: string;
+    agentResponse?: string;
+    warnings?: string[];
+    mediaSecondsUsed?: number;
+    aiCreditsUsed?: number;
+    notesVersion?: number;
 }
 
 export interface Episode {
@@ -145,6 +166,7 @@ export interface Episode {
     notes?: EpisodeNotes;                 // show notes, spec 005 step 5 and Checkpoint B
     broll?: EpisodeBroll;                 // b-roll images, spec 005 step 7
     package?: EpisodePackage;             // edit package for Descript, spec 005 step 8
+    descript?: EpisodeDescript;           // the Descript project made from it
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };

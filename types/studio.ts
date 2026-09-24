@@ -2,7 +2,7 @@
 
 import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { ReviewUtterance } from '@/lib/transcript';
-import type { DetectedSpeaker, EpisodeBroll, EpisodePackage, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
+import type { DetectedSpeaker, EpisodeBroll, EpisodeDescript, EpisodePackage, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -112,4 +112,15 @@ export interface PackageView {
     builtFromVersion: number | null;    // approved notes version, to spot a stale package
     notesApproved: boolean;
     approvedVersion: number | null;
+    descript: {
+        status: EpisodeDescript['status'] | null;
+        error: string | null;
+        projectUrl: string | null;
+        agentResponse: string | null;
+        warnings: string[];
+        mediaMinutes: number | null;
+        aiCredits: number | null;
+        finishedAt: number | null;
+        builtFromVersion: number | null;
+    };
 }
