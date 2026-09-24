@@ -19,7 +19,7 @@ import type { Episode } from '../../../types/episode';
 import { loadAlert } from './config';
 import { copyFile, createDrive, ensureFolder, findFile, listFolderFiles, parentOf, putFile, trashFile } from './drive';
 import { withRetry } from './errors';
-import { cutClip } from './media';
+import { cutClip, fillFrame, isWidescreen, videoSize } from './media';
 import { sendEmail } from './notify';
 
 // Breathing room around each clip, so no word is cut short; trim it in Descript.
@@ -108,10 +108,42 @@ async function main() {
     const keep: string[] = [];
     const warnings: string[] = [];
 
-    // 00: the full episode, copied inside Drive (the original stays in 02 Processed).
     const ext = path.extname(episode.drive.fileName) || '.mp4';
-    const fullName = `00 Full episode - ${safe(episode.title)}${ext}`;
-    if (await findFile(drive, folderId, fullName)) console.log('  ✔ Full episode already there');
+    const sourcePath = episode.media?.sourcePath;
+    if (!sourcePath) throw new Error('The original video is not in Cloud Storage');
+    const localSource = path.join(workDir, `source${ext}`);
+    if (!fs.existsSync(localSource)) {
+        console.log('  ⬇️ Downloading the original');
+        await withRetry('Storage download', () => bucket.file(sourcePath).download({ destination: localSource }));
+    }
+
+    // Recordings that are not 16:9 (Zoom's 1920x1044 and the like) would show thin bars in a
+    // 1920x1080 frame. They get a filled copy: scaled evenly, overflow trimmed from the edges,
+    // never stretched. The clips are cut the same way.
+    const size = await videoSize(localSource);
+    const fill = !isWidescreen(size);
+    const fillPath = `episodes/${episodeId}/package/episode-1080p.mp4`;
+    let episodePath: string | null = null;
+
+    // 00: the full episode. A 16:9 original is copied inside Drive (it stays in 02 Processed).
+    const fullName = `00 Full episode - ${safe(episode.title)}${fill ? '.mp4' : ext}`;
+    if (fill) {
+        episodePath = fillPath;
+        const [stored] = await bucket.file(fillPath).exists();
+        if (stored && episode.package?.episodePath === fillPath && await findFile(drive, folderId, fullName)) {
+            console.log(`  ✔ Full episode already filled to 1920x1080 (from ${size.width}x${size.height})`);
+        } else {
+            const localFilled = path.join(workDir, 'episode-1080p.mp4');
+            if (stored) await withRetry('Storage download', () => bucket.file(fillPath).download({ destination: localFilled }));
+            else {
+                console.log(`  🎞️ Filling ${size.width}x${size.height} to 1920x1080 (trimming edges, no stretching)`);
+                await fillFrame(localSource, localFilled);
+                await withRetry('Storage upload', () => bucket.upload(localFilled, { destination: fillPath, resumable: true, metadata: { contentType: 'video/mp4' } }));
+            }
+            await putFile(drive, folderId, fullName, 'video/mp4', localFilled);
+            console.log('  ✅ Full episode (1920x1080)');
+        }
+    } else if (await findFile(drive, folderId, fullName)) console.log('  ✔ Full episode already there');
     else {
         try {
             await copyFile(drive, episodeId, folderId, fullName);
@@ -138,19 +170,12 @@ async function main() {
     const clips: string[] = [];
     const clipPaths: string[] = [];     // the same clips in Cloud Storage, for the Descript import
     if (notes.teaserClips.length) {
-        const sourcePath = episode.media?.sourcePath;
-        if (!sourcePath) throw new Error('The original video is not in Cloud Storage');
-        const localSource = path.join(workDir, `source${ext}`);
-        if (!fs.existsSync(localSource)) {
-            console.log('  ⬇️ Downloading the original');
-            await withRetry('Storage download', () => bucket.file(sourcePath).download({ destination: localSource }));
-        }
         for (const [i, c] of notes.teaserClips.entries()) {
             const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
             const end = Math.max(c.endMs, c.startMs + 1000) + CLIP_TAIL_MS;
             const name = `01 In this episode - clip ${i + 1} (${at(c.startMs)}-${at(c.endMs)}) ${safe(c.speaker)}.mp4`;
             const local = path.join(workDir, `clip-${i + 1}.mp4`);
-            await cutClip(localSource, local, start / 1000, (end - start) / 1000);
+            await cutClip(localSource, local, start / 1000, (end - start) / 1000, fill);
             await putFile(drive, folderId, name, 'video/mp4', local);
             const clipPath = `episodes/${episodeId}/package/clip-${i + 1}.mp4`;
             await withRetry('Storage upload', () => bucket.upload(local, { destination: clipPath, resumable: true, metadata: { contentType: 'video/mp4' } }));
@@ -189,7 +214,7 @@ async function main() {
 
     // Files from an earlier build that no longer belong (a clip or idea was removed).
     for (const f of await listFolderFiles(drive, folderId)) {
-        if (f.id && f.name && !keep.includes(f.name) && /^(0[12] |Notes - )/.test(f.name)) {
+        if (f.id && f.name && !keep.includes(f.name) && (/^(0[12] |Notes - )/.test(f.name) || f.name.startsWith('00 Full episode - '))) {
             await trashFile(drive, f.id).catch(e => warnings.push(`Could not remove the old "${f.name}" (${(e as Error).message}).`));
         }
     }
@@ -199,6 +224,8 @@ async function main() {
         'package.files': keep,
         'package.clipPaths': clipPaths,
         'package.introPath': introPath,
+        'package.episodePath': episodePath,
+        'package.sourceSize': `${size.width}x${size.height}`,
         'package.warnings': warnings,
         'package.notesVersion': episode.notes?.approvedVersion ?? 0,
         'package.finishedAt': FieldValue.serverTimestamp(),

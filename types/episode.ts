@@ -105,6 +105,8 @@ export interface EpisodePackage {
     files?: string[];                     // names, in folder order
     clipPaths?: string[];                 // teaser clips in Cloud Storage, in order
     introPath?: string | null;            // the show's intro in Cloud Storage
+    episodePath?: string | null;          // the episode filled to 1920x1080, when the original is not 16:9
+    sourceSize?: string;                  // the original's frame, e.g. "1920x1044"
     warnings?: string[];
 }
 

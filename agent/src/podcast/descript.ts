@@ -130,7 +130,9 @@ async function main() {
 
     // Media keys are the names (and folders) the producer sees in the Descript project.
     const title = notes.titles[notes.chosenTitle] ?? episode.title;
-    const fullKey = `Full episode/${safe(episode.title)}${path.extname(sourcePath) || '.mp4'}`;
+    // The package's 1920x1080 fill of a recording that is not 16:9, otherwise the original.
+    const episodeFile = pkg.episodePath ?? sourcePath;
+    const fullKey = `Full episode/${safe(episode.title)}${path.extname(episodeFile) || '.mp4'}`;
     const clipKeys = notes.teaserClips.map((c, i) => `In this episode/Clip ${i + 1} - ${safe(c.speaker)}.mp4`);
     const addMedia: Record<string, { url: string; language: string }> = {};
     for (const [i, key] of clipKeys.entries()) addMedia[key] = { url: await signed(clipPaths[i]), language: 'en' };
@@ -138,7 +140,7 @@ async function main() {
     const warnings: string[] = [];
     if (pkg.introPath) addMedia[introKey] = { url: await signed(pkg.introPath), language: 'en' };
     else warnings.push('The edit package has no intro; rebuild it to include one.');
-    addMedia[fullKey] = { url: await signed(sourcePath), language: 'en' };
+    addMedia[fullKey] = { url: await signed(episodeFile), language: 'en' };
     for (const [i, b] of notes.broll.entries()) {
         const image = episode.broll?.images?.[i];
         if (!image) {
