@@ -8,7 +8,9 @@ import { anchorToTranscript, mmss, parseShowNotes, ShowNotesSchema, SITE_URL, ty
 import type { Episode } from '../../../types/episode';
 import { HOSTS } from './config';
 
-export const NOTES_MODEL = 'claude-opus-5';
+// Chosen by a side-by-side run (compareNotes.ts; docs/specs/007-show-notes.md). Effort is set
+// explicitly because Opus 5.5 defaults to 'medium'.
+export const NOTES_MODEL = 'claude-opus-5-5';
 export const NOTES_EFFORT: Effort = 'high';
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
