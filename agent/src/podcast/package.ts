@@ -118,6 +118,7 @@ async function main() {
 
     // 01: teaser clips, cut from the original at full quality.
     const clips: string[] = [];
+    const clipPaths: string[] = [];     // the same clips in Cloud Storage, for the Descript import
     if (notes.teaserClips.length) {
         const sourcePath = episode.media?.sourcePath;
         if (!sourcePath) throw new Error('The original video is not in Cloud Storage');
@@ -133,6 +134,9 @@ async function main() {
             const local = path.join(workDir, `clip-${i + 1}.mp4`);
             await cutClip(localSource, local, start / 1000, (end - start) / 1000);
             await putFile(drive, folderId, name, 'video/mp4', local);
+            const clipPath = `episodes/${episodeId}/package/clip-${i + 1}.mp4`;
+            await withRetry('Storage upload', () => bucket.upload(local, { destination: clipPath, resumable: true, metadata: { contentType: 'video/mp4' } }));
+            clipPaths.push(clipPath);
             clips.push(name);
             keep.push(name);
             console.log(`  ✅ ${name}`);
@@ -175,6 +179,7 @@ async function main() {
     await ref.update({
         'package.status': 'ready',
         'package.files': keep,
+        'package.clipPaths': clipPaths,
         'package.warnings': warnings,
         'package.notesVersion': episode.notes?.approvedVersion ?? 0,
         'package.finishedAt': FieldValue.serverTimestamp(),

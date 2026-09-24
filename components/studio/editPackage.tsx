@@ -1,7 +1,8 @@
 "use client";
 
 // The edit package on the show notes page (docs/specs/009-edit-package.md): everything for the
-// Descript edit in one Drive folder, built from the approved notes.
+// Descript edit in one Drive folder, built from the approved notes, and the Descript project
+// made from it through Descript's API.
 
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "@/components/studio/format";
@@ -10,6 +11,11 @@ import type { PackageView } from "@/types/studio";
 
 const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 const primary = `${button} border-amber-500/40 text-amber-300 hover:bg-amber-500/10`;
+const secondary = `${button} border-white/10 text-gray-300 hover:bg-white/10`;
+
+const DESCRIPT_LABEL = {
+    queued: "Starting…", importing: "Importing into Descript…", cleaning: "Removing filler words and applying Studio Sound…",
+} as const;
 
 export function EditPackage({ episodeId, enabled, upToDate }: { episodeId: string; enabled: boolean; upToDate: boolean }) {
     const [view, setView] = useState<PackageView | null>(null);
@@ -30,11 +36,13 @@ export function EditPackage({ episodeId, enabled, upToDate }: { episodeId: strin
     }, [enabled, load]);
 
     const working = view?.status === "queued" || view?.status === "building";
+    const d = view?.descript;
+    const sending = d?.status === "queued" || d?.status === "importing" || d?.status === "cleaning";
     useEffect(() => {
-        if (!working) return;
-        const timer = setInterval(load, 10000);
+        if (!working && !sending) return;
+        const timer = setInterval(load, 15000);
         return () => clearInterval(timer);
-    }, [working, load]);
+    }, [working, sending, load]);
 
     async function build() {
         setStarting(true);
@@ -48,8 +56,23 @@ export function EditPackage({ episodeId, enabled, upToDate }: { episodeId: strin
         }
     }
 
+    async function send() {
+        const again = Boolean(d?.projectUrl);
+        if (again && !confirm("This makes a second Descript project; the first one is left as it is. Continue?")) return;
+        setStarting(true);
+        try {
+            await studioFetch(`/api/studio/episodes/${episodeId}/descript`, { method: "POST", body: JSON.stringify({ again }) });
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setStarting(false);
+        }
+    }
+
     const built = view?.status === "ready";
     const stale = built && view.builtFromVersion !== view.approvedVersion;
+    const canSend = upToDate && built && !stale && !working && !sending && !starting;
 
     return (
         <div className="flex flex-col gap-2">
@@ -78,6 +101,31 @@ export function EditPackage({ episodeId, enabled, upToDate }: { episodeId: strin
                 </ul>
             )}
             {built && view.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}
+
+            <div className="flex flex-col gap-2 border-t border-white/5 pt-3 mt-1">
+                <div className="flex flex-wrap items-center gap-3">
+                    <button onClick={send} disabled={!canSend} className={d?.projectUrl ? secondary : primary}>
+                        {sending ? DESCRIPT_LABEL[d!.status as keyof typeof DESCRIPT_LABEL] : d?.projectUrl ? "Send to Descript again" : "Send to Descript"}
+                    </button>
+                    {d?.projectUrl && (
+                        <a href={d.projectUrl} target="_blank" rel="noreferrer" className="text-sm text-amber-300 hover:underline">
+                            Open in Descript ↗
+                        </a>
+                    )}
+                </div>
+                <p className="text-xs text-gray-500">
+                    {sending
+                        ? "Descript imports and transcribes the media, then Underlord cleans it up. Allow about as long as the episode; this page updates by itself and you get an email."
+                        : !built || stale
+                            ? "Build the edit package first; Descript gets the same files."
+                            : d?.status === "ready"
+                                ? `Made ${d.finishedAt ? ago(d.finishedAt) : ""}${d.mediaMinutes != null ? ` · ${d.mediaMinutes} media minutes` : ""}${d.aiCredits ? ` · ${d.aiCredits} AI credits` : ""}. Edit it in Descript; that is the final cut.`
+                                : "Makes a Descript project: the \u201cIn this episode\u201d clips then the full episode on one timeline, filler words removed and Studio Sound on, b-roll images in the media bin. Uses the Descript plan\u2019s media minutes and AI credits."}
+                </p>
+                {d?.status === "ready" && d.agentResponse && <p className="text-xs text-gray-400">Underlord: {d.agentResponse}</p>}
+                {d?.status === "ready" && d.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}
+                {d?.error && d.status === "failed" && <p className="text-sm text-red-300">{d.error}</p>}
+            </div>
             {(error || view?.error) && <p className="text-sm text-red-300">{error || view?.error}</p>}
         </div>
     );
