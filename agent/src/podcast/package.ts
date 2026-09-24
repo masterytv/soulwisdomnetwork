@@ -1,6 +1,7 @@
 // Spec 005 step 8, part 1: the edit package. Gathers everything for the Descript edit into
 // one Drive folder, "03 For Descript/<episode>", from the approved show notes:
-//   00 the full episode (a Drive copy of the original)
+//   00 the full episode (a Drive copy of the original) and the show's intro
+//      (assets/podcast/intro.mp4 in this repo)
 //   01 each "In this episode" clip, cut from the original, numbered in order
 //   02 each b-roll image, named with where it goes
 //   Notes: title, clip order, chapters, b-roll timings and key quotes
@@ -25,6 +26,9 @@ import { sendEmail } from './notify';
 const CLIP_LEAD_MS = 300;
 const CLIP_TAIL_MS = 600;
 const SITE = 'https://soulwisdomcollective.com';
+// The show's intro, versioned in the repo; replace the file to change it for later builds.
+const INTRO_FILE = path.resolve('assets/podcast/intro.mp4');
+const INTRO_NAME = '00 Intro - Soul Wisdom Collective.mp4';
 
 function required(name: string) {
     const value = process.env[name];
@@ -60,6 +64,8 @@ function notesText(episode: Episode, notes: ShowNotes, clips: string[], broll: s
         `Show notes: ${SITE}/admin/podcast/${episodeId}/notes`,
         '',
         'Times below are in the full, unedited episode. They shift once filler words and cuts are made.',
+        '',
+        'TIMELINE: the "In this episode" clips, then the intro, then the full episode.',
         '',
         'IN THIS EPISODE (cold open, in order)',
         ...(notes.teaserClips.length ? notes.teaserClips.map((c, i) =>
@@ -115,6 +121,18 @@ async function main() {
         }
     }
     keep.push(fullName);
+
+    // The intro, also kept in Cloud Storage so Descript can fetch it.
+    let introPath: string | null = null;
+    if (fs.existsSync(INTRO_FILE)) {
+        await putFile(drive, folderId, INTRO_NAME, 'video/mp4', INTRO_FILE);
+        introPath = `episodes/${episodeId}/package/intro.mp4`;
+        await withRetry('Storage upload', () => bucket.upload(INTRO_FILE, { destination: introPath!, resumable: false, metadata: { contentType: 'video/mp4' } }));
+        keep.push(INTRO_NAME);
+        console.log('  ✅ Intro');
+    } else {
+        warnings.push('The intro (assets/podcast/intro.mp4) is missing from the repo, so it was left out.');
+    }
 
     // 01: teaser clips, cut from the original at full quality.
     const clips: string[] = [];
@@ -180,6 +198,7 @@ async function main() {
         'package.status': 'ready',
         'package.files': keep,
         'package.clipPaths': clipPaths,
+        'package.introPath': introPath,
         'package.warnings': warnings,
         'package.notesVersion': episode.notes?.approvedVersion ?? 0,
         'package.finishedAt': FieldValue.serverTimestamp(),

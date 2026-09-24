@@ -1,6 +1,6 @@
 // Spec 005 step 8, part 2: make the Descript project from the edit package, through
 // Descript's API (https://docs.descriptapi.com). One composition, "Episode": the
-// "In this episode" clips in order, then the full episode. B-roll images go in as media for
+// "In this episode" clips in order, then the intro, then the full episode. B-roll images go in as media for
 // the producer to place. Then Underlord removes filler words and applies Studio Sound.
 // Runs in GitHub Actions (.github/workflows/podcast_descript.yml), started from the show
 // notes page. Each run makes a new project. docs/specs/009-edit-package.md
@@ -134,8 +134,11 @@ async function main() {
     const clipKeys = notes.teaserClips.map((c, i) => `In this episode/Clip ${i + 1} - ${safe(c.speaker)}.mp4`);
     const addMedia: Record<string, { url: string; language: string }> = {};
     for (const [i, key] of clipKeys.entries()) addMedia[key] = { url: await signed(clipPaths[i]), language: 'en' };
-    addMedia[fullKey] = { url: await signed(sourcePath), language: 'en' };
+    const introKey = 'Intro/Soul Wisdom Collective intro.mp4';
     const warnings: string[] = [];
+    if (pkg.introPath) addMedia[introKey] = { url: await signed(pkg.introPath), language: 'en' };
+    else warnings.push('The edit package has no intro; rebuild it to include one.');
+    addMedia[fullKey] = { url: await signed(sourcePath), language: 'en' };
     for (const [i, b] of notes.broll.entries()) {
         const image = episode.broll?.images?.[i];
         if (!image) {
@@ -152,7 +155,7 @@ async function main() {
         folder_name: FOLDER,
         team_access: 'edit',
         add_media: addMedia,
-        add_compositions: [{ name: COMPOSITION, width: 1920, height: 1080, clips: [...clipKeys, fullKey].map(media => ({ media })) }],
+        add_compositions: [{ name: COMPOSITION, width: 1920, height: 1080, clips: [...clipKeys, ...(pkg.introPath ? [introKey] : []), fullKey].map(media => ({ media })) }],
     });
     console.log(`🎬 Descript project ${created.project_url} (import job ${created.job_id})`);
     await ref.update({
@@ -206,7 +209,7 @@ async function main() {
         `The Descript project for "${episode.title}" is ready:`,
         created.project_url,
         '',
-        `The "${COMPOSITION}" timeline has the ${clipKeys.length} "In this episode" clips, then the full episode.`,
+        `The "${COMPOSITION}" timeline has the ${clipKeys.length} "In this episode" clips, then ${pkg.introPath ? 'the intro, then ' : ''}the full episode.`,
         'B-roll images are in the B-roll media folder, named with where they go. Filler words removed and Studio Sound applied:',
         agentResponse ? `  ${agentResponse}` : '  (no summary from Underlord)',
         ...(warnings.length ? ['', 'Check:', ...warnings.map(w => `  - ${w}`)] : []),
