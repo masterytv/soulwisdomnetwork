@@ -2,7 +2,7 @@
 
 import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { ReviewUtterance } from '@/lib/transcript';
-import type { DetectedSpeaker, EpisodeBroll, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
+import type { DetectedSpeaker, EpisodeBroll, EpisodePackage, EpisodeNotes, EpisodeStage, EpisodeStatus, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -99,4 +99,17 @@ export interface BrollView {
         usd: number;
         createdAt: number | null;
     }[];
+}
+
+// GET /api/studio/episodes/[id]/package: the edit package on the Checkpoint B page.
+export interface PackageView {
+    status: EpisodePackage['status'] | null;
+    error: string | null;
+    folderUrl: string | null;
+    files: string[];
+    warnings: string[];
+    finishedAt: number | null;
+    builtFromVersion: number | null;    // approved notes version, to spot a stale package
+    notesApproved: boolean;
+    approvedVersion: number | null;
 }

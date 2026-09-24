@@ -91,6 +91,21 @@ export interface EpisodeBroll {
     images?: Record<string, BrollImage>;
 }
 
+// The edit package (spec 005 step 8, part 1; docs/specs/009-edit-package.md): everything for
+// the Descript edit, in one Drive folder.
+export interface EpisodePackage {
+    status: 'queued' | 'building' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    folderId?: string;
+    folderUrl?: string;
+    notesVersion?: number;                // the approved notes it was built from
+    files?: string[];                     // names, in folder order
+    warnings?: string[];
+}
+
 export interface Episode {
     title: string;                        // from the file name, Zoom prefix stripped
     recordedAt: string | null;            // ISO date from a Zoom file name, if present
@@ -129,6 +144,7 @@ export interface Episode {
     };
     notes?: EpisodeNotes;                 // show notes, spec 005 step 5 and Checkpoint B
     broll?: EpisodeBroll;                 // b-roll images, spec 005 step 7
+    package?: EpisodePackage;             // edit package for Descript, spec 005 step 8
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };

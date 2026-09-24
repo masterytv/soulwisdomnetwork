@@ -45,3 +45,16 @@ export function makeAudio(input: string, output: string) {
         output,
     ]);
 }
+
+// One clip from the original at full quality, re-encoded so it starts exactly on time
+// (a stream copy can only cut on keyframes).
+export function cutClip(input: string, output: string, startSeconds: number, durationSeconds: number) {
+    return run('ffmpeg', [
+        '-y', '-hide_banner', '-loglevel', 'error',
+        '-ss', startSeconds.toFixed(3), '-i', input, '-t', durationSeconds.toFixed(3),
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '192k',
+        '-movflags', '+faststart',
+        output,
+    ]);
+}

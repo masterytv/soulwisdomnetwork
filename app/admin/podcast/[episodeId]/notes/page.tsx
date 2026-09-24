@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { BrollImageView, useBroll } from "@/components/studio/broll";
+import { EditPackage } from "@/components/studio/editPackage";
 import { ago, minutes } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useAuth } from "@/context/AuthContext";
@@ -577,6 +578,10 @@ export default function ShowNotesPage() {
                                     {(broll.error || broll.view?.error) && (
                                         <p className="text-sm text-red-300">{broll.error || broll.view?.error}</p>
                                     )}
+                                </Section>
+
+                                <Section title="Edit package for Descript" hint="Built from the approved notes. Drag the folder into Descript and edit there: Descript has the final say.">
+                                    <EditPackage episodeId={episodeId} enabled={!loading && allowed} upToDate={upToDate} />
                                 </Section>
                             </div>
                         </div>
