@@ -1,4 +1,4 @@
-# Spec 009: The edit package (Descript, part 1)
+# Spec 009: The edit package and the Descript project
 
 **Date:** 24 September 2026
 **Status:** Built, first real run pending
@@ -8,9 +8,8 @@
 
 Descript is the final say on the edit (spec 005, decided 23 Sept 2026). This step gathers
 everything the producer needs for that edit into one Drive folder, built from the approved
-show notes. It works without Descript's API: the producer downloads the folder and drags it
-into a Descript project. Part 2 (later) will create the Descript project through the API from
-the same files and run filler-word removal and Studio Sound.
+show notes (part 1), then makes the Descript project from the same files through Descript's
+API (part 2). The folder also works on its own: download it and drag it into Descript.
 
 ## What is in the folder
 
@@ -56,8 +55,41 @@ None beyond what exists: `PODCAST_SA_JSON`, `RESEND_API_KEY`, `ALERT_EMAIL` and
 (it already creates the transcript Docs there); removing old files needs Content manager, and
 is reported as a warning otherwise. The workflow must be on `main` before the website can start it.
 
+## Part 2: the Descript project
+
+**Send to Descript** (under the edit package, offered once the package matches the approved
+notes) starts the **Podcast Descript** workflow (`.github/workflows/podcast_descript.yml`),
+which runs `agent/src/podcast/descript.ts` against Descript's API (`https://descriptapi.com/v1`,
+reference at https://docs.descriptapi.com, open beta).
+
+1. **Import** (`POST /jobs/import/project_media`): a new project named after the chosen title,
+   in the Descript folder **Soul Wisdom Podcast**, editable by everyone on the Descript drive.
+   Media come from Cloud Storage as signed links valid 36 hours: the teaser clips (the package
+   job also saves them to `episodes/{id}/package/`), the original recording, and the b-roll
+   images. Media folders in the project: `In this episode/`, `Full episode/`, `B-roll/`.
+2. **Timeline**: one composition, **Episode** (1920x1080): the "In this episode" clips in
+   order, then the full episode. The API places clips one after another only, so b-roll is not
+   placed; its file names say where each image goes.
+3. **Clean-up** (`POST /jobs/agent`): Underlord is asked to remove filler words and apply
+   Studio Sound on that composition, and nothing else. If it cannot, the project still counts
+   as made and the page says what to do by hand.
+4. Both jobs are polled (`GET /jobs/{id}`) until they stop. The page shows the project link,
+   Underlord's summary, media minutes and AI credits used, and warnings; an email goes to
+   `ALERT_EMAIL`.
+
+Each send makes a **new** project; sending again asks first. Imports and edits use the
+Descript plan's media minutes and AI credits. A send that has not finished within about four
+hours counts as failed.
+
+On `episodes/{id}` (`EpisodeDescript`): `descript.status` (`queued`, `importing`, `cleaning`,
+`ready`, `failed`), `projectId`, `projectUrl`, `compositionId`, `importJobId`, `agentJobId`,
+`agentResponse`, `warnings`, `mediaSecondsUsed`, `aiCreditsUsed`, `notesVersion`, times, `error`.
+
+**Setup:** the GitHub secret **`DESCRIPT_API_TOKEN`** (Descript → Settings → API tokens, tied
+to the shared Descript drive). The workflow must be on `main` before the website can start it.
+
 ## Later
 
-- Part 2: `DESCRIPT_API_TOKEN`; create the Descript project from these files and run
-  filler-word removal and Studio Sound through the API.
-- Intro and outro files (spec 005 section 9) as `03 Intro` and `04 Outro` once they exist.
+- Step 10: publish the finished composition through the API (`POST /jobs/publish` returns a
+  download link) and normalise loudness, instead of downloading by hand.
+- Intro and outro files (spec 005 section 9), added before and after the episode on the timeline.

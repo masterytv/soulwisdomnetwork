@@ -1,5 +1,5 @@
 // Starts and watches the Podcast Ingest workflow (.github/workflows/podcast_ingest.yml)
-// and starts Podcast Show Notes, B-roll and Edit Package (podcast_notes, _broll, _package.yml), with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
+// and starts Podcast Show Notes, B-roll, Edit Package and Descript (podcast_notes, _broll, _package, _descript.yml), with GITHUB_ACTIONS_TOKEN: a fine-grained token for this repository, Actions read/write.
 
 const REPO = 'masterytv/soulwisdomnetwork';
 const WORKFLOW = 'podcast_ingest.yml';
@@ -71,6 +71,14 @@ export async function startBroll(episodeId: string, index: number | null) {
 // Builds the edit package for Descript (spec 005 step 8, part 1).
 export async function startPackage(episodeId: string) {
     await github('/actions/workflows/podcast_package.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId } }),
+    });
+}
+
+// Makes the Descript project from the edit package (spec 005 step 8, part 2).
+export async function startDescript(episodeId: string) {
+    await github('/actions/workflows/podcast_descript.yml/dispatches', {
         method: 'POST',
         body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId } }),
     });

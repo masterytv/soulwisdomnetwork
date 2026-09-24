@@ -580,7 +580,7 @@ export default function ShowNotesPage() {
                                     )}
                                 </Section>
 
-                                <Section title="Edit package for Descript" hint="Built from the approved notes. Drag the folder into Descript and edit there: Descript has the final say.">
+                                <Section title="Edit package and Descript" hint="Built from the approved notes. Descript has the final say: the edit happens there.">
                                     <EditPackage episodeId={episodeId} enabled={!loading && allowed} upToDate={upToDate} />
                                 </Section>
                             </div>
