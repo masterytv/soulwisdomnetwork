@@ -3,13 +3,13 @@
 // page in the Podcast Studio. docs/specs/008-broll-images.md
 //
 // BROLL_INDEX set: regenerate that one image. Unset: generate every image that is missing
-// or whose idea has changed since it was made, and drop images for ideas that were removed.
+// or whose idea or style has changed since it was made, and drop images for ideas that were removed.
 
 import OpenAI from 'openai';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { BROLL_MODEL, BROLL_QUALITY, BROLL_SIZE, BROLL_USD_PER_IMAGE, brollPrompt } from '../../../lib/broll';
+import { BROLL_MODEL, BROLL_QUALITY, BROLL_SIZE, BROLL_USD_PER_IMAGE, brollPrompt, type BrollStyle } from '../../../lib/broll';
 import type { BrollImage, Episode } from '../../../types/episode';
 
 // Images at once; each takes up to a minute or two.
@@ -38,10 +38,13 @@ async function main() {
     if (!ideas.length) throw new Error('Approve show notes with at least one b-roll idea first');
     if (only !== null && only >= ideas.length) throw new Error(`There is no b-roll idea ${only + 1}`);
 
+    // Notes approved before styles existed have none; they are photoreal.
+    const styleOf = (i: number): BrollStyle => (ideas[i] as { style?: BrollStyle }).style ?? 'photo';
     const existing = episode.broll?.images ?? {};
     const todo = only !== null
         ? [only]
-        : ideas.map((_, i) => i).filter(i => existing[i]?.idea !== ideas[i].idea.trim());
+        : ideas.map((_, i) => i).filter(i =>
+            existing[i]?.idea !== ideas[i].idea.trim() || (existing[i]?.style ?? 'photo') !== styleOf(i));
     const removed = only === null ? Object.keys(existing).filter(k => Number(k) >= ideas.length) : [];
 
     await ref.update({
@@ -57,7 +60,8 @@ async function main() {
 
     async function generate(i: number) {
         const idea = ideas[i];
-        const prompt = brollPrompt(idea.idea);
+        const style = styleOf(i);
+        const prompt = brollPrompt(idea.idea, style);
         try {
             const result = await openai.images.generate({
                 model: BROLL_MODEL, prompt, size: BROLL_SIZE, quality: BROLL_QUALITY, output_format: 'png', n: 1,
@@ -67,7 +71,7 @@ async function main() {
             const path = `episodes/${episodeId}/broll/${String(i + 1).padStart(2, '0')}-${Date.now()}.png`;
             await bucket.file(path).save(Buffer.from(b64, 'base64'), { contentType: 'image/png', resumable: false });
             const image: BrollImage = {
-                index: i, idea: idea.idea.trim(), startMs: idea.startMs, durationSeconds: idea.durationSeconds,
+                index: i, idea: idea.idea.trim(), style, startMs: idea.startMs, durationSeconds: idea.durationSeconds,
                 prompt, model: BROLL_MODEL, quality: BROLL_QUALITY, size: BROLL_SIZE, path,
                 usd: BROLL_USD_PER_IMAGE, createdAt: new Date(),
             };
@@ -78,7 +82,7 @@ async function main() {
                 'costs.totalUsd': FieldValue.increment(BROLL_USD_PER_IMAGE),
                 updatedAt: FieldValue.serverTimestamp(),
             });
-            console.log(`  ✅ ${i + 1}: ${idea.idea.slice(0, 70)}`);
+            console.log(`  ✅ ${i + 1} (${style}): ${idea.idea.slice(0, 70)}`);
         } catch (error) {
             const message = (error as Error).message;
             console.error(`  ❌ ${i + 1}: ${message}`);
