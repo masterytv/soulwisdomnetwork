@@ -20,7 +20,9 @@ app/api/      server routes; every one must call requireRole() (see Roles below)
 context/      React context providers
 agent/src/    scout.ts — YouTube scorer, runs in GitHub Actions, NOT on App Hosting
               podcast/ingest.ts — spec 005 steps 1-3, also GitHub Actions only
-              podcast/notes.ts — spec 005 step 5 (show notes with Claude), GitHub Actions only
+              podcast/notes.ts — spec 005 step 5 (show notes with Claude), GitHub Actions only;
+              the prompt and call are in podcast/notesDraft.ts, shared with podcast/compareNotes.ts
+              (podcast_notes_compare.yml: side-by-side models/efforts, read-only, run by hand)
               podcast/broll.ts — spec 005 step 7 (b-roll images), GitHub Actions only
               podcast/package.ts — spec 005 step 8 part 1 (edit package for Descript), GitHub Actions only
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
