@@ -120,7 +120,7 @@ export function EditPackage({ episodeId, enabled, upToDate }: { episodeId: strin
                             ? "Build the edit package first; Descript gets the same files."
                             : d?.status === "ready"
                                 ? `Made ${d.finishedAt ? ago(d.finishedAt) : ""}${d.mediaMinutes != null ? ` · ${d.mediaMinutes} media minutes` : ""}${d.aiCredits ? ` · ${d.aiCredits} AI credits` : ""}. Edit it in Descript; that is the final cut.`
-                                : "Makes a Descript project: the \u201cIn this episode\u201d clips then the full episode on one timeline, filler words removed and Studio Sound on, b-roll images in the media bin. Uses the Descript plan\u2019s media minutes and AI credits."}
+                                : "Makes a Descript project: the \u201cIn this episode\u201d clips, the intro and the full episode on one timeline, filler words removed and Studio Sound on, b-roll images in the media bin. Uses the Descript plan\u2019s media minutes and AI credits."}
                 </p>
                 {d?.status === "ready" && d.agentResponse && <p className="text-xs text-gray-400">Underlord: {d.agentResponse}</p>}
                 {d?.status === "ready" && d.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}

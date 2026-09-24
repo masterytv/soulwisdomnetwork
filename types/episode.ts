@@ -104,6 +104,7 @@ export interface EpisodePackage {
     notesVersion?: number;                // the approved notes it was built from
     files?: string[];                     // names, in folder order
     clipPaths?: string[];                 // teaser clips in Cloud Storage, in order
+    introPath?: string | null;            // the show's intro in Cloud Storage
     warnings?: string[];
 }
 

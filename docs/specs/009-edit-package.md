@@ -19,6 +19,7 @@ API (part 2). The folder also works on its own: download it and drag it into Des
 | File | What |
 |---|---|
 | `00 Full episode - <title>.mp4` | A Drive copy of the original recording (server-side; nothing is downloaded) |
+| `00 Intro - Soul Wisdom Collective.mp4` | The show's 3-second intro, from `assets/podcast/intro.mp4` in the repo |
 | `01 In this episode - clip N (m.ss-m.ss) <speaker>.mp4` | Each approved teaser clip, cut from the original at full quality, in order, with 0.3 s before and 0.6 s after so no word is clipped |
 | `02 B-roll N at m.ss for Ns.png` | Each b-roll image, named with where it goes and for how long |
 | `Notes - <title>.txt` | Chosen title; the clip order with words and files; chapters; b-roll timings, styles and reasons; key quotes |
@@ -40,6 +41,13 @@ Times are in the full, unedited episode; they shift once filler words and cuts a
 
 Missing or out-of-date b-roll images do not stop the build; they are listed as warnings on
 the page and in the email. A request that has not finished within 70 minutes counts as failed.
+
+## The intro
+
+The show's intro is `assets/podcast/intro.mp4` in this repo (added 24 Sept 2026: 3 s,
+1920x1080, 30 fps, AAC stereo; the logo animation with "A modern conversation on
+consciousness & spirituality"). To change it, replace that file; builds after the change use
+the new one. A package built without it (the file missing) says so in its warnings.
 
 ## Data
 
@@ -66,9 +74,11 @@ reference at https://docs.descriptapi.com, open beta).
    in the Descript folder **Soul Wisdom Podcast**, editable by everyone on the Descript drive.
    Media come from Cloud Storage as signed links valid 36 hours: the teaser clips (the package
    job also saves them to `episodes/{id}/package/`), the original recording, and the b-roll
-   images. Media folders in the project: `In this episode/`, `Full episode/`, `B-roll/`.
+   images, and the intro (the package job also saves it to `episodes/{id}/package/intro.mp4`).
+   Media folders in the project: `In this episode/`, `Intro/`, `Full episode/`, `B-roll/`.
 2. **Timeline**: one composition, **Episode** (1920x1080): the "In this episode" clips in
-   order, then the full episode. The API places clips one after another only, so b-roll is not
+   order, then the intro, then the full episode (order decided 24 Sept 2026: the hook first,
+   then the brand). The API places clips one after another only, so b-roll is not
    placed; its file names say where each image goes.
 3. **Clean-up** (`POST /jobs/agent`): Underlord is asked to remove filler words and apply
    Studio Sound on that composition, and nothing else. If it cannot, the project still counts
@@ -92,4 +102,4 @@ to the shared Descript drive). The workflow must be on `main` before the website
 
 - Step 10: publish the finished composition through the API (`POST /jobs/publish` returns a
   download link) and normalise loudness, instead of downloading by hand.
-- Intro and outro files (spec 005 section 9), added before and after the episode on the timeline.
+- An outro, once there is one, after the episode on the timeline.
