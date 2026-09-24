@@ -112,6 +112,7 @@ export interface PackageView {
     builtFromVersion: number | null;    // approved notes version, to spot a stale package
     notesApproved: boolean;
     approvedVersion: number | null;
+    clipsStored: boolean;           // false for packages built before the Descript step
     descript: {
         status: EpisodeDescript['status'] | null;
         error: string | null;
