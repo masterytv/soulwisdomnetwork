@@ -41,9 +41,16 @@ The full YouTube description is assembled in code (`youtubeDescription`): the te
 link to soulwisdomcollective.com, the chapters, a subscribe line and the hashtags. The link
 is always there, whatever the text says.
 
-**Model:** Claude Opus 5 (`claude-opus-5`), adaptive thinking, effort `high`, structured
-outputs, streamed (up to 64k output tokens for twenty long quotes), with server-side refusal fallback on. About $0.30–0.60 per episode, recorded in the
-episode's costs as `show_notes`.
+**Model:** Claude Opus 5.5 (`claude-opus-5-5`), adaptive thinking, effort `high` (set
+explicitly: Opus 5.5 defaults to `medium`), structured outputs, streamed (up to 64k output
+tokens for twenty long quotes), with server-side refusal fallback on. About $0.20 per
+episode, recorded in the episode's costs as `show_notes`.
+
+Chosen over Claude Opus 5 by a side-by-side run on pt1 (`podcast_notes_compare.yml`,
+Sept 2026): Opus 5 at `high` took 146 s and $0.40; Opus 5.5 at `high` 70 s and $0.20, and
+picked the teaser clip the producer had added by hand. Opus 5.5 at `medium` ($0.15) once
+stated a guest's experience as fact, so `high` it is. Re-run the comparison before changing
+the model or effort again.
 
 ## Flow
 
