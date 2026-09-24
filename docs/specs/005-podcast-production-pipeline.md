@@ -42,7 +42,7 @@ Fourteen steps. The numbers in brackets map to the ten steps discussed in planni
 | 5 | AI produces summary, tags, themes, topics, chapters, key quotes, title options, description, the "In this episode" teaser script, and b-roll suggestions **[3]** | Automatic | 1 |
 | 6 | **Checkpoint B — approve the plan:** metadata, teaser copy, and which b-roll goes where | Human, ~10 min | 1 |
 | 7 | Generate the approved b-roll images, one button on the notes page (`docs/specs/008-broll-images.md`) **[5]** | Human starts, then automatic | 1 |
-| 8 | Pipeline creates one Descript project with the episode (filler words removed, Studio Sound), each approved "In this episode" clip as its own file, the b-roll images, intro, outro and a notes file **[4]** | Automatic | 1 |
+| 8 | Pipeline creates one Descript project with the episode (filler words removed, Studio Sound), each approved "In this episode" clip as its own file, the b-roll images, intro, outro and a notes file. Part 1, a Drive folder to drag into Descript, is built (`docs/specs/009-edit-package.md`) **[4]** | Human starts, then automatic | 1 |
 | 9 | **Checkpoint C — the human edit, in Descript.** Descript is the final say: arrange the teaser clips, place b-roll, taste cuts, fixes | Human, 20-40 min | 1 |
 | 10 | Pipeline pulls the finished cut back and normalizes loudness **[6]** | Automatic | 1 |
 | 11 | **Re-transcribe the finished video.** This becomes the permanent record, and fixes the chapter times | Automatic | 1 |

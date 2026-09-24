@@ -22,8 +22,9 @@ agent/src/    scout.ts — YouTube scorer, runs in GitHub Actions, NOT on App Ho
               podcast/ingest.ts — spec 005 steps 1-3, also GitHub Actions only
               podcast/notes.ts — spec 005 step 5 (show notes with Claude), GitHub Actions only
               podcast/broll.ts — spec 005 step 7 (b-roll images), GitHub Actions only
+              podcast/package.ts — spec 005 step 8 part 1 (edit package for Descript), GitHub Actions only
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-008
+docs/specs/   numbered specs, 001-009
 types/
 ```
 
@@ -80,7 +81,9 @@ to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.y
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
 (`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. Once notes are approved, "Generate b-roll
 images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
-`docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. Descript is the final edit
+`docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. "Build edit package" starts
+`podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
+the episode, teaser clips, b-roll and notes in `03 For Descript/<episode>`. Descript is the final edit
 (spec 005 step 9); the pipeline will use Descript's API with a `DESCRIPT_API_TOKEN` secret. The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
 `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`. Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
