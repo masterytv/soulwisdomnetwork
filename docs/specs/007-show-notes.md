@@ -27,7 +27,7 @@ checking edits on the server, and by the page):
 | `chapters` | Start time and title; first at 0:00 |
 | `quotes` | Up to 20, word for word, a sentence to a two-minute passage; every guest gets one or two, including guests heard in recordings played during the episode. Producers can add their own and send any quote to the teaser |
 | `tags`, `themes`, `topics` | YouTube tags; broad themes; specific people, books and ideas |
-| `broll` | Six still-image ideas with start time and duration (spec 005 section 3, option A) |
+| `broll` | Six still-image ideas with start time, duration and style, Photoreal or Digital (spec 005 section 3, option A; `docs/specs/008-broll-images.md`) |
 
 The transcript is sent with each paragraph stamped in milliseconds. Quotes and teaser clips
 are then matched word for word against the accepted transcript's words (`locate` in

@@ -60,6 +60,7 @@ export async function getBroll(id: string): Promise<BrollView> {
     const images = await Promise.all(Object.values(b?.images ?? {}).map(async image => ({
         index: image.index,
         idea: image.idea,
+        style: image.style ?? 'photo',
         url: (await adminBucket().file(image.path).getSignedUrl({ action: 'read', expires: Date.now() + IMAGE_LINK_MS }))[0],
         model: image.model,
         prompt: image.prompt,
