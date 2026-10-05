@@ -13,9 +13,7 @@ import type { Cut, EpisodeEdit } from '@/lib/edit';
 import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
-
-// The playback speeds offered beside the Edited / Original switch.
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
+import { SPEEDS } from '@/lib/studioUi';
 
 interface SpeakerPara {
     speaker: string;
@@ -547,6 +545,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
 
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
+            {/* Help line: how to edit, and the keys on Undo and Redo. */}
+            <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
                 <button onClick={onSuggest} className={primary}>
@@ -555,10 +555,10 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 <button onClick={onClearSuggestions} className={secondary}>
                     Clear suggestions
                 </button>
-                <button onClick={undo} className={secondary} disabled={!canUndo}>
+                <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
                     Undo
                 </button>
-                <button onClick={redo} className={secondary} disabled={!canRedo}>
+                <button onClick={redo} className={secondary} disabled={!canRedo} title="Ctrl or ⌘ + Y">
                     Redo
                 </button>
                 <button type="button" onClick={() => setHelpOpen(o => !o)} aria-expanded={helpOpen} aria-label="Editing help"
