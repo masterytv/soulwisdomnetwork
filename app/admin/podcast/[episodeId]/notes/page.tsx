@@ -1071,7 +1071,7 @@ export default function ShowNotesPage() {
                                             only with the env switch and the view loaded. */}
                                         {process.env.NEXT_PUBLIC_EDITOR_LIGHT === '1' && view && (
                                             <Part title="Edit here instead (preview)"
-                                                aside={<Link href={`/admin/podcast/${episodeId}/edit`} className="text-sm text-amber-300 hover:underline">Open the full-page editor →</Link>}>
+                                                aside={<Link href={`/admin/podcast/${episodeId}/studio-editor`} className="text-sm text-amber-300 hover:underline">Open the Studio editor →</Link>}>
                                                 <EditorLightStage
                                                     episodeId={episodeId}
                                                     words={view.words}
@@ -1088,7 +1088,7 @@ export default function ShowNotesPage() {
                                     {sinceStage === "final" && changedSince}
                                     {lightFlow && view && (
                                         <Part title="Edit"
-                                            aside={<Link href={`/admin/podcast/${episodeId}/edit`} className="text-sm text-amber-300 hover:underline">Open the full-page editor →</Link>}>
+                                            aside={<Link href={`/admin/podcast/${episodeId}/studio-editor`} className="text-sm text-amber-300 hover:underline">Open the Studio editor →</Link>}>
                                             <EditorLightStage
                                                 episodeId={episodeId}
                                                 words={view.words}
