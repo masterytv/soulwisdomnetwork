@@ -53,10 +53,12 @@ export async function startIngest(inputs: { skip_wait?: boolean; dry_run?: boole
 }
 
 // Drafts show notes for one episode (spec 005 step 5).
-export async function startNotes(episodeId: string) {
+// `mode` 'extras' writes the social posts and follow-up email instead (spec 007).
+export async function startNotes(episodeId: string, mode: 'notes' | 'extras' = 'notes') {
     await github('/actions/workflows/podcast_notes.yml/dispatches', {
         method: 'POST',
-        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId } }),
+        // Notes runs send no mode, so they work with the workflow as it was before modes.
+        body: JSON.stringify({ ref: 'main', inputs: mode === 'notes' ? { episode_id: episodeId } : { episode_id: episodeId, mode } }),
     });
 }
 
