@@ -13,8 +13,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit } from '@/lib/edit';
 import {
-    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, SUGGESTED_REASONS, HESITATION_REASONS,
+    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, SUGGESTED_REASONS, HESITATION_REASONS,
 } from '@/lib/edit';
+import { hasFillers } from '@/lib/fillers';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
@@ -506,6 +507,11 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
         for (const c of edit.cuts) counts[c.reason] = (counts[c.reason] || 0) + 1;
         return counts;
     }, [edit.cuts]);
+    // What each kind saves on its own, beside its count.
+    const reasonSaved = useMemo(() => savedByReason(edit.cuts) as Record<string, number>, [edit.cuts]);
+    // Transcripts made with `disfluencies` on have their "um"s as words, so there is nothing to
+    // guess from silences: Mark hesitations is only offered for older ones.
+    const fillersTranscribed = useMemo(() => hasFillers(words), [words]);
 
     // Suggested cuts (reason not 'manual'), sorted by start time.
     const suggestedCuts = useMemo(() =>
@@ -594,10 +600,12 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 <button onClick={onSuggest} className={primary}>
                     Mark filler words and long pauses
                 </button>
-                <button onClick={onHesitations} className={secondary}
-                    title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
-                    Mark hesitations
-                </button>
+                {!fillersTranscribed && (
+                    <button onClick={onHesitations} className={secondary}
+                        title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
+                        Mark hesitations
+                    </button>
+                )}
                 <button onClick={onClearSuggestions} className={secondary}>
                     Clear suggestions
                 </button>
@@ -634,7 +642,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                                 ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
                                 : `${secondary} px-2 py-0.5`}
                         >
-                            {label} {count}
+                            {label} {count}{reasonSaved[reason] ? ` · ${mmss(reasonSaved[reason])}` : ''}
                         </button>
                     );
                 })}

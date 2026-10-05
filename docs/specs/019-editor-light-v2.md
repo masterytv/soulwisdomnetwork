@@ -91,7 +91,7 @@ for this work".
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Not started (retakes exist, #130) |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Not started |
-| 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Partly done (#130) |
+| 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Done (#130, #136); the count on the real episode waits on Tom |
 | **2** | **Editing precision** | | | | | |
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 |
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 |
@@ -312,17 +312,21 @@ labelled "um". Nobody reviews that many one at a time.
 - Marking again replaces that kind's suggestions instead of adding them twice.
 - Each kind's count filters the review, and **Clear these** removes one kind (1.4).
 
+**Done in #136:**
+- **Ingest records** `transcription.disfluencies` (AssemblyAI echoes the option). The editor
+  decides from the words themselves (`hasFillers` in `lib/fillers.ts`: any "um" or "uh" written
+  out), so older episodes need no backfill: **Mark hesitations** shows only when the transcript
+  has none. 1.2 later finds the ones AssemblyAI missed, from the audio.
+- **Repeats:** only a stammer: the same speaker, inside one sentence (the first word ends no
+  `. ? !`), and the second word within 300 ms of the first (`REPEAT_GAP_MS`).
+- **Time saved per kind** beside each count (`savedByReason`: a kind's cuts with overlaps counted
+  once).
+
 **Left:**
-- **Record at ingest** whether the transcript has fillers: `transcript.disfluencies: true`, from
-  masterytv/soulwisdomnetwork#126 on. For those episodes, hide **Mark hesitations** (real "um"s
-  are words); 1.2 later finds the ones AssemblyAI missed, from the audio.
-- **Hesitations on older episodes:** never in a gap that 1.1 measures as silent, once 1.1 exists.
-- **Repeats:** only within one sentence, and only when the second word follows within 300 ms,
-  so a word said again for emphasis after a pause is left alone. Check on the episode which of
-  the 300 repeats were real stammers before settling the numbers.
-- **Time saved per kind** beside each count.
-- **Measure** on the same episode, and write the before and after counts in spec 015. Aim for
-  under 300 suggestions an hour that the producer mostly keeps.
+- **Hesitations on older episodes:** never in a gap that 1.1 measures as silent; part of 1.1.
+- **Measure (Tom):** on the 49-minute episode, **Clear suggestions** then **Mark**, and write the
+  counts per kind in spec 015. Check which repeats were real stammers before settling 300 ms.
+  Aim for under 300 suggestions an hour that the producer mostly keeps.
 
 ## Phase 2 — Editing precision
 

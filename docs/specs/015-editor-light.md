@@ -31,7 +31,8 @@ transcript beside it, a timeline underneath, and saving and rendering pinned in 
 - Search finds words.
 
 **Suggestions.** **Mark filler words and long pauses** suggests cuts; **Mark hesitations** adds
-the guessed ones (below). Marking again replaces that kind's earlier suggestions. The counts
+the guessed ones (below), and only shows when the transcript has no "um"s written out (episodes
+transcribed before `disfluencies` was on). Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
 (Fillers, Repeats, Pauses, Hesitations, Retakes) filter the review, and **Clear these** removes
 one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
 before deciding.
@@ -80,7 +81,8 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - filler words (`lib/fillers.ts`): `um`, `uh`, `er`, `erm`, `uhm`, `hm`, `hmm` and `mhm`, however many
   letters they are written with. Ingest turns on AssemblyAI's `disfluencies` option, so they are in
   the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
-- immediate repeats, keeping the last;
+- immediate repeats, keeping the last, when they are a stammer: the same speaker, inside one
+  sentence, the second word within 300 ms of the first;
 - pauses over 1.2 s, shortened to 0.5 s;
 - only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
   sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before

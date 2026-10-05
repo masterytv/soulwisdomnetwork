@@ -378,6 +378,7 @@ export interface Episode {
         speakerIdStatus?: string | null;
         speakerMapping?: Record<string, string>;
         speakers?: DetectedSpeaker[];
+        disfluencies?: boolean;           // "um" and "uh" written out as words (from 5 October 2026)
     };
     review?: {
         transcriptTextPath?: string;      // readable transcript in Cloud Storage
