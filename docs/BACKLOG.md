@@ -28,7 +28,9 @@ it here when it ships.
 
 ## Editor Light (replacing Descript)
 
-- Being built in a fork from `docs/specs/015-editor-light.md` (to come with the first PR).
+- **Editor Light v2** (`docs/specs/019-editor-light-v2.md`): the best ideas from Rescript, CutScript,
+  auto-editor, DeepFilterNet and Auphonic, in phases, to start once the current plan is done. The
+  research behind it is `docs/research/2026-10-05-open-source-editors.md`.
 
 ## Studio
 

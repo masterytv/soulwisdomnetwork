@@ -167,3 +167,6 @@ within two frames of its flash, with and without the voice cleanup.
 - Editing on a phone: a Cut button and touch selection.
 - A faster render for long episodes: one encode instead of two, and resuming a failed run from
   its last block.
+
+The rest is planned in `docs/specs/019-editor-light-v2.md` (the faster render is its item 4.2),
+from a review of open-source editors (`docs/research/2026-10-05-open-source-editors.md`).
