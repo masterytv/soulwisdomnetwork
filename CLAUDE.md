@@ -40,7 +40,10 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
               final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-018; docs/BACKLOG.md lists features agreed for later
+docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
+              019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor;
+              docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
+docs/research/ dated research reports behind the specs
 types/
 ```
 

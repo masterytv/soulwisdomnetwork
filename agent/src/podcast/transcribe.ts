@@ -15,6 +15,8 @@ export async function submitTranscription(client: Client, audioFile: string, spe
     const transcript = await withRetry('AssemblyAI submit', () => client.transcripts.submit({
         audio: uploadUrl,
         speech_models: speechModels,
+        // Writes out "um" and "uh", so the editor can find and cut them (docs/specs/015-editor-light.md).
+        disfluencies: true,
         speaker_labels: true,
         speech_understanding: {
             request: {
