@@ -7,13 +7,15 @@
 // it off). A cut's edges can be dragged, and a stretch of time selected on the waveform and cut
 // (spec 019 item 2.2); a whole drag is one undo step. The playhead follows the video itself, so
 // playing redraws only the playhead, not the editor and its transcript.
+// Item E3: the Blade tool (B) splits where it is clicked; the sections between splits show as clips
+// on V1, whose ends can be dragged to trim them (as the producer's own cuts); a click selects one.
 
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
-import { keepRanges, sectionAt, type Cut, type KeptRange, type Section } from '@/lib/edit';
+import { keepRanges, keptBounds, MIN_PART_MS, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
 import type { Overlay } from '@/lib/onScreen';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
 import { thumbAt, type ThumbSheets } from '@/lib/thumbs';
@@ -32,14 +34,16 @@ export interface TimelineMedia {
     thumbs: ThumbSheets | null;
 }
 
-// What is selected on the timeline: a stretch of time (Delete cuts it), or a cut (by its times).
+// What is selected on the timeline: a stretch of time (Delete cuts it), a cut (by its times), or a
+// section between splits (Delete cuts it whole).
 export type TimelineSelection =
     | { kind: 'range'; startMs: number; endMs: number }
-    | { kind: 'cut'; startMs: number; endMs: number };
+    | { kind: 'cut'; startMs: number; endMs: number }
+    | { kind: 'section'; startMs: number; endMs: number };
 
-// Splits: set at the playhead, they divide the episode into sections, as in Descript. The section
-// under the playhead is shaded and can be cut or brought back whole; click a split's handle to
-// remove it. Shown when the editor passes `onSplit`.
+// Splits: set at the playhead (S) or with the Blade tool, they divide the episode into sections, as
+// in Descript. A selected section can be cut or brought back whole; click a split's handle to
+// remove it.
 export interface SplitControls {
     splits: number[];
     onSplit: (ms: number) => void;
@@ -86,10 +90,13 @@ function hatch(ctx: CanvasRenderingContext2D, color: string, offsetPx: number): 
     return p;
 }
 
+// A section between splits, and what of it the cuts keep (null: cut whole).
+interface Part { section: Section; kept: Section | null }
+
 interface DrawInput {
     width: number; a1H: number; startMs: number; pxPerMs: number; totalMs: number;
     levels: Int8Array[] | null; thumbs: ThumbSheets | null; images: Map<string, HTMLImageElement>;
-    cuts: Cut[]; removed: KeptRange[]; blocks: SpeakerBlock[]; colors: Record<string, string>; splits: number[];
+    cuts: Cut[]; removed: KeptRange[]; blocks: SpeakerBlock[]; colors: Record<string, string>; splits: number[]; parts: Part[];
 }
 
 // Draws the ruler, the episode's pictures and speakers, the waveform, the cuts and the splits for
@@ -204,6 +211,19 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
         }
     }
 
+    // Sections as clips on V1: a gap at each split, and a bracket at each end of what is kept of
+    // them, where they can be trimmed.
+    ctx.fillStyle = '#0b0619';
+    for (const sp of d.splits) if (sp >= startMs && sp <= endMs) ctx.fillRect(x(sp) - 1.5, V1_TOP, 3, V1_H);
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    for (const p of d.parts) {
+        if (!p.kept || p.kept.endMs < startMs || p.kept.startMs > endMs) continue;
+        const a = x(p.kept.startMs), b = x(p.kept.endMs);
+        if (b - a < 16) continue;
+        ctx.fillRect(a, V1_TOP, 2, THUMB_H); ctx.fillRect(a, V1_TOP, 6, 2); ctx.fillRect(a, V1_TOP + THUMB_H - 2, 6, 2);
+        ctx.fillRect(b - 2, V1_TOP, 2, THUMB_H); ctx.fillRect(b - 6, V1_TOP, 6, 2); ctx.fillRect(b - 6, V1_TOP + THUMB_H - 2, 6, 2);
+    }
+
     // Splits: a dashed line over the lanes.
     ctx.strokeStyle = 'rgba(255,255,255,0.75)';
     ctx.setLineDash([4, 3]);
@@ -290,47 +310,18 @@ function cutShare(cuts: Cut[], s: Section): number {
     return covered / len;
 }
 
-// Split at the playhead, and cut or bring back the section under it (#130). Follows the video on
-// its own, a few times a second.
-function SectionBar({ split, cuts, video, totalMs }: {
-    split: SplitControls; cuts: Cut[]; video: React.RefObject<HTMLVideoElement | null>; totalMs: number;
+// Split at the playhead (S). Follows the video on its own, a few times a second.
+function SplitButton({ split, video, totalMs, disabled }: {
+    split: SplitControls; video: React.RefObject<HTMLVideoElement | null>; totalMs: number; disabled: boolean;
 }) {
     const currentMs = useVideoTime(video);
-    const section = sectionAt(split.splits, Math.round(currentMs), totalMs);
-    const share = cutShare(cuts, section);
-    const atSplit = split.splits.includes(Math.round(currentMs));
     return (
-        <>
-            <button
-                onClick={() => split.onSplit(Math.round(currentMs))}
-                disabled={atSplit || currentMs <= 0 || currentMs >= totalMs}
-                title={`Split at the playhead, ${tickLabel(currentMs)} (S)`}
-                className={`${secondary} px-2 py-0.5 shrink-0`}
-            >✂ Split</button>
-            <span className="text-gray-400 truncate min-w-0" title="The section under the playhead, between two splits">
-                Section {tickLabel(section.startMs)}–{tickLabel(section.endMs)}
-                {share >= 0.999 ? ' · cut' : share > 0 ? ` · ${Math.round(share * 100)}% cut` : ''}
-            </span>
-            {share < 0.999 && (
-                <button onClick={() => split.onCutSection(section)} title="Cut this section" className={`${secondary} px-2 py-0.5 shrink-0`}>Cut section</button>
-            )}
-            {share > 0 && (
-                <button onClick={() => split.onRestoreSection(section)} title="Bring this section back" className={`${secondary} px-2 py-0.5 shrink-0`}>Bring section back</button>
-            )}
-        </>
-    );
-}
-
-// The section under the playhead, shaded once there are splits.
-function SectionShade({ splits, video, totalMs, startMs, pxPerMs }: {
-    splits: number[]; video: React.RefObject<HTMLVideoElement | null>; totalMs: number; startMs: number; pxPerMs: number;
-}) {
-    const currentMs = useVideoTime(video);
-    if (!splits.length) return null;
-    const s = sectionAt(splits, Math.round(currentMs), totalMs);
-    return (
-        <div aria-hidden className="absolute bg-amber-300/10 pointer-events-none"
-            style={{ left: (s.startMs - startMs) * pxPerMs, width: (s.endMs - s.startMs) * pxPerMs, top: RULER_H, bottom: 0 }} />
+        <button
+            onClick={() => split.onSplit(Math.round(currentMs))}
+            disabled={disabled || split.splits.includes(Math.round(currentMs)) || currentMs <= 0 || currentMs >= totalMs}
+            title={`Split at the playhead, ${tickLabel(currentMs)} (S)`}
+            className={`${secondary} px-2 py-0.5 shrink-0`}
+        >✂ Split</button>
     );
 }
 
@@ -340,7 +331,11 @@ type Drag =
         kind: 'edge'; cut: Cut; edge: 'start' | 'end'; base: Cut[]; kept: SpokenWord[];
         limits: [number, number]; free: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Cut[];
     }
-    | { kind: 'range'; anchor: number; ms: number; guide: number | null; x0: number; moved: boolean; targets: number[][] };
+    | { kind: 'range'; anchor: number; ms: number; guide: number | null; x0: number; moved: boolean; targets: number[][] }
+    | {
+        kind: 'trim'; section: Section; edge: 'start' | 'end'; base: Cut[]; from: number;
+        limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Cut[];
+    };
 
 const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10 aria-pressed:text-amber-300';
 
@@ -387,6 +382,10 @@ export function Timeline({
     const [snapOn, setSnapOn] = useState(true);
     const [locked, setLocked] = useState(false);
     const [muted, setMuted] = useState(false);
+    // The tool: Select (V) picks, drags and trims; Blade (B) splits where it is clicked.
+    const [tool, setTool] = useState<'select' | 'blade'>('select');
+    // Where the Blade would split, under the pointer.
+    const [bladeAt, setBladeAt] = useState<number | null>(null);
     // Thumbnail sheets loaded so far: each one that arrives redraws the pictures.
     const [loadedSheets, setLoadedSheets] = useState(0);
     const images = useRef(new Map<string, HTMLImageElement>());
@@ -440,7 +439,7 @@ export function Timeline({
     }, [video, startMs, pxPerMs, size.w, zoomTo]);
     const zoomBy = useCallback((factor: number) => zoomAt(pxPerMs * factor), [zoomAt, pxPerMs]);
 
-    // + and − zoom from anywhere in the editor, except while typing.
+    // + and − zoom, V and B pick the tool, from anywhere in the editor, except while typing.
     useEffect(() => {
         const el = keys?.current;
         if (!el) return;
@@ -449,6 +448,9 @@ export function Timeline({
             if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || e.ctrlKey || e.metaKey || e.altKey) return;
             if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomBy(2); }
             else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomBy(0.5); }
+            else if (e.key === 'v' || e.key === 'V') { setTool('select'); setBladeAt(null); }
+            else if (e.key === 'b' || e.key === 'B') setTool('blade');
+            else if (e.key === 'Escape') { setTool('select'); setBladeAt(null); }
         };
         el.addEventListener('keydown', onKey);
         return () => el.removeEventListener('keydown', onKey);
@@ -485,11 +487,14 @@ export function Timeline({
     const edgesOfCuts = useMemo(() => cuts.flatMap(c => [c.startMs, c.endMs]).sort((a, b) => a - b), [cuts]);
     const keptAll = useMemo(() => keptWords(words, cuts), [words, cuts]);
     const splits = useMemo(() => split?.splits ?? [], [split?.splits]);
+    const sections = useMemo(() => sectionsOf(splits, totalMs), [splits, totalMs]);
 
-    // While a cut's edge is dragged, the timeline shows the edit as it would be.
-    const shownCuts = drag?.kind === 'edge' ? drag.draft : cuts;
-    const removed = useMemo(() => removedRanges(drag?.kind === 'edge' ? keepRanges(totalMs, drag.draft, 40, words) : ranges, totalMs),
-        [drag, ranges, totalMs, words]);
+    // While a cut's edge or a section's end is dragged, the timeline shows the edit as it would be.
+    const draft = drag?.kind === 'edge' || drag?.kind === 'trim' ? drag.draft : null;
+    const shownCuts = draft ?? cuts;
+    const parts = useMemo(() => sections.map(section => ({ section, kept: keptBounds(shownCuts, section) })), [sections, shownCuts]);
+    const removed = useMemo(() => removedRanges(draft ? keepRanges(totalMs, draft, 40, words) : ranges, totalMs),
+        [draft, ranges, totalMs, words]);
 
     // Thumbnail sheets for the part in view and a view either side, loaded as needed.
     useEffect(() => {
@@ -523,9 +528,9 @@ export function Timeline({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         drawTimeline(ctx, {
             width: size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, images: images.current,
-            cuts: shownCuts, removed, blocks, colors, splits,
+            cuts: shownCuts, removed, blocks, colors, splits, parts,
         });
-    }, [size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, shownCuts, removed, blocks, colors, splits, loadedSheets]);
+    }, [size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, shownCuts, removed, blocks, colors, splits, parts, loadedSheets]);
 
     if (totalMs <= 0) return null;
 
@@ -535,6 +540,26 @@ export function Timeline({
     const inView = cuts.filter(c => c.endMs >= startMs && c.startMs <= endMs);
     const grabbable = inView.filter(c => c === selectedCut || (c.endMs - c.startMs) * pxPerMs >= GRAB_PX);
     const pickable = inView.filter(c => c === selectedCut || (c.endMs - c.startMs) * pxPerMs >= PICK_PX);
+    // The selected section, while its splits are still there.
+    const selectedSection = selection?.kind === 'section'
+        ? sections.find(sec => sec.startMs === selection.startMs && sec.endMs === selection.endMs) : undefined;
+
+    // The end of a section's kept part near a moment, on V1: drag it to trim the section. At a split
+    // both sections have an end in the same place: the one on the pointer's side wins.
+    const trimAt = (ms: number) => {
+        let best: { part: Part; edge: 'start' | 'end'; d: number; inside: boolean } | null = null;
+        for (const part of parts) {
+            const k = part.kept;
+            if (!k || (k.endMs - k.startMs) * pxPerMs < 16) continue;
+            for (const edge of ['start', 'end'] as const) {
+                const at = edge === 'start' ? k.startMs : k.endMs;
+                const d = Math.abs(ms - at), inside = edge === 'start' ? ms >= at : ms <= at;
+                if (d > EDGE_PX / pxPerMs) continue;
+                if (!best || d < best.d - 0.5 / pxPerMs || (Math.abs(d - best.d) <= 0.5 / pxPerMs && inside && !best.inside)) best = { part, edge, d, inside };
+            }
+        }
+        return best;
+    };
 
     const pointAt = (e: { clientX: number; clientY: number }) => {
         const r = lanesRef.current!.getBoundingClientRect();
@@ -559,6 +584,26 @@ export function Timeline({
         if (lane === 'ruler') { onSeek(ms); setDrag({ kind: 'scrub' }); return; }
         if (lane === 'v2') { onSeek(ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
+        // The Blade splits where it is clicked, between words unless Alt is held.
+        if (tool === 'blade') {
+            if (!locked && split) {
+                const p = place(ms, e.altKey, words, [0, totalMs], [0, totalMs], targets);
+                if (p.ms > 0 && p.ms < totalMs) split.onSplit(p.ms);
+            }
+            return;
+        }
+        // On V1, the ends of what a section keeps trim it.
+        const trim = !locked && lane === 'v1' ? trimAt(ms) : null;
+        if (trim) {
+            const { section, kept } = trim.part;
+            const from = trim.edge === 'start' ? kept!.startMs : kept!.endMs;
+            setDrag({
+                kind: 'trim', section, edge: trim.edge, base: cuts, from, targets, ms: from, guide: null, draft: cuts,
+                limits: trim.edge === 'start' ? [section.startMs, kept!.endMs - MIN_PART_MS] : [kept!.startMs + MIN_PART_MS, section.endMs],
+            });
+            if (splits.length) onSelect({ kind: 'section', startMs: section.startMs, endMs: section.endMs });
+            return;
+        }
         if (!locked) {
             const hit = edgeAt(grabbable, ms, EDGE_PX / pxPerMs);
             if (hit) {
@@ -581,7 +626,9 @@ export function Timeline({
             setDrag({ kind: 'range', anchor: p.ms, ms: p.ms, guide: p.guide, x0: px, moved: false, targets });
             return;
         }
-        onSelect(null);
+        // A click on V1 selects the section there, once there are splits, and jumps there.
+        const at = sectionAt(splits, ms, totalMs);
+        onSelect(lane === 'v1' && splits.length ? { kind: 'section', startMs: at.startMs, endMs: at.endMs } : null);
         onSeek(ms);
     };
 
@@ -589,18 +636,25 @@ export function Timeline({
         const { px, py, ms } = pointAt(e);
         const drag = dragRef.current;
         if (!drag) {
-            // Only the cursor changes on hover: no redraw.
+            // On hover only the cursor changes (and the Blade's line moves).
             const lane = laneAt(py);
             let cursor = 'pointer';
-            if (lane === 'v1' || lane === 'a1') {
-                if (!locked && edgeAt(grabbable, ms, EDGE_PX / pxPerMs)) cursor = 'ew-resize';
+            if (tool === 'blade' && (lane === 'v1' || lane === 'a1')) {
+                cursor = locked ? 'not-allowed' : 'crosshair';
+                if (!locked) setBladeAt(place(ms, e.altKey, words, [0, totalMs], [0, totalMs], [[timeOf(video)], edgesOfWords, edgesOfCuts, splits]).ms);
+            } else if (lane === 'v1' || lane === 'a1') {
+                if (tool === 'blade') setBladeAt(null);
+                if (!locked && ((lane === 'v1' && trimAt(ms)) || edgeAt(grabbable, ms, EDGE_PX / pxPerMs))) cursor = 'ew-resize';
                 else if (!cutAt(pickable, ms) && lane === 'a1' && !locked) cursor = 'text';
-            }
+            } else if (tool === 'blade') setBladeAt(null);
             e.currentTarget.style.cursor = cursor;
             return;
         }
         if (drag.kind === 'scrub') onSeek(ms);
-        else if (drag.kind === 'edge') {
+        else if (drag.kind === 'trim') {
+            const p = place(ms, e.altKey, words, drag.limits, drag.limits, drag.targets);
+            if (p.ms !== drag.ms || p.guide !== drag.guide) setDrag({ ...drag, ms: p.ms, guide: p.guide, draft: trimSection(drag.base, drag.section, drag.edge, p.ms) });
+        } else if (drag.kind === 'edge') {
             const p = place(ms, e.altKey, drag.kept, drag.limits, drag.free, drag.targets);
             if (p.ms !== drag.ms || p.guide !== drag.guide) setDrag({ ...drag, ms: p.ms, guide: p.guide, draft: moveCutEdge(drag.base, drag.cut, drag.edge, p.ms) });
         } else {
@@ -619,6 +673,8 @@ export function Timeline({
                 const moved = drag.draft[drag.base.indexOf(drag.cut)];
                 onSelect({ kind: 'cut', startMs: moved.startMs, endMs: moved.endMs });
             }
+        } else if (drag.kind === 'trim') {
+            if (drag.ms !== drag.from) onCuts(drag.draft);
         } else if (drag.kind === 'range') {
             if (!drag.moved) { onSelect(null); onSeek(pointAt(e).ms); }
             else {
@@ -652,9 +708,18 @@ export function Timeline({
 
     return (
         <section aria-label="Timeline" className="h-full min-h-[190px] flex flex-col gap-1.5 rounded-lg bg-[#130b29] border border-white/5 p-2 select-none">
-            {/* Tools: zoom, snapping, what is selected, and the section controls, on one line so the
-                lanes never move under the pointer. */}
+            {/* Tools: the tool, zoom, snapping, what is selected, and Split, on one line so the lanes
+                never move under the pointer. */}
             <div className="flex items-center gap-2 text-xs whitespace-nowrap overflow-hidden">
+                {(['select', 'blade'] as const).map(t => (
+                    <button key={t} type="button" aria-pressed={tool === t} onClick={() => { setTool(t); setBladeAt(null); }}
+                        title={t === 'select' ? 'Select (V): pick, drag and trim' : 'Blade (B): split where you click, between words unless Alt is held'}
+                        className={tool === t
+                            ? 'text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10 shrink-0'
+                            : `${secondary} px-2 py-0.5 shrink-0`}>
+                        {t === 'select' ? '▸ Select' : '✂ Blade'}
+                    </button>
+                ))}
                 <button aria-label="Zoom out" title="Zoom out (−)" disabled={view.zoom === null} onClick={() => zoomBy(0.5)} className={`${secondary} px-2 py-0.5 shrink-0`}>−</button>
                 <input type="range" aria-label="Zoom" min={0} max={1000} value={slider} disabled={span <= 0}
                     onChange={e => zoomAt(fit * Math.exp(Number(e.target.value) / 1000 * span))}
@@ -683,8 +748,25 @@ export function Timeline({
                         </>}
                     </span>
                 )}
+                {selectedSection && split && (() => {
+                    const share = cutShare(cuts, selectedSection);
+                    return (
+                        <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                            <span className="text-amber-200 truncate min-w-0">
+                                Section {preciseTime(selectedSection.startMs)}–{preciseTime(selectedSection.endMs)} ({((selectedSection.endMs - selectedSection.startMs) / 1000).toFixed(2)} s{share >= 0.999 ? ', cut' : share > 0 ? `, ${Math.round(share * 100)}% cut` : ''})
+                            </span>
+                            {share < 0.999 && (
+                                <button onClick={() => split.onCutSection(selectedSection)} disabled={locked} title="Cut this section (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Cut section</button>
+                            )}
+                            {share > 0 && (
+                                <button onClick={() => split.onRestoreSection(selectedSection)} disabled={locked} title="Bring this section back" className={`${secondary} px-2 py-0.5 shrink-0`}>Bring back</button>
+                            )}
+                            <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
+                        </span>
+                    );
+                })()}
                 <span className="grow" />
-                {split && <SectionBar split={split} cuts={cuts} video={video} totalMs={totalMs} />}
+                {split && <SplitButton split={split} video={video} totalMs={totalMs} disabled={locked} />}
             </div>
 
             <div className="flex flex-1 min-h-0">
@@ -751,7 +833,11 @@ export function Timeline({
                                 onPointerCancel={() => setDrag(null)}
                                 onDoubleClick={onDoubleClick}
                             >
-                                {split && <SectionShade splits={splits} video={video} totalMs={totalMs} startMs={startMs} pxPerMs={pxPerMs} />}
+                                {/* The selected section. */}
+                                {selectedSection && (
+                                    <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300/80 bg-amber-300/5"
+                                        style={{ left: x(selectedSection.startMs), width: (selectedSection.endMs - selectedSection.startMs) * pxPerMs, top: V1_TOP, bottom: 1 }} />
+                                )}
 
                                 {/* V2: the on-screen items; click one to jump to it. */}
                                 {overlays.filter(o => o.atMs + o.seconds * 1000 >= startMs && o.atMs <= endMs).map(o => (
@@ -767,8 +853,8 @@ export function Timeline({
                                     />
                                 ))}
 
-                                {/* Splits: a handle on the ruler removes one. */}
-                                {splits.filter(s => s >= startMs && s <= endMs).map(s => (
+                                {/* Splits: a handle on the ruler removes one (not while locked). */}
+                                {!locked && splits.filter(s => s >= startMs && s <= endMs).map(s => (
                                     <button
                                         key={s}
                                         type="button"
@@ -780,6 +866,13 @@ export function Timeline({
                                         style={{ left: x(s) - 6, top: RULER_H - 13 }}
                                     >×</button>
                                 ))}
+
+                                {/* Where the Blade would split. */}
+                                {tool === 'blade' && bladeAt !== null && !drag && (
+                                    <div aria-hidden className="absolute pointer-events-none w-px bg-amber-300" style={{ left: x(bladeAt), top: RULER_H, bottom: 0 }}>
+                                        <span className="absolute -top-0 left-1 rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap">✂ {preciseTime(bladeAt)}</span>
+                                    </div>
+                                )}
 
                                 {/* The chosen stretch of time. */}
                                 {range && (

@@ -15,6 +15,7 @@ import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
     keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
+    keptBounds,
     type UnspokenSpan,
 } from '@/lib/edit';
 import { hasFillers } from '@/lib/fillers';
@@ -328,6 +329,13 @@ export function Editor({
                 const { startMs, endMs } = timelineSel;
                 updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }] }));
                 setTimelineSel(null);
+                return;
+            }
+            // A section selected on the timeline: Delete cuts it whole (unless it is cut already).
+            if (timelineSel?.kind === 'section' && (e.key === 'Delete' || e.key === 'Backspace')) {
+                e.preventDefault();
+                const section = { startMs: timelineSel.startMs, endMs: timelineSel.endMs };
+                if (keptBounds(edit.cuts, section)) updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) }));
                 return;
             }
             // Arrows step a frame (with Shift, a second) in the Studio editor, except on a divider,
