@@ -42,10 +42,10 @@ export function loadConfig() {
     return {
         serviceAccountJson,
         assemblyAiKey: required('ASSEMBLYAI_API_KEY'),
-        // The Drive inbox is optional: without these, only recordings uploaded in the Studio are processed.
+        // Needed unless the Studio settings turn Drive off (ingest.ts checks).
         toProcessFolderId: process.env.DRIVE_TO_PROCESS_FOLDER_ID || '',
         processedFolderId: process.env.DRIVE_PROCESSED_FOLDER_ID || '',
-        bucket: storageBucket(JSON.parse(serviceAccountJson)),
+        bucket: storageBucket(),
         speechModels: speechModels(),
         costCapUsd: Number(process.env.PODCAST_EPISODE_COST_CAP_USD || 5),
         workDir: process.env.RUNNER_TEMP || '/tmp',

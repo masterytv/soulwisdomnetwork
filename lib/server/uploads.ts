@@ -11,6 +11,7 @@ import type { Episode } from '@/types/episode';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { startIngest } from './github';
 import { HttpError } from './staff';
+import { ESTIMATE_USD, withinDailyLimit } from './spending';
 import { getSettings } from './studioSettings';
 
 export type UploadKind = 'episode' | 'logo' | 'intro';
@@ -20,6 +21,11 @@ const TYPES: Record<UploadKind, RegExp> = {
     episode: /^video\//,
     logo: /^image\/(png|jpeg)$/,
     intro: /^video\/(mp4|quicktime)$/,
+};
+// What the file must start with: the browser names its own content type, so the bytes are checked.
+const MAGIC: Partial<Record<UploadKind, (head: Buffer) => boolean>> = {
+    logo: h => h.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) || h.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])),
+    intro: h => h.subarray(4, 8).toString('latin1') === 'ftyp',
 };
 const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
 
@@ -39,7 +45,7 @@ export async function startUpload(body: { kind?: string; fileName?: string; cont
     if (!fileName || !TYPES[kind].test(contentType)) {
         throw new HttpError(400, kind === 'logo' ? 'The logo must be a PNG or JPEG image' : kind === 'intro' ? 'The intro must be an MP4 or MOV video' : 'Choose a video recording (an MP4 from Zoom works)');
     }
-    if (!(size > 0) || size > MAX_BYTES[kind]) throw new HttpError(400, `That file is too large (the limit is ${MAX_BYTES[kind] / 1e9} GB)`);
+    if (!(size > 0) || size > MAX_BYTES[kind]) throw new HttpError(400, `That file is too large (the limit is ${MAX_BYTES[kind] >= 1e9 ? `${MAX_BYTES[kind] / 1e9} GB` : `${MAX_BYTES[kind] / 1e6} MB`})`);
     if (!/^https?:\/\/[^/\s]+$/.test(origin)) throw new HttpError(400, 'Upload from the Studio page');
 
     let episodeId: string | null = null;
@@ -50,8 +56,35 @@ export async function startUpload(body: { kind?: string; fileName?: string; cont
     } else {
         path = `settings/${kind}-${Date.now()}.${EXT[contentType] ?? 'bin'}`;
     }
-    const [uploadUrl] = await adminBucket().file(path).createResumableUpload({ origin, metadata: { contentType } });
-    return { uploadUrl, path, episodeId };
+    const link = async () => {
+        const [uploadUrl] = await adminBucket().file(path).createResumableUpload({ origin, metadata: { contentType } });
+        return { uploadUrl, path, episodeId };
+    };
+    // A recording is transcribed (AssemblyAI) as soon as it arrives, so it counts against the
+    // daily spending limit before the upload starts.
+    return kind === 'episode' ? withinDailyLimit('transcribing an upload', ESTIMATE_USD.upload, link) : link();
+}
+
+// Checks what actually arrived in Storage, since the upload link does not limit it: the type,
+// the size and, for logos and intros, the first bytes. A file that fails is deleted.
+export async function checkUploaded(kind: UploadKind, path: string) {
+    const file = adminBucket().file(path);
+    const [exists] = await file.exists();
+    if (!exists) throw new HttpError(409, 'The upload did not finish; try again');
+    const [meta] = await file.getMetadata();
+    const size = Number(meta.size ?? 0);
+    let ok = TYPES[kind].test(String(meta.contentType ?? '')) && size > 0 && size <= MAX_BYTES[kind];
+    const magic = MAGIC[kind];
+    if (ok && magic) {
+        const [head] = await file.download({ start: 0, end: 15 });
+        ok = magic(head);
+    }
+    if (!ok) {
+        await file.delete().catch(() => {});
+        throw new HttpError(400, kind === 'logo' ? 'That file is not a PNG or JPEG image under 5 MB'
+            : kind === 'intro' ? 'That file is not an MP4 or MOV video under 2 GB' : 'That file is not a video under 20 GB');
+    }
+    return meta;
 }
 
 // After the browser has sent the recording: make the episode and start processing it.
@@ -61,9 +94,7 @@ export async function finishEpisodeUpload(body: { episodeId?: string; path?: str
     if (!/^up[a-z0-9]{12,}$/.test(episodeId) || !path.startsWith(`episodes/${episodeId}/source/`)) {
         throw new HttpError(400, 'Not an upload from this Studio');
     }
-    const [exists] = await adminBucket().file(path).exists();
-    if (!exists) throw new HttpError(409, 'The upload did not finish; try again');
-    const [meta] = await adminBucket().file(path).getMetadata();
+    const meta = await checkUploaded('episode', path);
     const fileName = path.slice(path.lastIndexOf('/') + 1);
     const title = String(body.title ?? '').trim().slice(0, 150) || episodeTitle(fileName);
     const settings = await getSettings();

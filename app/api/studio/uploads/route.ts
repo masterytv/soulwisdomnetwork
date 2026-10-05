@@ -7,10 +7,10 @@ import { handle, HttpError, requireRole, STUDIO_ROLES } from '@/lib/server/staff
 export const dynamic = 'force-dynamic';
 
 export const POST = handle(async request => {
+    const { role } = await requireRole(request, STUDIO_ROLES);
     const body = await request.json().catch(() => ({})) as Record<string, unknown>;
-    const kind = body.kind;
-    await requireRole(request, body.action === 'start' && kind !== 'episode' ? ['admin'] : STUDIO_ROLES);
     if (body.action === 'start') {
+        if (body.kind !== 'episode' && role !== 'admin') throw new HttpError(403, 'Only an admin can change the logo or intro');
         return Response.json(await startUpload(body, request.headers.get('origin') ?? ''));
     }
     if (body.action === 'finish') return Response.json(await finishEpisodeUpload(body));

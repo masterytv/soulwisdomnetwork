@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
-import type { TimedWord } from '../../../lib/retime';
+import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
@@ -187,20 +187,44 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
         updatedAt: deps.now(),
-        ...(settings.finalSource === 'editorLight' ? await asFinalCut(episodeId, episode, plan, result, workDir, deps) : {}),
+        ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps) : {}),
     });
-    // The previous render is no longer used. Only folders of their own are removed.
+    // The previous render is no longer used, unless it is still the final cut (the settings
+    // changed back to Descript since). Only folders of their own are removed.
     const previous = episode.editRender?.videoPath ? path.posix.dirname(episode.editRender.videoPath) : null;
-    if (deps.removeFolder && previous && previous !== prefix && previous.startsWith(`${base}/`)) {
+    const finalNow = settings.finalSource === 'editorLight' ? prefix
+        : episode.final?.videoPath ? path.posix.dirname(episode.final.videoPath) : null;
+    if (deps.removeFolder && previous && previous !== prefix && previous !== finalNow && previous.startsWith(`${base}/`)) {
         await deps.removeFolder(previous).catch(error => console.warn(`⚠️ Could not remove the previous render: ${(error as Error).message}`));
     }
     return result;
 }
 
+// Chapters as YouTube wants them, the same rule final.ts applies (lib/retime.ts retimeChapters):
+// the first at 0:00, the rest in order and at least 10 seconds apart. The teasers and intro come
+// before the first chapter's time, so it is moved to the start; one that a cut or a neighbour
+// left too close is dropped with a warning.
+export function tidyChapters(chapters: { title: string; originalMs: number; startMs: number }[]) {
+    const out: typeof chapters = [];
+    const warnings: string[] = [];
+    for (const [i, c] of chapters.entries()) {
+        const startMs = i === 0 ? 0 : c.startMs;
+        const prev = out[out.length - 1];
+        if (prev && startMs - prev.startMs < MIN_CHAPTER_MS) {
+            warnings.push(`Chapter "${c.title}" would start within 10 seconds of "${prev.title}" in the render, so it was left out.`);
+            continue;
+        }
+        out.push({ ...c, startMs });
+    }
+    if (out.length && out.length < 3) warnings.push('YouTube needs at least three chapters to show them.');
+    return { chapters: out, warnings };
+}
+
 // With the Editor Light render chosen as the final cut (Studio settings), it stands in for the
 // one from Descript: the same `final` record, with the words, chapter and quote times on the
-// rendered video, so the thumbnails, Shorts and YouTube steps work from it unchanged.
-async function asFinalCut(episodeId: string, episode: Episode, plan: EditRenderPlan, result: EditRenderResult,
+// rendered video, so the thumbnails, Shorts and YouTube steps work from it unchanged. Its words
+// go in the render's own folder; the record is written with the render's, after every upload.
+async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan, result: EditRenderResult,
     workDir: string, deps: EditRenderDeps): Promise<Record<string, unknown>> {
     let wordsPath: string | null = null;
     const wordsFile = path.join(workDir, 'episode.words.json');
@@ -209,13 +233,14 @@ async function asFinalCut(episodeId: string, episode: Episode, plan: EditRenderP
         const words = (JSON.parse(fs.readFileSync(wordsFile, 'utf8')) as TimedWord[]).map(w => ({ text: w.text, start: w.start, end: w.end }));
         const local = path.join(workDir, 'final-words.json');
         fs.writeFileSync(local, JSON.stringify({ words }));
-        wordsPath = `episodes/${episodeId}/editRender/final-words.json`;
+        wordsPath = `${prefix}/final-words.json`;
         await deps.upload(local, wordsPath, 'application/json');
     }
     const moved = path.join(workDir, 'episode.chapters.json');
     const timed = fs.existsSync(moved)
         ? JSON.parse(fs.readFileSync(moved, 'utf8')) as { chapters: { startMs: number }[]; quotes: { startMs: number; endMs: number }[] }
         : { chapters: [], quotes: [] };
+    const tidy = tidyChapters(plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs })));
     return {
         final: {
             status: 'ready',
@@ -225,13 +250,13 @@ async function asFinalCut(episodeId: string, episode: Episode, plan: EditRenderP
             ...(wordsPath ? { wordsPath } : {}),
             ...(result.driveFileId ? { driveFileId: result.driveFileId, driveUrl: result.driveUrl, folderUrl: result.folderUrl } : {}),
             durationSeconds: result.durationSeconds,
-            chapters: plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs })),
+            chapters: tidy.chapters,
             quotes: plan.quotes.map((q, i) => ({
                 text: q.text, speaker: q.speaker, originalMs: q.startMs,
                 startMs: timed.quotes[i]?.startMs ?? q.startMs, endMs: timed.quotes[i]?.endMs ?? q.endMs,
             })),
             notesVersion: episode.notes?.status === 'approved' ? episode.notes.approvedVersion ?? 0 : null,
-            warnings: result.warnings,
+            warnings: [...result.warnings, ...tidy.warnings],
             startedAt: deps.now(),
             finishedAt: deps.now(),
             error: null,

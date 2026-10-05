@@ -34,8 +34,6 @@ initializeApp({ credential: cert(serviceAccount), storageBucket: config.bucket }
 const db = getFirestore();
 const bucket = getStorage().bucket();
 const drive = createDrive(serviceAccount);
-// The Drive inbox is used when its folders are set and the Studio settings have not turned it off.
-const driveFolders = !!(config.toProcessFolderId && config.processedFolderId);
 const assembly = createAssemblyAI(config.assemblyAiKey);
 
 async function storageHas(objectPath: string | undefined) {
@@ -324,7 +322,13 @@ async function main() {
     const candidates = settings.hosts;
     const failures: Failure[] = [];
 
-    if (driveFolders && settings.useDrive) {
+    // The Drive inbox is used unless the Studio settings turn it off; then its folders must be
+    // set, so a missing repo variable fails the run instead of quietly skipping Drive.
+    if (settings.useDrive) {
+        if (!config.toProcessFolderId || !config.processedFolderId) {
+            throw new Error('DRIVE_TO_PROCESS_FOLDER_ID and DRIVE_PROCESSED_FOLDER_ID must be set (repo variables), ' +
+                'or turn off "Recordings also come in through Google Drive" in the Studio settings');
+        }
         const inboxName = await checkFolderAccess(drive, config.toProcessFolderId, 'To Process');
         const doneName = await checkFolderAccess(drive, config.processedFolderId, 'Processed');
         console.log(`🔑 Drive access OK: "${inboxName}" and "${doneName}"`);
@@ -348,7 +352,7 @@ async function main() {
             }
         }
     } else {
-        console.log('📂 No Drive inbox set up; processing Studio uploads only.');
+        console.log('📂 Drive is turned off in the Studio settings; processing Studio uploads only.');
     }
 
     // Recordings uploaded in the Studio that are not through yet (a failure that is not

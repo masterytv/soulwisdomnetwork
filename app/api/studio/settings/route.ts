@@ -1,5 +1,5 @@
 // Studio settings (lib/studioSettings.ts): anyone in the Studio can read them; only an admin
-// can change them, since they choose the GitHub repository that runs the jobs.
+// can change them, since they shape every job's writing and the final cut.
 import { getSettingsView, saveSettings } from '@/lib/server/studioSettings';
 import { handle, requireRole, STUDIO_ROLES } from '@/lib/server/staff';
 

@@ -29,7 +29,7 @@ if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';
 const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
-initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket(serviceAccount) });
+initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket() });
 const ref = getFirestore().collection('episodes').doc(episodeId);
 const bucket = getStorage().bucket();
 const drive = createDrive(serviceAccount);

@@ -1,12 +1,13 @@
 // Studio settings: every choice that was fixed to the Soul Wisdom Collective podcast, as an
-// option kept in Firestore (settings/studio). With no settings saved, every value is the one
+// option kept in Firestore (studio/settings). With no settings saved, every value is the one
 // the Studio always used, so Tom's flow is unchanged; another user sets their own show name,
 // branding, speakers, kind of recording and writing, intro, and where the finished video
 // comes from. Shared by the Studio pages, the server routes and the GitHub Actions jobs.
 
 import { z } from 'zod';
 
-export const SETTINGS_DOC = { collection: 'settings', id: 'studio' } as const;
+// Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
+export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
 
 // The kind of recording, which shapes how Claude writes the notes, Shorts and thumbnails.
 export const FORMATS = ['podcast', 'meeting', 'talk', 'other'] as const;
@@ -41,7 +42,6 @@ export const StudioSettingsSchema = z.object({
     teasers: z.boolean(),                         // "In this episode" clips before the intro
     finalSource: z.enum(['descript', 'editorLight']),
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
-    githubRepo: z.string().trim().regex(/^[\w.-]+\/[\w.-]+$/, 'Use owner/repository'),
 });
 
 export type StudioSettings = z.infer<typeof StudioSettingsSchema>;
@@ -66,7 +66,6 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     teasers: true,
     finalSource: 'descript',
     useDrive: true,
-    githubRepo: 'masterytv/soulwisdomnetwork',
 };
 
 // Whatever is saved, filled out with the defaults; anything that no longer fits is ignored, so

@@ -54,7 +54,7 @@ if (!['titles', 'render', 'upload'].includes(mode)) throw new Error(`Not a short
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';
 const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
-initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket(serviceAccount) });
+initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket() });
 const db = getFirestore();
 const ref = db.collection('episodes').doc(episodeId);
 const bucket = getStorage().bucket();

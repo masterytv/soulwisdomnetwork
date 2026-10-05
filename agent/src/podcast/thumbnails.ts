@@ -45,7 +45,7 @@ const onlyImage = process.env.THUMB_ONLY === 'image';
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';
 const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
-initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket(serviceAccount) });
+initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket() });
 const ref = getFirestore().collection('episodes').doc(episodeId);
 const bucket = getStorage().bucket();
 const workDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'thumbnails', episodeId);

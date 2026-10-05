@@ -29,7 +29,7 @@ if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${
 const only = process.env.BROLL_INDEX ? Number(process.env.BROLL_INDEX) : null;
 if (only !== null && !(Number.isInteger(only) && only >= 0)) throw new Error(`Not a valid b-roll index: ${process.env.BROLL_INDEX}`);
 const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
-initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket(serviceAccount) });
+initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket() });
 const ref = getFirestore().collection('episodes').doc(episodeId);
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';

@@ -214,9 +214,6 @@ export default function StudioSettingsPage() {
                                     <input type="checkbox" checked={s.useDrive} onChange={e => set("useDrive", e.target.checked)} disabled={off} className="mt-1" />
                                     <span>Recordings also come in through Google Drive<span className={`block ${hint}`}>Turn off to work only with recordings uploaded on the Studio page.</span></span>
                                 </label>
-                                <Field label="GitHub repository that runs the jobs" help="owner/repository, e.g. yourname/soulwisdomnetwork.">
-                                    <input className={field} value={s.githubRepo} onChange={e => set("githubRepo", e.target.value)} disabled={off} />
-                                </Field>
                             </Section>
 
                             {isAdmin && (

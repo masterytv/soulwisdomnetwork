@@ -5,6 +5,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { SETTINGS_DOC, StudioSettingsSchema, withDefaults, type StudioSettings } from '@/lib/studioSettings';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
+import { checkUploaded } from './uploads';
 
 const LINK_MS = 60 * 60_000;
 
@@ -39,6 +40,8 @@ export async function saveSettings(input: unknown, uid: string): Promise<StudioS
     const s = parsed.data;
     if (!ownFile(s.logoPath) || !ownFile(s.introPath)) throw new HttpError(400, 'Upload the logo and intro on the Settings page');
     if (s.intro === 'custom' && !s.introPath) throw new HttpError(400, 'Upload your intro video, or choose another intro option');
+    if (s.logoPath) await checkUploaded('logo', s.logoPath);
+    if (s.introPath) await checkUploaded('intro', s.introPath);
     await ref().set({ ...s, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
     return s;
 }
