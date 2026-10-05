@@ -53,12 +53,22 @@ async function cleanTrack(video: string, out: string, clean: 'light' | 'strong',
 
 // Per-range audio: trim, format and a short fade at each join so cuts don't click.
 function audioFilter(segDur: number, fadeSecs: number): string {
-    let af = `atrim=duration=${segDur.toFixed(3)},asetpts=PTS-STARTPTS`;
+    let af = `atrim=duration=${segDur.toFixed(6)},asetpts=PTS-STARTPTS`;
     af += ',aformat=sample_rates=48000:channel_layouts=stereo';
     if (segDur > fadeSecs * 2)
-        af += `,afade=t=in:d=${fadeSecs},afade=t=out:st=${(segDur - fadeSecs).toFixed(3)}:d=${fadeSecs}`;
+        af += `,afade=t=in:d=${fadeSecs},afade=t=out:st=${(segDur - fadeSecs).toFixed(6)}:d=${fadeSecs}`;
     return af;
 }
+
+// The render's frame rate. Each kept stretch becomes a whole number of frames, counted from where it
+// starts and ends in the edited episode, so the finished video keeps to the edit's times (within half
+// a frame) however many cuts there are. Rounding each stretch up on its own, as before, made a long
+// edit run later and later: about 20 ms a cut, so captions and chapters drifted.
+export const FPS = 30;
+export const frameAt = (ms: number) => Math.round(ms * FPS / 1000);
+// The frames a stretch of the play order fills.
+export const framesOf = (clip: { startMs: number; endMs: number; atMs: number }) =>
+    Math.max(1, frameAt(clip.atMs + clip.endMs - clip.startMs) - frameAt(clip.atMs));
 
 // ─── types ──────────────────────────────────────────────────────────────────
 
@@ -197,7 +207,8 @@ export async function renderEdit(opts: {
                 const bSegA: string[] = [];
                 for (let i = 0; i < block.ranges.length; i++) {
                     const r = block.ranges[i];
-                    const segDur = (r.endMs - r.startMs) / 1000;
+                    const frames = framesOf(r);
+                    const segDur = frames / FPS;
                     const seekStart = (r.startMs / 1000).toFixed(3);
                     const seekLen = (segDur + 1).toFixed(3);
                     // Video input: seeked from the original video.
@@ -208,7 +219,7 @@ export async function renderEdit(opts: {
                     }
                     const vIdx = i * (cleanedAudio ? 2 : 1);
                     const aIdx = cleanedAudio ? vIdx + 1 : vIdx;
-                    bFilter += `[${vIdx}:v]trim=duration=${segDur.toFixed(3)},setpts=PTS-STARTPTS,${FILL_1080},format=yuv420p[bsv${i}];`;
+                    bFilter += `[${vIdx}:v]fps=${FPS},trim=end_frame=${frames},setpts=PTS-STARTPTS,${FILL_1080},format=yuv420p[bsv${i}];`;
                     bFilter += `[${aIdx}:a]${audioFilter(segDur, fadeSecs)}[bsa${i}];`;
                     bSegV.push(`bsv${i}`);
                     bSegA.push(`bsa${i}`);
@@ -220,7 +231,7 @@ export async function renderEdit(opts: {
                 bFilter += `${interleaved.map(l => `[${l}]`).join('')}concat=n=${bSegV.length}:v=1:a=1[bov][boa];`;
 
                 blockArgs.push('-filter_complex', bFilter, '-map', '[bov]', '-map', '[boa]');
-                blockArgs.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30');
+                blockArgs.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS));
                 blockArgs.push('-c:a', 'pcm_s16le', '-ar', '48000', blockFile);
                 await run('ffmpeg', blockArgs);
                 blockFiles.push(blockFile);
@@ -347,7 +358,7 @@ export async function renderEdit(opts: {
         const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error'];
         for (const inp of inputs) args.push('-i', inp);
         args.push('-filter_complex', filter, '-map', '[outv]', '-map', '[outa]');
-        args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30');
+        args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS));
         args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', rawOut);
         await run('ffmpeg', args);
 

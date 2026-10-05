@@ -146,9 +146,14 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - the reviewed transcript.
 2. **Clean the voice**, once, over the whole sound track: highpass at 80 Hz, `afftdn`, and a gentle
    `acompressor`.
-3. **Cut, in blocks.** The kept ranges go into blocks of up to 15 minutes or 20 ranges. Each
-   block seeks into the source once per range, with a 15 ms fade at every join, and is encoded
-   on its own. The blocks are then joined.
+3. **Cut, in blocks.** The kept ranges, in their play order (`lib/sequence.ts`), go into blocks of up
+   to 15 minutes or 20 ranges. Each block seeks into the source once per range, with a 15 ms fade at
+   every join, and is encoded on its own. The blocks are then joined. Each range becomes a whole
+   number of frames, counted from where it starts and ends in the edited episode (`framesOf`), so the
+   video keeps to the edit's times within half a frame however many cuts there are. Until 5 October
+   2026 each range was rounded up to a whole frame on its own, which made the video about 20 ms longer
+   per cut than the edit: on a 49-minute episode with 1,000 cuts, captions, chapters and quotes near
+   the end would have been about 20 s late.
 4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
    placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
    normalized to −14 LUFS.
@@ -234,7 +239,10 @@ Fixed when this came into the main repo:
 - **Dead code.** The unreachable single-pass render branch was removed.
 
 Checked with a one-minute flash-and-beep clip and 40 cuts. Every beep that survives the cuts is
-within two frames of its flash, with and without the voice cleanup.
+within two frames of its flash, with and without the voice cleanup. Checked again on 5 October 2026
+after the frame counting above, with 30 cuts at uneven places: every beep within one frame of its
+flash (0–29 ms, not growing), and the video exactly as long as the edit (46.800 s for 46.8 s, where
+it had been 48.003 s).
 
 ## Next
 
