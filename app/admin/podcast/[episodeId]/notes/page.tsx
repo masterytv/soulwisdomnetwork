@@ -27,6 +27,10 @@ import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } f
 import { locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { studioFetch } from "@/lib/studioClient";
 import type { EpisodeNotesView } from "@/types/studio";
+import { Editor } from "@/components/studio/editor";
+import type { EpisodeEdit } from "@/lib/edit";
+import type { SpokenWord } from "@/lib/showNotes";
+import type { EditRenderView } from "@/lib/server/editRender";
 
 type NotesView = NonNullable<EpisodeNotesView["notes"]>;
 
@@ -143,6 +147,100 @@ const stageFor = (anchor: string): StageId | undefined =>
 
 const sameStep = (a: StepState | undefined, b: StepState) => !!a && a.done === b.done && a.failed === b.failed && a.working === b.working
     && a.summary === b.summary && a.key === b.key && a.link?.href === b.link?.href && a.link?.label === b.link?.label;
+
+// Editor Light (spec 015): loads the edit via GET, saves via PUT with useAutosave,
+// and renders the Editor component. Shown only when NEXT_PUBLIC_EDITOR_LIGHT=1.
+function EditorLightStage({ episodeId, words, videoUrl }: { episodeId: string; words: SpokenWord[]; videoUrl: string }) {
+    const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
+    const [loaded, setLoaded] = useState(false);
+    const { change, reset, flush, saveState, saveError } = useAutosave<EpisodeEdit>(
+        async (value, version) => {
+            const res = await studioFetch<{ version: number }>(`/api/studio/episodes/${episodeId}/edit`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ edit: value, version }),
+            });
+            return res.version;
+        }
+    );
+
+    useEffect(() => {
+        studioFetch<{ edit: EpisodeEdit }>(`/api/studio/episodes/${episodeId}/edit`)
+            .then((data) => {
+                setEdit(data.edit);
+                reset(data.edit.version);
+                setLoaded(true);
+            })
+            .catch(() => { setLoaded(true); });
+    }, [episodeId, reset]);
+
+    // The render of the saved edit: checked on load and every 15 s while it runs.
+    const [render, setRender] = useState<EditRenderView | null>(null);
+    const [renderError, setRenderError] = useState('');
+    const loadRender = useCallback(() => {
+        studioFetch<EditRenderView>(`/api/studio/episodes/${episodeId}/edit-render`)
+            .then(setRender)
+            .catch(e => setRenderError((e as Error).message));
+    }, [episodeId]);
+    useEffect(() => { loadRender(); }, [loadRender]);
+    const rendering = !!render?.status && ['queued', 'downloading', 'rendering', 'saving'].includes(render.status);
+    useEffect(() => {
+        if (!rendering) return;
+        const timer = setInterval(loadRender, 15_000);
+        return () => clearInterval(timer);
+    }, [rendering, loadRender]);
+
+    // Saves any pending change first, so the render uses the edit as it is on screen.
+    const startRender = async () => {
+        setRenderError('');
+        if (!(await flush())) return;
+        try {
+            await studioFetch(`/api/studio/episodes/${episodeId}/edit-render`, { method: 'POST' });
+            loadRender();
+        } catch (e) {
+            setRenderError((e as Error).message);
+        }
+    };
+
+    if (!loaded) return <p className={small}>Loading editor…</p>;
+
+    return (
+        <>
+            {/* Save status in plain words, same labels and colours as the show notes autosave. */}
+            <p className={`${small} mb-2 ${saveState === 'error' ? 'text-red-300 font-bold' : saveState === 'saved' ? 'text-green-300' : 'text-gray-400'}`}>
+                {{ saved: '✓ Saved', unsaved: 'Unsaved changes…', saving: 'Saving…', error: 'Not saved' }[saveState]}
+                {saveState === 'error' && `: ${saveError}`}
+            </p>
+            <Editor
+                words={words}
+                videoUrl={videoUrl}
+                edit={edit}
+                onChange={(e) => { setEdit(e); change(e); }}
+            />
+            {/* Render this edit: GitHub Actions makes the finished video and saves it to "04 Final". */}
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+                <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
+                    {render?.status === 'ready' ? 'Render this edit again' : 'Render this edit'}
+                </button>
+                {rendering && <span className={small}>Rendering ({render?.status})… this can take a few hours for a long episode.</span>}
+                {render?.status === 'ready' && render.driveUrl && (
+                    <span className={small}>
+                        Rendered{render.durationSeconds !== null && ` (${mmss(render.durationSeconds * 1000)}, ${render.cuts ?? 0} cuts)`}:{' '}
+                        <a href={render.driveUrl} target="_blank" rel="noreferrer" className="text-amber-300 underline">open in Drive</a>
+                        {render.stale && ' · the edit has changed since; render again to include the changes'}
+                    </span>
+                )}
+                {render?.status === 'failed' && <span className="text-sm text-red-300">Render failed: {render.error}</span>}
+                {renderError && <span className="text-sm text-red-300">{renderError}</span>}
+            </div>
+            {render?.status === 'ready' && render.warnings.length > 0 && (
+                <ul className={`${small} mt-2 list-disc pl-5`}>
+                    {render.warnings.map(w => <li key={w}>{w}</li>)}
+                </ul>
+            )}
+        </>
+    );
+}
 
 export default function ShowNotesPage() {
     const { episodeId } = useParams<{ episodeId: string }>();
@@ -892,6 +990,15 @@ export default function ShowNotesPage() {
                                         <NeedsApproval what="build the edit package" approved={!!approved} busy={busy || drafting} onApprove={approve} onDiscard={discard} />
                                     )}
                                     <EditPackage episodeId={episodeId} enabled={on} upToDate={upToDate} report={report} revision={revision} />
+                                    {process.env.NEXT_PUBLIC_EDITOR_LIGHT === '1' && view && (
+                                        <Part title="Edit here instead (preview)">
+                                            <EditorLightStage
+                                                episodeId={episodeId}
+                                                words={view.words}
+                                                videoUrl={view.videoUrl ?? ''}
+                                            />
+                                        </Part>
+                                    )}
                                 </Stage>
 
                                 <Stage {...stageProps("final")} intro="When the edit in Descript is finished: the finished edit, published from Descript, set to broadcast loudness and saved to Drive, with the chapter times moved onto it.">
