@@ -47,6 +47,31 @@ function findCut(index: number, words: SpokenWord[], cuts: Cut[]): Cut | undefin
     return cuts.find(c => words[index].start >= c.startMs && words[index].end <= c.endMs);
 }
 
+// Which cut covers each word, and which cuts sit in the silence before each word, worked out
+// once per edit. Checking every word against every cut on each render is too slow for a
+// two-hour episode with hundreds of cuts. Words are in time order; with overlapping cuts the
+// first in the list wins, as findCut does.
+function cutMaps(words: SpokenWord[], cuts: Cut[]) {
+    const wordCut: (Cut | undefined)[] = new Array(words.length);
+    const gapCuts: Cut[][] = Array.from({ length: words.length }, () => []);
+    const firstStartingAtOrAfter = (ms: number) => {
+        let lo = 0, hi = words.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (words[mid].start < ms) lo = mid + 1; else hi = mid; }
+        return lo;
+    };
+    for (const c of cuts) {
+        for (let i = firstStartingAtOrAfter(c.startMs); i < words.length && words[i].start < c.endMs; i++) {
+            if (words[i].end <= c.endMs && !wordCut[i]) wordCut[i] = c;
+        }
+        // The gap before word i holds the cut when the cut lies between words[i-1] and words[i]
+        // (50 ms slack either side, as the transcript shows it).
+        for (let i = Math.max(1, firstStartingAtOrAfter(c.endMs - 50)); i < words.length && c.startMs >= words[i - 1].end - 50; i++) {
+            gapCuts[i].push(c);
+        }
+    }
+    return { wordCut, gapCuts };
+}
+
 // Format mm:ss from ms.
 function mmss(ms: number): string {
     const totalSec = Math.floor(ms / 1000);
@@ -103,6 +128,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
     const previewRef = useRef<{ endMs: number } | null>(null);
 
     const paras = useMemo(() => groupBySpeaker(words), [words]);
+    const cutsByWord = useMemo(() => cutMaps(words, edit.cuts), [words, edit.cuts]);
     const [videoDuration, setVideoDuration] = useState(0);
     const ranges = useMemo(() => keepRanges(
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
@@ -641,7 +667,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                             </p>
                             <p className="text-sm leading-relaxed text-gray-200">
                                 {para.words.map(({ word, index }, wi) => {
-                                    const wordCut = findCut(index, words, edit.cuts);
+                                    const wordCut = cutsByWord.wordCut[index];
                                     const cut = !!wordCut;
                                     const isManual = wordCut?.reason === 'manual';
                                     const isSelected = selectedRange &&
@@ -656,8 +682,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                                     // left out of the transcript), so every suggestion can be seen and undone.
                                     const prev = index > 0 ? words[index - 1] : null;
                                     const prevGap = prev ? word.start - prev.end : 0;
-                                    const gapCuts = prev ? edit.cuts.filter(c =>
-                                        c.startMs >= prev.end - 50 && c.endMs <= word.start + 50) : [];
+                                    const gapCuts = prev ? cutsByWord.gapCuts[index] : [];
                                     const gapCut = gapCuts.length > 0;
                                     const gapCutIsManual = gapCuts.every(c => c.reason === 'manual');
                                     const gapCutIsReview = reviewCut && gapCuts.some(c =>
