@@ -12,8 +12,6 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // A Firebase Hosting build output committed by mistake (docs/PLANNING.md, N3); not our code.
-    ".firebase/**",
   ]),
 ]);
 
