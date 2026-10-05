@@ -10,7 +10,7 @@ repeat it.
 **Related:** `docs/specs/005-podcast-production-pipeline.md` (stages),
 `docs/specs/010-final-cut.md`, `docs/specs/015-editor-light.md`,
 `docs/specs/018-studio-settings.md`, `docs/specs/020-studio-editor.md` (the full editing page,
-items E1–E7 below)
+items E1–E9 below)
 
 We keep our own editor and render, and add the best ideas from the alternatives. The goal is for
 Editor Light to replace Descript as the final edit, with:
@@ -89,11 +89,13 @@ Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days.
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | M | — | Not started |
 | E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | E1 | Not started |
-| E3 | Split, move and trim parts; everything in play order | ours | L | E2, decision U4 | Not started |
-| E4 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | E3 | Not started |
-| E5 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | E4 | Not started |
-| E6 | Music and effects tracks, fades, ducking | ours (ffmpeg) | M | E4, decision U2 | Not started |
-| E7 | Captions track and burned-in style; polish | ours | M | E5, decision U1 | Not started |
+| E3 | Split and trim parts (no moving yet, U4) | ours | M | E2 | Not started |
+| E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | E3 | Not started |
+| E5 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | E3 | Not started |
+| E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | E5 | Not started |
+| E7 | Music and effects tracks, fades, ducking | ours (ffmpeg), free libraries | M | E5 | Not started |
+| E8 | YouTube caption track on the timeline; polish | ours | M | E6 | Not started |
+| E9 | Later: move clips, drop a new intro or outro | ours | L | E4, Tom's go-ahead | Not started |
 | **3** | **Sound** | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | 0.2 | Not started |
 | 3.2 | The winner as a Studio setting | DeepFilterNet or Auphonic | M | 3.1 | Not started |
@@ -113,8 +115,8 @@ Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days.
   bury the useful ones.
 - Phase 2 makes the edits that remain quick and exact.
 - Phase E, the Studio editor, starts after Phase 1. E1–E3 come before the rest of Phase 2,
-  because 2.1 and 2.2 are built inside E2. E4–E7 can be done in any order after Phase 3 if sound
-  matters more.
+  because 2.1 and 2.2 are built inside E2. E4 (transitions) is next, because dissolve and fade
+  are needed now. E5–E8 can follow Phase 3 if sound matters more. E9 waits for Tom.
 - Phase 3 closes the last quality gap with Descript (Studio Sound).
 - Phase 4 makes renders fast and gives an escape hatch.
 - Phase 5 widens the pipeline.
@@ -539,7 +541,7 @@ lower thirds.
 | D5 | Will recordings have one audio track per speaker (spec 005 Stage 0's Zoom check)? | 3.3 |
 | D6 | Is the phase order right, or should something move up? | Phase 1 |
 
-The Studio editor's own decisions (U1–U5) are in spec 020.
+The Studio editor's decisions (U1–U5) are in spec 020, answered on 5 October 2026.
 
 ## How this fits spec 005's stages
 
