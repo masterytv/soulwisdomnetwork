@@ -13,9 +13,7 @@ import type { Cut, EpisodeEdit } from '@/lib/edit';
 import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
-
-// The playback speeds offered beside the Edited / Original switch.
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
+import { SPEEDS } from '@/lib/studioUi';
 
 interface SpeakerPara {
     speaker: string;
