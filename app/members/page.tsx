@@ -93,7 +93,7 @@ export default function MembersPage() {
 
                                     {member.bio && (
                                         <p className="text-sm text-ocean-600 dark:text-ocean-300 mb-6 line-clamp-2 italic">
-                                            "{member.bio}"
+                                            &ldquo;{member.bio}&rdquo;
                                         </p>
                                     )}
 

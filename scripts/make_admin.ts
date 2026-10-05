@@ -13,7 +13,7 @@ interface UserProfile {
     photoURL: string | null;
     role: 'admin' | 'user';
     bio?: string;
-    createdAt: any;
+    createdAt: unknown;
 }
 
 dotenv.config({ path: '.env.local' });

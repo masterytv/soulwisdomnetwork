@@ -180,7 +180,7 @@ export function grabFrame(input: string, output: string, seconds: number) {
 // YouTube and Spotify play at, so nothing is turned down or sounds quiet beside other shows.
 export const LOUDNESS = { integrated: -14, truePeak: -1, range: 11 };
 
-interface LoudnormReport { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string; output_i: string; output_tp: string }
+interface LoudnormReport { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string; output_i: string; output_tp: string; normalization_type?: string }
 
 function loudnormReport(stderr: string): LoudnormReport {
     const json = stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1);
@@ -192,7 +192,8 @@ function loudnormReport(stderr: string): LoudnormReport {
 }
 
 // Two passes of ffmpeg's loudnorm: measure, then correct in one linear gain change (no
-// pumping). The picture is copied untouched. Returns the loudness before and after, in LUFS.
+// pumping). The picture is copied untouched. Returns the loudness before and after, in LUFS, and
+// how the second pass worked: 'linear' as asked, or 'dynamic' when the peak limit forced it.
 export async function normalizeLoudness(input: string, output: string) {
     const target = `I=${LOUDNESS.integrated}:TP=${LOUDNESS.truePeak}:LRA=${LOUDNESS.range}`;
     const measured = loudnormReport((await runWithLog('ffmpeg', [
@@ -207,7 +208,10 @@ export async function normalizeLoudness(input: string, output: string) {
         '-movflags', '+faststart',
         output,
     ])).stderr);
-    return { beforeLufs: Number(measured.input_i), afterLufs: Number(done.output_i), truePeak: Number(done.output_tp) };
+    return {
+        beforeLufs: Number(measured.input_i), afterLufs: Number(done.output_i), truePeak: Number(done.output_tp),
+        normalization: done.normalization_type ?? null,
+    };
 }
 
 // A short's still backdrop (docs/specs/013-shorts.md): the brand's deep violet, the logo at the

@@ -278,6 +278,8 @@ async function processEpisode(video: DriveFile, candidates: string[], uploaded =
             'transcription.speakerIdStatus': speakerId?.status ?? null,
             'transcription.speakerMapping': speakerId?.mapping ?? {},
             'transcription.speakers': speakers,
+            // Whether "um" and "uh" are written out (spec 019 item 1.6); AssemblyAI echoes the option.
+            'transcription.disfluencies': transcript.disfluencies === true,
         });
         if (!uploaded) await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
         console.log(`  ✅ ${title}: ${speakers.length} speaker(s) detected, ready for speaker review.`);

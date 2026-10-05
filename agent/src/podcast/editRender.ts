@@ -12,6 +12,8 @@ import { keepRanges, editedDuration, editedTime, editedWords, applyToChapters, a
 import { buildCues, toSrt } from '../../../lib/captions';
 import { kenBurns, normalizeLoudness, probeDuration } from './media';
 import { buildAss, imageOverlayFilter, placeOverlays, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
+import type { RenderQc } from '../../../types/episode';
+import { assCheck, measureRender, onScreenChecks } from './renderQc';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -67,6 +69,7 @@ interface RenderReport {
     cuts: number;
     timeSavedSeconds: number;
     renderSeconds: number;
+    qc: RenderQc;                 // the quality report on the finished file (renderQc.ts)
 }
 
 // ─── the render ─────────────────────────────────────────────────────────────
@@ -127,6 +130,7 @@ export async function renderEdit(opts: {
     const tmpDir = path.join(path.dirname(opts.out), `_broll_${stamp}`);
     const cleanDir = path.join(path.dirname(opts.out), `_clean_${stamp}`);
     let blockDir = '';
+    const onScreenWarnings: string[] = [];
     try {
         // The voice cleanup runs once, over the whole episode (see cleanupFilter).
         if ((clean === 'light' || clean === 'strong') && !cleanedAudio && ranges.length > 0) {
@@ -305,7 +309,16 @@ export async function renderEdit(opts: {
         });
         if (opts.onScreen) {
             const cues = opts.onScreen.captions && opts.words?.length ? buildCues(editedWords(opts.words, ranges)) : [];
-            const ass = buildAss(cues, opts.onScreen.captions, placeOverlays(opts.onScreen.texts, ranges, editedMs));
+            const placedTexts = placeOverlays(opts.onScreen.texts, ranges, editedMs);
+            const ass = buildAss(cues, opts.onScreen.captions, placedTexts);
+            // For the quality report: what the plan asked for against the edit and the subtitle file.
+            onScreenWarnings.push(
+                ...onScreenChecks([
+                    ...opts.onScreen.texts.map(t => ({ atMs: t.atMs, seconds: t.seconds, label: t.text })),
+                    ...opts.onScreen.images.map(i => ({ atMs: i.overlay.atMs, seconds: i.overlay.seconds, label: i.overlay.name || 'image' })),
+                ], ranges, editedMs),
+                ...assCheck(ass, cues.length + placedTexts.length),
+            );
             if (ass) {
                 fs.mkdirSync(tmpDir, { recursive: true });
                 const assFile = path.join(tmpDir, 'onscreen.ass');
@@ -336,26 +349,35 @@ export async function renderEdit(opts: {
         await run('ffmpeg', args);
 
         // Loudness normalization as a separate two-pass.
+        let normalization: string | null = null;
         if (clean !== 'off') {
-            await normalizeLoudness(rawOut, opts.out);
+            ({ normalization } = await normalizeLoudness(rawOut, opts.out));
             try { fs.unlinkSync(rawOut); } catch {}
         } else {
             fs.renameSync(rawOut, opts.out);
         }
 
         const outSecs = await probeDuration(opts.out);
+        // Everything before the episode (teasers, then the intro) pushes its times later.
+        let offsetMs = 0;
+        for (const f of [...(opts.teasers ?? []), ...(opts.intro ? [opts.intro] : [])]) offsetMs += Math.round((await probeDuration(f)) * 1000);
+        const outroMs = opts.outro ? Math.round((await probeDuration(opts.outro)) * 1000) : 0;
+        const qc = await measureRender(opts.out, {
+            lengthSeconds: (offsetMs + editedMs + outroMs) / 1000,
+            episode: { startSec: offsetMs / 1000, endSec: (offsetMs + editedMs) / 1000 },
+            normalization,
+            onScreen: onScreenWarnings,
+        });
         const report: RenderReport = {
             inputSeconds: inSeconds,
             outputSeconds: outSecs,
             cuts: opts.edit.cuts.length,
             timeSavedSeconds: Math.max(0, inSeconds - (editedMs / 1000)),
             renderSeconds: (Date.now() - start) / 1000,
+            qc,
         };
         const base = opts.out.replace(/\.\w+$/, '');
         if (opts.words?.length || opts.chapters?.length || opts.quotes?.length) {
-            // Everything before the episode (teasers, then the intro) pushes its times later.
-            let offsetMs = 0;
-            for (const f of [...(opts.teasers ?? []), ...(opts.intro ? [opts.intro] : [])]) offsetMs += Math.round((await probeDuration(f)) * 1000);
             const shift = <T extends { startMs: number; endMs?: number }>(x: T): T =>
                 ({ ...x, startMs: x.startMs + offsetMs, ...(x.endMs !== undefined ? { endMs: x.endMs + offsetMs } : {}) });
             if (opts.words?.length) {

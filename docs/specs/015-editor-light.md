@@ -31,7 +31,8 @@ transcript beside it, a timeline underneath, and saving and rendering pinned in 
 - Search finds words.
 
 **Suggestions.** **Mark filler words and long pauses** suggests cuts; **Mark hesitations** adds
-the guessed ones (below). Marking again replaces that kind's earlier suggestions. The counts
+the guessed ones (below), and only shows when the transcript has no "um"s written out (episodes
+transcribed before `disfluencies` was on). Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
 (Fillers, Repeats, Pauses, Hesitations, Retakes) filter the review, and **Clear these** removes
 one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
 before deciding.
@@ -80,7 +81,8 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - filler words (`lib/fillers.ts`): `um`, `uh`, `er`, `erm`, `uhm`, `hm`, `hmm` and `mhm`, however many
   letters they are written with. Ingest turns on AssemblyAI's `disfluencies` option, so they are in
   the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
-- immediate repeats, keeping the last;
+- immediate repeats, keeping the last, when they are a stammer: the same speaker, inside one
+  sentence, the second word within 300 ms of the first;
 - pauses over 1.2 s, shortened to 0.5 s;
 - only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
   sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before
@@ -126,13 +128,16 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
 4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
    placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
    normalized to −14 LUFS.
-5. **Save** everything:
+5. **Check** the finished file (`renderQc.ts`, spec 019 item 0.2): loudness, true peak, length
+   against the plan, dead air, black picture, sound against picture, and on-screen items. The
+   numbers and warnings go in `editRender.qc` and show under the render; they never fail it.
+6. **Save** everything:
    - The video goes to `episodes/{id}/editRender/v{edit version}-{run id}/episode.mp4`.
    - Beside it go the words, captions (.srt) and chapters/quotes on the new times.
    - The video is also saved as "*title* (Editor Light).mp4" in "04 Final" in Drive.
    - `episode.editRender` points at the new folder only once all of it is saved. The previous
      render's folder is then deleted.
-6. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
+7. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
    cancelled or killed before it can, the workflow's last step (`editRenderStopped.ts`) marks it
    failed instead.
 
@@ -151,7 +156,10 @@ Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-
   each speaker's name, lower left, where they first speak.
 - **Images**: a PNG or JPEG (up to 20 MB), placed and sized on the frame. Uploaded to
   `overlays/` in Storage; the edit route checks each new one is a real PNG or JPEG.
-- **Captions**: burned in, in the Studio's look (settings) or this video's own.
+- **Captions**: burned in (drawn into the picture, so every viewer sees them and nobody can
+  turn them off), in the Studio's look (settings) or this video's own. **Off by default; an
+  option to turn on** per Studio or per video (Tom, N1 in `docs/PLANNING.md`). The YouTube
+  caption track, which viewers switch on and off themselves, is always uploaded either way.
 - The preview shows them over the video, and the timeline has a row for them.
 - The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
   The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.
@@ -202,10 +210,11 @@ within two frames of its flash, with and without the voice cleanup.
 
 ## Next
 
-- Run a real episode end to end and compare its sound with Descript's.
-- Editing on a phone: a Cut button and touch selection.
-- A faster render for long episodes: one encode instead of two, and resuming a failed run from
-  its last block.
+- **Run a real episode end to end** and compare its sound with Descript's (Tom). Write here: the
+  render time, the suggestion counts per kind on the 49-minute episode (019 item 1.6 measures
+  against them), and how many retakes the producer kept.
+- Editing on a phone: touch selection. (**✂ Cut selected** is built, #130.)
 
-The rest is planned in `docs/specs/019-editor-light-v2.md` (the faster render is its item 4.2),
-from a review of open-source editors (`docs/research/2026-10-05-open-source-editors.md`).
+Everything else is planned in `docs/specs/019-editor-light-v2.md`, whose status table is the
+record: the faster render is its item 4.2, fewer suggestions 1.6, wider retakes 1.3. Start at
+`docs/PLANNING.md`.

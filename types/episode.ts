@@ -160,6 +160,21 @@ export interface EpisodeDescript {
 // The final cut (spec 005 steps 10-11; docs/specs/010-final-cut.md): the edited episode
 // published from Descript, loudness-normalized and kept in Storage and Drive, with the show
 // notes' chapter and quote times moved onto it.
+// The quality report on a finished episode (docs/specs/019-editor-light-v2.md, item 0.2;
+// agent/src/podcast/renderQc.ts). Null numbers could not be measured. Warnings never fail the job.
+export interface RenderQc {
+    integratedLufs: number | null;
+    truePeakDb: number | null;            // dBTP
+    normalization: string | null;         // loudnorm's second pass: 'linear' when it worked as meant
+    durationSeconds: number | null;
+    expectedSeconds: number | null;       // teasers + intro + edited episode + outro, when known
+    videoSeconds: number | null;
+    audioSeconds: number | null;
+    silences: { startSec: number; endSec: number }[];   // 3 s or longer, at most 20
+    black: { startSec: number; endSec: number }[];      // at most 20
+    warnings: string[];
+}
+
 export interface EpisodeFinal {
     status: 'queued' | 'publishing' | 'mastering' | 'retiming' | 'ready' | 'failed';
     // Editor Light (spec 015): who made it. Missing means Descript; 'editorLight' means the
@@ -178,6 +193,7 @@ export interface EpisodeFinal {
     folderUrl?: string;                   // "04 Final"
     durationSeconds?: number;
     loudness?: { beforeLufs: number; afterLufs: number; truePeak: number };
+    qc?: RenderQc;                        // the quality report on the saved file
     wordsPath?: string;                   // the final cut's words and times, Cloud Storage
     coverage?: number;                    // share of the original's words found in the final cut
     chapters?: { title: string; originalMs: number; startMs: number }[];
@@ -208,6 +224,7 @@ export interface EpisodeEditRender {
     timeSavedSeconds?: number;
     renderSeconds?: number;
     warnings?: string[];
+    qc?: RenderQc;                        // the quality report on the rendered file
 }
 
 // Thumbnail options (spec 005 step 12; docs/specs/011-thumbnails.md). The job makes the raw
@@ -361,6 +378,7 @@ export interface Episode {
         speakerIdStatus?: string | null;
         speakerMapping?: Record<string, string>;
         speakers?: DetectedSpeaker[];
+        disfluencies?: boolean;           // "um" and "uh" written out as words (from 5 October 2026)
     };
     review?: {
         transcriptTextPath?: string;      // readable transcript in Cloud Storage

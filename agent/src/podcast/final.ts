@@ -23,6 +23,7 @@ import { createDescript, DescriptError } from './descriptApi';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
 import { withRetry } from './errors';
 import { makeAudio, normalizeLoudness, probeDuration } from './media';
+import { measureRender } from './renderQc';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { createAssemblyAI, transcribeWords } from './transcribe';
 
@@ -105,9 +106,12 @@ async function main() {
 
     await ref.update({ 'final.status': 'mastering', 'final.shareUrl': result.share_url ?? null });
     const master = path.join(workDir, 'final.mp4');
-    const loudness = await normalizeLoudness(rendered, master);
+    const { normalization, ...loudness } = await normalizeLoudness(rendered, master);
     const durationSeconds = await probeDuration(master);
     console.log(`  ✅ Loudness ${loudness.beforeLufs} → ${loudness.afterLufs} LUFS; ${mmss(durationSeconds * 1000)}`);
+    // The quality report (spec 019 item 0.2). Descript's length is its own, so only the file is checked.
+    const qc = await measureRender(master, { normalization });
+    console.log(qc.warnings.length ? `  ⚠️ Quality check: ${qc.warnings.join(' ')}` : '  ✅ Quality check passed');
 
     const videoPath = `episodes/${episodeId}/final/episode.mp4`;
     await withRetry('Storage upload', () => bucket.upload(master, { destination: videoPath, resumable: true, metadata: { contentType: 'video/mp4' } }));
@@ -119,7 +123,7 @@ async function main() {
     const folderUrl = `https://drive.google.com/drive/folders/${folderId}`;
     await ref.update({
         'final.videoPath': videoPath, 'final.driveFileId': driveFileId, 'final.driveUrl': driveUrl, 'final.folderUrl': folderUrl,
-        'final.durationSeconds': durationSeconds, 'final.loudness': loudness, 'final.projectId': project.projectId,
+        'final.durationSeconds': durationSeconds, 'final.loudness': loudness, 'final.qc': qc, 'final.projectId': project.projectId,
         updatedAt: FieldValue.serverTimestamp(),
     });
     console.log(`  ✅ Saved to Storage and Drive: ${driveUrl}`);
@@ -166,7 +170,7 @@ async function main() {
         '',
         'Chapters on the final cut:',
         ...chapters.map(c => `  ${mmss(c.startMs)} ${c.title}   (was ${mmss(c.originalMs)})`),
-        ...(warnings.length ? ['', 'Check:', ...warnings.map(w => `  - ${w}`)] : []),
+        ...([...warnings, ...qc.warnings].length ? ['', 'Check:', ...[...warnings, ...qc.warnings].map(w => `  - ${w}`)] : []),
     ].join('\n'));
 }
 

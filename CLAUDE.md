@@ -1,7 +1,8 @@
 # Soul Wisdom Network
 
-Next.js community site for the Soul Wisdom podcast. A podcast production pipeline is specified but not yet built — see
-`docs/specs/005-podcast-production-pipeline.md`.
+Next.js community site for the Soul Wisdom podcast, with the Podcast Studio: a production pipeline
+(`docs/specs/005-podcast-production-pipeline.md`) whose jobs run in GitHub Actions. What is planned
+next, and in what order: `docs/PLANNING.md`.
 
 **Live:** https://soulwisdomcollective.com (from `main`) · **Staging:** https://staging.soulwisdomcollective.com
 (from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`.
@@ -32,7 +33,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
-              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions; podcast_edit_render.yml runs editRenderRun.ts, GitHub
+              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions, then a quality report
+              (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
               with components/studio/timeline.tsx); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
@@ -52,6 +54,7 @@ npm run dev      # local, needs .env.local
 npm run build    # next build
 npm run lint     # eslint
 npx tsc --noEmit # typecheck
+npm test         # every lib/, agent/src/podcast/ and components/studio/ *.test.ts (needs ffmpeg; ~5 minutes)
 ```
 
 Develop locally. An App Hosting build takes ~10 minutes, so never deploy to test a change.
@@ -65,7 +68,9 @@ confusingly similar names. App Hosting runs the app on Cloud Run and builds from
 Never enable Firebase Hosting, and never tick "Also set up Firebase Hosting" anywhere.
 
 Pushing to `main` triggers a build and rollout automatically. There is no deploy workflow
-in CI — App Hosting connects to the repo directly. Do not add one.
+in CI — App Hosting connects to the repo directly. Do not add one. The `checks` workflow
+(`.github/workflows/checks.yml`) only checks pull requests into `staging` and `main`: typecheck,
+lint, tests and a build with placeholder config. It deploys nothing and uses no secrets.
 
 ### Secrets
 
@@ -137,8 +142,8 @@ show-notes approvals in its `approvals` subcollection),
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).
 
-**Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, social posts, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+**Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
+transcript, thumbnails, shorts picks and titles, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
@@ -214,8 +219,9 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 
 ## Conventions
 
-- Verify with `npx tsc --noEmit` and `npm run build` before pushing — a red build costs a
-  ten-minute cycle.
+- Verify with `npx tsc --noEmit`, `npm run lint`, `npm test` and `npm run build` before
+  pushing — a red build costs a ten-minute cycle. The `checks` workflow runs the same on every
+  pull request; lint errors fail it, warnings don't.
 - Specs live in `docs/specs/NNN-name.md` and are numbered sequentially.
 - `.env.local` and `serviceAccountKey.json` are gitignored. Keep it that way.
 
