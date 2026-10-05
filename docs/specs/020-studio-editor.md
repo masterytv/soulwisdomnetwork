@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#PR); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -446,7 +446,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 - **Shortcut sheet:** **?** (the key or the button) opens it, Esc closes it.
 - **Desktop only (U3):** under 1280 px a note at the top points to the quick edit.
 - **Not yet:** step 4's **Touch up in the Studio editor**, and the one-line summary of Studio-only
-  changes in the quick edit, come with the first Studio-only changes (E4).
+  changes in the quick edit, come with the first Studio-only changes (E4). Built in E4.
 - **Checked:** in Chromium at 1440×900 and 1280×720 with a test video: the layout fills the window
   with no page scroll, a dragged size survives a reload, the sheet opens and closes, the rail switches
   panels, and the quick edit is laid out as before. Not yet on the real 48-minute episode (Tom, on
@@ -534,6 +534,62 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   10 s split at 10.05 s (a word's start); dragging that section's bracket cut from the split to 10.60 s
   (the next word's start); selecting a section and pressing Delete cut it whole, and undo brought it
   back; locked, the Blade did nothing.
+
+### E4 — Built (#PR)
+
+- **Model** (`lib/transitions.ts`): `edit.joins`, one transition a place. `at` is a section join
+  (`start`, `betweenTeasers`, `afterTeasers`, `afterIntro`, `beforeOutro`, `end`) or `{ atSplit }`;
+  `transition` is one of 21 kinds (Cut, Dissolve, Fade, Fade through white, Grain dissolve, wipes,
+  slides, soft wipes, circles, Zoom in, Blur), with ffmpeg's `xfade` names in `XFADE`; `durationMs`
+  is 0.2–3 s. The edit route checks them (`JoinsSchema`, up to 500) and drops one whose split is gone;
+  removing a split in the editor removes its transition. `JoinAt` gained `betweenTeasers`, which "Where
+  they go" lists but the sketched type left out.
+- **Studio settings** (`joins`, spec 018): a transition for each section join, for every episode, all
+  straight cuts by default. The episode's own wins (`sectionJoins`).
+- **Time** (`sequenceOf` in `lib/sequence.ts`): at a split with a transition, the part after it starts
+  that much before the part before it ends, so the episode is shorter by its length and every time
+  after it moves earlier (chapters, quotes, captions, the final cut's words, on-screen items, b-roll).
+  A transition longer than either part, or than what a part has left after the transition at its
+  other end, plays as a straight cut, and the panel and the render's warnings say why. A split within
+  100 ms of a kept stretch's edge leaves no sliver. Before the episode, the teasers' and intro's
+  transitions move its start (the words', chapters' and quotes' offset) earlier; the outro's
+  shortens the end.
+- **Render** (`editRender.ts`): blocks never cross a transition's split, and each part's blocks become
+  one file. The parts are joined with `xfade` and `acrossfade` (triangular), or a concat for a
+  straight cut (`chainPieces`); so are the teasers, intro, episode and outro, each first cut to whole
+  frames, so every offset is exact. At the very start and end any transition is a fade from or to
+  black (`fade` and `afade`; white for Fade through white). It builds on #146, which made every kept
+  stretch whole frames from the edit's own times.
+- **Studio editor:**
+  - **Transitions** panel on the rail: each split's transition (click its time to jump there), and the
+    section joins, showing the Studio's choice until the episode picks its own. Dissolve and Fade come
+    first. One with no room says why.
+  - **Timeline:** a ⧓ marker on each split, amber with a transition (dim when it has no room); click it
+    to open the panel at that split. The stretches a transition overlaps are shaded.
+  - **Preview** (`TransitionPreview`): a second video plays the start of the next part over the end of
+    the one before, drawn for the kind with CSS (opacity, a black or white veil, `clip-path`, a mask or
+    a slide), with the sound crossfading; the main video then carries on from the end of the
+    transition (`previewRanges`). Only transitions at splits are previewed: the preview has no teasers,
+    intro or outro.
+  - The bar's edited length counts transitions.
+- **Pipeline** (deferred from E1): the quick edit shows a line when the edit has Studio-only changes
+  ("Also in this edit, from the Studio editor: 2 splits, 1 transition, 3 on-screen items";
+  `studioOnlySummary`), and the final cut step has **Touch up in the Studio editor →** when Editor
+  Light makes the final cut.
+- **Checked:**
+  - Unit tests (`lib/transitions`, `lib/sequence`, `lib/studioSettings`, the render job's plan).
+  - ffmpeg render tests: a 1 s dissolve at a split between red and blue turns 10 s into 9 s, is an
+    even blend at its middle, keeps the flash and beep after it together, and moves the words 1 s
+    earlier; an intro → episode dissolve, an episode → outro fade and fades at both ends turn
+    2 + 3 + 2 s into 6 s with black at the start, and move the words to 2.5 s; a transition longer
+    than the clip it joins plays as a cut, with a warning.
+  - Chromium, with a test video: the split's marker opened the panel; a 1 s Dissolve shortened the
+    edited length from 2:56 to 2:55 and lit the marker; After the intro showed "Studio setting:
+    Dissolve, 0.5 s" until Fade was chosen; playing across the split faded the second video in and
+    carried on 1 s later; removing the split removed its transition; the quick edit showed its line.
+  - **Not yet on a real episode, or in a render from `main`.**
+- **Not built:** previewing the teasers', intro's and outro's transitions. The quality report's black
+  picture check may flag a long Fade (through black) at a split, since its middle is black.
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

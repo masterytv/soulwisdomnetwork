@@ -43,8 +43,17 @@ before deciding.
 Descript; the **Blade** tool (B) splits where the timeline is clicked. The sections between splits
 show as clips on the timeline: click one to select it, then **Cut section**, **Bring back**, or Delete
 to cut it whole; drag the bracket at either end of a section to trim it (as the producer's own cuts).
-Click a split's handle on the ruler to remove it. Splits are saved with the edit (`edit.splits`); the
-render uses only the cuts.
+Click a split's handle on the ruler to remove it. Splits are saved with the edit (`edit.splits`).
+
+**Transitions** (Studio editor, spec 020 item E4): the **Transitions** panel sets the transition at
+each split (also reached from the ⧓ marker on the split) and at the start and end, between the
+teasers, after the teasers and intro, and before the outro, where the Studio settings choose for
+every episode until the episode picks its own. Cut is the default; Dissolve and Fade come first, then
+19 more of ffmpeg's kinds, 0.2–3 s. A transition overlaps the two sides it joins, so the video is
+shorter by its length, and every time after it moves earlier; one with no room plays as a straight
+cut, and says so. The preview plays the ones at splits (a second video, drawn with CSS); the render
+plays them all. The quick edit shows a line when the edit has splits, transitions or on-screen items,
+and the final cut step links to the Studio editor (**Touch up in the Studio editor →**).
 
 **Playing:**
 - **Edited** skips the cuts as the video plays; **Original** plays everything.
@@ -92,7 +101,9 @@ changed since that render. A failed render shows its reason, and can be tried ag
   (a breath between two close cuts; spec 019 item 1.5).
 
 **Other functions:**
-- `editedTime` and `editedDuration` map original times onto the edit.
+- `editedTime` and `editedDuration` map original times onto the edit, following each range's place
+  in the edited episode when it has one (`atMs`, from the play order in `lib/sequence.ts`, where a
+  transition at a split overlaps two parts).
 - `applyToChapters`, `applyToQuotes` and `editedWords` move chapters, quotes and the transcript
   onto the edited timeline.
 - `CutsSchema` checks what may be saved.
@@ -156,7 +167,11 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    the end would have been about 20 s late.
 4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
    placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
-   normalized to −14 LUFS.
+   normalized to −14 LUFS. Each part of the episode (between transitions at splits) is its own file;
+   the parts, and the teasers, intro, episode and outro, are joined with `xfade` and `acrossfade`
+   where there is a transition and a concat where there is not, every piece cut to whole frames so
+   each offset is exact (`chainPieces`). A transition at the very start or end is a fade from or to
+   black.
 5. **Check** the finished file (`renderQc.ts`, spec 019 item 0.2): loudness, true peak, length
    against the plan, dead air, black picture, sound against picture, and on-screen items. The
    numbers and warnings go in `editRender.qc` and show under the render; they never fail it.

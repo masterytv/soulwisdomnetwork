@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
 import type { CaptionChoice, Overlay } from './onScreen';
+import type { Join } from './transitions';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -20,10 +21,13 @@ export interface EpisodeEdit {
     // Part I: text and image overlays, and this video's own captions choice (null or missing: the Studio's).
     overlays?: Overlay[];
     captions?: CaptionChoice | null;
-    // Split points (ms in the original recording), set at the playhead in the full-page editor.
-    // They only divide the episode into sections that can be cut or brought back whole; the
-    // render does not use them.
+    // Split points (ms in the original recording), set at the playhead or with the Blade in the
+    // Studio editor. They divide the episode into sections that can be cut, brought back or
+    // trimmed whole, and where a transition can go.
     splits?: number[];
+    // Transitions (spec 020 item E4, lib/transitions.ts): at splits, and this episode's own at the
+    // start, between its teasers, intro and outro, and at the end (missing: the Studio's).
+    joins?: Join[];
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

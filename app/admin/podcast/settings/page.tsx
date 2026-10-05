@@ -5,7 +5,7 @@
 // final cut, and where recordings come from. Everyone in the Studio can see them; an admin saves.
 // Part I: captions burned into the render (their look) and the languages captions are translated into.
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { ErrorNote } from "@/components/studio/ErrorNote";
@@ -16,6 +16,7 @@ import { LANGUAGES, LANGUAGES_MAX } from "@/lib/translate";
 import type { CaptionStyle } from "@/lib/onScreen";
 import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, type StudioSettings } from "@/lib/studioSettings";
+import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
@@ -249,6 +250,31 @@ export default function StudioSettingsPage() {
                                     <input type="checkbox" checked={s.teasers} onChange={e => set("teasers", e.target.checked)} disabled={off} className="mt-1" />
                                     <span>&ldquo;In this episode&rdquo; teaser clips before the intro<span className={`block ${hint}`}>Taken from the teaser clips in the approved show notes.</span></span>
                                 </label>
+                                {/* Spec 020 item E4: transitions around the episode, for every episode's render. */}
+                                <fieldset disabled={off} className="flex flex-col gap-1">
+                                    <span className="text-sm text-gray-200">Transitions</span>
+                                    <div className="grid grid-cols-[auto_auto_auto] gap-x-3 gap-y-1 items-center text-sm text-gray-200 w-fit">
+                                        {SECTION_JOINS.map(k => (
+                                            <Fragment key={k}>
+                                                <span>{SECTION_JOIN_LABELS[k]}</span>
+                                                <select aria-label={`${SECTION_JOIN_LABELS[k]}: transition`} className={`${field} !w-auto !py-1 !px-2 text-xs`} value={s.joins[k].transition}
+                                                    onChange={e => set("joins", { ...s.joins, [k]: { ...s.joins[k], transition: e.target.value as TransitionKind } })}>
+                                                    {TRANSITIONS.map(t => <option key={t} value={t}>{TRANSITION_LABELS[t]}</option>)}
+                                                </select>
+                                                <select aria-label={`${SECTION_JOIN_LABELS[k]}: length`} className={`${field} !w-auto !py-1 !px-2 text-xs`} value={s.joins[k].durationMs}
+                                                    disabled={off || s.joins[k].transition === "cut"}
+                                                    onChange={e => set("joins", { ...s.joins, [k]: { ...s.joins[k], durationMs: Number(e.target.value) } })}>
+                                                    {JOIN_LENGTHS.map(ms => <option key={ms} value={ms}>{ms / 1000} s</option>)}
+                                                </select>
+                                            </Fragment>
+                                        ))}
+                                    </div>
+                                    <span className={hint}>
+                                        For every episode&apos;s Editor Light render; each episode can choose its own in the Studio editor&apos;s Transitions
+                                        panel. A transition overlaps what it joins, so the video gets shorter by its length. At the start and end, any
+                                        choice is a fade from or to black (white for Fade through white).
+                                    </span>
+                                </fieldset>
                                 <div className="flex flex-col gap-2">
                                     <Choice name="final" value="descript" current={s.finalSource} label="Descript makes the final cut" disabled={off} onPick={() => set("finalSource", "descript")}
                                         help="The edit happens in Descript and the final cut is published from there." />

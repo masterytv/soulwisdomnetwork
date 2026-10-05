@@ -3,12 +3,14 @@
 // Matches the notes route pattern: requireRole, version check on PUT (409 on mismatch).
 // Part I: on-screen items are checked before saving, and GET adds hour-long links to the overlay images.
 // GET also gives the audio's measured silences, for the pause suggestions (spec 019 item 1.1).
+// Transitions (spec 020 item E4) are checked too, and one at a split that is no longer there is dropped.
 import { FieldValue } from 'firebase-admin/firestore';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
 import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
+import { JoinsSchema, type Join } from '@/lib/transitions';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +47,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -63,6 +65,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const r = SplitsSchema.safeParse(body.edit.splits);
         if (!r.success) throw new HttpError(400, `Splits: ${r.error.issues[0]?.message ?? 'not valid'}`);
         splits = r.data;
+    }
+    // Transitions (Studio editor). Left out of the request, they stay as saved.
+    let joins: Join[] | undefined;
+    if (body.edit.joins !== undefined) {
+        const r = JoinsSchema.safeParse(body.edit.joins);
+        if (!r.success) throw new HttpError(400, `Transitions: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        joins = r.data;
     }
     let captions: CaptionChoice | null | undefined;
     if (body.edit.captions !== undefined) {
@@ -90,12 +99,16 @@ export const PUT = handle<Context>(async (request, { params }) => {
             throw new HttpError(409, 'Version mismatch — someone else edited');
         }
         const version = (current?.version ?? 0) + 1;
+        // A transition at a split goes with its split.
+        const keptSplits = splits ?? current?.splits ?? [];
+        const keptJoins = (joins ?? current?.joins ?? []).filter(j => typeof j.at === 'string' || keptSplits.includes(j.at.atSplit));
         tx.update(ref, {
             edit: {
                 cuts: cuts.data, version, updatedAt: new Date().toISOString(), updatedBy: uid,
                 overlays: overlays ?? current?.overlays ?? [],
                 captions: captions !== undefined ? captions : current?.captions ?? null,
-                splits: splits ?? current?.splits ?? [],
+                splits: keptSplits,
+                joins: keptJoins,
             },
             updatedAt: FieldValue.serverTimestamp(),
         });

@@ -19,6 +19,7 @@ import type { EditRenderView } from '@/lib/server/editRender';
 import { studioFetch, studioFetchBytes } from '@/lib/studioClient';
 import type { ThumbSheets } from '@/lib/thumbs';
 import type { TimelineMedia } from '@/components/studio/timeline';
+import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
@@ -83,6 +84,8 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
     const [studioCaptions, setStudioCaptions] = useState<CaptionChoice | undefined>(undefined);
+    // The Studio's transitions between sections (spec 020 item E4), for the Transitions panel.
+    const [studioJoins, setStudioJoins] = useState<SectionJoins | null>(null);
     // The audio's silences measured at ingest (null before then), for the pause suggestions.
     const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
@@ -131,7 +134,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     useEffect(() => {
         if (!workspace) return;
         studioFetch<{ settings: StudioSettings }>('/api/studio/settings')
-            .then(v => setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }))
+            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); })
             .catch(() => {});
     }, [workspace]);
 
@@ -263,6 +266,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             actions={workspace ? renderBar : undefined}
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
             timelineMedia={timelineMedia}
+            studioJoins={studioJoins}
         />
     );
 
