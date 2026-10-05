@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     keepRanges, editedTime, editedDuration, suggestCuts,
-    applyToChapters, applyToQuotes, editedWords,
+    applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
     type KeptRange,
 } from './edit';
 import type { SpokenWord } from './showNotes';
@@ -298,5 +298,23 @@ describe('editedWords', () => {
 
     test('drops a word that straddles a cut', () => {
         assert.deepEqual(editedWords([{ text: 'split', start: 1800, end: 3200 }], ranges), []);
+    });
+});
+
+describe('CutsSchema', () => {
+    test('accepts the cuts the editor makes', () => {
+        assert.ok(CutsSchema.safeParse([{ startMs: 0, endMs: 500, reason: 'filler' }, { startMs: 900, endMs: 1200, reason: 'manual' }]).success);
+    });
+    test('rounds to whole milliseconds', () => {
+        assert.deepEqual(CutsSchema.parse([{ startMs: 10.4, endMs: 400.6, reason: 'pause' }]), [{ startMs: 10, endMs: 401, reason: 'pause' }]);
+    });
+    test('refuses backwards, negative, unknown or extra fields, and too many cuts', () => {
+        assert.ok(!CutsSchema.safeParse([{ startMs: 500, endMs: 400, reason: 'manual' }]).success);
+        assert.ok(!CutsSchema.safeParse([{ startMs: -5, endMs: 400, reason: 'manual' }]).success);
+        assert.ok(!CutsSchema.safeParse([{ startMs: 0, endMs: 400, reason: 'other' }]).success);
+        assert.ok(!CutsSchema.safeParse([{ startMs: 0, endMs: 400, reason: 'manual', note: 'x' }]).success);
+        assert.ok(!CutsSchema.safeParse('cuts').success);
+        const many = Array.from({ length: MAX_CUTS + 1 }, (_, i) => ({ startMs: i * 10, endMs: i * 10 + 5, reason: 'pause' as const }));
+        assert.ok(!CutsSchema.safeParse(many).success);
     });
 });

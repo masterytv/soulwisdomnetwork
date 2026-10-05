@@ -685,7 +685,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                                                         if (!gapCut) {
                                                             e.stopPropagation();
                                                             updateEdit(cur => ({ ...cur, cuts: [...cur.cuts, {
-                                                                startMs: prev.end + Math.min(500, prevGap / 2),
+                                                                startMs: Math.round(prev.end + Math.min(500, prevGap / 2)),
                                                                 endMs: word.start,
                                                                 reason: 'pause',
                                                             }] }));

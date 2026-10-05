@@ -1,6 +1,7 @@
 // Editor Light (spec 015): the edit model shared by the transcript editor and the render job.
 // Cuts, kept ranges, time mapping, and suggestions for filler words, repeats, and pauses.
 
+import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
 
 export interface Cut {
@@ -13,6 +14,17 @@ export interface EpisodeEdit {
     cuts: Cut[];
     version: number;
 }
+
+// What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode
+// with every filler and pause cut has a few thousand cuts; the cap keeps the episode document
+// well under Firestore's 1 MiB limit.
+export const MAX_CUTS = 10_000;
+const ms = z.number().min(0).max(24 * 3600_000).transform(Math.round);
+export const CutsSchema = z.array(z.object({
+    startMs: ms,
+    endMs: ms,
+    reason: z.enum(['filler', 'pause', 'repeat', 'manual']),
+}).strict().refine(c => c.endMs > c.startMs, 'A cut must end after it starts')).max(MAX_CUTS);
 
 export interface KeptRange {
     startMs: number;
