@@ -53,3 +53,12 @@ test('custom colours turn into ASS and gradient values', () => {
     assert.equal(assColor('#ff8000'), '&H0080FF&');
     assert.equal(gradientExpr('#ffffff', '#000000'), "r='255-255*Y/H':g='255-255*Y/H':b='255-255*Y/H'");
 });
+
+test('section transitions (spec 020 item E4): straight cuts by default; a bad saved one falls back on its own', () => {
+    assert.equal(DEFAULT_SETTINGS.joins.afterIntro.transition, 'cut');
+    const s = withDefaults({ joins: { afterIntro: { transition: 'dissolve', durationMs: 800 }, end: { transition: 'spin', durationMs: 500 } } });
+    assert.deepEqual(s.joins.afterIntro, { transition: 'dissolve', durationMs: 800 });
+    assert.deepEqual(s.joins.end, DEFAULT_SETTINGS.joins.end);
+    assert.deepEqual(s.joins.start, DEFAULT_SETTINGS.joins.start);
+    assert.deepEqual(withDefaults({}).joins, DEFAULT_SETTINGS.joins);
+});

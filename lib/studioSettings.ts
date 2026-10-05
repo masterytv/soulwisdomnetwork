@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
 import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
+import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -46,6 +47,9 @@ export const StudioSettingsSchema = z.object({
     intro: z.enum(['show', 'custom', 'none']),    // the show's intro (also the outro), your own, or none
     introPath: z.string().max(300).nullable(),    // Cloud Storage, when intro is 'custom'
     teasers: z.boolean(),                         // "In this episode" clips before the intro
+    // Transitions at the start and end and between the teasers, intro, episode and outro, for every
+    // episode (spec 020 item E4); straight cuts until chosen. An episode can choose its own.
+    joins: SectionJoinsSchema,
     finalSource: z.enum(['descript', 'editorLight']),
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
 });
@@ -74,6 +78,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     intro: 'show',
     introPath: null,
     teasers: true,
+    joins: DEFAULT_SECTION_JOINS,
     finalSource: 'descript',
     useDrive: true,
 };
@@ -85,6 +90,7 @@ export function withDefaults(saved: unknown): StudioSettings {
     const merged = {
         ...DEFAULT_SETTINGS, ...s,
         colors: { ...DEFAULT_SETTINGS.colors, ...((s.colors && typeof s.colors === 'object') ? s.colors : {}) },
+        joins: { ...DEFAULT_SETTINGS.joins, ...((s.joins && typeof s.joins === 'object') ? s.joins : {}) },
     };
     const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
     for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof StudioSettings)[]) {
@@ -94,6 +100,12 @@ export function withDefaults(saved: unknown): StudioSettings {
             const c = merged.colors as Record<string, unknown>;
             out.colors = Object.fromEntries((['background', 'backgroundBottom', 'accent'] as const).map(k =>
                 [k, hex.safeParse(c[k]).success ? c[k] : DEFAULT_SETTINGS.colors[k]]));
+        } else if (key === 'joins') {
+            const j = merged.joins as Record<string, unknown>;
+            out.joins = Object.fromEntries(SECTION_JOINS.map(k => {
+                const one = TransitionSchema.safeParse(j[k]);
+                return [k, one.success ? one.data : DEFAULT_SECTION_JOINS[k]];
+            }));
         }
     }
     return out as StudioSettings;

@@ -9,6 +9,8 @@
 // playing redraws only the playhead, not the editor and its transcript.
 // Item E3: the Blade tool (B) splits where it is clicked; the sections between splits show as clips
 // on V1, whose ends can be dragged to trim them (as the producer's own cuts); a click selects one.
+// Item E4: each split has a ⧓ marker for its transition (click it to choose one), and the stretches a
+// transition overlaps are shaded.
 
 "use client";
 
@@ -347,9 +349,13 @@ function toggleMuted(video: HTMLVideoElement | null) {
     if (video) video.muted = !video.muted;
 }
 
+// A split's transition on the timeline: its name and length, or null for a straight cut; `playing`
+// is false when it has no room and plays as a cut.
+export interface SplitTransition { splitMs: number; label: string | null; playing: boolean }
+
 export function Timeline({
     words, cuts, ranges, overlays = [], totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
-    overlaysHidden = false, onOverlaysHidden,
+    overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin,
 }: {
     words: SpokenWord[];
     cuts: Cut[];
@@ -367,6 +373,9 @@ export function Timeline({
     keys?: React.RefObject<HTMLElement | null>;   // where + and − zoom (the editor)
     overlaysHidden?: boolean;
     onOverlaysHidden?: (hidden: boolean) => void;
+    transitions?: SplitTransition[];
+    overlaps?: { fromMs: number; toMs: number }[];   // what the transitions overlap, in the recording
+    onJoin?: (splitMs: number) => void;              // a split's ⧓ marker was clicked
 }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const lanesRef = useRef<HTMLDivElement>(null);
@@ -833,6 +842,28 @@ export function Timeline({
                                 onPointerCancel={() => setDrag(null)}
                                 onDoubleClick={onDoubleClick}
                             >
+                                {/* What the transitions overlap: the end of one part and the start of the next. */}
+                                {overlaps.filter(o => o.toMs >= startMs && o.fromMs <= endMs).map(o => (
+                                    <div key={`${o.fromMs}-${o.toMs}`} aria-hidden className="absolute pointer-events-none bg-amber-300/15 border-x border-amber-300/40"
+                                        style={{ left: x(o.fromMs), width: Math.max(1, (o.toMs - o.fromMs) * pxPerMs), top: V1_TOP, bottom: 0 }} />
+                                ))}
+
+                                {/* Each split's transition: click to choose one in the Transitions panel. */}
+                                {onJoin && transitions.filter(t => t.splitMs >= startMs && t.splitMs <= endMs).map(t => (
+                                    <button
+                                        key={t.splitMs}
+                                        type="button"
+                                        aria-label={`Transition at ${tickLabel(t.splitMs)}: ${t.label ?? 'straight cut'}`}
+                                        title={`${t.label ? `${t.label}${t.playing ? '' : ' (no room: plays as a straight cut)'}` : 'Straight cut'}. Click to choose the transition.`}
+                                        onPointerDown={e => e.stopPropagation()}
+                                        onClick={() => onJoin(t.splitMs)}
+                                        className={`absolute w-4 h-4 rounded-full text-[10px] leading-4 text-center ${t.label
+                                            ? t.playing ? 'bg-amber-400 text-black' : 'bg-amber-900 text-amber-200 ring-1 ring-amber-400'
+                                            : 'bg-[#0b0619] text-gray-300 ring-1 ring-white/40 hover:ring-amber-300'}`}
+                                        style={{ left: x(t.splitMs) - 8, top: V1_TOP + 2 }}
+                                    >⧓</button>
+                                ))}
+
                                 {/* The selected section. */}
                                 {selectedSection && (
                                     <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300/80 bg-amber-300/5"

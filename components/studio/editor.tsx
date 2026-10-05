@@ -14,7 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
-    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
+    keepRanges, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
     keptBounds,
     type UnspokenSpan,
 } from '@/lib/edit';
@@ -25,6 +25,10 @@ import { SPEEDS } from '@/lib/studioUi';
 import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
+import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
+import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
+import { TransitionsPanel } from '@/components/studio/transitionsPanel';
+import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
 
 // No splits yet: one array, so the timeline does not redraw on every render.
 const NO_SPLITS: number[] = [];
@@ -115,10 +119,11 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // silences: the audio's measured silences, for the pause suggestions (null: not measured, use word gaps).
 // The Studio editor (workspace, spec 020 item E1) also takes the bar's `heading` (back link and title),
 // `status` (saving) and `actions` (render), and `panels` beside the On screen panel; `timelineMedia`
-// is its timeline's waveform and thumbnails (item E2; null while they load).
+// is its timeline's waveform and thumbnails (item E2; null while they load), and `studioJoins` the
+// Studio's transitions between sections, for the Transitions panel (item E4).
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
-    heading, status, actions, panels = [], timelineMedia = null,
+    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -135,6 +140,7 @@ export function Editor({
     actions?: React.ReactNode;
     panels?: WorkspacePanel[];
     timelineMedia?: TimelineMedia | null;
+    studioJoins?: SectionJoins | null;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -186,13 +192,24 @@ export function Editor({
         return by;
     }, [words, silences]);
     const [videoDuration, setVideoDuration] = useState(0);
-    const ranges = useMemo(() => keepRanges(
+    // The play order (lib/sequence.ts): with transitions at splits (spec 020 item E4) the parts
+    // overlap, so the edited length is shorter, and the preview plays the start of each later part
+    // on a second video over the end of the one before (TransitionPreview), so one video skips it.
+    const sequence = useMemo(() => sequenceOf(
+        { cuts: edit.cuts, splits: edit.splits, joins: edit.joins },
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
-        edit.cuts,
-        40,
         words,
-    ), [videoDuration, words, edit.cuts]);
-    const editedMs = useMemo(() => editedDuration(ranges), [ranges]);
+    ), [videoDuration, words, edit.cuts, edit.splits, edit.joins]);
+    const kept = sequence.clips;
+    const ranges = useMemo(() => workspace ? previewRanges(sequence)
+        : keepRanges(videoDuration || (words.length > 0 ? words[words.length - 1].end : 0), edit.cuts, 40, words),
+    [workspace, sequence, videoDuration, words, edit.cuts]);
+    const editedMs = useMemo(() => sequenceLength(kept), [kept]);
+    const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.map(j => ({
+        aEndMs: j.aEndMs, bStartMs: j.bStartMs, durationMs: j.durationMs, transition: j.transition,
+    })), [sequence.joins]);
+    // The split whose transition the Transitions panel shows first (chosen on the timeline).
+    const [joinFocus, setJoinFocus] = useState<number | null>(null);
 
     // One total for both numbers: videoDuration || last word end.
     const totalMs = videoDuration || (words.length > 0 ? words[words.length - 1].end : 0);
@@ -808,6 +825,7 @@ export function Editor({
                 controls
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
+            {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
             {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
         </div>
     );
@@ -1005,6 +1023,21 @@ export function Editor({
                                 />
                             ),
                         },
+                        {
+                            id: 'transitions',
+                            label: 'Transitions',
+                            node: (
+                                <TransitionsPanel
+                                    joins={edit.joins ?? []}
+                                    splits={edit.splits ?? NO_SPLITS}
+                                    studio={studioJoins}
+                                    warnings={sequence.skipped}
+                                    focus={joinFocus}
+                                    onJoins={joins => updateEdit(prev => ({ ...prev, joins }))}
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ),
+                        },
                         ...panels,
                     ]}
                     panelId={panelId}
@@ -1013,7 +1046,7 @@ export function Editor({
                         <Timeline
                             words={words}
                             cuts={edit.cuts}
-                            ranges={ranges}
+                            ranges={kept}
                             overlays={edit.overlays ?? []}
                             totalMs={totalMs}
                             video={videoRef}
@@ -1026,10 +1059,25 @@ export function Editor({
                             keys={containerRef}
                             overlaysHidden={overlaysHidden}
                             onOverlaysHidden={setOverlaysHidden}
+                            transitions={(edit.splits ?? NO_SPLITS).map(splitMs => {
+                                const j = (edit.joins ?? []).find(x => joinKey(x.at) === joinKey({ atSplit: splitMs }));
+                                return {
+                                    splitMs,
+                                    label: j && j.transition !== 'cut' ? `${TRANSITION_LABELS[j.transition]}, ${j.durationMs / 1000} s` : null,
+                                    playing: sequence.joins.some(x => x.splitMs === splitMs),
+                                };
+                            })}
+                            overlaps={sequence.joins.flatMap(j => [{ fromMs: j.aFromMs, toMs: j.aEndMs }, { fromMs: j.bStartMs, toMs: j.bUntilMs }])}
+                            onJoin={splitMs => { setJoinFocus(splitMs); setPanelId('transitions'); }}
                             split={{
                                 splits: edit.splits ?? NO_SPLITS,
                                 onSplit: addSplit,
-                                onRemoveSplit: ms => updateEdit(prev => ({ ...prev, splits: (prev.splits ?? []).filter(s => s !== ms) })),
+                                // A split's transition goes with it.
+                                onRemoveSplit: ms => updateEdit(prev => ({
+                                    ...prev,
+                                    splits: (prev.splits ?? []).filter(s => s !== ms),
+                                    joins: (prev.joins ?? []).filter(j => joinKey(j.at) !== joinKey({ atSplit: ms })),
+                                })),
                                 onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
                                 onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
                             }}
@@ -1046,6 +1094,12 @@ export function Editor({
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
             {/* Help line: how to edit, and the keys on Undo and Redo. */}
             <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
+            {/* What only the Studio editor shows (spec 020): it stays as it is, and word cuts still work here. */}
+            {studioOnlySummary(edit) && (
+                <p className={`${hint} text-amber-200/80`}>
+                    Also in this edit, from the Studio editor: {studioOnlySummary(edit)}. They stay as they are; open the Studio editor to change them.
+                </p>
+            )}
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
                 {suggestTools}

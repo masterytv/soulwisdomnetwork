@@ -1,9 +1,11 @@
 "use client";
 
 // The final cut on the show notes page (docs/specs/010-final-cut.md): publishes the edited
-// episode from Descript, and shows it with the chapter times moved onto it.
+// episode from Descript, and shows it with the chapter times moved onto it. When Editor Light makes
+// the final cut, it links to the Studio editor to touch it up (spec 020).
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { ago } from "@/components/studio/format";
 import { mmss } from "@/lib/showNotes";
 import { ErrorNote } from "@/components/studio/ErrorNote";
@@ -93,6 +95,11 @@ export function FinalCut({ episodeId, enabled, report, revision }: { episodeId: 
                     <a href={view.folderUrl} target="_blank" rel="noreferrer" className="text-sm text-gray-400 hover:underline">
                         04 Final folder ↗
                     </a>
+                )}
+                {editorLight && (
+                    <Link href={`/admin/podcast/${episodeId}/studio-editor`} className="text-sm text-amber-300 hover:underline">
+                        Touch up in the Studio editor →
+                    </Link>
                 )}
             </div>
             <p className="text-xs text-gray-400">
