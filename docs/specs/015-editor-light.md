@@ -126,13 +126,16 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
 4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
    placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
    normalized to −14 LUFS.
-5. **Save** everything:
+5. **Check** the finished file (`renderQc.ts`, spec 019 item 0.2): loudness, true peak, length
+   against the plan, dead air, black picture, sound against picture, and on-screen items. The
+   numbers and warnings go in `editRender.qc` and show under the render; they never fail it.
+6. **Save** everything:
    - The video goes to `episodes/{id}/editRender/v{edit version}-{run id}/episode.mp4`.
    - Beside it go the words, captions (.srt) and chapters/quotes on the new times.
    - The video is also saved as "*title* (Editor Light).mp4" in "04 Final" in Drive.
    - `episode.editRender` points at the new folder only once all of it is saved. The previous
      render's folder is then deleted.
-6. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
+7. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
    cancelled or killed before it can, the workflow's last step (`editRenderStopped.ts`) marks it
    failed instead.
 

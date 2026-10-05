@@ -91,6 +91,7 @@ export async function getFinal(id: string): Promise<FinalView> {
         shareUrl: f?.shareUrl ?? null,
         durationSeconds: f?.durationSeconds ?? null,
         loudness: f?.loudness ?? null,
+        qc: ready ? f.qc ?? null : null,
         coverage: f?.coverage ?? null,
         chapters: ready ? f.chapters ?? [] : [],
         quoteCount: ready ? f.quotes?.length ?? 0 : 0,

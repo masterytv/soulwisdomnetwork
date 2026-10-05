@@ -11,6 +11,7 @@ import { studioFetch } from "@/lib/studioClient";
 import { failure, useStep, type ReportStep } from "@/components/studio/steps";
 import { primary, secondary } from "@/components/studio/ui";
 import type { FinalView } from "@/types/studio";
+import { QualityReport } from "@/components/studio/qualityReport";
 
 
 const LABEL = {
@@ -126,6 +127,7 @@ export function FinalCut({ episodeId, enabled, report, revision }: { episodeId: 
                 </div>
             )}
             {ready && view.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}
+            {ready && <QualityReport qc={view.qc} />}
             <ErrorNote message={error} />
         </div>
     );

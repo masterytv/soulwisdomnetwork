@@ -200,6 +200,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
         warnings: plan.warnings,
+        qc: report.qc,
     };
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
@@ -268,6 +269,7 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
             ...(wordsPath ? { wordsPath } : {}),
             ...(result.driveFileId ? { driveFileId: result.driveFileId, driveUrl: result.driveUrl, folderUrl: result.folderUrl } : {}),
             durationSeconds: result.durationSeconds,
+            qc: result.qc,
             chapters: tidy.chapters,
             quotes: plan.quotes.map((q, i) => ({
                 text: q.text, speaker: q.speaker, originalMs: q.startMs,
@@ -284,4 +286,4 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
 
 export type EditRenderResult = Required<Pick<EpisodeEditRender,
     'videoPath' | 'wordsPath' | 'captionsPath' | 'chaptersPath' | 'driveFileId' | 'driveUrl' | 'folderUrl'
-    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings'>>;
+    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc'>>;

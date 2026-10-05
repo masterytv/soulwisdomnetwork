@@ -22,6 +22,7 @@ export interface EditRenderView {
     durationSeconds: number | null;
     cuts: number | null;
     warnings: string[];
+    qc: NonNullable<EpisodeEditRender['qc']> | null;   // the quality report (spec 019 item 0.2)
 }
 
 function episodeRef(id: string) {
@@ -82,5 +83,6 @@ export async function getEditRender(id: string): Promise<EditRenderView> {
         durationSeconds: ready ? r.durationSeconds ?? null : null,
         cuts: ready ? r.cuts ?? null : null,
         warnings: ready ? r.warnings ?? [] : [],
+        qc: ready ? r.qc ?? null : null,
     };
 }

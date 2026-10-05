@@ -181,6 +181,11 @@ test('render with cuts, teasers, intro, outro, b-roll, and --clean light', async
     assert.ok(reportData.inputSeconds > 0);
     assert.ok(reportData.outputSeconds > 0);
     assert.equal(reportData.cuts, 3);
+    // The quality report (renderQc.ts): measured, and the length matches teasers + intro + edit + outro.
+    assert.ok(reportData.qc, 'quality report present');
+    assert.ok(reportData.qc.integratedLufs !== null, 'loudness measured');
+    assert.ok(Math.abs(reportData.qc.durationSeconds - reportData.qc.expectedSeconds) <= 1, `length ${reportData.qc.durationSeconds} vs ${reportData.qc.expectedSeconds}`);
+    assert.ok(!reportData.qc.warnings.some((w: string) => w.startsWith('The video is')), 'no length warning');
 });
 
 test('block rendering for long episodes', async () => {

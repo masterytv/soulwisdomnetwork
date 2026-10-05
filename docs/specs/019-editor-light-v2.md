@@ -83,8 +83,8 @@ for this work".
 | # | Item | From | Effort | Model effort | Needs | Status |
 |---|---|---|---|---|---|---|
 | **0** | **Safety net** | | | | | |
-| 0.1 | Checks on every pull request | ours | S | Medium | — | Next |
-| 0.2 | Quality report on every render | ffmpeg | M | High | — | Not started |
+| 0.1 | Checks on every pull request | ours | S | Medium | — | Done (#134) |
+| 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
 | 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Not started |
 | 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
@@ -186,6 +186,24 @@ panel and the final-cut page show the warnings. Warnings never fail the job.
 
 **Done when:** a render of the real episode shows its numbers, and a render with a deliberately
 broken loudness pass shows a warning. `renderQc.test.ts` parses canned ffmpeg output.
+
+**Built (#135):**
+- `renderQc.ts`: one ffmpeg pass over the finished file (`ebur128`, `silencedetect` and
+  `blackdetect` together, per-frame logging off) and one ffprobe for the stream lengths. Only the
+  lines the parsers read are kept, so a long episode's log never fills memory.
+- **Edit render:** `renderEdit` measures its own output (it knows the teasers, intro, outro and
+  edited length, and the on-screen plan), returns `qc` in its report, and the job saves it as
+  `editRender.qc`, and as `final.qc` when Editor Light makes the final cut.
+- **Final cut from Descript:** `final.ts` measures the normalized file (no length to check
+  against) and saves `final.qc`; its warnings are added to the "Final cut ready" email.
+- `normalizeLoudness` (`media.ts`) also returns loudnorm's `normalization_type`.
+- **Studio:** `components/studio/qualityReport.tsx` shows the numbers and the warnings under the
+  render panel and the final cut.
+- **On screen:** `onScreenChecks` (starts in a cut, after the end, runs past the end) and
+  `assCheck` (texts missing from the subtitle file).
+- **Tests:** `renderQc.test.ts` (canned output, the rules, a real 6 s file, an unreadable file)
+  and a check in `editRender.test.ts` that a real render's length matches the plan.
+- The jobs only run from `main`, so the real-episode numbers come after promotion.
 
 ## Phase 1 — Better cut suggestions
 
