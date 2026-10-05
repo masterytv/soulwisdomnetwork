@@ -145,10 +145,10 @@ async function runSideJob(episode: Episode, only: 'translations' | 'retakes') {
         });
         return { 'translations.tracks': tracks, 'translations.finalAt': finalAt, cost: { item: 'translations', usd } };
     } });
-    if (only === 'retakes') jobs.push({ key: 'retakes', label: 'Finding retakes', run: async () => {
-        const { found, notFound, usd } = await findRetakes(client, episode, download);
-        console.log(`✂️ ${found.length} retakes (${notFound} not found word for word)`);
-        return { 'retakes.found': found, 'retakes.notFound': notFound, cost: { item: 'retakes', usd } };
+    if (only === 'retakes') jobs.push({ key: 'retakes', label: 'Suggesting a tighter edit', run: async () => {
+        const { found, notFound, protectedCount, usd } = await findRetakes(client, episode, settings, download);
+        console.log(`✂️ ${found.length} suggestions (${notFound} not found word for word, ${protectedCount} on a quote or teaser)`);
+        return { 'retakes.found': found, 'retakes.notFound': notFound, 'retakes.protectedCount': protectedCount, cost: { item: 'retakes', usd } };
     } });
     let failed = false;
     for (const job of jobs) {

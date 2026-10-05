@@ -1,5 +1,5 @@
-// Why: the server side of Part I's two Claude jobs. Requesting caption translations or a retake
-// search checks the episode is ready, the spending limit holds, and nothing is already running,
+// Why: the server side of Part I's two Claude jobs. Requesting caption translations or a tighter
+// edit (retakes and more) checks the episode is ready, the spending limit holds, and nothing is already running,
 // then starts the notes job (which does the work); reading them back gives the editor and the
 // show notes page what they show, with download links for the translated captions.
 
@@ -94,21 +94,21 @@ export async function getTranslations(id: string): Promise<TranslationsView> {
     };
 }
 
-// Starts Claude's search for retakes in the accepted transcript (the notes job does it).
+// Starts Claude's suggestions for a tighter edit from the accepted transcript (the notes job does it).
 export async function requestRetakes(id: string) {
     const ref = episodeRef(id);
     await adminDb().runTransaction(async tx => {
         const episode = (await tx.get(ref)).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
         if (episode.status !== 'speakers_confirmed' || !episode.review?.reviewedPath) throw new HttpError(409, 'Accept the transcript first');
-        if (busy(episode.retakes)) throw new HttpError(409, 'Claude is already looking for retakes');
+        if (busy(episode.retakes)) throw new HttpError(409, 'Claude is already reading the transcript for a tighter edit');
         tx.update(ref, {
             retakes: { status: 'queued', requestedAt: FieldValue.serverTimestamp(), error: null, found: episode.retakes?.found ?? [] },
             updatedAt: FieldValue.serverTimestamp(),
         });
     });
     try {
-        await withinDailyLimit('finding retakes', ESTIMATE_USD.retakes, () => startNotes(id, 'retakes'));
+        await withinDailyLimit('a tighter edit', ESTIMATE_USD.retakes, () => startNotes(id, 'retakes'));
     } catch (error) {
         const message = `Could not start looking: ${(error as Error).message}`;
         await ref.update({ 'retakes.status': 'failed', 'retakes.error': message });
@@ -116,10 +116,10 @@ export async function requestRetakes(id: string) {
     }
 }
 
-// The retakes for the editor.
+// The suggestions for the editor.
 export async function getRetakes(id: string): Promise<RetakesView> {
     const snap = await episodeRef(id).get();
     if (!snap.exists) throw new HttpError(404, 'Episode not found');
     const r: EpisodeRetakes | undefined = (snap.data() as Episode).retakes;
-    return { ...shown(r), found: r?.found ?? [], notFound: r?.notFound ?? 0, generatedAt: millis(r?.generatedAt) };
+    return { ...shown(r), found: r?.found ?? [], notFound: r?.notFound ?? 0, protectedCount: r?.protectedCount ?? 0, generatedAt: millis(r?.generatedAt) };
 }
