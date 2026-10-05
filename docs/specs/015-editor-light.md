@@ -69,7 +69,8 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - It merges cuts less than 80 ms apart.
 - It stops each cut 40 ms short of the words on either side, so no kept word is clipped.
 - At the very start or end of the episode there is no word to protect.
-- Kept pieces under 150 ms are dropped.
+- Kept pieces under 150 ms are dropped, and so are pieces under 400 ms with no whole word in them
+  (a breath between two close cuts; spec 019 item 1.5).
 
 **Other functions:**
 - `editedTime` and `editedDuration` map original times onto the edit.
