@@ -6,14 +6,20 @@
 // struck through and dimmed; long pauses show as chips; the video preview
 // skips cut ranges. Selection, delete, undo/redo, suggest/clear, search,
 // review suggestions, and follow-video are wired.
+// Part I: in the full-page editor, text and images show over the video and the "On screen" panel
+// edits them; `tools` adds buttons to the toolbar (Claude's retakes).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit } from '@/lib/edit';
-import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
+import {
+    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, SUGGESTED_REASONS, HESITATION_REASONS,
+} from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
+import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
+import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
 
 interface SpeakerPara {
     speaker: string;
@@ -96,13 +102,18 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 }
 
 // workspace: the full-page editor — a larger video, a taller script and the timeline.
-export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
+// studioCaptions: the Studio's captions setting; overlayUrls: links to the overlay images (both Part I).
+export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools }: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
     onChange: (e: EpisodeEdit) => void;
     workspace?: boolean;
+    studioCaptions?: CaptionChoice;
+    overlayUrls?: Record<string, string>;
+    tools?: React.ReactNode;
 }) {
+    const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
@@ -186,6 +197,32 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
         }
     }, [onChange]);
 
+    // Cuts the selected words (Delete, Backspace or the Cut selected button). Returns false when
+    // there was nothing left to cut, as when every selected word is cut already.
+    const cutSelection = useCallback((): boolean => {
+        if (!selectedRange) return false;
+        const [start, end] = selectedRange;
+        let anyUncut = false;
+        for (let i = start; i <= end; i++) {
+            if (!isCut(i, words, edit.cuts)) { anyUncut = true; break; }
+        }
+        if (!anyUncut) return false;
+        const startMs = words[start]?.start ?? 0;
+        const endMs = words[end]?.end ?? startMs;
+        // Never add a cut that matches an existing one.
+        if (!edit.cuts.some(c => c.startMs === startMs && c.endMs === endMs)) {
+            updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }] }));
+        }
+        setSelectedRange(null);
+        return true;
+    }, [selectedRange, words, edit.cuts, updateEdit]);
+
+    // Splits (full-page editor): set at the playhead; each one once, in order.
+    const addSplit = useCallback((ms: number) => {
+        updateEdit(prev => (prev.splits ?? []).includes(ms) ? prev
+            : { ...prev, splits: [...(prev.splits ?? []), ms].sort((a, b) => a - b) });
+    }, [updateEdit]);
+
     // Keyboard: Delete/Backspace to cut, Ctrl/Cmd+Z for undo/redo, Space to play/pause.
     // When focus is in a text box (INPUT, TEXTAREA, contentEditable), only Delete is
     // handled (it cuts the selected match). Typing, Backspace, Space and Ctrl/Cmd+Z
@@ -233,29 +270,20 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 return;
             }
             if (selectedRange && (e.key === 'Delete' || e.key === 'Backspace')) {
-                // Skip when the selection is only cut words.
-                const [start, end] = selectedRange;
-                let anyUncut = false;
-                for (let i = start; i <= end; i++) {
-                    if (!isCut(i, words, edit.cuts)) { anyUncut = true; break; }
-                }
-                if (!anyUncut) return;
+                if (cutSelection()) e.preventDefault();
+                return;
+            }
+            // S splits at the playhead in the full-page editor.
+            if (workspace && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 's') {
+                const video = videoRef.current;
+                if (!video) return;
                 e.preventDefault();
-                const startMs = words[start]?.start ?? 0;
-                const endMs = words[end]?.end ?? startMs;
-                // Never add a cut that matches an existing one.
-                if (!edit.cuts.some(c => c.startMs === startMs && c.endMs === endMs)) {
-                    updateEdit(prev => ({
-                        ...prev,
-                        cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }],
-                    }));
-                }
-                setSelectedRange(null);
+                addSplit(Math.round(video.currentTime * 1000));
             }
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -377,9 +405,9 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
         if (cut) onCutClick(cut);
     };
 
-    // Word drag start.
-    const onWordMouseDown = (index: number) => {
-        if (isCut(index, words, edit.cuts)) return;
+    // Word drag start. A shift-click leaves the selection for the click to extend.
+    const onWordMouseDown = (index: number, e: React.MouseEvent) => {
+        if (e.shiftKey || isCut(index, words, edit.cuts)) return;
         setDragStart(index);
         setSelectedRange([index, index]);
     };
@@ -406,10 +434,24 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
         }));
     }, [updateEdit]);
 
-    // Suggest filler words and long pauses.
+    // Suggest filler words, repeats and long pauses; marking again replaces the earlier ones.
     const onSuggest = () => {
-        const suggested = suggestCuts(words);
-        updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, ...suggested] }));
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words), SUGGESTED_REASONS) }));
+        setReviewIdx(0);
+        setReviewKind(null);
+    };
+
+    // Hesitations: short silences inside a sentence where an "um" may have been. Guesses, so they
+    // have their own button and their own group to review or clear.
+    const onHesitations = () => {
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words, { gaps: true }), HESITATION_REASONS) }));
+        setReviewIdx(0);
+        setReviewKind('gap');
+    };
+
+    // Clears the suggestions of one kind (the group chosen in the counts).
+    const onClearKind = (reason: string) => {
+        updateEdit(prev => ({ ...prev, cuts: prev.cuts.filter(c => c.reason !== reason) }));
         setReviewIdx(0);
         setReviewKind(null);
     };
@@ -541,7 +583,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
 
     // The reason button label for 'manual'.
     const reasonLabel = (reason: string): string =>
-        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason;
+        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason === 'gap' ? 'Hesitations' : reason;
 
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
@@ -552,9 +594,19 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 <button onClick={onSuggest} className={primary}>
                     Mark filler words and long pauses
                 </button>
+                <button onClick={onHesitations} className={secondary}
+                    title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
+                    Mark hesitations
+                </button>
                 <button onClick={onClearSuggestions} className={secondary}>
                     Clear suggestions
                 </button>
+                {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. */}
+                {selectedRange && (
+                    <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
+                )}
+                {/* Extra tools from the page, such as Claude's retakes. */}
+                {tools}
                 <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
                     Undo
                 </button>
@@ -586,6 +638,11 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                         </button>
                     );
                 })}
+                {reviewKind && reviewKind !== 'manual' && reasonCounts[reviewKind] > 0 && (
+                    <button onClick={() => onClearKind(reviewKind)} className={`${secondary} px-2 py-0.5`}>
+                        Clear these
+                    </button>
+                )}
                 {/* Search box with a clear button that shows once there is text. */}
                 <div className="ml-auto flex items-center gap-1">
                     <input
@@ -636,13 +693,17 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
             <div className="flex flex-col gap-4 md:flex-row">
                 {/* Video preview */}
                 <div className={`${workspace ? 'md:w-3/5' : 'md:w-1/2'} md:sticky md:top-4 self-start`}>
-                    <video
-                        ref={videoRef}
-                        src={videoUrl}
-                        className="w-full rounded-lg bg-black"
-                        controls
-                        onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
-                    />
+                    {/* The video, with the on-screen text and images over it in the full-page editor. */}
+                    <div className="relative" style={{ containerType: 'inline-size' }}>
+                        <video
+                            ref={videoRef}
+                            src={videoUrl}
+                            className="w-full rounded-lg bg-black"
+                            controls
+                            onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
+                        />
+                        {workspace && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
+                    </div>
                     {/* Cuts map: every cut on one strip under the video; click a mark to jump there. */}
                     {totalMs > 0 && !workspace && (
                         <div aria-label="Cuts map" className="relative mt-2 h-3 w-full rounded bg-white/5">
@@ -757,8 +818,10 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                                                     }}
                                                 >
                                                     {gapCut
-                                                        ? (gapCuts.some(c => c.reason === 'filler')
-                                                            ? `um · ${(prevGap / 1000).toFixed(1)}s`
+                                                        // A cut silence between words is a hesitation ('gap', or 'filler' in
+                                                        // edits marked before hesitations had their own kind), never a word.
+                                                        ? (gapCuts.some(c => c.reason === 'filler' || c.reason === 'gap')
+                                                            ? `hesitation ${(prevGap / 1000).toFixed(1)}s`
                                                             : `pause ${(prevGap / 1000).toFixed(1)}s → ${((prevGap - (gapCuts[0]?.endMs ?? 0) + (gapCuts[0]?.startMs ?? 0)) / 1000).toFixed(1)}s`)
                                                         : `pause ${(prevGap / 1000).toFixed(1)}s`}
                                                 </span>
@@ -781,7 +844,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                                                 title={cut ? 'Double-click to bring back' : undefined}
                                                 onClick={(e) => onWordClick(index, e)}
                                                 onDoubleClick={() => onWordDoubleClick(index)}
-                                                onMouseDown={() => onWordMouseDown(index)}
+                                                onMouseDown={e => onWordMouseDown(index, e)}
                                                 onMouseEnter={() => onWordMouseEnter(index)}
                                             >
                                                 {word.text}
@@ -801,9 +864,30 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 <Timeline
                     words={words}
                     cuts={edit.cuts}
+                    overlays={edit.overlays ?? []}
                     totalMs={totalMs}
                     video={videoRef}
                     editedMs={editedMs}
+                    onSeek={ms => seekToTime(ms / 1000)}
+                    split={{
+                        splits: edit.splits ?? [],
+                        onSplit: addSplit,
+                        onRemoveSplit: ms => updateEdit(prev => ({ ...prev, splits: (prev.splits ?? []).filter(s => s !== ms) })),
+                        onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
+                        onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
+                    }}
+                />
+            )}
+
+            {/* workspace: the On screen panel (Part I) under the timeline. */}
+            {workspace && (
+                <OnScreenPanel
+                    words={words}
+                    edit={edit}
+                    video={videoRef}
+                    studio={studio}
+                    onOverlays={overlays => updateEdit(prev => ({ ...prev, overlays }))}
+                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
                     onSeek={ms => seekToTime(ms / 1000)}
                 />
             )}

@@ -5,6 +5,8 @@
 // comes from. Shared by the Studio pages, the server routes and the GitHub Actions jobs.
 
 import { z } from 'zod';
+import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
+import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -38,6 +40,9 @@ export const StudioSettingsSchema = z.object({
     colors: z.object({ background: hex, backgroundBottom: hex, accent: hex }),
     logoPath: z.string().max(300).nullable(),     // Cloud Storage; null uses the site's logo
     imageStyle: z.string().trim().max(1500),      // AI image look; empty keeps the built-in Soul Wisdom styles
+    burnCaptions: z.boolean(),                    // captions burned into the Editor Light render (Part I)
+    captionStyle: CaptionStyleSchema,             // their font, size, colour, background and position
+    captionLanguages: z.array(z.enum(LANGUAGE_CODES)).max(LANGUAGES_MAX),   // languages the captions are translated into
     intro: z.enum(['show', 'custom', 'none']),    // the show's intro (also the outro), your own, or none
     introPath: z.string().max(300).nullable(),    // Cloud Storage, when intro is 'custom'
     teasers: z.boolean(),                         // "In this episode" clips before the intro
@@ -63,6 +68,9 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     colors: { background: '#140a2e', backgroundBottom: '#2a1552', accent: '#f7c65b' },
     logoPath: null,
     imageStyle: '',
+    burnCaptions: false,
+    captionStyle: DEFAULT_CAPTION_STYLE,
+    captionLanguages: [],
     intro: 'show',
     introPath: null,
     teasers: true,

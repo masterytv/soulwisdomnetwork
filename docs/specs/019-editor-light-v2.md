@@ -22,7 +22,10 @@ Editor Light to replace Descript as the final edit, with:
 
 ## Before you start
 
-This is the pick-up point for a new conversation. Pick up here, in order:
+This is the pick-up point for a new conversation. **Read `docs/PLANNING.md` first.** It lists the
+decisions, and where this plan overlaps work that reached `staging` after it was written (retakes,
+splits, on-screen text and images, burned-in captions). Reconcile those before building. Then
+pick up here, in order:
 
 1. **Check the prerequisites are done:**
    - The current plan is merged to `main`: Jo Ann H's Parts A–G, and spec 015's

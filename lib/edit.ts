@@ -3,17 +3,27 @@
 
 import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
+import type { CaptionChoice, Overlay } from './onScreen';
 import { isFiller } from './fillers';
 
 export interface Cut {
     startMs: number;
     endMs: number;
-    reason: 'filler' | 'pause' | 'repeat' | 'manual';
+    // 'retake': found by Claude (Part I). 'gap': a hesitation, a short silence inside a sentence
+    // where an "um" may have been (transcripts from before `disfluencies` was on lack those words); suggested only on request.
+    reason: 'filler' | 'pause' | 'repeat' | 'manual' | 'retake' | 'gap';
 }
 
 export interface EpisodeEdit {
     cuts: Cut[];
     version: number;
+    // Part I: text and image overlays, and this video's own captions choice (null or missing: the Studio's).
+    overlays?: Overlay[];
+    captions?: CaptionChoice | null;
+    // Split points (ms in the original recording), set at the playhead in the full-page editor.
+    // They only divide the episode into sections that can be cut or brought back whole; the
+    // render does not use them.
+    splits?: number[];
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode
@@ -24,8 +34,12 @@ const ms = z.number().min(0).max(24 * 3600_000).transform(Math.round);
 export const CutsSchema = z.array(z.object({
     startMs: ms,
     endMs: ms,
-    reason: z.enum(['filler', 'pause', 'repeat', 'manual']),
+    reason: z.enum(['filler', 'pause', 'repeat', 'manual', 'retake', 'gap']),
 }).strict().refine(c => c.endMs > c.startMs, 'A cut must end after it starts')).max(MAX_CUTS);
+
+// Split points: whole milliseconds, each once, in order.
+export const MAX_SPLITS = 500;
+export const SplitsSchema = z.array(ms).max(MAX_SPLITS).transform(s => [...new Set(s)].sort((a, b) => a - b));
 
 export interface KeptRange {
     startMs: number;
@@ -103,7 +117,14 @@ const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 export interface SuggestOptions {
     maxPauseMs?: number;
     keepPauseMs?: number;
+    // Also suggest hesitations (reason 'gap'). Off by default: they are guesses, and in long
+    // conversations they far outnumber the real fillers.
+    gaps?: boolean;
 }
+
+// What "Mark filler words and long pauses" suggests, and what "Mark hesitations" adds.
+export const SUGGESTED_REASONS: Cut['reason'][] = ['filler', 'repeat', 'pause'];
+export const HESITATION_REASONS: Cut['reason'][] = ['gap'];
 
 // Suggests cuts for filler words, repeated words, and long pauses.
 export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[] {
@@ -140,28 +161,63 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         }
     }
 
-    // Filler-as-gap: episodes transcribed before `disfluencies` was turned on have no "um"
-    // or "uh", and AssemblyAI still misses some, so fillers often show up as a gap between
-    // two words inside a sentence. Inside a sentence
-    // (previous word not ending in . ? !), a gap of 350–1200 ms becomes a 'filler'
-    // cut leaving 150 ms of air.
-    const FILLER_GAP_MIN = 350;
-    const FILLER_GAP_MAX = 1200;
-    const FILLER_KEEP_MS = 150;
-    const endsSentence = (s: string) => /[.?!]$/.test(s.trim());
-    for (let i = 1; i < words.length; i++) {
-        const prev = words[i - 1];
-        const gap = words[i].start - prev.end;
-        if (gap >= FILLER_GAP_MIN && gap <= FILLER_GAP_MAX && !endsSentence(prev.text)) {
-            cuts.push({
-                startMs: prev.end + FILLER_KEEP_MS,
-                endMs: words[i].start,
-                reason: 'filler',
-            });
+    // Hesitations, only when asked: episodes transcribed before ingest turned on `disfluencies`
+    // have no "um" or "uh", and AssemblyAI still misses some, so one often shows up as a silence
+    // between two words of a sentence. A gap of 500–1200 ms after a word
+    // that ends no sentence or clause (no . ? ! , ; : or dash) becomes a 'gap' cut leaving 150 ms
+    // of air. Shorter gaps, and the breath after a comma, are how people talk.
+    if (options?.gaps) {
+        const GAP_MIN = 500;
+        const GAP_MAX = maxPauseMs;
+        const GAP_KEEP_MS = 150;
+        const endsClause = (s: string) => /[.?!,;:\u2014\u2013-]["\u201d\u2019)]*$/.test(s.trim());
+        for (let i = 1; i < words.length; i++) {
+            const prev = words[i - 1];
+            const gap = words[i].start - prev.end;
+            if (gap >= GAP_MIN && gap <= GAP_MAX && !endsClause(prev.text) && !isFiller(normalize(words[i].text))) {
+                cuts.push({ startMs: prev.end + GAP_KEEP_MS, endMs: words[i].start, reason: 'gap' });
+            }
         }
     }
 
     return cuts;
+}
+
+// Replaces the earlier suggestions of these kinds with fresh ones, so marking twice adds nothing
+// twice. The producer's own cuts, and suggestions of other kinds, stay.
+export function replaceSuggestions(cuts: Cut[], fresh: Cut[], reasons: Cut['reason'][]): Cut[] {
+    return [...cuts.filter(c => !reasons.includes(c.reason)), ...fresh.filter(c => reasons.includes(c.reason))];
+}
+
+export interface Section { startMs: number; endMs: number }
+
+// The section of the episode around `atMs`: from the split before it (or the start) to the
+// split after it (or the end).
+export function sectionAt(splits: number[], atMs: number, totalMs: number): Section {
+    let startMs = 0, endMs = totalMs;
+    for (const s of splits) {
+        if (s <= atMs && s > startMs) startMs = s;
+        if (s > atMs && s < endMs) endMs = s;
+    }
+    return { startMs, endMs: Math.max(startMs, endMs) };
+}
+
+// Cuts a whole section (one cut, the producer's own).
+export function cutSection(cuts: Cut[], section: Section): Cut[] {
+    if (section.endMs <= section.startMs) return cuts;
+    return [...cuts, { startMs: section.startMs, endMs: section.endMs, reason: 'manual' }];
+}
+
+// Brings a whole section back: every cut loses the part inside it; a cut that runs past the
+// section keeps the parts outside.
+export function restoreSection(cuts: Cut[], section: Section): Cut[] {
+    const out: Cut[] = [];
+    for (const c of cuts) {
+        if (c.endMs <= section.startMs || c.startMs >= section.endMs) { out.push(c); continue; }
+        if (c.startMs < section.startMs) out.push({ ...c, endMs: section.startMs });
+        if (c.endMs > section.endMs) out.push({ ...c, startMs: section.endMs });
+    }
+    return out;
 }
 
 // Moves chapter start times onto the edited timeline. A chapter whose start was cut

@@ -2,6 +2,7 @@
 // Cuts the episode to keepRanges, joins teasers → intro → edited → outro at 1920x1080 30fps,
 // lays b-roll over the edited timeline (using kenBurns from media.ts), cleans audio
 // (highpass → afftdn/arnndn → acompressor → normalizeLoudness), and writes a JSON report.
+// Part I: burns in captions, text overlays (such as name titles) and image overlays (lib/onScreen.ts).
 // Run: npx tsx agent/src/podcast/editRender.ts --video in.mp4 --edit edit.json --out out.mp4 ...
 
 import * as fs from 'fs';
@@ -10,6 +11,7 @@ import { spawn } from 'child_process';
 import { keepRanges, editedDuration, editedTime, editedWords, applyToChapters, applyToQuotes, type EpisodeEdit } from '../../../lib/edit';
 import { buildCues, toSrt } from '../../../lib/captions';
 import { kenBurns, normalizeLoudness, probeDuration } from './media';
+import { buildAss, imageOverlayFilter, placeOverlays, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -26,6 +28,9 @@ function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: str
         });
     });
 }
+
+// The Outfit fonts for captions and text; the other caption fonts are installed on the runner.
+const FONTS_DIR = path.resolve('agent/assets/fonts');
 
 const FILL_1080 = 'scale=iw*sar:ih,setsar=1,scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080,setsar=1';
 
@@ -78,6 +83,9 @@ export async function renderEdit(opts: {
     detect?: 'auphonic';
     noiseModel?: string;
     blockMinutes?: number;
+    // On-screen text and pictures (Part I): captions in this look (null for none), text overlays and
+    // image overlays (each with its local file), all placed on the edited episode.
+    onScreen?: { captions: CaptionStyle | null; texts: TextOverlay[]; images: { overlay: ImageOverlay; file: string }[] };
     // The accepted transcript and show-note times, when known: their new times are written
     // next to the output, so the final cut never has to be transcribed again.
     words?: { text: string; start: number; end: number }[];
@@ -237,6 +245,10 @@ export async function renderEdit(opts: {
         const outroIdx = opts.outro ? (inputs.push(opts.outro), idx++) : -1;
         const brollIdxs: number[] = [];
         for (const bf of brollFiles) { if (bf) { inputs.push(bf); brollIdxs.push(idx++); } else brollIdxs.push(-1); }
+        // Image overlays: one input each, placed on the edited timeline.
+        const images = placeOverlays((opts.onScreen?.images ?? []).map(i => ({ ...i.overlay, file: i.file })), ranges, editedMs);
+        const imageIdxs: number[] = [];
+        for (const im of images) { inputs.push(im.overlay.file); imageIdxs.push(idx++); }
 
         let filter = '';
 
@@ -284,6 +296,23 @@ export async function renderEdit(opts: {
             filter += `[${epV}][${br}]overlay=x=0:y=0:enable='between(t,${startSec.toFixed(3)},${endSec.toFixed(3)})':eof_action=pass,format=yuv420p[${next}];`;
             epV = next;
             bi++;
+        }
+
+        // On screen (Part I): images over the b-roll, then captions and text over everything.
+        images.forEach((im, i) => {
+            filter += imageOverlayFilter(imageIdxs[i], epV, `im${i}`, im);
+            epV = `im${i}`;
+        });
+        if (opts.onScreen) {
+            const cues = opts.onScreen.captions && opts.words?.length ? buildCues(editedWords(opts.words, ranges)) : [];
+            const ass = buildAss(cues, opts.onScreen.captions, placeOverlays(opts.onScreen.texts, ranges, editedMs));
+            if (ass) {
+                fs.mkdirSync(tmpDir, { recursive: true });
+                const assFile = path.join(tmpDir, 'onscreen.ass');
+                fs.writeFileSync(assFile, ass);
+                filter += `[${epV}]subtitles=filename=${filterPath(assFile)}:fontsdir=${filterPath(FONTS_DIR)},format=yuv420p[eps];`;
+                epV = 'eps';
+            }
         }
 
         // Final concat: teasers → intro → episode → outro (video and audio interleaved).
@@ -348,6 +377,12 @@ export async function renderEdit(opts: {
             if (dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
         }
     }
+}
+
+// A file path inside a filter, quoted for ffmpeg; a quote in the path cannot be passed safely.
+function filterPath(p: string): string {
+    if (p.includes("'")) throw new Error(`The path ${p} has a quote in it, which ffmpeg filters cannot take`);
+    return `'${p}'`;
 }
 
 // ─── command line ────────────────────────────────────────────────────────────

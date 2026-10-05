@@ -32,7 +32,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
-              teasers, intro, outro, b-roll, voice cleanup; podcast_edit_render.yml runs editRenderRun.ts, GitHub
+              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions; podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
               with components/studio/timeline.tsx); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
@@ -41,8 +41,8 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
-              019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor
-              (start at 019's "Before you start" for editor work after the current plan)
+              019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor;
+              docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
 docs/research/ dated research reports behind the specs
 types/
 ```
@@ -99,7 +99,9 @@ into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 P
 when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive), and a "ready for speaker review" email with the readable transcript goes
 to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
-(`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. Once notes are approved, "Generate b-roll
+(`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The same workflow with
+`mode: extras` writes the social posts and follow-up email from the approved notes; `mode: translations`
+and `mode: retakes` serve the editor (spec 015). Once notes are approved, "Generate b-roll
 images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
 `docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. "Build edit package" starts
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
@@ -136,7 +138,7 @@ show-notes approvals in its `approvals` subcollection),
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts picks and titles, social posts, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
