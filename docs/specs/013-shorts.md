@@ -135,6 +135,11 @@ On the show notes page, under **Shorts** (`components/studio/shorts.tsx`), after
 
 - Instagram Reels from the same files (decided: later).
 - A Shorts playlist, and pulling views back weekly (spec 005 step 15).
+- **Claude picks the moments**: built (Part B of Jo Ann H's fork, 5 October 2026). Mode `pick`
+  reads the whole final cut and suggests up to ten moments, best first, each with a score out of 10, a
+  hook and a reason, following the producer's optional direction (`lib/shortPicks.ts`). Picks
+  are snapped to whole words and must run 5 seconds to 3 minutes; the producer adds the ones
+  they want. It reserves $0.40 against the daily spending limit.
 - **Pick the cover frame with a slider** (asked for 29 Sept 2026). The still of each short is
   its first frame, which sometimes catches the speaker mid-blink. Wanted: a slider under each
   drawn short in the Studio to scrub through it and pick the frame to use as its cover.

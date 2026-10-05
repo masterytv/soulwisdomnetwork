@@ -933,7 +933,8 @@ export default function ShowNotesPage() {
                                                         if (redraftOnly === "all" && view?.notes?.draft &&
                                                             !confirm("Draft everything again? Claude's new draft replaces everything in this stage, including your edits.")) return;
                                                         void run(async () => {
-                                                            await flush();
+                                                            // Edits not saved yet would be lost under the new draft.
+                                                            if (!(await flush())) throw new Error("Your latest edits could not be saved, so nothing was redrafted. Try again.");
                                                             await studioFetch(`/api/studio/episodes/${episodeId}/notes/generate`, {
                                                                 method: "POST",
                                                                 body: JSON.stringify({ force: true, instruction: redraftDirection, only: redraftOnly }),
@@ -952,6 +953,7 @@ export default function ShowNotesPage() {
                                                     {redraftOnly === "all"
                                                         ? "Everything is replaced: Claude's new draft replaces everything in this stage, including your edits."
                                                         : `Only the ${redraftOnly === "description" ? "description" : "titles"} is replaced; everything else stays as you left it.`}
+                                                    {" "}Either way it is a full Claude draft, about $0.50.
                                                 </span>
                                             </div>
                                         </div>
