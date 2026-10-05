@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -451,6 +451,58 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   with no page scroll, a dragged size survives a reload, the sheet opens and closes, the rail switches
   panels, and the quick edit is laid out as before. Not yet on the real 48-minute episode (Tom, on
   staging).
+
+### E2 — Built (#144)
+
+- **Ingest makes the timeline's media** (`agent/src/podcast/timelineMedia.ts`, beside the silences):
+  - **Peaks** (019 item 2.1): `audio.m4a` decoded to 8 kHz mono; the lowest and highest sample of every
+    10 ms as two bytes (`lib/peaks.ts`), saved as `analysis/peaks.bin` (`media.peaksPath`), about 720 KB
+    an hour and a few seconds to make. The bytes are **µ-law**, not linear, so quiet sounds keep their
+    detail: a breath fills about a quarter of the lane instead of one pixel.
+  - **Thumbnails:** one frame every 5 s from the proxy, 160×90, a hundred to a 1600×900 JPEG
+    (`analysis/thumbs_N.jpg`), listed in `analysis/thumbs.json` (`lib/thumbs.ts`, `media.thumbsPath`).
+    Decoding the proxy takes about a minute and a half for a 49-minute episode.
+  - Neither fails an episode. Each ingest run fills in older episodes: peaks with the silences (20 a
+    run), thumbnails 5 a run. **After promoting, run Podcast Ingest once by hand**, as for the silences.
+- **The editor reads them** through `GET /api/studio/episodes/[id]/timeline` (6-hour links to the sheets,
+  and whether peaks exist) and `GET /api/studio/episodes/[id]/peaks` (the bytes, passed through the
+  server because the bucket's CORS would refuse the browser's fetch). Both call `requireRole`.
+- **The timeline** (`components/studio/timeline.tsx`; the pure parts in `lib/timeline.ts`):
+  - **Tracks**, with headers: **V2 On screen** (markers; the eye hides them in the preview only),
+    **V1 Episode** (thumbnails, with the speakers' colours in a band under them; the lock stops the
+    timeline changing cuts) and **A1 Voice** (the waveform; the speaker icon mutes the preview).
+  - **Virtual drawing:** one canvas the width of the view, drawn only for what is in view, cuts
+    included: no element per cut. A scroller as wide as the recording gives the native scrollbar and
+    trackpad scrolling.
+  - **Zoom** from the whole recording to 2 ms a pixel (500 px a second): −, +, a slider, **Fit**, the
+    + and − keys, and Ctrl or ⌘ with the scroll wheel (at the pointer). The buttons, slider and keys
+    zoom around the playhead when it is in view. The plain wheel scrolls along.
+  - **The playhead** redraws by itself every frame while playing. When the video moves it out of view,
+    the view follows (a third of the way in), except for 3 s after the producer scrolls by hand.
+  - **Snapping** within 8 px to the playhead, word edges, cut edges and splits, otherwise to 10 ms
+    steps. The **Snap** box turns it off; Alt turns it off for one drag.
+  - **Cut edges** (019 item 2.2): drag either edge of a cut that is at least 8 px wide on screen (or
+    the selected one). The edge stops at the nearest word that is heard and never lands inside one
+    (`edgeLimits`, `clampToWords`); Alt frees it. The cut becomes the producer's own (`manual`), so
+    marking again or **Clear these** leaves it alone. A whole drag is one undo step: the timeline keeps
+    a draft while dragging and saves once.
+  - **Time-range cut:** drag on the waveform to select a stretch; Delete, or **✂ Cut**, cuts it as
+    `manual`; **▶ Play** plays it. Its edges snap and keep out of words as above.
+  - **A cut:** click it to select it; the tool row shows its times, length and kind, **▶ Hear** (2 s
+    either side) and **Bring back** (or double-click the cut).
+  - **Keys** (also in the shortcut sheet): ← → a frame (Shift: a second), + and −, Esc clears the
+    selection. The tool row stays on one line, so the lanes never move under the pointer.
+  - The section controls of #130 (Split, the section under the playhead, Cut section, Bring section
+    back) stay in the tool row until E3 grows them.
+- **Checked:** unit tests (`lib/peaks.test.ts`, `lib/thumbs.test.ts`, `lib/timeline.test.ts`,
+  `agent/src/podcast/timelineMedia.test.ts`). In Chromium with a 3-minute test video and the peaks and
+  thumbnails ingest made from it, at 1440×900 and 1280×720: dragging an edge (one undo step), selecting
+  a stretch and pressing Delete, double-clicking a cut back, scrubbing the ruler, the wheel, zooming to
+  2 ms a pixel, the view following playback, the arrows, lock, mute and hide, with no page errors and
+  no page scroll. With an edit the size of the 49-minute episode (5,265 words, 1,317 cuts, full-length
+  peaks), each scroll or zoom step drew within two frames in the development build. **Not yet on the
+  real episode:** its peaks and thumbnails need an ingest run from `main`.
+- **Not in E2:** the Blade tool and trimming a section's edge (E3); dragging on-screen items (E5).
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

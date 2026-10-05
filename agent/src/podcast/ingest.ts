@@ -1,6 +1,7 @@
 // Spec 005 steps 1-3: pick up new recordings from Drive, copy them to Cloud Storage, make
-// a 720p proxy and an audio-only file, measure the audio's silences (spec 019 item 1.1), and
-// transcribe with candidate speaker names.
+// a 720p proxy and an audio-only file, measure the audio's silences (spec 019 item 1.1), make the
+// Studio editor's waveform peaks and thumbnail sheets (spec 020 item E2), and transcribe with
+// candidate speaker names.
 // Recordings uploaded in the Studio (lib/server/uploads.ts) are already in Cloud Storage; they
 // go through the same steps without Drive, which is optional when only uploads are used.
 // Runs in GitHub Actions (.github/workflows/podcast_ingest.yml), NOT on App Hosting.
@@ -15,6 +16,7 @@ import { getStorage } from 'firebase-admin/storage';
 import * as fs from 'fs';
 import * as path from 'path';
 import type { DetectedSpeaker, Episode, EpisodeStage } from '../../../types/episode';
+import { THUMBS, type ThumbIndex } from '../../../lib/thumbs';
 import { ASSEMBLYAI_USD_PER_HOUR, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
     checkFolderAccess, createDrive, createGoogleDoc, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
@@ -27,6 +29,7 @@ import { postUsageReport } from './usageReport';
 import { readableTranscript, speakerSummary } from './readable';
 import { loadSettings } from './settings';
 import { measureSilences } from './silences';
+import { makeThumbs, measurePeaks } from './timelineMedia';
 import { createAssemblyAI, hasFailed, submitTranscription, summariseSpeakers, waitForTranscript } from './transcribe';
 
 const config = loadConfig();
@@ -74,20 +77,84 @@ async function analyseSilences(ref: DocumentReference, fileId: string, audioPath
     }
 }
 
-// Episodes ingested before silences were measured (or whose measuring failed) get them now, a
-// few per run, so a run with nothing new still fills them in.
-const SILENCES_PER_RUN = 20;
-async function catchUpSilences() {
-    const pending = (await db.collection('episodes').get()).docs
-        .filter(d => { const m = (d.data() as Episode).media; return !!m?.audioPath && !m.silencesPath; })
-        .slice(0, SILENCES_PER_RUN);
-    if (!pending.length) return;
-    console.log(`🔇 Measuring silences for ${pending.length} earlier episode(s)`);
-    for (const doc of pending) {
-        const dir = path.join(config.workDir, 'podcast', `silences-${doc.id}`);
+// The Studio editor's waveform (spec 019 item 2.1): the audio's peaks, saved as analysis/peaks.bin
+// (lib/peaks.ts). Like the silences, free, and never fails the episode: the timeline shows no
+// waveform until the next run's catch-up makes them.
+async function analysePeaks(ref: DocumentReference, fileId: string, audioPath: string, localAudio: string) {
+    try {
+        if (!fs.existsSync(localAudio)) {
+            await withRetry('Storage download', () => bucket.file(audioPath).download({ destination: localAudio }));
+        }
+        const peaks = await measurePeaks(localAudio);
+        const local = `${localAudio}.peaks.bin`;
+        fs.writeFileSync(local, peaks);
+        const peaksPath = await upload(local, `episodes/${fileId}/analysis/peaks.bin`, 'application/octet-stream');
+        await touch(ref, { 'media.peaksPath': peaksPath });
+        console.log(`  〰️ Waveform peaks made (${Math.round(peaks.length / 1024)} KB)`);
+        return peaksPath;
+    } catch (error) {
+        console.warn(`  ⚠️ Could not make the waveform peaks, will retry next run: ${(error as Error).message}`);
+        return undefined;
+    }
+}
+
+// The Studio editor's picture strip: a frame every 5 s from the proxy, on sheets of a hundred
+// (analysis/thumbs_N.jpg), listed in analysis/thumbs.json (lib/thumbs.ts). Free, and never fails
+// the episode.
+async function analyseThumbs(ref: DocumentReference, fileId: string, proxyPath: string, localProxy: string, durationSeconds: number) {
+    const dir = `${localProxy}.thumbs`;
+    try {
+        if (!fs.existsSync(localProxy)) {
+            await withRetry('Storage download', () => bucket.file(proxyPath).download({ destination: localProxy }));
+        }
+        const { sheets, count } = await makeThumbs(localProxy, dir, durationSeconds);
+        const paths: string[] = [];
+        for (const [i, sheet] of sheets.entries()) paths.push(await upload(sheet, `episodes/${fileId}/analysis/thumbs_${i}.jpg`, 'image/jpeg'));
+        const index: ThumbIndex = { ...THUMBS, count, sheets: paths };
+        const local = path.join(dir, 'thumbs.json');
+        fs.writeFileSync(local, JSON.stringify(index));
+        const thumbsPath = await upload(local, `episodes/${fileId}/analysis/thumbs.json`, 'application/json');
+        await touch(ref, { 'media.thumbsPath': thumbsPath });
+        console.log(`  🖼️ ${count} timeline thumbnails on ${sheets.length} sheet(s)`);
+        return thumbsPath;
+    } catch (error) {
+        console.warn(`  ⚠️ Could not make the timeline thumbnails, will retry next run: ${(error as Error).message}`);
+        return undefined;
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+// Episodes ingested before the silences, peaks or thumbnails were made (or whose making failed)
+// get them now, a few per run, so a run with nothing new still fills them in. Thumbnails decode
+// the whole proxy, so fewer of those per run.
+const AUDIO_ANALYSIS_PER_RUN = 20;
+const THUMBS_PER_RUN = 5;
+async function catchUpAnalysis() {
+    const docs = (await db.collection('episodes').get()).docs;
+    const media = (d: (typeof docs)[number]) => (d.data() as Episode).media;
+    const audio = docs.filter(d => { const m = media(d); return !!m?.audioPath && (!m.silencesPath || !m.peaksPath); }).slice(0, AUDIO_ANALYSIS_PER_RUN);
+    const thumbs = docs.filter(d => { const m = media(d); return !!m?.proxyPath && !!m.durationSeconds && !m.thumbsPath; }).slice(0, THUMBS_PER_RUN);
+    if (audio.length) console.log(`🔇 Measuring silences and waveforms for ${audio.length} earlier episode(s)`);
+    for (const doc of audio) {
+        const dir = path.join(config.workDir, 'podcast', `analysis-${doc.id}`);
         fs.mkdirSync(dir, { recursive: true });
         try {
-            await analyseSilences(doc.ref, doc.id, (doc.data() as Episode).media!.audioPath!, path.join(dir, 'audio.m4a'));
+            const m = media(doc)!;
+            const localAudio = path.join(dir, 'audio.m4a');
+            if (!m.silencesPath) await analyseSilences(doc.ref, doc.id, m.audioPath!, localAudio);
+            if (!m.peaksPath) await analysePeaks(doc.ref, doc.id, m.audioPath!, localAudio);
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
+    if (thumbs.length) console.log(`🖼️ Making timeline thumbnails for ${thumbs.length} earlier episode(s)`);
+    for (const doc of thumbs) {
+        const dir = path.join(config.workDir, 'podcast', `thumbs-${doc.id}`);
+        fs.mkdirSync(dir, { recursive: true });
+        try {
+            const m = media(doc)!;
+            await analyseThumbs(doc.ref, doc.id, m.proxyPath!, path.join(dir, 'proxy_720p.mp4'), m.durationSeconds!);
         } finally {
             fs.rmSync(dir, { recursive: true, force: true });
         }
@@ -277,6 +344,10 @@ async function processEpisode(video: DriveFile, candidates: string[], uploaded =
         }
         fs.rmSync(localSource, { force: true });
         if (!media.silencesPath && media.audioPath) media.silencesPath = await analyseSilences(ref, fileId, media.audioPath, localAudio);
+        if (!media.peaksPath && media.audioPath) media.peaksPath = await analysePeaks(ref, fileId, media.audioPath, localAudio);
+        if (!media.thumbsPath && media.proxyPath && media.durationSeconds) {
+            media.thumbsPath = await analyseThumbs(ref, fileId, media.proxyPath, localProxy, media.durationSeconds);
+        }
 
         // 3. Transcribe the raw recording with candidate speaker names.
         stage = 'transcribe';
@@ -422,7 +493,7 @@ async function main() {
     }
 
     if (!config.dryRun) await catchUpReviews();
-    if (!config.dryRun) await catchUpSilences().catch(error => console.warn(`⚠️ Silences catch-up stopped: ${(error as Error).message}`));
+    if (!config.dryRun) await catchUpAnalysis().catch(error => console.warn(`⚠️ Analysis catch-up stopped: ${(error as Error).message}`));
 
     await sendFailureAlert(config, failures);
     if (failures.length > 0) process.exit(1);
