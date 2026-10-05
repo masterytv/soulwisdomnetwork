@@ -12,6 +12,10 @@ import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit } from '@/lib/edit';
 import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
+import { Timeline } from '@/components/studio/timeline';
+
+// The playback speeds offered beside the Edited / Original switch.
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2] as const;
 
 interface SpeakerPara {
     speaker: string;
@@ -93,11 +97,13 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
     box.scrollTop = Math.max(0, elTop - box.clientHeight / 3);
 }
 
-export function Editor({ words, videoUrl, edit, onChange }: {
+// workspace: the full-page editor — a larger video, a taller script and the timeline.
+export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
     onChange: (e: EpisodeEdit) => void;
+    workspace?: boolean;
 }) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -124,6 +130,10 @@ export function Editor({ words, videoUrl, edit, onChange }: {
 
     // Play mode: 'edited' skips the cuts, 'original' plays everything, so the producer can compare.
     const [playMode, setPlayMode] = useState<'edited' | 'original'>('edited');
+    // Playback speed: one of SPEEDS, applied to the video element.
+    const [speed, setSpeed] = useState(1);
+    // Help panel: opened by the "?" button, holding the editing and shortcuts help.
+    const [helpOpen, setHelpOpen] = useState(false);
     // Hear it: while a preview runs, cuts are played (not skipped) and playback pauses at endMs.
     const previewRef = useRef<{ endMs: number } | null>(null);
 
@@ -150,6 +160,11 @@ export function Editor({ words, videoUrl, edit, onChange }: {
         setCanUndo(historyIdx.current > 0);
         setCanRedo(historyIdx.current < historyRef.current.length - 1);
     }, [edit]);
+
+    // Apply the chosen playback speed to the video whenever it changes.
+    useEffect(() => {
+        if (videoRef.current) videoRef.current.playbackRate = speed;
+    }, [speed]);
 
     const updateEdit = useCallback((updater: (e: EpisodeEdit) => EpisodeEdit) => {
         onChange(updater({ ...edit, version: edit.version }));
@@ -546,6 +561,12 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                 <button onClick={redo} className={secondary} disabled={!canRedo}>
                     Redo
                 </button>
+                <button type="button" onClick={() => setHelpOpen(o => !o)} aria-expanded={helpOpen} aria-label="Editing help"
+                    className={helpOpen
+                        ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                        : `${secondary} px-2 py-0.5`}>
+                    ?
+                </button>
                 <span className={hint}>
                     Edited length {mmss(editedMs)} · saves {mmss(timeSavedMs)}
                 </span>
@@ -589,10 +610,15 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                 )}
             </div>
 
-            {/* Hint line */}
-            <div className={hint}>
-                Amber = suggested · Grey = your cuts
-            </div>
+            {/* Help panel: the editing help and the hint line, opened by the "?" button. */}
+            {helpOpen && (
+                <div className={`${hint} rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 flex flex-col gap-1`}>
+                    {/* Help line: how to edit, and the keys on Undo and Redo. */}
+                    <p>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Shift + Ctrl or ⌘ + Z (or Ctrl + Y) redoes</p>
+                    {/* Hint line */}
+                    <p>Amber = suggested · Grey = your cuts · Enter in search: next match</p>
+                </div>
+            )}
 
             {/* Review suggestions row */}
             {reviewCount > 0 && (
@@ -605,23 +631,20 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                 </div>
             )}
 
-            {/* Hint line: shortcuts */}
-            <div className={hint}>
-                Space play/pause · Delete cut · Ctrl/Cmd+Z undo · Ctrl/Cmd+Shift+Z redo · Enter in search: next match
-            </div>
+            {/* Hint line: shortcuts (now in the help panel, opened with "?") */}
 
             <div className="flex flex-col gap-4 md:flex-row">
                 {/* Video preview */}
-                <div className="md:w-1/2 md:sticky md:top-4 self-start">
+                <div className={`${workspace ? 'md:w-3/5' : 'md:w-1/2'} md:sticky md:top-4 self-start`}>
                     <video
                         ref={videoRef}
                         src={videoUrl}
                         className="w-full rounded-lg bg-black"
                         controls
-                        onLoadedMetadata={e => setVideoDuration(e.currentTarget.duration * 1000)}
+                        onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
                     />
                     {/* Cuts map: every cut on one strip under the video; click a mark to jump there. */}
-                    {totalMs > 0 && (
+                    {totalMs > 0 && !workspace && (
                         <div aria-label="Cuts map" className="relative mt-2 h-3 w-full rounded bg-white/5">
                             {edit.cuts.map((c, i) => (
                                 <button
@@ -638,7 +661,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                         </div>
                     )}
                     {/* Play switch: Edited skips the cuts, Original plays everything. */}
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
                         <span className={hint}>Play:</span>
                         {(['edited', 'original'] as const).map(mode => (
                             <button
@@ -653,11 +676,27 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                                 {mode === 'edited' ? 'Edited' : 'Original'}
                             </button>
                         ))}
+                        {/* Speed buttons: play at 0.75×, 1×, 1.25×, 1.5× or 2×. */}
+                        <span className={`${hint} ml-3`}>Speed:</span>
+                        {SPEEDS.map(rate => (
+                            <button
+                                key={rate}
+                                type="button"
+                                aria-pressed={speed === rate}
+                                aria-label={`Play at ${rate} times speed`}
+                                onClick={() => setSpeed(rate)}
+                                className={speed === rate
+                                    ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                                    : `${secondary} px-2 py-0.5`}
+                            >
+                                {rate}×
+                            </button>
+                        ))}
                     </div>
                 </div>
 
                 {/* Transcript */}
-                <div ref={transcriptRef} className="md:w-1/2 h-[calc(100vh-220px)] min-h-[400px] overflow-y-auto rounded-lg bg-[#130b29] p-4">
+                <div ref={transcriptRef} className={`${workspace ? 'md:w-2/5 h-[calc(100vh-360px)]' : 'md:w-1/2 h-[calc(100vh-220px)]'} min-h-[400px] overflow-y-auto rounded-lg bg-[#130b29] p-4`}>
                     {paras.map((para, pi) => (
                         <div key={pi} className="mb-4" style={{ contentVisibility: 'auto' }}>
                             <p className="text-sm font-bold text-amber-400 mb-1">
@@ -756,6 +795,18 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                     ))}
                 </div>
             </div>
+
+            {/* workspace: the timeline under the editor. */}
+            {workspace && (
+                <Timeline
+                    words={words}
+                    cuts={edit.cuts}
+                    totalMs={totalMs}
+                    video={videoRef}
+                    editedMs={editedMs}
+                    onSeek={ms => seekToTime(ms / 1000)}
+                />
+            )}
         </div>
     );
 }
