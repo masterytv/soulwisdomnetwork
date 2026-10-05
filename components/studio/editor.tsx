@@ -156,6 +156,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     const ranges = useMemo(() => keepRanges(
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
         edit.cuts,
+        40,
+        words,
     ), [videoDuration, words, edit.cuts]);
     const editedMs = useMemo(() => editedDuration(ranges), [ranges]);
 

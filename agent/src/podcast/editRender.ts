@@ -100,7 +100,7 @@ export async function renderEdit(opts: {
     const blockMinutes = opts.blockMinutes ?? 15;
     const inSeconds = await probeDuration(opts.video);
     const inMs = Math.round(inSeconds * 1000);
-    let ranges = keepRanges(inMs, opts.edit.cuts);
+    let ranges = keepRanges(inMs, opts.edit.cuts, 40, opts.words);
     let editedMs = editedDuration(ranges);
     const fadeSecs = 0.015;
 
@@ -119,7 +119,7 @@ export async function renderEdit(opts: {
         });
         if (clean === 'auphonic') cleanedAudio = result.cleanedAudio;
         if (opts.detect === 'auphonic') {
-            ranges = keepRanges(inMs, [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)]);
+            ranges = keepRanges(inMs, [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)], 40, opts.words);
             editedMs = editedDuration(ranges);
         }
     }

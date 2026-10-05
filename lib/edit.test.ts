@@ -84,6 +84,33 @@ describe('keepRanges', () => {
     test('zero duration returns empty', () => {
         assert.deepEqual(keepRanges(0, []), []);
     });
+
+    // Spec 019 item 1.5: a breath left between two close cuts is dropped, a short word is not.
+    const um = (startMs: number, endMs: number): Cut => ({ startMs, endMs, reason: 'filler' });
+    test('a kept piece under 400 ms with no whole word is dropped when words are given', () => {
+        const words = [{ start: 500, end: 900 }, { start: 3000, end: 3400 }];
+        // Cuts 1000-2000 and 2300-2900 leave 1960-2340 kept: 380 ms of breath.
+        const cuts = [um(1000, 2000), um(2300, 2900)];
+        assert.deepEqual(keepRanges(10_000, cuts), [{ startMs: 0, endMs: 1040 }, { startMs: 1960, endMs: 2340 }, { startMs: 2860, endMs: 10_000 }]);
+        assert.deepEqual(keepRanges(10_000, cuts, 40, words), [{ startMs: 0, endMs: 1040 }, { startMs: 2860, endMs: 10_000 }]);
+    });
+
+    test('a short kept piece holding a whole word stays, and so does any piece of 400 ms or more', () => {
+        const words = [{ start: 2050, end: 2250 }];          // "so", 200 ms, between the cuts
+        const cuts = [um(1000, 2000), um(2300, 2900)];
+        assert.deepEqual(keepRanges(10_000, cuts, 40, words)[1], { startMs: 1960, endMs: 2340 });
+        // A word only partly inside does not count.
+        assert.equal(keepRanges(10_000, cuts, 40, [{ start: 1800, end: 2100 }]).length, 2);
+        // 1960-2440 is 480 ms: kept, words or not.
+        assert.equal(keepRanges(10_000, [um(1000, 2000), um(2400, 2900)], 40, []).length, 3);
+    });
+
+    test('slivers at the very start and end, and words given out of order', () => {
+        const words = [{ start: 9000, end: 9500 }, { start: 100, end: 250 }];
+        // 0-340 holds the word at 100-250; 9660-10000 holds none.
+        assert.deepEqual(keepRanges(10_000, [um(300, 9700)], 40, words), [{ startMs: 0, endMs: 340 }]);
+        assert.deepEqual(keepRanges(10_000, [um(300, 9700)], 40, []), []);
+    });
 });
 
 describe('editedTime', () => {

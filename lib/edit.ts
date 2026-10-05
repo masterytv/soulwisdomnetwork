@@ -48,6 +48,17 @@ export interface KeptRange {
 
 // A kept piece shorter than this is dropped — it would be a flash of audio between cuts.
 const MIN_KEEP_MS = 150;
+// A kept piece shorter than this with no whole word in it is dropped too (spec 019 item 1.5): two
+// cuts close together leave a breath between them, which sounds choppy and adds a join.
+export const SLIVER_MS = 400;
+
+// Whether a whole word lies inside start..end. `words` is sorted by start.
+function holdsWord(words: { start: number; end: number }[], start: number, end: number): boolean {
+    let lo = 0, hi = words.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (words[mid].start < start) lo = mid + 1; else hi = mid; }
+    for (let i = lo; i < words.length && words[i].start < end; i++) if (words[i].end <= end) return true;
+    return false;
+}
 
 // Sort cuts by start; merge overlapping or touching (within joinMs) into single spans.
 function mergeCuts(cuts: Cut[], joinMs: number): Cut[] {
@@ -70,20 +81,24 @@ function mergeCuts(cuts: Cut[], joinMs: number): Cut[] {
 // of the words on either side, so a kept word is never clipped (transcript word times are
 // only approximate, and the start of a word carries its consonant); at the very start or end
 // of the episode there is no word to protect. Cuts are merged first, and kept pieces shorter
-// than MIN_KEEP_MS are dropped.
-export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40): KeptRange[] {
+// than MIN_KEEP_MS are dropped. Given the transcript's `words`, so are pieces shorter than
+// SLIVER_MS holding no whole word; without them (an old caller) only the first rule applies.
+export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40, words?: { start: number; end: number }[]): KeptRange[] {
     if (durationMs <= 0) return [];
     const merged = mergeCuts(cuts, 2 * padMs);
+    const sorted = words ? [...words].sort((a, b) => a.start - b.start) : null;
+    const keeps = (from: number, to: number) => to - from >= MIN_KEEP_MS
+        && (!sorted || to - from >= SLIVER_MS || holdsWord(sorted, from, to));
     const ranges: KeptRange[] = [];
     let cursor = 0;
     for (const cut of merged) {
         const start = cut.startMs <= 0 ? 0 : Math.min(durationMs, cut.startMs + padMs);
         const end = cut.endMs >= durationMs ? durationMs : Math.max(0, cut.endMs - padMs);
         if (end <= start) continue;                 // too short to cut once the words are protected
-        if (start - cursor >= MIN_KEEP_MS) ranges.push({ startMs: cursor, endMs: start });
+        if (keeps(cursor, start)) ranges.push({ startMs: cursor, endMs: start });
         cursor = Math.max(cursor, end);
     }
-    if (durationMs - cursor >= MIN_KEEP_MS) ranges.push({ startMs: cursor, endMs: durationMs });
+    if (keeps(cursor, durationMs)) ranges.push({ startMs: cursor, endMs: durationMs });
     return ranges;
 }
 
