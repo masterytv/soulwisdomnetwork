@@ -93,15 +93,15 @@ for this work".
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#139) |
 | 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Done (#130, #136); the count on the real episode waits on Tom |
 | **2** | **Editing precision** | | | | | |
-| 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#PR) |
-| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#PR) |
+| 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
+| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Not started |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
-| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Built (#PR; spec 020, "E2 — Built"); the waveform on a real episode waits on an ingest run from `main` |
+| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Built (#144; spec 020, "E2 — Built"); the waveform on a real episode waits on an ingest run from `main` |
 | E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Partly done (#130: splits) |
 | E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Not started |
 | E5 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | Extra | E3 | Partly done (#130: image overlays) |
@@ -392,7 +392,7 @@ labelled "um". Nobody reviews that many one at a time.
 
 ### 2.1 Waveform on the timeline (M, drawing idea from Rescript's MIT tree)
 
-**Built as part of spec 020 item E2 (#PR)**; what was built, and how it differs from the plan below
+**Built as part of spec 020 item E2 (#144)**; what was built, and how it differs from the plan below
 (µ-law bytes, peaks served through the server), is in spec 020's "E2 — Built".
 
 **Build:**
@@ -411,7 +411,7 @@ labelled "um". Nobody reviews that many one at a time.
 
 ### 2.2 Drag cut edges, and cut a stretch of time (M, idea from Rescript's MIT tree)
 
-**Built as part of spec 020 item E2 (#PR)**; see spec 020's "E2 — Built".
+**Built as part of spec 020 item E2 (#144)**; see spec 020's "E2 — Built".
 
 **Build:**
 - **Cut handles:** each cut on the timeline gets start and end handles.

@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#PR); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -452,7 +452,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   panels, and the quick edit is laid out as before. Not yet on the real 48-minute episode (Tom, on
   staging).
 
-### E2 — Built (#PR)
+### E2 — Built (#144)
 
 - **Ingest makes the timeline's media** (`agent/src/podcast/timelineMedia.ts`, beside the silences):
   - **Peaks** (019 item 2.1): `audio.m4a` decoded to 8 kHz mono; the lowest and highest sample of every
