@@ -2,8 +2,8 @@
 
 **Date:** 1 October 2026, updated 5 October 2026
 **Status:** Built, tested locally and in this repo's checks; not yet run on a real episode.
-Descript stays the final edit: an Editor Light render is saved beside it and nothing downstream
-uses it yet.
+Descript stays the final edit unless the Studio settings choose Editor Light
+(`docs/specs/018-studio-settings.md`); otherwise a render is saved beside it.
 **Authors:** Jo Ann H (Lucid4224), in a fork; merged with fixes, see "Changes on merge".
 **Related:** `docs/specs/005-podcast-production-pipeline.md`, `docs/specs/009-edit-package.md`,
 `docs/specs/010-final-cut.md`
@@ -152,8 +152,6 @@ within two frames of its flash, with and without the voice cleanup.
 ## Next
 
 - Run a real episode end to end and compare its sound with Descript's.
-- Let Editor Light make the final cut. This comes with Studio settings, and needs the chapters
-  tidied for YouTube: the first at 0:00, no duplicates, none under 10 s.
 - Editing on a phone: a Cut button and touch selection.
 - A faster render for long episodes: one encode instead of two, and resuming a failed run from
   its last block.
