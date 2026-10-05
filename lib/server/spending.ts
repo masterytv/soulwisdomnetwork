@@ -22,6 +22,7 @@ export const ESTIMATE_USD = {
     shortsPick: 0.4,      // Claude reads the whole final cut and picks moments for Shorts (same model as the notes)
     finalPerHour: 0.21,   // transcribing the final cut (WORDS_USD_PER_HOUR in agent/src/podcast/final.ts)
     upload: 0.75,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR
+    extras: 0.1,          // Claude's social posts and follow-up email
 };
 
 interface Reservation { id: string; at: number; usd: number; what: string }
