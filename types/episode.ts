@@ -2,6 +2,7 @@ import type { BrollStyle } from '../lib/broll';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '../lib/shorts';
 import type { ShowNotes } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
+import type { EpisodeEdit } from '../lib/edit';
 
 // Firestore `episodes/{driveFileId}` — written by agent/src/podcast/ingest.ts via the
 // Admin SDK. See docs/specs/005-podcast-production-pipeline.md, steps 1-3.
@@ -67,6 +68,8 @@ export interface EpisodeNotes {
     approvedBy?: { uid: string; name: string };
     approvedAt?: unknown;
     approvedVersion?: number;             // the draft version approved; later steps record which one they used
+    // Editor Light (spec 015): the transcript edit, behind NEXT_PUBLIC_EDITOR_LIGHT.
+    edit?: EpisodeEdit & { updatedAt?: unknown; updatedBy?: string };
 }
 
 // An approval that a later one replaced, kept in `episodes/{id}/approvals/{approvedVersion}` so the
@@ -170,6 +173,30 @@ export interface EpisodeFinal {
     chapters?: { title: string; originalMs: number; startMs: number }[];
     quotes?: { text: string; speaker: string; originalMs: number; startMs: number; endMs: number }[];
     notesVersion?: number;                // the approved notes the times came from
+    warnings?: string[];
+}
+
+// Editor Light render (spec 015): the edit saved in the Studio, rendered by GitHub Actions
+// (agent/src/podcast/editRenderRun.ts) and kept apart from Descript's final cut, which the
+// later steps still use.
+export interface EpisodeEditRender {
+    status: 'queued' | 'downloading' | 'rendering' | 'saving' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    editVersion?: number;                 // the saved edit it was rendered from
+    videoPath?: string;                   // Cloud Storage
+    wordsPath?: string | null;            // the words on the rendered video's times
+    captionsPath?: string | null;         // .srt
+    chaptersPath?: string | null;         // chapters and quotes on the rendered video's times
+    driveFileId?: string;
+    driveUrl?: string;
+    folderUrl?: string;                   // "04 Final"
+    durationSeconds?: number;
+    cuts?: number;
+    timeSavedSeconds?: number;
+    renderSeconds?: number;
     warnings?: string[];
 }
 
@@ -299,6 +326,9 @@ export interface Episode {
     package?: EpisodePackage;             // edit package for Descript, spec 005 step 8
     descript?: EpisodeDescript;           // the Descript project made from it
     final?: EpisodeFinal;                 // the finished episode, spec 005 steps 10-11
+    // Editor Light (spec 015): the edit as the edit route saves it (top level), and its render.
+    edit?: EpisodeEdit & { updatedAt?: unknown; updatedBy?: string };
+    editRender?: EpisodeEditRender;
     thumbnails?: EpisodeThumbnails;       // thumbnail options, spec 005 step 12
     approval?: EpisodeApproval;           // Checkpoint D
     youtube?: EpisodeYoutube;             // the upload, spec 005 step 13

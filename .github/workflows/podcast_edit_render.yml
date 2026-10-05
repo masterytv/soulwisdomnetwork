@@ -1,0 +1,62 @@
+# Editor Light (spec 015): renders the edit saved in the Studio (agent/src/podcast/editRenderRun.ts).
+# Downloads the episode, teasers, intro and b-roll, renders, and saves to Cloud Storage and
+# "04 Final" in Drive. Started from the show notes page, or by hand from the Actions tab.
+
+name: Podcast Edit Render
+run-name: "Podcast Edit Render · ${{ inputs.episode_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      episode_id:
+        description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
+        required: true
+
+concurrency:
+  group: podcast-edit-render-${{ inputs.episode_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    # A long episode's picture is encoded twice (blocks, then assembly; loudness copies it). GitHub's limit is 360.
+    timeout-minutes: 350
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    # The runner starts with about 14 GB free; a 2 hour episode needs more working space.
+    # These preinstalled tools are never used by this job; removing them frees roughly 25 GB.
+    - name: Free disk space
+      run: |
+        sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+        df -h "$RUNNER_TEMP"
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Install ffmpeg
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+    - name: Render the edit
+      env:
+        EPISODE_ID: ${{ inputs.episode_id }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
+        DRIVE_FINAL_FOLDER_ID: ${{ vars.DRIVE_FINAL_FOLDER_ID }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/podcast/editRenderRun.ts
