@@ -127,6 +127,9 @@ export const SUGGESTED_REASONS: Cut['reason'][] = ['filler', 'repeat', 'pause'];
 export const HESITATION_REASONS: Cut['reason'][] = ['gap'];
 
 // Suggests cuts for filler words, repeated words, and long pauses.
+const REPEAT_GAP_MS = 300;
+const endsSentence = (s: string) => /[.?!]["\u201d\u2019)]*$/.test(s.trim());
+
 export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[] {
     const maxPauseMs = options?.maxPauseMs ?? 1200;
     const keepPauseMs = options?.keepPauseMs ?? 500;
@@ -142,9 +145,13 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
             continue;
         }
 
-        // Immediate repeats: same word twice in a row, keep the last one
-        if (i > 0 && normalize(words[i - 1].text) === norm && norm.length > 0) {
-            cuts.push({ startMs: words[i - 1].start, endMs: words[i - 1].end, reason: 'repeat' });
+        // Immediate repeats: the same word twice in a row, keeping the last. Only a stammer: the
+        // same speaker, inside one sentence, and the second straight after the first (within
+        // REPEAT_GAP_MS). A word said again after a pause, or across a sentence, is for emphasis.
+        const prev = words[i - 1];
+        if (i > 0 && norm.length > 0 && normalize(prev.text) === norm && prev.speaker === w.speaker
+            && !endsSentence(prev.text) && w.start - prev.end <= REPEAT_GAP_MS) {
+            cuts.push({ startMs: prev.start, endMs: prev.end, reason: 'repeat' });
         }
     }
 
@@ -181,6 +188,24 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
     }
 
     return cuts;
+}
+
+// How much each kind of cut saves on its own: the length of its cuts, with overlaps counted
+// once. Kinds can overlap one another, so these add up to more than the total saved.
+export function savedByReason(cuts: Cut[]): Partial<Record<Cut['reason'], number>> {
+    const byReason = new Map<Cut['reason'], Cut[]>();
+    for (const c of cuts) byReason.set(c.reason, [...(byReason.get(c.reason) ?? []), c]);
+    const out: Partial<Record<Cut['reason'], number>> = {};
+    for (const [reason, list] of byReason) {
+        let total = 0, end = -Infinity;
+        for (const c of [...list].sort((a, b) => a.startMs - b.startMs)) {
+            const from = Math.max(c.startMs, end);
+            if (c.endMs > from) total += c.endMs - from;
+            end = Math.max(end, c.endMs);
+        }
+        out[reason] = total;
+    }
+    return out;
 }
 
 // Replaces the earlier suggestions of these kinds with fresh ones, so marking twice adds nothing

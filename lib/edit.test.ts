@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import {
     keepRanges, editedTime, editedDuration, suggestCuts,
     applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
-    replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS,
+    replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS, savedByReason,
     type Cut, type KeptRange,
 } from './edit';
 import type { SpokenWord } from './showNotes';
+import { hasFillers } from './fillers';
 
 describe('keepRanges', () => {
     test('empty cuts returns full duration', () => {
@@ -164,6 +165,30 @@ describe('suggestCuts', () => {
         const repeats = cuts.filter(c => c.reason === 'repeat');
         assert.equal(repeats.length, 1);
         assert.equal(repeats[0].startMs, 0);
+    });
+
+    test('repeats: only a stammer within one sentence, by one speaker', () => {
+        const w = (text: string, start: number, end: number, speaker = 'Host'): SpokenWord => ({ text, start, end, speaker, clip: false });
+        const reps = (words: SpokenWord[]) => suggestCuts(words).filter(c => c.reason === 'repeat').length;
+        assert.equal(reps([w('I', 0, 100), w('I', 350, 450), w('think', 450, 700)]), 1, 'within 300 ms');
+        assert.equal(reps([w('very', 0, 300), w('very', 900, 1200), w('good', 1200, 1500)]), 0, 'said again after a pause');
+        assert.equal(reps([w('Yes.', 0, 300), w('yes', 400, 700)]), 0, 'across a sentence');
+        assert.equal(reps([w('right', 0, 300), w('right', 350, 650, 'Guest')]), 0, 'another speaker');
+    });
+
+    test('savedByReason counts overlapping cuts of a kind once', () => {
+        assert.deepEqual(savedByReason([
+            { startMs: 0, endMs: 1000, reason: 'filler' },
+            { startMs: 500, endMs: 1500, reason: 'filler' },
+            { startMs: 3000, endMs: 3200, reason: 'filler' },
+            { startMs: 0, endMs: 2000, reason: 'pause' },
+        ]), { filler: 1700, pause: 2000 });
+        assert.deepEqual(savedByReason([]), {});
+    });
+
+    test('hasFillers: a transcript with its ums written out', () => {
+        assert.equal(hasFillers([{ text: 'So,' }, { text: 'Um,' }, { text: 'yes' }]), true);
+        assert.equal(hasFillers([{ text: 'So,' }, { text: 'yes' }]), false);
     });
 
     test('long pause shortened', () => {
