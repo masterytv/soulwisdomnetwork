@@ -19,11 +19,14 @@ import {
 } from '@/lib/edit';
 import { hasFillers } from '@/lib/fillers';
 import { primary, secondary, hint } from '@/components/studio/ui';
-import { Timeline } from '@/components/studio/timeline';
+import { Timeline, type TimelineMedia, type TimelineSelection } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
 import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
+
+// No splits yet: one array, so the timeline does not redraw on every render.
+const NO_SPLITS: number[] = [];
 
 interface SpeakerPara {
     speaker: string;
@@ -110,10 +113,11 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // cutNotes: by `${startMs}-${endMs}`, a suggestion's kind and why ("False start: changed tack").
 // silences: the audio's measured silences, for the pause suggestions (null: not measured, use word gaps).
 // The Studio editor (workspace, spec 020 item E1) also takes the bar's `heading` (back link and title),
-// `status` (saving) and `actions` (render), and `panels` beside the On screen panel.
+// `status` (saving) and `actions` (render), and `panels` beside the On screen panel; `timelineMedia`
+// is its timeline's waveform and thumbnails (item E2; null while they load).
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
-    heading, status, actions, panels = [],
+    heading, status, actions, panels = [], timelineMedia = null,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -129,6 +133,7 @@ export function Editor({
     status?: React.ReactNode;
     actions?: React.ReactNode;
     panels?: WorkspacePanel[];
+    timelineMedia?: TimelineMedia | null;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -162,6 +167,11 @@ export function Editor({
     const [helpOpen, setHelpOpen] = useState(false);
     // The Studio editor's panel on the right, chosen on its rail.
     const [panelId, setPanelId] = useState('on-screen');
+    // What is selected on the Studio editor's timeline (a stretch of time, or a cut). It and the
+    // selected words exclude each other, so Delete always means one thing.
+    const [timelineSel, setTimelineSel] = useState<TimelineSelection | null>(null);
+    // The V2 track's eye: on-screen items hidden in the preview (never in the render).
+    const [overlaysHidden, setOverlaysHidden] = useState(false);
     // Hear it: while a preview runs, cuts are played (not skipped) and playback pauses at endMs.
     const previewRef = useRef<{ endMs: number } | null>(null);
 
@@ -288,6 +298,7 @@ export function Editor({
             }
             if (workspace && e.key === 'Escape') {
                 setHelpOpen(false);
+                setTimelineSel(null);
                 return;
             }
             if (e.key === ' ') {
@@ -311,6 +322,26 @@ export function Editor({
                 if (cutSelection()) e.preventDefault();
                 return;
             }
+            // A stretch of time chosen on the timeline: Delete cuts it.
+            if (timelineSel?.kind === 'range' && (e.key === 'Delete' || e.key === 'Backspace')) {
+                e.preventDefault();
+                const { startMs, endMs } = timelineSel;
+                updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }] }));
+                setTimelineSel(null);
+                return;
+            }
+            // Arrows step a frame (with Shift, a second) in the Studio editor, except on a divider,
+            // whose arrows resize.
+            if (workspace && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey
+                && !target.closest('[role="separator"]')) {
+                const video = videoRef.current;
+                if (!video) return;
+                e.preventDefault();
+                const step = (e.shiftKey ? 1 : 1 / 30) * (e.key === 'ArrowLeft' ? -1 : 1);
+                video.pause();
+                video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + step));
+                return;
+            }
             // S splits at the playhead in the full-page editor.
             if (workspace && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 's') {
                 const video = videoRef.current;
@@ -321,7 +352,7 @@ export function Editor({
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -429,6 +460,7 @@ export function Editor({
             setSelectedRange(null);
             return;
         }
+        setTimelineSel(null);
         if (e.shiftKey && selectedRange) {
             const [start] = selectedRange;
             setSelectedRange([Math.min(start, index), Math.max(start, index)]);
@@ -446,6 +478,7 @@ export function Editor({
     // Word drag start. A shift-click leaves the selection for the click to extend.
     const onWordMouseDown = (index: number, e: React.MouseEvent) => {
         if (e.shiftKey || isCut(index, words, edit.cuts)) return;
+        setTimelineSel(null);
         setDragStart(index);
         setSelectedRange([index, index]);
     };
@@ -617,12 +650,15 @@ export function Editor({
 
     // Hear it: play from 2 s before the reviewed mark to 2 s after it, the mark included,
     // so the producer hears it in context before choosing Keep this or Next.
-    const hearCut = () => {
+    const hear = useCallback((startMs: number, endMs: number) => {
         const video = videoRef.current;
-        if (!video || !reviewCut) return;
-        previewRef.current = { endMs: reviewCut.endMs + 2000 };
-        video.currentTime = Math.max(0, reviewCut.startMs - 2000) / 1000;
+        if (!video) return;
+        previewRef.current = { endMs };
+        video.currentTime = Math.max(0, startMs) / 1000;
         void video.play();
+    }, []);
+    const hearCut = () => {
+        if (reviewCut) hear(reviewCut.startMs - 2000, reviewCut.endMs + 2000);
     };
 
     // The reason button label for 'manual'.
@@ -764,7 +800,7 @@ export function Editor({
                 controls
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
-            {workspace && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
+            {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
         </div>
     );
 
@@ -969,13 +1005,21 @@ export function Editor({
                         <Timeline
                             words={words}
                             cuts={edit.cuts}
+                            ranges={ranges}
                             overlays={edit.overlays ?? []}
                             totalMs={totalMs}
                             video={videoRef}
-                            editedMs={editedMs}
                             onSeek={ms => seekToTime(ms / 1000)}
+                            media={timelineMedia}
+                            selection={timelineSel}
+                            onSelect={sel => { setTimelineSel(sel); if (sel) setSelectedRange(null); }}
+                            onCuts={cuts => updateEdit(prev => ({ ...prev, cuts }))}
+                            onHear={hear}
+                            keys={containerRef}
+                            overlaysHidden={overlaysHidden}
+                            onOverlaysHidden={setOverlaysHidden}
                             split={{
-                                splits: edit.splits ?? [],
+                                splits: edit.splits ?? NO_SPLITS,
                                 onSplit: addSplit,
                                 onRemoveSplit: ms => updateEdit(prev => ({ ...prev, splits: (prev.splits ?? []).filter(s => s !== ms) })),
                                 onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),

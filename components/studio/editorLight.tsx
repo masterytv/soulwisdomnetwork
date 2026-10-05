@@ -5,7 +5,7 @@
 // Render sit in the bar, and the render's result is a panel beside the preview.
 // Part I: it also loads the Studio's captions setting and the overlay image links for the full-page
 // editor, and gives the editor Claude's suggestions for a tighter edit (retakes and more, spec 019 item 1.3)
-// as a toolbar tool.
+// as a toolbar tool. The Studio editor also loads its timeline's waveform and thumbnails (item E2).
 
 "use client";
 
@@ -16,7 +16,9 @@ import { useAutosave } from '@/components/studio/useAutosave';
 import { mmss, type SpokenWord } from '@/lib/showNotes';
 import type { EpisodeEdit, Silence } from '@/lib/edit';
 import type { EditRenderView } from '@/lib/server/editRender';
-import { studioFetch } from '@/lib/studioClient';
+import { studioFetch, studioFetchBytes } from '@/lib/studioClient';
+import type { ThumbSheets } from '@/lib/thumbs';
+import type { TimelineMedia } from '@/components/studio/timeline';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
@@ -107,6 +109,23 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             })
             .catch(() => { setLoaded(true); });
     }, [episodeId, reset]);
+
+    // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
+    // Either may be missing on an episode the ingest catch-up has not reached yet.
+    const [timelineMedia, setTimelineMedia] = useState<TimelineMedia | null>(null);
+    useEffect(() => {
+        if (!workspace) return;
+        let gone = false;
+        studioFetch<{ thumbs: ThumbSheets | null; peaks: boolean }>(`/api/studio/episodes/${episodeId}/timeline`)
+            .then(async v => {
+                const peaks = v.peaks
+                    ? await studioFetchBytes(`/api/studio/episodes/${episodeId}/peaks`).then(b => new Int8Array(b), () => null)
+                    : null;
+                if (!gone) setTimelineMedia({ thumbs: v.thumbs, peaks });
+            })
+            .catch(() => { if (!gone) setTimelineMedia({ thumbs: null, peaks: null }); });
+        return () => { gone = true; };
+    }, [workspace, episodeId]);
 
     // The Studio's captions setting, read once for the full-page editor.
     useEffect(() => {
@@ -243,6 +262,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             status={saveStatus}
             actions={workspace ? renderBar : undefined}
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
+            timelineMedia={timelineMedia}
         />
     );
 

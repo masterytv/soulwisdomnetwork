@@ -162,8 +162,14 @@ const SHORTCUTS: [string, string][] = [
     ['Ctrl or ⌘ + Z', 'Undo'],
     ['Shift + Ctrl or ⌘ + Z, or Ctrl + Y', 'Redo'],
     ['Enter in search', 'Next match'],
+    ['← →', 'Back or forward one frame (Shift: one second)'],
+    ['+ or −, Ctrl or ⌘ + scroll', 'Zoom the timeline in or out (the scroll wheel moves along it)'],
+    ['Drag on the waveform', 'Select a stretch of time: Delete cuts it (a cough, a laugh, a door)'],
+    ['Drag the edge of a cut on the timeline', 'Trim the cut (double-click a cut to bring it back)'],
+    ['Alt while dragging', 'No snapping, and an edge may go into a word'],
+    ['Esc', 'Clear the timeline selection, or close this sheet'],
     ['Arrow keys on a divider', 'Resize the script, panel or timeline (Shift: faster)'],
-    ['?', 'Open or close this sheet (Esc closes it)'],
+    ['?', 'Open or close this sheet'],
 ];
 
 export function ShortcutSheet({ onClose }: { onClose: () => void }) {
@@ -188,8 +194,8 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
                     </tbody>
                 </table>
                 <p className="mt-3 text-xs text-gray-400">
-                    Amber = suggested · Grey = your cuts · … = sound the transcript has no words for.
-                    Every change saves by itself.
+                    Amber = suggested · Grey = your cuts · … = sound the transcript has no words for. On the
+                    timeline, red waveform is what the edit takes out. Every change saves by itself.
                 </p>
             </div>
         </div>

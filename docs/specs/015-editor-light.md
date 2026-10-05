@@ -40,8 +40,8 @@ one kind. The producer goes through them with Prev and Next, and can **Keep** on
 before deciding.
 
 **Splits** (full-page editor): **✂ Split** on the timeline, or the S key, splits at the playhead,
-as in Descript. The section under the playhead is shaded, and **Cut this section** or **Bring this
-section back** acts on all of it. Click a split's handle on the ruler to remove it. Splits are
+as in Descript. The section under the playhead is shaded, and **Cut section** or **Bring section
+back** acts on all of it. Click a split's handle on the ruler to remove it. Splits are
 saved with the edit (`edit.splits`) but the render does not use them; only the cuts matter.
 
 **Playing:**
@@ -49,10 +49,25 @@ saved with the edit (`edit.splits`) but the render does not use them; only the c
 - **Speed** plays at 0.75× to 2×.
 - It shows the edited length and the time saved. **?** opens the editing help and shortcuts.
 
-**Timeline** (full-page editor only, `components/studio/timeline.tsx`, `lib/timeline.ts`):
-- a ruler, each speaker's turns in their own colour, and the cuts;
-- a playhead that follows the video, and click anywhere to jump there;
-- zoom from 1× to 32×; zoomed in, it scrolls to keep the playhead in view.
+**Timeline** (Studio editor only, `components/studio/timeline.tsx`, `lib/timeline.ts`; spec 020 item E2):
+- tracks with headers: **V2 On screen** (the on-screen items; the eye hides them in the preview),
+  **V1 Episode** (a picture every 5 s, with each speaker's turns in their colour under it; the lock
+  stops the timeline changing cuts) and **A1 Voice** (the waveform; the speaker icon mutes the preview);
+- the cuts over the pictures and the waveform, hatched: amber for suggestions, grey for the producer's
+  own. On the waveform, what the edit takes out is red;
+- zoom from the whole recording to 2 ms a pixel (−, +, the slider, **Fit**, the + and − keys, or
+  Ctrl/⌘ with the scroll wheel); the scroll wheel moves along it, and while playing the view follows
+  the playhead;
+- click the ruler or a lane to jump there; drag on the ruler to scrub; ← and → step a frame (Shift: a
+  second);
+- **drag a cut's edge** to trim it (spec 019 item 2.2). It snaps to the playhead, word edges, cuts and
+  splits within 8 px (or to 10 ms steps), and stops at the edge of a word that is heard; Alt turns
+  both off. A trimmed suggestion becomes the producer's own cut;
+- **drag on the waveform** to select a stretch of time, such as a cough or a door the transcript has no
+  words for; Delete (or **✂ Cut**) cuts it as the producer's own. Click a cut to select it: **▶ Hear**
+  plays it in context, **Bring back** (or a double-click) removes it;
+- the waveform's peaks and the pictures are made at ingest (`agent/src/podcast/timelineMedia.ts`). An
+  episode without them yet says so in the lanes; the next Podcast Ingest run fills them in.
 
 **Saving.** The edit saves itself as the producer works (`useAutosave`). If someone else saved
 in between, the save is refused and has to be reloaded.
