@@ -1,9 +1,9 @@
 # Spec 015: Editor Light
 
-**Date:** 1 October 2026, updated 5 October 2026
+**Date:** 1 October 2026, updated 5 October 2026 (full-page editor)
 **Status:** Built, tested locally and in this repo's checks; not yet run on a real episode.
-Descript stays the final edit: an Editor Light render is saved beside it and nothing downstream
-uses it yet.
+Descript stays the final edit unless the Studio settings choose Editor Light
+(`docs/specs/018-studio-settings.md`); otherwise a render is saved beside it.
 **Authors:** Jo Ann H (Lucid4224), in a fork; merged with fixes, see "Changes on merge".
 **Related:** `docs/specs/005-podcast-production-pipeline.md`, `docs/specs/009-edit-package.md`,
 `docs/specs/010-final-cut.md`
@@ -17,7 +17,9 @@ A light editor for the parts of Descript the pipeline uses:
 
 **Where it is.** On an episode's show notes page, the **Edit package** stage has
 **Edit here instead (preview)**. It is shown only when `NEXT_PUBLIC_EDITOR_LIGHT=1` is set at
-build time (`apphosting.yaml`).
+build time (`apphosting.yaml`), or when the Studio settings make Editor Light the final cut.
+**Open the full-page editor** there goes to `/admin/podcast/[episodeId]/edit`: a larger video, the
+transcript beside it, a timeline underneath, and saving and rendering pinned in a bar at the top.
 
 **Editing:**
 - The transcript is shown by speaker, with the video beside it.
@@ -32,7 +34,13 @@ them with Prev and Next, and can **Keep** one or **Hear it** before deciding.
 
 **Playing:**
 - **Edited** skips the cuts as the video plays; **Original** plays everything.
-- It shows the edited length and the time saved.
+- **Speed** plays at 0.75× to 2×.
+- It shows the edited length and the time saved. **?** opens the editing help and shortcuts.
+
+**Timeline** (full-page editor only, `components/studio/timeline.tsx`, `lib/timeline.ts`):
+- a ruler, each speaker's turns in their own colour, and the cuts;
+- a playhead that follows the video, and click anywhere to jump there;
+- zoom from 1× to 32×; zoomed in, it scrolls to keep the playhead in view.
 
 **Saving.** The edit saves itself as the producer works (`useAutosave`). If someone else saved
 in between, the save is refused and has to be reloaded.
@@ -68,7 +76,8 @@ changed since that render. A failed render shows its reason, and can be tried ag
 
 ### Editor
 
-`components/studio/editor.tsx`, with its panel `EditorLightStage` on the notes page.
+`components/studio/editor.tsx`. Its panel, `EditorLightStage` (`components/studio/editorLight.tsx`), loads, saves
+and renders the edit, on the notes page and on the full-page editor.
 
 ### Routes
 
@@ -152,8 +161,6 @@ within two frames of its flash, with and without the voice cleanup.
 ## Next
 
 - Run a real episode end to end and compare its sound with Descript's.
-- Let Editor Light make the final cut. This comes with Studio settings, and needs the chapters
-  tidied for YouTube: the first at 0:00, no duplicates, none under 10 s.
 - Editing on a phone: a Cut button and touch selection.
 - A faster render for long episodes: one encode instead of two, and resuming a failed run from
   its last block.

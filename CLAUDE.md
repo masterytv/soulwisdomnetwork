@@ -3,7 +3,8 @@
 Next.js community site for the Soul Wisdom podcast. A podcast production pipeline is specified but not yet built — see
 `docs/specs/005-podcast-production-pipeline.md`.
 
-**Live:** https://soulwisdomcollective.com
+**Live:** https://soulwisdomcollective.com (from `main`) · **Staging:** https://staging.soulwisdomcollective.com
+(from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`.
 
 ## Stack
 
@@ -32,9 +33,14 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
               teasers, intro, outro, b-roll, voice cleanup; podcast_edit_render.yml runs editRenderRun.ts, GitHub
-              Actions only. The editor is components/studio/editor.tsx; its render sits beside Descript's final cut
+              Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
+              with components/studio/timeline.tsx); its render sits beside Descript's final cut,
+              or replaces it when the Studio settings say so
+lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
+              final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
+              Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-017; docs/BACKLOG.md lists features agreed for later
+docs/specs/   numbered specs, 001-018; docs/BACKLOG.md lists features agreed for later
 types/
 ```
 
@@ -87,7 +93,7 @@ The podcast ingest job (`podcast_ingest.yml`) uses its own service account
 (`podcast-pipeline@`, roles: Cloud Datastore User + Storage Object Admin, Editor on the
 `SWC Podcast Pipeline` Drive folder), not the Firebase admin key. One video file dropped
 into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 Processed`
-when transcribed, and a "ready for speaker review" email with the readable transcript goes
+when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive), and a "ready for speaker review" email with the readable transcript goes
 to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
 (`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. Once notes are approved, "Generate b-roll
@@ -122,12 +128,12 @@ Collections: `users`, `posts` and `comments` (the community feed, `docs/specs/01
 each has a `votes` subcollection; server only), `community_limits` (hourly post and comment
 limits, server only), `conversations`, `messages`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`; earlier
 show-notes approvals in its `approvals` subcollection),
-`studio` (Podcast Studio settings such as the backlog order, Admin SDK only), `usage_reports`
+`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger; Admin SDK only), `usage_reports`
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts titles) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts titles, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
@@ -194,6 +200,10 @@ account JSON** is, and bypasses all security rules.
 
 `main` is protected: no direct pushes, PRs required. Work flows
 **feature branch → `staging` → `main`**.
+
+The Studio starts every podcast job on `main` (`lib/server/github.ts`, `ref: 'main'`), even from
+the staging site. So a changed or new job only runs once it is on `main`; until then staging
+can test the pages but not the job.
 
 Merging to `main` deploys to production. Keep PRs to one concern.
 
