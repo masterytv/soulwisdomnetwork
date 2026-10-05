@@ -87,7 +87,7 @@ for this work".
 | 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
 | 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#141); the count on the real episode waits on promotion |
-| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Built (#PR); "most markers are real" waits on a real episode |
+| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Built (#142); "most markers are real" waits on a real episode |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#139) |
@@ -272,7 +272,7 @@ are only guessed from gaps (`suggestCuts`' 350–1,200 ms rule).
 
 **Done when:** on the real episode, most markers are a real hesitation or breath.
 
-**Built (#PR):**
+**Built (#142):**
 - `unspokenSpans(words, silences)` in `lib/edit.ts` (no `durationMs`: only stretches **between**
   words count, since before the first word and after the last there is nothing to compare with).
   A word still running from an overlapping speaker covers the gap.
