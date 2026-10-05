@@ -33,7 +33,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
               teasers, intro, outro, b-roll, voice cleanup; podcast_edit_render.yml runs editRenderRun.ts, GitHub
-              Actions only. The editor is components/studio/editor.tsx; its render sits beside Descript's final cut,
+              Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
+              with components/studio/timeline.tsx); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the

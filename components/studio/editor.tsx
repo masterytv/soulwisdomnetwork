@@ -134,8 +134,6 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
     const [speed, setSpeed] = useState(1);
     // Help panel: opened by the "?" button, holding the editing and shortcuts help.
     const [helpOpen, setHelpOpen] = useState(false);
-    // currentMs: the video's current time, kept up to date only in workspace mode for the timeline.
-    const [currentMs, setCurrentMs] = useState(0);
     // Hear it: while a preview runs, cuts are played (not skipped) and playback pauses at endMs.
     const previewRef = useRef<{ endMs: number } | null>(null);
 
@@ -644,7 +642,6 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                         className="w-full rounded-lg bg-black"
                         controls
                         onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
-                        onTimeUpdate={workspace ? (e => setCurrentMs(e.currentTarget.currentTime * 1000)) : undefined}
                     />
                     {/* Cuts map: every cut on one strip under the video; click a mark to jump there. */}
                     {totalMs > 0 && !workspace && (
@@ -805,9 +802,9 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                     words={words}
                     cuts={edit.cuts}
                     totalMs={totalMs}
-                    currentMs={currentMs}
+                    video={videoRef}
                     editedMs={editedMs}
-                    onSeek={ms => { seekToTime(ms / 1000); setCurrentMs(ms); }}
+                    onSeek={ms => seekToTime(ms / 1000)}
                 />
             )}
         </div>

@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut } from '@/lib/edit';
 import {
@@ -34,9 +34,21 @@ function usePlayheadScroll(scrollRef: React.RefObject<HTMLDivElement | null>, wi
     }, [scrollRef, widthPx, zoom, currentMs, totalMs]);
 }
 
-export function Timeline({ words, cuts, totalMs, currentMs, editedMs, onSeek }: {
-    words: SpokenWord[]; cuts: Cut[]; totalMs: number; currentMs: number; editedMs: number; onSeek: (ms: number) => void;
+// The playhead follows the video itself, so playing redraws only the timeline, not the whole
+// transcript in the editor.
+export function Timeline({ words, cuts, totalMs, video, editedMs, onSeek }: {
+    words: SpokenWord[]; cuts: Cut[]; totalMs: number; video: React.RefObject<HTMLVideoElement | null>; editedMs: number; onSeek: (ms: number) => void;
 }) {
+    const [currentMs, setCurrentMs] = useState(0);
+    useEffect(() => {
+        const el = video.current;
+        if (!el) return;
+        const update = () => setCurrentMs(el.currentTime * 1000);
+        update();
+        el.addEventListener('timeupdate', update);
+        el.addEventListener('seeked', update);
+        return () => { el.removeEventListener('timeupdate', update); el.removeEventListener('seeked', update); };
+    }, [video]);
     const [zoom, setZoom] = useState(1);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [visibleWidth, setVisibleWidth] = useState(0);
@@ -53,8 +65,8 @@ export function Timeline({ words, cuts, totalMs, currentMs, editedMs, onSeek }: 
     }, []);
 
     const widthPx = visibleWidth * zoom;
-    const blocks = speakerBlocks(words);
-    const colors = speakerColors(blocks);
+    const blocks = useMemo(() => speakerBlocks(words), [words]);
+    const colors = useMemo(() => speakerColors(blocks), [blocks]);
 
     usePlayheadScroll(scrollRef, widthPx, zoom, currentMs, totalMs);
 
