@@ -209,7 +209,7 @@ export function Editor({ words, videoUrl, edit, onChange }: {
                 if (video.paused) video.play(); else video.pause();
                 return;
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 if (e.shiftKey) redo(); else undo();
                 return;
