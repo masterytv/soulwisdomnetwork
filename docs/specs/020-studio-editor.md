@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#PR); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -420,7 +420,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 
-### E1 — Built (#PR)
+### E1 — Built (#143)
 
 - **Route:** `/admin/podcast/[episodeId]/studio-editor`. `/edit` is now a server redirect to it, so old
   links and bookmarks still work. The notes page's link reads **Open the Studio editor →** (in the Edit
