@@ -144,6 +144,21 @@ Added from Jo Ann H's fork (Part A), 5 October 2026.
 - With the defaults (a podcast, one description), the request is exactly as before
   (`lib/notesOptions.test.ts`).
 
+## Social posts, follow-up email and transcript downloads
+
+Added from Jo Ann H's fork (Part D), 5 October 2026.
+
+- **Social posts:** once the notes are approved, Claude writes a LinkedIn post, an Instagram
+  caption, a post for X and a follow-up email from them (the email is shown for meetings), each ready to
+  copy, with an optional direction (`lib/extras.ts`, `agent/src/podcast/extras.ts`). It reserves
+  $0.10 against the daily spending limit.
+- It runs in `podcast_notes.yml` with **`mode: extras`**; show notes use the default
+  `mode: notes`. The mode is an explicit workflow input, so a run never guesses from the
+  episode's state what it was started for, and an extras run never touches the notes. Each
+  mode has its own concurrency group, so an extras request never replaces a waiting notes run.
+- **Transcript downloads:** the accepted transcript as Word, plain text and captions (.srt),
+  made in the browser (`lib/transcriptExport.ts`), with times from the original recording.
+
 ## Setup
 
 - GitHub secret **`ANTHROPIC_API_KEY`** (repository → Settings → Secrets and variables →

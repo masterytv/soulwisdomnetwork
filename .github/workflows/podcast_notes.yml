@@ -1,10 +1,13 @@
 # Spec 005 step 5: draft show notes for one episode with Claude (agent/src/podcast/notes.ts).
 # Started by the Podcast Studio after a transcript is accepted, or by hand from the Actions
 # tab with the episode ID (the Drive file ID shown in the Studio URL).
+# mode "notes" (the default) drafts the show notes; "extras" writes the social posts and
+# follow-up email from the approved notes. The mode is passed explicitly so a queued run never
+# guesses from the episode's state which of the two it was started for.
 
 name: Podcast Show Notes
 # The episode ID in the run name ties each run to its episode on the Usage page (lib/server/usage.ts).
-run-name: "Podcast Show Notes · ${{ inputs.episode_id }}"
+run-name: "Podcast Show Notes (${{ inputs.mode || 'notes' }}) · ${{ inputs.episode_id }}"
 
 on:
   workflow_dispatch:
@@ -12,10 +15,17 @@ on:
       episode_id:
         description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
         required: true
+      mode:
+        description: 'notes (draft the show notes) or extras (social posts and follow-up email)'
+        required: false
+        default: notes
+        type: choice
+        options: [notes, extras]
 
-# One run per episode at a time; a second request for the same episode waits.
+# One run per episode and mode at a time; a second request waits. Per mode, because GitHub keeps
+# only one waiting run per group, and an extras request must never replace a waiting notes one.
 concurrency:
-  group: podcast-notes-${{ inputs.episode_id }}
+  group: podcast-notes-${{ inputs.mode || 'notes' }}-${{ inputs.episode_id }}
   cancel-in-progress: false
 
 # The jobs use their own keys; the GitHub token only needs to read this repository.
@@ -45,6 +55,7 @@ jobs:
     - name: Draft Show Notes
       env:
         EPISODE_ID: ${{ inputs.episode_id }}
+        NOTES_MODE: ${{ inputs.mode || 'notes' }}
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
