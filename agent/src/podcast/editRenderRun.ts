@@ -53,9 +53,10 @@ async function main() {
             return { fileId, folderId };
         },
         update: async fields => { await ref.update(fields); },
+        removeFolder: async prefix => { await bucket.deleteFiles({ prefix: `${prefix}/` }); },
         render: renderEdit,
         now: () => FieldValue.serverTimestamp(),
-    }, workDir);
+    }, workDir, process.env.GITHUB_RUN_ID || undefined);
     const episode = (await ref.get()).data() as Episode;
     console.log(`✅ Rendered ${mmss(result.durationSeconds * 1000)}, ${result.cuts} cuts: ${result.driveUrl}`);
     await sendEmail({ alert }, `Editor Light render ready: ${episode.title}`, [

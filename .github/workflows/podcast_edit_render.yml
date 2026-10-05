@@ -60,3 +60,14 @@ jobs:
         DRIVE_FINAL_FOLDER_ID: ${{ vars.DRIVE_FINAL_FOLDER_ID }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: npx tsx agent/src/podcast/editRenderRun.ts
+
+    # Only when the step above was cancelled or killed before it could record the failure.
+    - name: Mark an unfinished render as failed
+      if: ${{ failure() || cancelled() }}
+      env:
+        EPISODE_ID: ${{ inputs.episode_id }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/podcast/editRenderStopped.ts

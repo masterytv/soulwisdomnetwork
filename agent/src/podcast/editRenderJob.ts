@@ -18,6 +18,8 @@ export interface EditRenderDeps {
     upload: (local: string, storagePath: string, contentType: string) => Promise<void>;
     saveToDrive: (local: string, name: string) => Promise<{ fileId: string; folderId: string }>;
     update: (fields: Record<string, unknown>) => Promise<void>;
+    // Deletes every file under a Storage folder: the previous render, once this one is saved.
+    removeFolder?: (prefix: string) => Promise<void>;
     render: typeof renderEdit;
     now: () => unknown;                  // a server timestamp in production
 }
@@ -65,8 +67,10 @@ export function planEditRender(episode: Episode): EditRenderPlan {
 }
 
 // Runs the whole job. Status moves queued → downloading → rendering → saving → ready;
-// the caller marks it failed when this throws.
-export async function runEditRender(episodeId: string, deps: EditRenderDeps, workDir: string): Promise<EditRenderResult> {
+// the caller marks it failed when this throws. Each render is saved in a folder of its own
+// (`runId` names it), and the episode points at it only once every file is there, so a
+// render that fails while saving leaves the previous one whole.
+export async function runEditRender(episodeId: string, deps: EditRenderDeps, workDir: string, runId = String(Date.now())): Promise<EditRenderResult> {
     const episode = await deps.getEpisode();
     if (!episode) throw new Error(`Episode ${episodeId} not found`);
     const plan = planEditRender(episode);
@@ -111,7 +115,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
     // it was given words, chapters or quotes; each one found is kept with the video.
     await deps.update({ 'editRender.status': 'saving' });
-    const prefix = `episodes/${episodeId}/editRender`;
+    const base = `episodes/${episodeId}/editRender`;
+    const prefix = `${base}/v${plan.edit.version}-${runId.replace(/[^\w-]/g, '')}`;
     const videoPath = `${prefix}/episode.mp4`;
     await deps.upload(out, videoPath, 'video/mp4');
     const extras: Record<string, string | null> = { wordsPath: null, captionsPath: null, chaptersPath: null };
@@ -144,6 +149,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
         updatedAt: deps.now(),
     });
+    // The previous render is no longer used. Only folders of their own are removed.
+    const previous = episode.editRender?.videoPath ? path.posix.dirname(episode.editRender.videoPath) : null;
+    if (deps.removeFolder && previous && previous !== prefix && previous.startsWith(`${base}/`)) {
+        await deps.removeFolder(previous).catch(error => console.warn(`⚠️ Could not remove the previous render: ${(error as Error).message}`));
+    }
     return result;
 }
 

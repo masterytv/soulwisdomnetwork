@@ -120,17 +120,20 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
     const downloads: string[] = [];
     const uploads: Record<string, string> = {};
     const updates: Record<string, unknown>[] = [];
+    const removed: string[] = [];
     let driveName = '';
+    e.editRender = { status: 'queued', videoPath: `episodes/${ID}/editRender/v6-111/episode.mp4` };
     const deps: EditRenderDeps = {
         getEpisode: async () => e,
         download: async (p, dest) => { downloads.push(p); fs.copyFileSync(path.join(store, p), dest); },
         upload: async (local, p, type) => { uploads[p] = type; fs.copyFileSync(local, put(p)); },
         saveToDrive: async (_local, name) => { driveName = name; return { fileId: 'drive-file-1', folderId: 'folder-04' }; },
         update: async fields => { updates.push(fields); },
+        removeFolder: async prefix => { removed.push(prefix); },
         render: renderEdit,
         now: () => 'NOW',
     };
-    const result = await runEditRender(ID, deps, path.join(dir, 'work'));
+    const result = await runEditRender(ID, deps, path.join(dir, 'work'), '222');
 
     // Status moves in order and ends ready, with the edit version it was made from.
     const statuses = updates.map(u => u['editRender.status']).filter(Boolean);
@@ -147,8 +150,9 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
         e.media!.sourcePath!, e.review!.reviewedPath!,
     ].sort());
 
-    // The video and its words, captions and chapters are saved under editRender/.
-    const prefix = `episodes/${ID}/editRender`;
+    // The video and its words, captions and chapters are saved in a folder of this render's
+    // own, and the previous render's folder is removed once the episode points at the new one.
+    const prefix = `episodes/${ID}/editRender/v7-222`;
     assert.deepEqual(uploads, {
         [`${prefix}/episode.mp4`]: 'video/mp4',
         [`${prefix}/episode.words.json`]: 'application/json',
@@ -156,6 +160,8 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
         [`${prefix}/episode.chapters.json`]: 'application/json',
     });
     assert.equal(driveName, 'Test- Episode - One (Editor Light).mp4');
+    assert.equal(last['editRender.videoPath'], `${prefix}/episode.mp4`);
+    assert.deepEqual(removed, [`episodes/${ID}/editRender/v6-111`]);
 
     // Length: teaser 2 + intro 3 + edited (20 - 4 cut) + outro 3 = 24 s.
     const seconds = await probeDuration(path.join(store, `${prefix}/episode.mp4`));
@@ -164,14 +170,14 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
     assert.equal(result.cuts, 1);
 
     // Times moved onto the rendered video: the cut word is gone, the rest shift by the
-    // 4 s cut plus its 40 ms padding on each side (keepRanges), and by the 5 s of teaser
-    // and intro in front.
+    // 4 s cut less the 40 ms it stops short of the words on each side (keepRanges), and by
+    // the 5 s of teaser and intro in front.
     const words = JSON.parse(fs.readFileSync(path.join(store, `${prefix}/episode.words.json`), 'utf8')) as { text: string; start: number }[];
     assert.deepEqual(words.map(w => w.text), ['hello', 'after']);
-    assert.ok(Math.abs(words[1].start - (7000 - 4080 + 5000)) <= 50, `after at ${words[1].start}`);
+    assert.ok(Math.abs(words[1].start - (7000 - 3920 + 5000)) <= 50, `after at ${words[1].start}`);
     const chapters = JSON.parse(fs.readFileSync(path.join(store, `${prefix}/episode.chapters.json`), 'utf8')) as { chapters: { title: string; startMs: number }[] };
     const middle = chapters.chapters.find(c => c.title === 'Middle');
-    assert.ok(middle && Math.abs(middle.startMs - (10000 - 4080 + 5000)) <= 50, `Middle at ${middle?.startMs}`);
+    assert.ok(middle && Math.abs(middle.startMs - (10000 - 3920 + 5000)) <= 50, `Middle at ${middle?.startMs}`);
 
     fs.rmSync(dir, { recursive: true, force: true });
 });
