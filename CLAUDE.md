@@ -109,7 +109,7 @@ same API, normalizes it to −14 LUFS, saves it to `04 Final` in Drive, and move
 approves the episode there (Checkpoint D). "Upload to YouTube" then starts `podcast_youtube.yml` (`agent/src/podcast/youtube.ts`,
 `docs/specs/012-youtube-upload.md`), which signs in as the channel owner with the `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` and
 `YOUTUBE_REFRESH_TOKEN` repo secrets. Under Shorts the producer ticks key quotes; `podcast_shorts.yml` (`agent/src/podcast/shorts.ts`,
-`docs/specs/013-shorts.md`) runs in one of three modes: titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
+`docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest moments), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
 (the shorts approved at Checkpoint E, scheduled one a day, with the same YouTube secrets). The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
 `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`. Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
@@ -133,7 +133,7 @@ show-notes approvals in its `approvals` subcollection),
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts titles, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts picks and titles, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.

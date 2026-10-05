@@ -126,6 +126,24 @@ An approval that a newer one replaces is kept in `episodes/{id}/approvals/{appro
 `POST …/notes/discard` `{ version }` and `POST …/notes/restore` `{ version, to }`
 (`lib/server/notes.ts`: `discardChanges`, `restoreApproval`).
 
+## Drafting again with direction
+
+Added from Jo Ann H's fork (Part A), 5 October 2026.
+
+- **Draft again with Claude** takes an optional direction (up to 1,000 characters) and what to
+  replace: everything, only the description, or only the titles. The direction is added to the
+  prompt (`redraftDirection` in `lib/showNotes.ts`), and `mergeRedraft` keeps everything else
+  as the producer left it. Pending edits are saved first; if that fails, nothing is redrafted.
+- Either way it is a full Claude run, about $0.50, within the daily spending limit.
+- **Description choices** (Studio settings, 1 to 5): Claude writes that many descriptions, and
+  the producer swaps one in (`chooseDescription`).
+- **Kind of recording** (Studio settings): anything but a podcast swaps the podcast's examples
+  for neutral wording (`notesSchemaFor`). A meeting also gets decisions and action items, and
+  can be downloaded as a Word document (`lib/meetingDoc.ts`, written in the browser by
+  `lib/zipStore.ts`).
+- With the defaults (a podcast, one description), the request is exactly as before
+  (`lib/notesOptions.test.ts`).
+
 ## Setup
 
 - GitHub secret **`ANTHROPIC_API_KEY`** (repository → Settings → Secrets and variables →

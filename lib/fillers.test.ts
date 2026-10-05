@@ -4,6 +4,7 @@ import { isFiller } from './fillers';
 import { locate, type SpokenWord } from './showNotes';
 import { timeMap } from './retime';
 import { suggestCuts } from './edit';
+import { quoteMatch } from './shorts';
 
 const spoken = (text: string, gapMs = 0): SpokenWord[] =>
     text.split(' ').map((t, i) => ({ text: t, start: i * (300 + gapMs), end: i * (300 + gapMs) + 250, speaker: 'A', clip: false }));
@@ -51,4 +52,9 @@ test('timeMap pairs runs across fillers missing from the final cut', () => {
 test('suggestCuts marks a written-out filler', () => {
     const cuts = suggestCuts(spoken('I, umm, think so'));
     assert.deepEqual(cuts.filter(c => c.reason === 'filler').map(c => c.startMs), [300]);
+});
+
+test('quoteMatch does not look for a quote\'s fillers in the final cut', () => {
+    const heard = spoken('I saw the light at the end of it');
+    assert.equal(quoteMatch('I, um, saw the light at the end of it', heard), 1);
 });
