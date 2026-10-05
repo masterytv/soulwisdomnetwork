@@ -197,6 +197,7 @@ export interface FinalView {
     shareUrl: string | null;
     durationSeconds: number | null;
     loudness: EpisodeFinal['loudness'] | null;
+    qc: NonNullable<EpisodeFinal['qc']> | null;          // the quality report (spec 019 item 0.2)
     coverage: number | null;
     chapters: NonNullable<EpisodeFinal['chapters']>;
     quoteCount: number;

@@ -19,6 +19,7 @@ import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView } from '@/types/studio';
+import { QualityReport } from '@/components/studio/qualityReport';
 
 // Claude's retakes in the toolbar: ask Claude to look, then add what it found as suggested cuts to review.
 function RetakesTool({ episodeId, edit, onAdd }: { episodeId: string; edit: EpisodeEdit; onAdd: (e: EpisodeEdit) => void }) {
@@ -194,6 +195,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
                     {render.warnings.map(w => <li key={w}>{w}</li>)}
                 </ul>
             )}
+            {render?.status === 'ready' && <QualityReport qc={render.qc} />}
         </>
     );
 
