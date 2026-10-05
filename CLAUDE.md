@@ -41,7 +41,8 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-019; docs/BACKLOG.md lists features agreed for later;
-              019 is the planned Editor Light v2 (start there for editor work after the current plan)
+              019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor
+              (start at 019's "Before you start" for editor work after the current plan)
 docs/research/ dated research reports behind the specs
 types/
 ```

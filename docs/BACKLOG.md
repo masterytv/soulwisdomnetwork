@@ -30,7 +30,8 @@ it here when it ships.
 
 - **Editor Light v2** (`docs/specs/019-editor-light-v2.md`): the best ideas from Rescript, CutScript,
   auto-editor, DeepFilterNet and Auphonic, in phases, to start once the current plan is done. The
-  research behind it is `docs/research/2026-10-05-open-source-editors.md`.
+  research behind it is `docs/research/2026-10-05-open-source-editors.md`. The full editing page
+  (split, move, timeline with audio, media, overlays, music) is `docs/specs/020-studio-editor.md`.
 
 ## Studio
 

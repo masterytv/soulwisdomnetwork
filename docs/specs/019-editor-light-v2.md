@@ -9,13 +9,16 @@ Descript alternatives.
 repeat it.
 **Related:** `docs/specs/005-podcast-production-pipeline.md` (stages),
 `docs/specs/010-final-cut.md`, `docs/specs/015-editor-light.md`,
-`docs/specs/018-studio-settings.md`
+`docs/specs/018-studio-settings.md`, `docs/specs/020-studio-editor.md` (the full editing page,
+items E1–E7 below)
 
 We keep our own editor and render, and add the best ideas from the alternatives. The goal is for
 Editor Light to replace Descript as the final edit, with:
 - fewer minutes of producer time per episode;
 - sound at least as good as Descript's Studio Sound;
-- a way out to a full editor for the rare episode that needs one.
+- a full editing page beside the simple pipeline (split, move, timeline with audio, media,
+  overlays, music, titles; spec 020) for episodes that need more than cuts;
+- a way out to Resolve, Premiere or Final Cut for the rare episode that needs even more.
 
 ## Before you start
 
@@ -30,7 +33,7 @@ This is the pick-up point for a new conversation. Pick up here, in order:
 2. **Read:**
    - `CLAUDE.md`;
    - the research document above;
-   - specs 015 and 018;
+   - specs 015, 018 and 020;
    - this spec's "Rules for this work".
 3. **Take the next item** whose status is "Not started" in the order of the table below. Its
    "Needs" column must be done.
@@ -75,13 +78,22 @@ Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days.
 | 1.3 | Claude "Tighten" suggestions | CutScript (MIT) | M | — | Not started |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | Not started |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | — | Not started |
+| 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode today) | ours | S | — | Not started |
 | **2** | **Editing precision** | | | | |
-| 2.1 | Waveform on the timeline | Rescript (MIT) | M | — | Not started |
-| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | 2.1 | Not started |
+| 2.1 | Waveform on the timeline | Rescript (MIT) | M | — | Built in E2 |
+| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | 2.1 | Built in E2 |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | — | Not started |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | — | Not started |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | — | Not started |
+| **E** | **Studio editor: the full editing page (spec 020)** | | | | |
+| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | M | — | Not started |
+| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | E1 | Not started |
+| E3 | Split, move and trim parts; everything in play order | ours | L | E2, decision U4 | Not started |
+| E4 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | E3 | Not started |
+| E5 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | E4 | Not started |
+| E6 | Music and effects tracks, fades, ducking | ours (ffmpeg) | M | E4, decision U2 | Not started |
+| E7 | Captions track and burned-in style; polish | ours | M | E5, decision U1 | Not started |
 | **3** | **Sound** | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | 0.2 | Not started |
 | 3.2 | The winner as a Studio setting | DeepFilterNet or Auphonic | M | 3.1 | Not started |
@@ -97,8 +109,12 @@ Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days.
 
 **Why this order:**
 - Phase 0 makes every later change safe to ship.
-- Phase 1 saves the most producer time per episode.
+- Phase 1 saves the most producer time per episode. Item 1.6 first: today's 2,970 suggestions
+  bury the useful ones.
 - Phase 2 makes the edits that remain quick and exact.
+- Phase E, the Studio editor, starts after Phase 1. E1–E3 come before the rest of Phase 2,
+  because 2.1 and 2.2 are built inside E2. E4–E7 can be done in any order after Phase 3 if sound
+  matters more.
 - Phase 3 closes the last quality gap with Descript (Studio Sound).
 - Phase 4 makes renders fast and gives an escape hatch.
 - Phase 5 widens the pipeline.
@@ -250,9 +266,40 @@ sounds choppy, and adds joins and render time.
 
 **Tests:** in `lib/edit.test.ts`.
 
+### 1.6 Fewer, better suggestions (S)
+
+**Why:** on a real 48:53 episode, **Mark filler words and long pauses** offered 2,970
+suggestions:
+- 2,250 "fillers", 300 repeats and 420 pauses, about one a second;
+- most "fillers" are gap guesses (`suggestCuts`' 350–1,200 ms rule). The editor labels them
+  "um" (`components/studio/editor.tsx`, the gap chip), so the producer cannot tell a real "um"
+  from a guess.
+
+Nobody reviews that many one at a time.
+
+**Build:**
+- **Record at ingest** whether the transcript has fillers: `transcript.disfluencies: true`, from
+  masterytv/soulwisdomnetwork#126 on.
+  - For those episodes, turn the gap guess off. Real "um"s are now words.
+  - Item 1.2 later finds the ones AssemblyAI missed, from the audio.
+- **Label a guess as a guess:** "gap 0.9s", not "um".
+- **For older episodes**, keep the guess, but:
+  - only for gaps of at least 600 ms;
+  - never straight after a comma;
+  - never in a gap that 1.1 measures as silent, once 1.1 exists.
+- **Repeats:** only within one sentence, and only when the second word follows within 300 ms,
+  so a word said again for emphasis after a pause is left alone. Check on the episode which of
+  the 300 repeats were real stammers before settling the numbers.
+- **Review by kind:** show each kind's count and the time it saves. Walk one kind at a time,
+  with item 1.4's Accept all.
+- **Measure** on the same episode, and write the before and after counts in spec 015. Aim for
+  under 300 suggestions an hour that the producer mostly keeps.
+
 ## Phase 2 — Editing precision
 
 ### 2.1 Waveform on the timeline (M, drawing idea from Rescript's MIT tree)
+
+**Built as part of spec 020 item E2.** The detail below is what E2 needs for the waveform.
 
 **Build:**
 - **At ingest**, and in the backfill from 1.1, compute peaks from `audio.m4a`:
@@ -269,6 +316,8 @@ sounds choppy, and adds joins and render time.
 2-hour episode.
 
 ### 2.2 Drag cut edges, and cut a stretch of time (M, idea from Rescript's MIT tree)
+
+**Built as part of spec 020 item E2.**
 
 **Build:**
 - **Cut handles:** each cut on the timeline gets start and end handles.
@@ -419,6 +468,8 @@ every run. Descript cannot import these files, so this is the replacement path.
 
 ### 4.3 Smoother preview (M)
 
+**The Studio editor's preview (spec 020) uses this for its episode track.**
+
 **Why:** both repos and ours preview by seeking past cuts on one `<video>`, which can stutter at
 a cut.
 
@@ -487,6 +538,8 @@ lower thirds.
 | D4 | Do we want animated captions or graphics? If so, will the company stay at 3 people or fewer (Remotion's free tier), or do we use Revideo? | 5.2 |
 | D5 | Will recordings have one audio track per speaker (spec 005 Stage 0's Zoom check)? | 3.3 |
 | D6 | Is the phase order right, or should something move up? | Phase 1 |
+
+The Studio editor's own decisions (U1–U5) are in spec 020.
 
 ## How this fits spec 005's stages
 
