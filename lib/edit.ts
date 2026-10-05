@@ -22,15 +22,15 @@ export interface KeptRange {
 // A kept piece shorter than this is dropped — it would be a flash of audio between cuts.
 const MIN_KEEP_MS = 150;
 
-// Sort cuts by start; merge overlapping or touching (within padMs) into single spans.
-function mergeCuts(cuts: Cut[], padMs: number): Cut[] {
+// Sort cuts by start; merge overlapping or touching (within joinMs) into single spans.
+function mergeCuts(cuts: Cut[], joinMs: number): Cut[] {
     if (!cuts.length) return [];
     const sorted = [...cuts].sort((a, b) => a.startMs - b.startMs);
     const merged: Cut[] = [{ ...sorted[0] }];
     for (let i = 1; i < sorted.length; i++) {
         const prev = merged[merged.length - 1];
-        // If the next cut starts before the previous ends (plus pad), merge them.
-        if (sorted[i].startMs <= prev.endMs + padMs) {
+        // If the next cut starts before the previous ends (plus joinMs), merge them.
+        if (sorted[i].startMs <= prev.endMs + joinMs) {
             prev.endMs = Math.max(prev.endMs, sorted[i].endMs);
         } else {
             merged.push({ ...sorted[i] });
@@ -39,29 +39,24 @@ function mergeCuts(cuts: Cut[], padMs: number): Cut[] {
     return merged;
 }
 
-// Returns the ranges to keep after applying cuts to a duration. Each cut is padded by
-// padMs on both sides so words at the edge are not clipped. Kept pieces shorter than
-// MIN_KEEP_MS are dropped. Cuts are merged before subtracting.
+// Returns the ranges to keep after applying cuts to a duration. Each cut stops padMs short
+// of the words on either side, so a kept word is never clipped (transcript word times are
+// only approximate, and the start of a word carries its consonant); at the very start or end
+// of the episode there is no word to protect. Cuts are merged first, and kept pieces shorter
+// than MIN_KEEP_MS are dropped.
 export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40): KeptRange[] {
     if (durationMs <= 0) return [];
-    const merged = mergeCuts(cuts, padMs);
+    const merged = mergeCuts(cuts, 2 * padMs);
     const ranges: KeptRange[] = [];
     let cursor = 0;
     for (const cut of merged) {
-        const start = Math.max(0, cut.startMs - padMs);
-        const end = Math.min(durationMs, cut.endMs + padMs);
-        if (start > cursor) {
-            if (start - cursor >= MIN_KEEP_MS) {
-                ranges.push({ startMs: cursor, endMs: start });
-            }
-        }
+        const start = cut.startMs <= 0 ? 0 : Math.min(durationMs, cut.startMs + padMs);
+        const end = cut.endMs >= durationMs ? durationMs : Math.max(0, cut.endMs - padMs);
+        if (end <= start) continue;                 // too short to cut once the words are protected
+        if (start - cursor >= MIN_KEEP_MS) ranges.push({ startMs: cursor, endMs: start });
         cursor = Math.max(cursor, end);
     }
-    if (cursor < durationMs) {
-        if (durationMs - cursor >= MIN_KEEP_MS) {
-            ranges.push({ startMs: cursor, endMs: durationMs });
-        }
-    }
+    if (durationMs - cursor >= MIN_KEEP_MS) ranges.push({ startMs: cursor, endMs: durationMs });
     return ranges;
 }
 

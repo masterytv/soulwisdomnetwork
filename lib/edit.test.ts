@@ -19,8 +19,8 @@ describe('keepRanges', () => {
         const r = keepRanges(10_000, [{ startMs: 3000, endMs: 5000, reason: 'manual' }]);
         assert.equal(r.length, 2);
         assert.equal(r[0].startMs, 0);
-        assert.equal(r[0].endMs, 2960);  // 3000 - 40 pad
-        assert.equal(r[1].startMs, 5040); // 5000 + 40 pad
+        assert.equal(r[0].endMs, 3040);  // the cut stops 40 ms inside, so the word before is whole
+        assert.equal(r[1].startMs, 4960); // and the word after starts whole
         assert.equal(r[1].endMs, 10_000);
     });
 
@@ -30,8 +30,8 @@ describe('keepRanges', () => {
             { startMs: 3500, endMs: 6000, reason: 'pause' },
         ]);
         assert.equal(r.length, 2);
-        assert.equal(r[0].endMs, 1960);
-        assert.equal(r[1].startMs, 6040);
+        assert.equal(r[0].endMs, 2040);
+        assert.equal(r[1].startMs, 5960);
     });
 
     test('touching cuts merged (within pad)', () => {
@@ -39,10 +39,10 @@ describe('keepRanges', () => {
             { startMs: 2000, endMs: 3000, reason: 'filler' },
             { startMs: 3010, endMs: 5000, reason: 'pause' },
         ]);
-        // 3010 - 3000 = 10 < padMs(40), so merged
+        // 3010 - 3000 = 10 ms apart, so merged: no sliver of sound between them
         assert.equal(r.length, 2);
-        assert.equal(r[0].endMs, 1960);
-        assert.equal(r[1].startMs, 5040);
+        assert.equal(r[0].endMs, 2040);
+        assert.equal(r[1].startMs, 4960);
     });
 
     test('tiny fragment dropped', () => {
@@ -50,23 +50,33 @@ describe('keepRanges', () => {
             { startMs: 100, endMs: 200, reason: 'filler' },
             { startMs: 250, endMs: 400, reason: 'filler' },
         ]);
-        // The gap between 240 and 210 is only 30ms — too short, dropped.
-        // Both cuts merge (within pad), so cursor moves to ~440.
-        // Fragment before is 0..60 — also too short.
+        // 50 ms apart, so both cuts merge into 100..400, kept as 140..360 cut.
+        // The piece before (0..140) is under 150 ms, so it is dropped too.
         assert.equal(r.length, 1);
-        assert.equal(r[0].startMs, 440);
+        assert.equal(r[0].startMs, 360);
     });
 
     test('cut at start', () => {
         const r = keepRanges(10_000, [{ startMs: 0, endMs: 2000, reason: 'pause' }]);
         assert.equal(r.length, 1);
-        assert.equal(r[0].startMs, 2040);
+        assert.equal(r[0].startMs, 1960);
     });
 
     test('cut at end', () => {
         const r = keepRanges(10_000, [{ startMs: 8000, endMs: 10_000, reason: 'pause' }]);
         assert.equal(r.length, 1);
-        assert.equal(r[0].endMs, 7960);
+        assert.equal(r[0].endMs, 8040);
+    });
+
+    test('a cut shorter than the padding cuts nothing', () => {
+        const r = keepRanges(10_000, [{ startMs: 3000, endMs: 3060, reason: 'manual' }]);
+        assert.deepEqual(r, [{ startMs: 0, endMs: 10_000 }]);
+    });
+
+    test('kept words are never clipped', () => {
+        // Words 0..1000, cut 1000..2000, 2000..3000: both kept words survive in full.
+        const r = keepRanges(3000, [{ startMs: 1000, endMs: 2000, reason: 'manual' }]);
+        assert.ok(r[0].endMs >= 1000 && r[1].startMs <= 2000);
     });
 
     test('zero duration returns empty', () => {
