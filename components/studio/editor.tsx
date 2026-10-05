@@ -14,7 +14,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
-    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, SUGGESTED_REASONS, HESITATION_REASONS,
+    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
+    type UnspokenSpan,
 } from '@/lib/edit';
 import { hasFillers } from '@/lib/fillers';
 import { primary, secondary, hint } from '@/components/studio/ui';
@@ -154,6 +155,13 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
 
     const paras = useMemo(() => groupBySpeaker(words), [words]);
     const cutsByWord = useMemo(() => cutMaps(words, edit.cuts), [words, edit.cuts]);
+    // Speech the transcript missed (spec 019 item 1.2), by the word it comes before: shown as … in
+    // the gap, and cut with a click. Only with measured silences.
+    const unspokenByWord = useMemo(() => {
+        const by = new Map<number, UnspokenSpan[]>();
+        for (const s of silences?.length ? unspokenSpans(words, silences) : []) by.set(s.before, [...by.get(s.before) ?? [], s]);
+        return by;
+    }, [words, silences]);
     const [videoDuration, setVideoDuration] = useState(0);
     const ranges = useMemo(() => keepRanges(
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
@@ -517,7 +525,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     // What each kind saves on its own, beside its count.
     const reasonSaved = useMemo(() => savedByReason(edit.cuts) as Record<string, number>, [edit.cuts]);
     // Transcripts made with `disfluencies` on have their "um"s as words, so there is nothing to
-    // guess from silences: Mark hesitations is only offered for older ones.
+    // guess from silences: Mark hesitations is only offered for older ones, and only before their
+    // audio's silences are measured (then the missed speech is marked with the fillers instead).
     const fillersTranscribed = useMemo(() => hasFillers(words), [words]);
 
     // Suggested cuts (reason not 'manual'), sorted by start time.
@@ -608,7 +617,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                     title={silences?.length ? 'Long pauses are measured from the audio' : 'Long pauses are the gaps between words (this recording\'s silences are not measured yet)'}>
                     Mark filler words and long pauses
                 </button>
-                {!fillersTranscribed && (
+                {!fillersTranscribed && !silences?.length && (
                     <button onClick={onHesitations} className={secondary}
                         title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
                         Mark hesitations
@@ -840,11 +849,23 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                                                         // A cut silence between words is a hesitation ('gap', or 'filler' in
                                                         // edits marked before hesitations had their own kind), never a word.
                                                         ? (gapCuts.some(c => c.reason === 'filler' || c.reason === 'gap')
-                                                            ? `hesitation ${(prevGap / 1000).toFixed(1)}s`
+                                                            ? `hesitation ${(gapCuts.reduce((t, c) => t + Math.max(0, Math.min(c.endMs, word.start) - Math.max(c.startMs, prev.end)), 0) / 1000).toFixed(1)}s`
                                                             : `pause ${(prevGap / 1000).toFixed(1)}s → ${((prevGap - (gapCuts[0]?.endMs ?? 0) + (gapCuts[0]?.startMs ?? 0)) / 1000).toFixed(1)}s`)
                                                         : `pause ${(prevGap / 1000).toFixed(1)}s`}
                                                 </span>
                                             )}
+                                            {(unspokenByWord.get(index) ?? [])
+                                                .filter(u => !gapCuts.some(c => c.startMs <= u.startMs + 50 && c.endMs >= u.endMs - 50))
+                                                .map(u => (
+                                                    <span key={u.startMs}
+                                                        title={`Sound the transcript has no words for (${((u.endMs - u.startMs) / 1000).toFixed(1)} s): often an um or a false start. Click to cut it; Hear it first if unsure.`}
+                                                        className="inline-block mx-0.5 px-1 rounded text-xs cursor-pointer text-gray-400 bg-white/5 hover:bg-white/10"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            updateEdit(cur => ({ ...cur, cuts: [...cur.cuts, { startMs: u.startMs, endMs: u.endMs, reason: 'filler' }] }));
+                                                        }}
+                                                    >…</span>
+                                                ))}
                                             <span
                                                 ref={el => { if (index < words.length) wordRefs.current[index] = el; }}
                                                 className={`cursor-pointer select-none ${

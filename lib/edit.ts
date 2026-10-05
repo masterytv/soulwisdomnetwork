@@ -160,6 +160,37 @@ export const HESITATION_REASONS: Cut['reason'][] = ['gap'];
 // Suggests cuts for filler words, repeated words, and long pauses.
 const REPEAT_GAP_MS = 300;
 const endsSentence = (s: string) => /[.?!]["\u201d\u2019)]*$/.test(s.trim());
+const endsClause = (s: string) => /[.?!,;:\u2014\u2013-]["\u201d\u2019)]*$/.test(s.trim());
+
+// Speech the transcript missed (spec 019 item 1.2): a stretch between words, at least
+// UNSPOKEN_MIN_MS long, that no word covers and the audio says is not silent. Often an "um" or a
+// false start AssemblyAI left out, sometimes a breath or a laugh. `before` is the index of the
+// word it comes before. Only stretches between words count: before the first word and after the
+// last there is nothing to compare with.
+export const UNSPOKEN_MIN_MS = 300;
+// Longer than this it is more likely laughter, music or crosstalk than a hesitation: shown, not suggested.
+export const UNSPOKEN_SUGGEST_MAX_MS = 1500;
+export interface UnspokenSpan { startMs: number; endMs: number; before: number }
+
+export function unspokenSpans(words: { start: number; end: number }[], silences: Silence[], minMs = UNSPOKEN_MIN_MS): UnspokenSpan[] {
+    const quiet = [...silences].sort((a, b) => a.startMs - b.startMs);
+    const out: UnspokenSpan[] = [];
+    let reach = words.length ? words[0].end : 0;      // the latest any word so far ends (speakers can overlap)
+    let k = 0;
+    for (let i = 1; i < words.length; i++) {
+        const from = reach, to = words[i].start;
+        reach = Math.max(reach, words[i].end);
+        if (to - from < minMs) continue;
+        while (k < quiet.length && quiet[k].endMs <= from) k++;
+        let cursor = from;
+        for (let j = k; j < quiet.length && quiet[j].startMs < to; j++) {
+            if (quiet[j].startMs - cursor >= minMs) out.push({ startMs: Math.round(cursor), endMs: Math.round(quiet[j].startMs), before: i });
+            cursor = Math.max(cursor, quiet[j].endMs);
+        }
+        if (to - cursor >= minMs) out.push({ startMs: Math.round(cursor), endMs: Math.round(to), before: i });
+    }
+    return out;
+}
 
 export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[] {
     const maxPauseMs = options?.maxPauseMs ?? 1200;
@@ -183,6 +214,17 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         if (i > 0 && norm.length > 0 && normalize(prev.text) === norm && prev.speaker === w.speaker
             && !endsSentence(prev.text) && w.start - prev.end <= REPEAT_GAP_MS) {
             cuts.push({ startMs: prev.start, endMs: prev.end, reason: 'repeat' });
+        }
+    }
+
+    // Speech the transcript missed, offered as fillers: short, inside one speaker's clause (a breath
+    // after a comma or a full stop is how people talk), and not next to a filler already cut.
+    if (options?.silences?.length) {
+        for (const s of unspokenSpans(words, options.silences)) {
+            const prev = words[s.before - 1], next = words[s.before];
+            if (s.endMs - s.startMs > UNSPOKEN_SUGGEST_MAX_MS || prev.speaker !== next.speaker || endsClause(prev.text)
+                || isFiller(normalize(prev.text)) || isFiller(normalize(next.text))) continue;
+            cuts.push({ startMs: s.startMs, endMs: s.endMs, reason: 'filler' });
         }
     }
 
@@ -214,12 +256,12 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
     // have no "um" or "uh", and AssemblyAI still misses some, so one often shows up as a silence
     // between two words of a sentence. A gap of 500–1200 ms after a word
     // that ends no sentence or clause (no . ? ! , ; : or dash) becomes a 'gap' cut leaving 150 ms
-    // of air. Shorter gaps, and the breath after a comma, are how people talk.
-    if (options?.gaps) {
+    // of air. Shorter gaps, and the breath after a comma, are how people talk. With measured
+    // silences the missed speech above is found instead, so this guess is not used.
+    if (options?.gaps && !options.silences?.length) {
         const GAP_MIN = 500;
         const GAP_MAX = maxPauseMs;
         const GAP_KEEP_MS = 150;
-        const endsClause = (s: string) => /[.?!,;:\u2014\u2013-]["\u201d\u2019)]*$/.test(s.trim());
         for (let i = 1; i < words.length; i++) {
             const prev = words[i - 1];
             const gap = words[i].start - prev.end;

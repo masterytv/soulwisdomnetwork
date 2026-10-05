@@ -32,7 +32,7 @@ transcript beside it, a timeline underneath, and saving and rendering pinned in 
 
 **Suggestions.** **Mark filler words and long pauses** suggests cuts; **Mark hesitations** adds
 the guessed ones (below), and only shows when the transcript has no "um"s written out (episodes
-transcribed before `disfluencies` was on). Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
+transcribed before `disfluencies` was on) and the audio's silences are not measured yet. Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
 (Fillers, Repeats, Pauses, Hesitations, Retakes) filter the review, and **Clear these** removes
 one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
 before deciding.
@@ -86,7 +86,10 @@ changed since that render. A failed render shows its reason, and can be tried ag
   sentence, the second word within 300 ms of the first;
 - pauses over 1.2 s, shortened to 0.5 s. Since spec 019 item 1.1 they are the silences measured in
   the audio at ingest (`media.silencesPath`), when the episode has them; otherwise the gaps between words;
-- only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
+- with the audio's silences (spec 019 item 1.2): stretches of 0.3 to 1.5 s between two words of one
+  speaker's clause that no word covers and that are not silent, as `filler`: speech the transcript
+  missed. Every such stretch, at any length, shows as `…` in the transcript; a click cuts it;
+- only with **Mark hesitations** (`gaps: true`), and only without silences: gaps of 0.5 to 1.2 s after a word that ends no
   sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before
   `disfluencies` was on have no fillers in the transcript, and AssemblyAI still misses some, so a
   gap is often where one was, but often only a breath. Until
