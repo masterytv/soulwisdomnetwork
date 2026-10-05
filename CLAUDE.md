@@ -3,7 +3,8 @@
 Next.js community site for the Soul Wisdom podcast. A podcast production pipeline is specified but not yet built — see
 `docs/specs/005-podcast-production-pipeline.md`.
 
-**Live:** https://soulwisdomcollective.com
+**Live:** https://soulwisdomcollective.com (from `main`) · **Staging:** https://staging.soulwisdomcollective.com
+(from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`.
 
 ## Stack
 
@@ -194,6 +195,10 @@ account JSON** is, and bypasses all security rules.
 
 `main` is protected: no direct pushes, PRs required. Work flows
 **feature branch → `staging` → `main`**.
+
+The Studio starts every podcast job on `main` (`lib/server/github.ts`, `ref: 'main'`), even from
+the staging site. So a changed or new job only runs once it is on `main`; until then staging
+can test the pages but not the job.
 
 Merging to `main` deploys to production. Keep PRs to one concern.
 
