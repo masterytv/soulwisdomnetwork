@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import type { TimedWord } from './retime';
+import { isFiller } from './fillers';
 
 export const SHORT_WIDTH = 1080;
 export const SHORT_HEIGHT = 1920;
@@ -58,7 +59,8 @@ export const ShortTextsSchema = z.object({
 // changed it, so its times are not to be trusted.
 export function quoteMatch(quoteText: string, heard: TimedWord[]) {
     const tokens = (s: string) => s.toLowerCase().replace(/[^a-z0-9'\s]+/g, ' ').split(/\s+/).filter(Boolean);
-    const want = tokens(quoteText);
+    // The final cut's transcript has no "um"s, so a quote's own are not looked for.
+    const want = tokens(quoteText).filter(t => !isFiller(t));
     if (!want.length) return 1;
     const have = new Map<string, number>();
     for (const t of heard.flatMap(w => tokens(w.text))) have.set(t, (have.get(t) ?? 0) + 1);

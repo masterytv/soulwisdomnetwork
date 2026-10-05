@@ -28,9 +28,11 @@ it here when it ships.
 
 ## Editor Light (replacing Descript)
 
-- Being built in a fork from `docs/specs/015-editor-light.md` (to come with the first PR).
-  Turn on AssemblyAI's `disfluencies` option, or "um" and "uh" are left out of the transcript
-  and cannot be found as fillers.
+- **Editor Light v2** (`docs/specs/019-editor-light-v2.md`): the best ideas from Rescript, CutScript,
+  auto-editor, DeepFilterNet and Auphonic, in phases, to start once the current plan is done. The
+  research behind it is `docs/research/2026-10-05-open-source-editors.md`. The full editing page
+  (split, timeline with audio, transitions, media, overlays, music) is `docs/specs/020-studio-editor.md`.
+  Start at `docs/PLANNING.md`.
 
 ## Studio
 

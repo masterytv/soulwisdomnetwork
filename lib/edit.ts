@@ -4,12 +4,13 @@
 import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
 import type { CaptionChoice, Overlay } from './onScreen';
+import { isFiller } from './fillers';
 
 export interface Cut {
     startMs: number;
     endMs: number;
     // 'retake': found by Claude (Part I). 'gap': a hesitation, a short silence inside a sentence
-    // where an "um" may have been (AssemblyAI leaves those words out); suggested only on request.
+    // where an "um" may have been (transcripts from before `disfluencies` was on lack those words); suggested only on request.
     reason: 'filler' | 'pause' | 'repeat' | 'manual' | 'retake' | 'gap';
 }
 
@@ -111,7 +112,6 @@ export function editedDuration(ranges: KeptRange[]): number {
     return ranges.reduce((sum, r) => sum + (r.endMs - r.startMs), 0);
 }
 
-const FILLER_WORDS = new Set(['um', 'uh', 'erm', 'uhm', 'hmm']);
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 
 export interface SuggestOptions {
@@ -137,7 +137,7 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         const norm = normalize(w.text);
 
         // Filler words
-        if (FILLER_WORDS.has(norm)) {
+        if (isFiller(norm)) {
             cuts.push({ startMs: w.start, endMs: w.end, reason: 'filler' });
             continue;
         }
@@ -161,8 +161,9 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         }
     }
 
-    // Hesitations, only when asked: AssemblyAI leaves out "um" and "uh" by default, so one often
-    // shows up as a silence between two words of a sentence. A gap of 500–1200 ms after a word
+    // Hesitations, only when asked: episodes transcribed before ingest turned on `disfluencies`
+    // have no "um" or "uh", and AssemblyAI still misses some, so one often shows up as a silence
+    // between two words of a sentence. A gap of 500–1200 ms after a word
     // that ends no sentence or clause (no . ? ! , ; : or dash) becomes a 'gap' cut leaving 150 ms
     // of air. Shorter gaps, and the breath after a comma, are how people talk.
     if (options?.gaps) {
@@ -173,7 +174,7 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         for (let i = 1; i < words.length; i++) {
             const prev = words[i - 1];
             const gap = words[i].start - prev.end;
-            if (gap >= GAP_MIN && gap <= GAP_MAX && !endsClause(prev.text) && !FILLER_WORDS.has(normalize(words[i].text))) {
+            if (gap >= GAP_MIN && gap <= GAP_MAX && !endsClause(prev.text) && !isFiller(normalize(words[i].text))) {
                 cuts.push({ startMs: prev.end + GAP_KEEP_MS, endMs: words[i].start, reason: 'gap' });
             }
         }

@@ -77,12 +77,15 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - `CutsSchema` checks what may be saved.
 
 **`suggestCuts` marks:**
-- `um`, `uh`, `erm`, `uhm` and `hmm`;
+- filler words (`lib/fillers.ts`): `um`, `uh`, `er`, `erm`, `uhm`, `hm`, `hmm` and `mhm`, however many
+  letters they are written with. Ingest turns on AssemblyAI's `disfluencies` option, so they are in
+  the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
 - immediate repeats, keeping the last;
 - pauses over 1.2 s, shortened to 0.5 s;
 - only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
-  sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. AssemblyAI leaves fillers
-  out of its transcript, so a gap is often where one was, but often only a breath. Until
+  sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before
+  `disfluencies` was on have no fillers in the transcript, and AssemblyAI still misses some, so a
+  gap is often where one was, but often only a breath. Until
   5 October 2026 these were every 350 to 1,200 ms gap inside a sentence, marked `filler`; on a
   49-minute conversation that was over 2,000 suggestions. Edits marked then still show them as
   hesitations; **Clear suggestions** and marking again sorts them.
@@ -203,3 +206,6 @@ within two frames of its flash, with and without the voice cleanup.
 - Editing on a phone: a Cut button and touch selection.
 - A faster render for long episodes: one encode instead of two, and resuming a failed run from
   its last block.
+
+The rest is planned in `docs/specs/019-editor-light-v2.md` (the faster render is its item 4.2),
+from a review of open-source editors (`docs/research/2026-10-05-open-source-editors.md`).
