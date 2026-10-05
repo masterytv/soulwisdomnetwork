@@ -86,7 +86,7 @@ for this work".
 | 0.1 | Checks on every pull request | ours | S | Medium | — | Done (#134) |
 | 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
-| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#PR); the count on the real episode waits on promotion |
+| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#141); the count on the real episode waits on promotion |
 | 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
@@ -237,7 +237,7 @@ a long word can hide a silence. The audio shows where the sound really stops.
 **Done when:** on the real episode, the pause suggestions line up with what you hear. Compare the
 count before and after.
 
-**Built (#PR):**
+**Built (#141):**
 - `agent/src/podcast/silences.ts` (`measureSilences`): ffmpeg `silencedetect` at −35 dB for
   300 ms, read with renderQc's parser. The `ametadata` print in the command above is not needed:
   silencedetect's own log lines carry the times. `SilencesFile` and its schema are in `lib/edit.ts`.
