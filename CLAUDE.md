@@ -32,7 +32,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
-              teasers, intro, outro, b-roll, voice cleanup; podcast_edit_render.yml runs editRenderRun.ts, GitHub
+              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions; podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
               with components/studio/timeline.tsx); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
@@ -97,7 +97,8 @@ when transcribed (a recording uploaded in the Studio instead is already in Stora
 to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
 (`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The same workflow with
-`mode: extras` writes the social posts and follow-up email from the approved notes. Once notes are approved, "Generate b-roll
+`mode: extras` writes the social posts and follow-up email from the approved notes; `mode: translations`
+and `mode: retakes` serve the editor (spec 015). Once notes are approved, "Generate b-roll
 images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
 `docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. "Build edit package" starts
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
