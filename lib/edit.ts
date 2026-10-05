@@ -129,9 +129,25 @@ export function editedDuration(ranges: KeptRange[]): number {
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 
+// Silences measured in the episode's audio at ingest (spec 019 item 1.1): stretches quieter than
+// `noiseDb` for at least `minMs`, saved as episodes/{id}/analysis/silences.json.
+export interface Silence { startMs: number; endMs: number }
+export interface SilencesFile { noiseDb: number; minMs: number; silences: Silence[] }
+
+export const SilencesFileSchema = z.object({
+    noiseDb: z.number(),
+    minMs: z.number(),
+    silences: z.array(z.object({ startMs: z.number(), endMs: z.number() })).max(100_000),
+});
+
 export interface SuggestOptions {
     maxPauseMs?: number;
     keepPauseMs?: number;
+    // The audio's measured silences. With them, pauses come from the audio instead of the gaps
+    // between words: a silence inside a word's time span counts, and a gap the audio says is not
+    // silent (laughter, a breath, music) does not. Without them (or with none found, as on a noisy
+    // recording) the word gaps are used.
+    silences?: Silence[] | null;
     // Also suggest hesitations (reason 'gap'). Off by default: they are guesses, and in long
     // conversations they far outnumber the real fillers.
     gaps?: boolean;
@@ -170,8 +186,19 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         }
     }
 
-    // Pauses: a gap between consecutive words longer than maxPauseMs, shortened to keepPauseMs.
-    for (let i = 1; i < words.length; i++) {
+    // Pauses measured in the audio: a silence longer than maxPauseMs is shortened to keepPauseMs,
+    // half of it kept after the sound stops and half before it starts again.
+    const silences = options?.silences;
+    if (silences?.length) {
+        for (const s of silences) {
+            if (s.endMs - s.startMs <= maxPauseMs) continue;
+            const half = Math.round(keepPauseMs / 2);
+            cuts.push({ startMs: Math.round(s.startMs) + half, endMs: Math.round(s.endMs) - half, reason: 'pause' });
+        }
+    }
+
+    // Pauses from the transcript: a gap between consecutive words longer than maxPauseMs, shortened to keepPauseMs.
+    for (let i = 1; i < words.length && !silences?.length; i++) {
         const gap = words[i].start - words[i - 1].end;
         if (gap > maxPauseMs) {
             // Cut from the end of the pause to keepPauseMs before the next word.

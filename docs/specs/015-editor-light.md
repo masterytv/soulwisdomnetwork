@@ -84,7 +84,8 @@ changed since that render. A failed render shows its reason, and can be tried ag
   the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
 - immediate repeats, keeping the last, when they are a stammer: the same speaker, inside one
   sentence, the second word within 300 ms of the first;
-- pauses over 1.2 s, shortened to 0.5 s;
+- pauses over 1.2 s, shortened to 0.5 s. Since spec 019 item 1.1 they are the silences measured in
+  the audio at ingest (`media.silencesPath`), when the episode has them; otherwise the gaps between words;
 - only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
   sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before
   `disfluencies` was on have no fillers in the transcript, and AssemblyAI still misses some, so a

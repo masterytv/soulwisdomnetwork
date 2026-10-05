@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
-import type { Cut, EpisodeEdit } from '@/lib/edit';
+import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
     keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, SUGGESTED_REASONS, HESITATION_REASONS,
 } from '@/lib/edit';
@@ -106,7 +106,8 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // workspace: the full-page editor — a larger video, a taller script and the timeline.
 // studioCaptions: the Studio's captions setting; overlayUrls: links to the overlay images (both Part I).
 // cutNotes: by `${startMs}-${endMs}`, a suggestion's kind and why ("False start: changed tack").
-export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {} }: {
+// silences: the audio's measured silences, for the pause suggestions (null: not measured, use word gaps).
+export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null }: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
@@ -116,6 +117,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     overlayUrls?: Record<string, string>;
     tools?: React.ReactNode;
     cutNotes?: Record<string, string>;
+    silences?: Silence[] | null;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -442,7 +444,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
 
     // Suggest filler words, repeats and long pauses; marking again replaces the earlier ones.
     const onSuggest = () => {
-        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words), SUGGESTED_REASONS) }));
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words, { silences }), SUGGESTED_REASONS) }));
         setReviewIdx(0);
         setReviewKind(null);
     };
@@ -602,7 +604,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
             <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
-                <button onClick={onSuggest} className={primary}>
+                <button onClick={onSuggest} className={primary}
+                    title={silences?.length ? 'Long pauses are measured from the audio' : 'Long pauses are the gaps between words (this recording\'s silences are not measured yet)'}>
                     Mark filler words and long pauses
                 </button>
                 {!fillersTranscribed && (

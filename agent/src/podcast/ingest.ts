@@ -1,5 +1,6 @@
 // Spec 005 steps 1-3: pick up new recordings from Drive, copy them to Cloud Storage, make
-// a 720p proxy and an audio-only file, and transcribe with candidate speaker names.
+// a 720p proxy and an audio-only file, measure the audio's silences (spec 019 item 1.1), and
+// transcribe with candidate speaker names.
 // Recordings uploaded in the Studio (lib/server/uploads.ts) are already in Cloud Storage; they
 // go through the same steps without Drive, which is optional when only uploads are used.
 // Runs in GitHub Actions (.github/workflows/podcast_ingest.yml), NOT on App Hosting.
@@ -25,6 +26,7 @@ import { sendEmail, sendFailureAlert, type Failure } from './notify';
 import { postUsageReport } from './usageReport';
 import { readableTranscript, speakerSummary } from './readable';
 import { loadSettings } from './settings';
+import { measureSilences } from './silences';
 import { createAssemblyAI, hasFailed, submitTranscription, summariseSpeakers, waitForTranscript } from './transcribe';
 
 const config = loadConfig();
@@ -49,6 +51,47 @@ async function upload(local: string, destination: string, contentType: string) {
 
 function touch(ref: DocumentReference, fields: Record<string, unknown>) {
     return withRetry('Firestore update', () => ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() }));
+}
+
+// The audio's silences (spec 019 item 1.1), for the editor's pause suggestions: measured with
+// ffmpeg and saved as analysis/silences.json. Free, and never fails the episode: without them the
+// editor uses the gaps between words, and the next run's catch-up tries again.
+async function analyseSilences(ref: DocumentReference, fileId: string, audioPath: string, localAudio: string) {
+    try {
+        if (!fs.existsSync(localAudio)) {
+            await withRetry('Storage download', () => bucket.file(audioPath).download({ destination: localAudio }));
+        }
+        const result = await measureSilences(localAudio);
+        const local = `${localAudio}.silences.json`;
+        fs.writeFileSync(local, JSON.stringify(result));
+        const silencesPath = await upload(local, `episodes/${fileId}/analysis/silences.json`, 'application/json');
+        await touch(ref, { 'media.silencesPath': silencesPath });
+        console.log(`  🔇 ${result.silences.length} silences measured`);
+        return silencesPath;
+    } catch (error) {
+        console.warn(`  ⚠️ Could not measure the silences, will retry next run: ${(error as Error).message}`);
+        return undefined;
+    }
+}
+
+// Episodes ingested before silences were measured (or whose measuring failed) get them now, a
+// few per run, so a run with nothing new still fills them in.
+const SILENCES_PER_RUN = 20;
+async function catchUpSilences() {
+    const pending = (await db.collection('episodes').get()).docs
+        .filter(d => { const m = (d.data() as Episode).media; return !!m?.audioPath && !m.silencesPath; })
+        .slice(0, SILENCES_PER_RUN);
+    if (!pending.length) return;
+    console.log(`🔇 Measuring silences for ${pending.length} earlier episode(s)`);
+    for (const doc of pending) {
+        const dir = path.join(config.workDir, 'podcast', `silences-${doc.id}`);
+        fs.mkdirSync(dir, { recursive: true });
+        try {
+            await analyseSilences(doc.ref, doc.id, (doc.data() as Episode).media!.audioPath!, path.join(dir, 'audio.m4a'));
+        } finally {
+            fs.rmSync(dir, { recursive: true, force: true });
+        }
+    }
 }
 
 // Checkpoint A hand-off: a readable transcript in Storage, a Google Doc next to the video
@@ -233,6 +276,7 @@ async function processEpisode(video: DriveFile, candidates: string[], uploaded =
             });
         }
         fs.rmSync(localSource, { force: true });
+        if (!media.silencesPath && media.audioPath) media.silencesPath = await analyseSilences(ref, fileId, media.audioPath, localAudio);
 
         // 3. Transcribe the raw recording with candidate speaker names.
         stage = 'transcribe';
@@ -378,6 +422,7 @@ async function main() {
     }
 
     if (!config.dryRun) await catchUpReviews();
+    if (!config.dryRun) await catchUpSilences().catch(error => console.warn(`⚠️ Silences catch-up stopped: ${(error as Error).message}`));
 
     await sendFailureAlert(config, failures);
     if (failures.length > 0) process.exit(1);
