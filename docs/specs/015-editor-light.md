@@ -24,13 +24,22 @@ transcript beside it, a timeline underneath, and saving and rendering pinned in 
 **Editing:**
 - The transcript is shown by speaker, with the video beside it.
 - Click a word to jump the video there.
-- Drag, or shift-click, to select words; press Delete or Backspace to cut them.
+- Drag, or shift-click, to select words; press Delete or Backspace, or **✂ Cut selected** (for
+  phones and tablets), to cut them.
 - Double-click a cut to bring it back.
 - Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z redoes.
 - Search finds words.
 
-**Suggestions.** **Mark filler words and long pauses** suggests cuts. The producer goes through
-them with Prev and Next, and can **Keep** one or **Hear it** before deciding.
+**Suggestions.** **Mark filler words and long pauses** suggests cuts; **Mark hesitations** adds
+the guessed ones (below). Marking again replaces that kind's earlier suggestions. The counts
+(Fillers, Repeats, Pauses, Hesitations, Retakes) filter the review, and **Clear these** removes
+one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
+before deciding.
+
+**Splits** (full-page editor): **✂ Split** on the timeline, or the S key, splits at the playhead,
+as in Descript. The section under the playhead is shaded, and **Cut this section** or **Bring this
+section back** acts on all of it. Click a split's handle on the ruler to remove it. Splits are
+saved with the edit (`edit.splits`) but the render does not use them; only the cuts matter.
 
 **Playing:**
 - **Edited** skips the cuts as the video plays; **Original** plays everything.
@@ -71,8 +80,12 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - `um`, `uh`, `erm`, `uhm` and `hmm`;
 - immediate repeats, keeping the last;
 - pauses over 1.2 s, shortened to 0.5 s;
-- gaps of 350 to 1,200 ms inside a sentence, cut to 150 ms, marked as `filler`. AssemblyAI leaves
-  fillers out of its transcript by default, so a gap is often where one was.
+- only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
+  sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. AssemblyAI leaves fillers
+  out of its transcript, so a gap is often where one was, but often only a breath. Until
+  5 October 2026 these were every 350 to 1,200 ms gap inside a sentence, marked `filler`; on a
+  49-minute conversation that was over 2,000 suggestions. Edits marked then still show them as
+  hesitations; **Clear suggestions** and marking again sorts them.
 
 ### Editor
 
@@ -124,6 +137,32 @@ It uses the existing secrets `PODCAST_SA_JSON` and `RESEND_API_KEY`, and the rep
 `ALERT_EMAIL` and `DRIVE_PROCESSED_FOLDER_ID` (`DRIVE_FINAL_FOLDER_ID` optionally). The Studio
 starts it on `main`, like every podcast job, so the workflow must be on `main` before the button
 works.
+
+### On screen, translations and retakes
+
+Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-roll and music).
+
+**On screen** (full-page editor, `components/studio/onScreen.tsx`, `lib/onScreen.ts`):
+- **Text**: a line and an optional smaller second line, in a chosen font, size, colour, background
+  and one of nine positions, from a set time for a set number of seconds. **Name titles** adds
+  each speaker's name, lower left, where they first speak.
+- **Images**: a PNG or JPEG (up to 20 MB), placed and sized on the frame. Uploaded to
+  `overlays/` in Storage; the edit route checks each new one is a real PNG or JPEG.
+- **Captions**: burned in, in the Studio's look (settings) or this video's own.
+- The preview shows them over the video, and the timeline has a row for them.
+- The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
+  The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.
+
+**Translations** (`lib/translate.ts`, `components/studio/translations.tsx`): Claude translates the
+captions, title and description into up to five languages (the settings choose the usual ones).
+The YouTube upload adds each as a caption track with the title and description in that language.
+Five at most, because each track costs 450 of YouTube's 10,000 daily API units.
+
+**Retakes** (`lib/retakes.ts`): Claude reads the accepted transcript for lines said again, and
+suggests cutting the earlier tries; the producer accepts them like any other suggestion.
+
+Both run in `podcast_notes.yml` with `mode: translations` or `mode: retakes`, never touching the
+notes, and reserve $0.40 per language and $0.30 against the daily spending limit.
 
 ### Auphonic
 
