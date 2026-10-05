@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, type Timestamp } from "firebase/firestore";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -14,8 +14,8 @@ interface Conversation {
     participantNames?: Record<string, string>;
     participantPhotos?: Record<string, string | null>;
     lastMessage: string;
-    lastMessageTimestamp: any;
-    updatedAt: any;
+    lastMessageTimestamp: Timestamp | null;
+    updatedAt: Timestamp | null;
 }
 
 export default function MessagesLayout({ children }: { children: React.ReactNode }) {

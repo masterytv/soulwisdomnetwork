@@ -64,7 +64,7 @@ export default function LoginPage() {
             }
 
             router.push(nextPage());
-        } catch (err: any) {
+        } catch (err) {
             setError(message(err));
         }
     };
@@ -98,7 +98,7 @@ export default function LoginPage() {
                 await signInWithEmailAndPassword(auth, email, password);
             }
             router.push(nextPage());
-        } catch (err: any) {
+        } catch (err) {
             setError(message(err));
         }
     };
