@@ -3,6 +3,7 @@
 import type { BrollStyle } from '@/lib/broll';
 import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { TimedWord } from '@/lib/retime';
+import type { ShortSuggestion } from '@/lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '@/lib/shorts';
 import type { ReviewUtterance } from '@/lib/transcript';
 import type { ThumbKind } from '@/lib/thumbnail';
@@ -33,8 +34,13 @@ export interface EpisodeSummary {
     stepErrors: { step: string; message: string }[];
     finished: { by: string; at: number } | null;     // marked Finished in the Studio
     youtubeUrl: string | null;
+    // How far an episode has got after speaker review (lib/server/pipeline.ts episodeProgress).
+    progress: EpisodeProgress;
     notesStatus: EpisodeNotes['status'] | null;   // show notes, once the transcript is accepted                // in progress and unchanged for 24 hours (spec 005 section 5)
 }
+
+// How far an episode has got after speaker review (lib/server/pipeline.ts episodeProgress).
+export interface EpisodeProgress { notesApproved: boolean; finalReady: boolean; published: boolean; shortsScheduled: boolean }
 
 export interface IngestRun {
     id: number;
@@ -49,6 +55,7 @@ export interface Pipeline {
     backlog: DriveVideo[];         // in the saved drag-and-drop order
     toProcess: DriveVideo[];
     useDrive: boolean;             // Studio settings: recordings also come in through Drive
+    finalSource: 'descript' | 'editorLight';  // who makes the final cut (Studio settings)
     driveProblem: string | null;   // Drive could not be read; uploads still work
     episodes: EpisodeSummary[];
     runs: IngestRun[];
@@ -72,6 +79,8 @@ export interface EpisodeReview {
     version: number;               // send back when saving; a mismatch means someone else saved
     accepted: { by: string; at: number; version: number | null } | null;   // version null: accepted before it was recorded
     knownNames: string[];          // offered when renaming a voice
+    // How far the episode has got after speaker review (lib/server/pipeline.ts episodeProgress).
+    progress: EpisodeProgress;
 }
 
 // GET /api/studio/episodes/[id]/notes: the Checkpoint B page.
@@ -224,7 +233,9 @@ export interface ShortsView {
     // there; low means the edit cut or changed it.
     quotes: { text: string; speaker: string; startMs: number; endMs: number; match: number }[];
     items: ShortItemView[];
-    lastSlot: number | null;            // the latest time any episode's short is scheduled for
+    suggestions: ShortSuggestion[];       // Claude's picks, best first
+    direction: string;                    // the direction given for them
+    lastSlot: number | null;             // the latest time any episode's short is scheduled for
     warnings: string[];
     finishedAt: number | null;
 }
