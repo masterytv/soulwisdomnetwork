@@ -106,12 +106,13 @@ export interface TranslationsView {
     generatedAt: number | null;
 }
 
-// GET /api/studio/episodes/[id]/retakes: retakes Claude found for the editor (Part I).
+// GET /api/studio/episodes/[id]/retakes: Claude's suggestions for a tighter edit (Part I, spec 019 item 1.3).
 export interface RetakesView {
     status: 'queued' | 'working' | 'ready' | 'failed' | null;
     error: string | null;
     found: Retake[];
     notFound: number;
+    protectedCount: number;
     generatedAt: number | null;
 }
 

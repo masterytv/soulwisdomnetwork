@@ -3,7 +3,8 @@
 // the edit via GET, saves via PUT with useAutosave, and renders the Editor component.
 // `workspace` is the full-page editor.
 // Part I: it also loads the Studio's captions setting and the overlay image links for the full-page
-// editor, and gives the editor Claude's retakes as a toolbar tool.
+// editor, and gives the editor Claude's suggestions for a tighter edit (retakes and more, spec 019 item 1.3)
+// as a toolbar tool.
 
 "use client";
 
@@ -16,19 +17,24 @@ import type { EpisodeEdit } from '@/lib/edit';
 import type { EditRenderView } from '@/lib/server/editRender';
 import { studioFetch } from '@/lib/studioClient';
 import type { CaptionChoice } from '@/lib/onScreen';
-import { addRetakes } from '@/lib/retakes';
+import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView } from '@/types/studio';
 import { QualityReport } from '@/components/studio/qualityReport';
 
-// Claude's retakes in the toolbar: ask Claude to look, then add what it found as suggested cuts to review.
-function RetakesTool({ episodeId, edit, onAdd }: { episodeId: string; edit: EpisodeEdit; onAdd: (e: EpisodeEdit) => void }) {
+// "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
+// suggested cuts to review (kind Retakes in the counts). `onNotes` gets each suggestion's kind and why,
+// for the review row.
+function TightenTool({ episodeId, edit, onAdd, onNotes }: {
+    episodeId: string; edit: EpisodeEdit; onAdd: (e: EpisodeEdit) => void; onNotes: (notes: Record<string, string>) => void;
+}) {
     const [view, setView] = useState<RetakesView | null>(null);
     const [error, setError] = useState('');
     const load = useCallback(() => {
         studioFetch<RetakesView>(`/api/studio/episodes/${episodeId}/retakes`).then(setView).catch(e => setError((e as Error).message));
     }, [episodeId]);
     useEffect(() => { load(); }, [load]);
+    useEffect(() => { onNotes(retakeNotes(view?.found ?? [])); }, [view, onNotes]);
     const running = view?.status === 'queued' || view?.status === 'working';
     useEffect(() => {
         if (!running) return;
@@ -49,16 +55,18 @@ function RetakesTool({ episodeId, edit, onAdd }: { episodeId: string; edit: Epis
     return (
         <>
             <button type="button" onClick={() => void start()} disabled={running} className={secondary}
-                title="Claude reads the transcript for false starts and repeated takes (about $0.30)">
-                {running ? 'Claude is looking for retakes…' : view?.status === 'ready' ? 'Look for retakes again' : 'Find retakes with Claude'}
+                title="Claude reads the transcript for retakes, false starts, restarts, verbal tics, housekeeping and tangents, leaving key quotes and teaser clips alone (up to about $0.50)">
+                {running ? 'Claude is reading for a tighter edit…' : view?.status === 'ready' ? 'Suggest a tighter edit again' : 'Suggest a tighter edit'}
             </button>
             {view?.status === 'ready' && fresh.length > 0 && (
-                <button type="button" className={primary} onClick={() => onAdd({ ...edit, cuts: addRetakes(edit.cuts, fresh) })}>
-                    Add {fresh.length} retake{fresh.length === 1 ? '' : 's'} to review
+                <button type="button" className={primary} onClick={() => onAdd({ ...edit, cuts: addRetakes(edit.cuts, fresh) })}
+                    title={kindCounts(fresh)}>
+                    Add {fresh.length} suggestion{fresh.length === 1 ? '' : 's'} to review
                 </button>
             )}
-            {view?.status === 'ready' && view.found.length === 0 && <span className={small}>Claude found no retakes.</span>}
-            {view?.status === 'failed' && <span className="text-sm text-red-300">Retakes: {view.error}</span>}
+            {view?.status === 'ready' && fresh.length > 0 && <span className={small}>{kindCounts(fresh)}</span>}
+            {view?.status === 'ready' && view.found.length === 0 && <span className={small}>Claude found nothing to tighten.</span>}
+            {view?.status === 'failed' && <span className="text-sm text-red-300">Tighter edit: {view.error}</span>}
             {error && <span className="text-sm text-red-300">{error}</span>}
         </>
     );
@@ -72,6 +80,8 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
     const [studioCaptions, setStudioCaptions] = useState<CaptionChoice | undefined>(undefined);
+    // Claude's kind and why for each suggestion it made, shown in the review row.
+    const [cutNotes, setCutNotes] = useState<Record<string, string>>({});
     const { change, reset, flush, saveState, saveError } = useAutosave<EpisodeEdit>(
         async (value, version) => {
             const res = await studioFetch<{ version: number }>(`/api/studio/episodes/${episodeId}/edit`, {
@@ -152,7 +162,8 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             workspace={workspace}
             studioCaptions={studioCaptions}
             overlayUrls={overlayUrls}
-            tools={<RetakesTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} />}
+            cutNotes={cutNotes}
+            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
             onChange={(e) => { setEdit(e); change(e); }}
         />
     );

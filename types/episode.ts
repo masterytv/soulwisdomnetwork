@@ -339,6 +339,8 @@ export interface EpisodeTranslations {
 }
 
 // Part I: retakes Claude found in the accepted transcript, offered in the editor as suggested cuts.
+// Since spec 019 item 1.3 also false starts, restarts, verbal tics, housekeeping and tangents ("Suggest
+// a tighter edit"), each with its kind.
 export interface EpisodeRetakes {
     status: 'queued' | 'working' | 'ready' | 'failed';
     requestedAt?: unknown;
@@ -347,6 +349,7 @@ export interface EpisodeRetakes {
     error?: string | null;
     found?: Retake[];
     notFound?: number;                    // answers that were not word for word in the transcript
+    protectedCount?: number;              // answers dropped because they touched a key quote or teaser clip
 }
 
 export interface Episode {

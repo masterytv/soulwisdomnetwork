@@ -24,7 +24,7 @@ export const ESTIMATE_USD = {
     upload: 0.75,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR
     extras: 0.1,          // Claude's social posts and follow-up email
     translation: 0.4,     // Claude translates one language's captions, title and description (Part I)
-    retakes: 0.3,         // Claude reads the accepted transcript for retakes (Part I)
+    retakes: 0.5,         // Claude reads the accepted transcript for a tighter edit (Part I; spec 019 item 1.3 widened it)
 };
 
 interface Reservation { id: string; at: number; usd: number; what: string }
