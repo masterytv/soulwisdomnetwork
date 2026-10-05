@@ -28,6 +28,14 @@ env:
   - variable: YOUTUBE_API_KEY
     secret: YOUTUBE_API_KEY
 
+  # Editor Light (docs/specs/015-editor-light.md): shows "Edit here instead (preview)" in the
+  # Studio's Edit package stage. Studio pages are for producers and admins only, and a render
+  # is saved beside Descript's final cut without replacing it. Remove this line to hide it.
+  - variable: NEXT_PUBLIC_EDITOR_LIGHT
+    value: "1"
+    availability:
+      - BUILD
+
   # Podcast Studio (docs/specs/006-podcast-studio.md), server-side only.
   - variable: GITHUB_ACTIONS_TOKEN
     secret: GITHUB_ACTIONS_TOKEN
