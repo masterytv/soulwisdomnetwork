@@ -2,11 +2,12 @@
 // NEXT_PUBLIC_EDITOR_LIGHT is set; these routes answer either way, to producers and admins).
 // Matches the notes route pattern: requireRole, version check on PUT (409 on mismatch).
 // Part I: on-screen items are checked before saving, and GET adds hour-long links to the overlay images.
+// GET also gives the audio's measured silences, for the pause suggestions (spec 019 item 1.1).
 import { FieldValue } from 'firebase-admin/firestore';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
-import { CutsSchema, SplitsSchema, type EpisodeEdit } from '@/lib/edit';
+import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,8 @@ export const GET = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const doc = await episodeRef((await params).id).get();
     if (!doc.exists) throw new HttpError(404, 'Episode not found');
-    const edit = (doc.data() as { edit?: EpisodeEdit }).edit ?? { cuts: [], version: 0 };
+    const data = doc.data() as { edit?: EpisodeEdit; media?: { silencesPath?: string } };
+    const edit = data.edit ?? { cuts: [], version: 0 };
     // Links to the image overlays, so the editor can show them over the video.
     const overlayUrls: Record<string, string> = {};
     for (const o of edit.overlays ?? []) {
@@ -30,7 +32,14 @@ export const GET = handle<Context>(async (request, { params }) => {
         const url = await adminBucket().file(o.path).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[o.path] = url;
     }
-    return Response.json({ edit, overlayUrls });
+    // The silences measured at ingest; null for an episode not measured yet, so the editor uses word gaps.
+    let silences: Silence[] | null = null;
+    if (data.media?.silencesPath) {
+        const raw = await adminBucket().file(data.media.silencesPath).download().then(([b]) => JSON.parse(b.toString('utf8'))).catch(() => null);
+        const parsed = SilencesFileSchema.safeParse(raw);
+        if (parsed.success) silences = parsed.data.silences;
+    }
+    return Response.json({ edit, overlayUrls, silences });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {

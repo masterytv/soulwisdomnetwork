@@ -86,7 +86,7 @@ for this work".
 | 0.1 | Checks on every pull request | ours | S | Medium | — | Done (#134) |
 | 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
-| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Not started |
+| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#141); the count on the real episode waits on promotion |
 | 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
@@ -236,6 +236,27 @@ a long word can hide a silence. The audio shows where the sound really stops.
 
 **Done when:** on the real episode, the pause suggestions line up with what you hear. Compare the
 count before and after.
+
+**Built (#141):**
+- `agent/src/podcast/silences.ts` (`measureSilences`): ffmpeg `silencedetect` at −35 dB for
+  300 ms, read with renderQc's parser. The `ametadata` print in the command above is not needed:
+  silencedetect's own log lines carry the times. `SilencesFile` and its schema are in `lib/edit.ts`.
+  Measured here: 30 minutes of AAC in 6 s, every one of its 180 two-second silences found.
+- **Ingest** measures them right after the audio is made, saves
+  `episodes/{id}/analysis/silences.json` and sets `media.silencesPath`. It never fails the episode:
+  without them the editor uses word gaps.
+- **Backfill:** every ingest run (except a dry run) measures up to 20 episodes that have audio but
+  no `silencesPath`. Running **Podcast Ingest** by hand once from the Actions tab, after promotion
+  to `main`, fills in the older episodes. There is no separate workflow.
+- **`suggestCuts(words, { silences })`:** a silence over 1.2 s becomes a pause cut that keeps
+  0.25 s on each side (0.5 s in all). With silences, word gaps are not used for pauses at all, so
+  a gap that is not silent is never suggested. With none (not measured, or none found on a noisy
+  recording) the word gaps are used, as before. Hesitations (`gaps: true`) are unchanged.
+- **Editor:** the edit route's GET returns `silences` (read on the server, so no signed URL or
+  Storage CORS is needed), and both the notes page and `/edit` use it. The button's tooltip says
+  whether pauses come from the audio.
+- Tests: `lib/edit.test.ts` (both rules and the fallback), `agent/src/podcast/silences.test.ts`
+  (ffmpeg on a tone, 2 s of silence, a tone).
 
 ### 1.2 Speech the transcript missed (M, idea only)
 

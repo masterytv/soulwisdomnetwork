@@ -13,7 +13,7 @@ import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
 import { useAutosave } from '@/components/studio/useAutosave';
 import { mmss, type SpokenWord } from '@/lib/showNotes';
-import type { EpisodeEdit } from '@/lib/edit';
+import type { EpisodeEdit, Silence } from '@/lib/edit';
 import type { EditRenderView } from '@/lib/server/editRender';
 import { studioFetch } from '@/lib/studioClient';
 import type { CaptionChoice } from '@/lib/onScreen';
@@ -80,6 +80,8 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
     const [studioCaptions, setStudioCaptions] = useState<CaptionChoice | undefined>(undefined);
+    // The audio's silences measured at ingest (null before then), for the pause suggestions.
+    const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
     const [cutNotes, setCutNotes] = useState<Record<string, string>>({});
     const { change, reset, flush, saveState, saveError } = useAutosave<EpisodeEdit>(
@@ -94,10 +96,11 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     );
 
     useEffect(() => {
-        studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string> }>(`/api/studio/episodes/${episodeId}/edit`)
+        studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`)
             .then((data) => {
                 setEdit(data.edit);
                 setOverlayUrls(data.overlayUrls ?? {});
+                setSilences(data.silences ?? null);
                 reset(data.edit.version);
                 setLoaded(true);
             })
@@ -163,6 +166,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             studioCaptions={studioCaptions}
             overlayUrls={overlayUrls}
             cutNotes={cutNotes}
+            silences={silences}
             tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
             onChange={(e) => { setEdit(e); change(e); }}
         />

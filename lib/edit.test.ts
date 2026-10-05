@@ -291,6 +291,35 @@ describe('suggestCuts', () => {
         ];
         assert.deepEqual(suggestCuts(words, { gaps: true }).map(c => c.reason), ['filler']);
     });
+
+    // Spec 019 item 1.1: pauses measured from the audio.
+    const word = (text: string, start: number, end: number): SpokenWord => ({ text, start, end, speaker: 'Host', clip: false });
+    const pauses = (cuts: Cut[]) => cuts.filter(c => c.reason === 'pause').map(c => [c.startMs, c.endMs]);
+
+    test('a measured silence over 1.2 s is shortened to 0.5 s, even inside a word\'s time span', () => {
+        // "so" runs 1000-4000 in the transcript, but the audio is silent from 1500 to 3500.
+        const words = [word('well', 0, 1000), word('so', 1000, 4000), word('yes', 4000, 4500)];
+        assert.deepEqual(pauses(suggestCuts(words)), []);
+        assert.deepEqual(pauses(suggestCuts(words, { silences: [{ startMs: 1500, endMs: 3500 }] })), [[1750, 3250]]);
+        // 1.2 s or shorter is how people talk.
+        assert.deepEqual(pauses(suggestCuts(words, { silences: [{ startMs: 1500, endMs: 2700 }] })), []);
+    });
+
+    test('a word gap the audio says is not silent is no longer a pause; with nothing measured, gaps are used', () => {
+        // A 2 s gap between words, filled with laughter: no silence there.
+        const words = [word('right', 0, 500), word('exactly', 2500, 3000), word('and', 3000, 3200), word('then', 6000, 6400)];
+        const silences = [{ startMs: 3200, endMs: 6000 }];
+        assert.deepEqual(pauses(suggestCuts(words)), [[1000, 2500], [3700, 6000]]);
+        assert.deepEqual(pauses(suggestCuts(words, { silences })), [[3450, 5750]]);
+        // None found (a noisy recording) or not measured: the word gaps, as before.
+        assert.deepEqual(pauses(suggestCuts(words, { silences: [] })), [[1000, 2500], [3700, 6000]]);
+        assert.deepEqual(pauses(suggestCuts(words, { silences: null })), [[1000, 2500], [3700, 6000]]);
+    });
+
+    test('measured pauses are whole milliseconds, as the edit route requires', () => {
+        const cuts = suggestCuts([word('a', 0, 100)], { silences: [{ startMs: 100.4, endMs: 2000.6 }] });
+        assert.ok(CutsSchema.safeParse(cuts).success);
+    });
 });
 
 describe('replaceSuggestions', () => {
