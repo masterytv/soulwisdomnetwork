@@ -125,6 +125,32 @@ It uses the existing secrets `PODCAST_SA_JSON` and `RESEND_API_KEY`, and the rep
 starts it on `main`, like every podcast job, so the workflow must be on `main` before the button
 works.
 
+### On screen, translations and retakes
+
+Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-roll and music).
+
+**On screen** (full-page editor, `components/studio/onScreen.tsx`, `lib/onScreen.ts`):
+- **Text**: a line and an optional smaller second line, in a chosen font, size, colour, background
+  and one of nine positions, from a set time for a set number of seconds. **Name titles** adds
+  each speaker's name, lower left, where they first speak.
+- **Images**: a PNG or JPEG (up to 20 MB), placed and sized on the frame. Uploaded to
+  `overlays/` in Storage; the edit route checks each new one is a real PNG or JPEG.
+- **Captions**: burned in, in the Studio's look (settings) or this video's own.
+- The preview shows them over the video, and the timeline has a row for them.
+- The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
+  The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.
+
+**Translations** (`lib/translate.ts`, `components/studio/translations.tsx`): Claude translates the
+captions, title and description into up to five languages (the settings choose the usual ones).
+The YouTube upload adds each as a caption track with the title and description in that language.
+Five at most, because each track costs 450 of YouTube's 10,000 daily API units.
+
+**Retakes** (`lib/retakes.ts`): Claude reads the accepted transcript for lines said again, and
+suggests cutting the earlier tries; the producer accepts them like any other suggestion.
+
+Both run in `podcast_notes.yml` with `mode: translations` or `mode: retakes`, never touching the
+notes, and reserve $0.40 per language and $0.30 against the daily spending limit.
+
 ### Auphonic
 
 `agent/src/podcast/auphonic.ts` works from the command line only (`editRender.ts --clean auphonic`

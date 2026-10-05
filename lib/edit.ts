@@ -27,7 +27,7 @@ const ms = z.number().min(0).max(24 * 3600_000).transform(Math.round);
 export const CutsSchema = z.array(z.object({
     startMs: ms,
     endMs: ms,
-    reason: z.enum(['filler', 'pause', 'repeat', 'manual']),
+    reason: z.enum(['filler', 'pause', 'repeat', 'manual', 'retake']),
 }).strict().refine(c => c.endMs > c.startMs, 'A cut must end after it starts')).max(MAX_CUTS);
 
 export interface KeptRange {

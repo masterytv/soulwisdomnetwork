@@ -304,6 +304,8 @@ describe('editedWords', () => {
 describe('CutsSchema', () => {
     test('accepts the cuts the editor makes', () => {
         assert.ok(CutsSchema.safeParse([{ startMs: 0, endMs: 500, reason: 'filler' }, { startMs: 900, endMs: 1200, reason: 'manual' }]).success);
+        // Claude's retakes (Part I) are saved like any other cut.
+        assert.ok(CutsSchema.safeParse([{ startMs: 0, endMs: 500, reason: 'retake' }]).success);
     });
     test('rounds to whole milliseconds', () => {
         assert.deepEqual(CutsSchema.parse([{ startMs: 10.4, endMs: 400.6, reason: 'pause' }]), [{ startMs: 10, endMs: 401, reason: 'pause' }]);
