@@ -35,8 +35,9 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
               teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions, then a quality report
               (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
-              Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
-              with components/studio/timeline.tsx); its render sits beside Descript's final cut,
+              Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:
+              /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
+              components/studio/timeline.tsx; the old /edit address redirects there); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the

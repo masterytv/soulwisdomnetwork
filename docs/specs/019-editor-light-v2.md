@@ -100,7 +100,7 @@ for this work".
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
-| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Partly done (#123: the full-page editor) |
+| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#PR; spec 020, "E1 — Built") |
 | E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Not started |
 | E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Partly done (#130: splits) |
 | E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Not started |

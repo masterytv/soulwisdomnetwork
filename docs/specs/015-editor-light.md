@@ -18,8 +18,10 @@ A light editor for the parts of Descript the pipeline uses:
 **Where it is.** On an episode's show notes page, the **Edit package** stage has
 **Edit here instead (preview)**. It is shown only when `NEXT_PUBLIC_EDITOR_LIGHT=1` is set at
 build time (`apphosting.yaml`), or when the Studio settings make Editor Light the final cut.
-**Open the full-page editor** there goes to `/admin/podcast/[episodeId]/edit`: a larger video, the
-transcript beside it, a timeline underneath, and saving and rendering pinned in a bar at the top.
+**Open the Studio editor** there goes to `/admin/podcast/[episodeId]/studio-editor` (spec 020; the old
+`/edit` address redirects there): the full-page editor, laid out like Descript, with the script on the
+left, the preview in the middle, the On screen and Render panels on the right, the timeline along the
+bottom, and saving, Undo, Redo, the shortcut sheet (**?**) and **Render ▸** in a bar at the top.
 
 **Editing:**
 - The transcript is shown by speaker, with the video beside it.

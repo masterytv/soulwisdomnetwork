@@ -1,7 +1,8 @@
 // Why: Editor Light (spec 015) panel moved out of the show notes page, so the show
 // notes page imports it and the full-page editor reuses it with workspace. It loads
 // the edit via GET, saves via PUT with useAutosave, and renders the Editor component.
-// `workspace` is the full-page editor.
+// `workspace` is the Studio editor (spec 020 item E1), with `heading` for its bar: there saving and
+// Render sit in the bar, and the render's result is a panel beside the preview.
 // Part I: it also loads the Studio's captions setting and the overlay image links for the full-page
 // editor, and gives the editor Claude's suggestions for a tighter edit (retakes and more, spec 019 item 1.3)
 // as a toolbar tool.
@@ -72,8 +73,8 @@ function TightenTool({ episodeId, edit, onAdd, onNotes }: {
     );
 }
 
-export function EditorLightStage({ episodeId, words, videoUrl, workspace = false }: {
-    episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean;
+export function EditorLightStage({ episodeId, words, videoUrl, workspace = false, heading }: {
+    episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean; heading?: React.ReactNode;
 }) {
     const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
     const [loaded, setLoaded] = useState(false);
@@ -156,28 +157,15 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </p>
     );
 
-    // The editor component.
-    const editor = (
-        <Editor
-            words={words}
-            videoUrl={videoUrl}
-            edit={edit}
-            workspace={workspace}
-            studioCaptions={studioCaptions}
-            overlayUrls={overlayUrls}
-            cutNotes={cutNotes}
-            silences={silences}
-            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
-            onChange={(e) => { setEdit(e); change(e); }}
-        />
-    );
-
     // Render this edit: GitHub Actions makes the finished video and saves it to "04 Final".
     const renderControls = (
         <div className={`${workspace ? '' : 'mt-4'} flex flex-wrap items-center gap-3`}>
-            <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
-                {render?.status === 'ready' ? 'Render this edit again' : 'Render this edit'}
-            </button>
+            {/* In the Studio editor the button is in the bar. */}
+            {!workspace && (
+                <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
+                    {render?.status === 'ready' ? 'Render this edit again' : 'Render this edit'}
+                </button>
+            )}
             {render?.status === 'ready' && render.videoUrl && (
                 <button onClick={() => setWatching(w => !w)} className={secondary}>
                     {watching ? 'Hide the render' : '▶ Watch the render'}
@@ -199,6 +187,20 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </div>
     );
 
+    // The Studio editor's bar: the Render button and a few words on where the render stands; the
+    // rest is in the Render panel.
+    const renderBar = (
+        <>
+            {rendering && <span className={small}>Rendering…</span>}
+            {render?.status === 'ready' && <span className={small}>{render.stale ? 'Rendered, before the latest changes' : 'Rendered'}</span>}
+            {render?.status === 'failed' && <span className="text-sm text-red-300">Render failed (see the Render panel)</span>}
+            {renderError && <span className="text-sm text-red-300">{renderError}</span>}
+            <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
+                {render?.status === 'ready' ? 'Render again ▸' : 'Render ▸'}
+            </button>
+        </>
+    );
+
     // The render player and the warnings list.
     const renderResult = (
         <>
@@ -214,19 +216,37 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </>
     );
 
-    // workspace: the full-page editor pins saving and rendering in a bar under the site header,
-    // as Descript keeps Export at the top.
-    if (workspace) {
-        return (
-            <>
-                <div aria-label="Editor bar" className="sticky top-[65px] z-20 -mx-4 sm:-mx-6 mb-3 px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0d0720]/95 backdrop-blur">
-                    {saveStatus}<span className="grow" />{renderControls}
-                </div>
-                {renderResult}
-                {editor}
-            </>
-        );
-    }
+    // The Studio editor's Render panel: the render's state and links, the player and the report.
+    const renderPanel = (
+        <div className="flex flex-col gap-2">
+            <h2 className="text-sm font-semibold text-gray-200">Render</h2>
+            <p className={small}>GitHub Actions makes the finished video from the saved edit{render?.status === 'ready' ? '' : ': press Render ▸ in the bar'}.</p>
+            {renderControls}
+            {renderResult}
+        </div>
+    );
+
+    // The editor component.
+    const editor = (
+        <Editor
+            words={words}
+            videoUrl={videoUrl}
+            edit={edit}
+            workspace={workspace}
+            studioCaptions={studioCaptions}
+            overlayUrls={overlayUrls}
+            cutNotes={cutNotes}
+            silences={silences}
+            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
+            onChange={(e) => { setEdit(e); change(e); }}
+            heading={heading}
+            status={saveStatus}
+            actions={workspace ? renderBar : undefined}
+            panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
+        />
+    );
+
+    if (workspace) return editor;
 
     return (
         <>
