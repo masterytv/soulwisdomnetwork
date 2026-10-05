@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#PR); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -504,7 +504,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   real episode:** its peaks and thumbnails need an ingest run from `main`.
 - **Not in E2:** the Blade tool and trimming a section's edge (E3); dragging on-screen items (E5).
 
-### E3 — Built (#PR)
+### E3 — Built (#145)
 
 - **`lib/sequence.ts`:** `playOrder(edit, durationMs, words)` gives the kept stretches in play order
   (`keepRanges`), each with `atMs`, its place in the edited episode. `timelineTime`, `sourceTime` and

@@ -84,7 +84,7 @@ item). So:
    quality report on every render.
 3. **019 Phase 1:** 1.6's leftovers (done, #136), 1.3 as wider retakes (built, #138), 1.5 (done, #139), 1.1 (built, #141), 1.2 (built, #142).
 4. **020 E1–E4:** workspace (moving the existing full-page editor into it; built, #143), timeline engine with
-   waveform (built, #144), splits that transitions can attach to (built, #PR), transitions.
+   waveform (built, #144), splits that transitions can attach to (built, #145), transitions.
 5. **019 Phase 2** (the rest), **Phase 3** (sound bake-off), then **020 E5–E8**.
 6. **019 Phase 4** (hand-off export, faster render), then **Phase 5**.
 7. **020 E9** (move clips) when Tom says.
