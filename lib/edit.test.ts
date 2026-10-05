@@ -4,6 +4,7 @@ import {
     keepRanges, editedTime, editedDuration, suggestCuts,
     applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
     replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS, savedByReason, unspokenSpans,
+    keptBounds, trimSection, sectionsOf, MIN_PART_MS,
     type Cut, type KeptRange,
 } from './edit';
 import type { SpokenWord } from './showNotes';
@@ -497,5 +498,54 @@ describe('CutsSchema', () => {
         assert.ok(!CutsSchema.safeParse('cuts').success);
         const many = Array.from({ length: MAX_CUTS + 1 }, (_, i) => ({ startMs: i * 10, endMs: i * 10 + 5, reason: 'pause' as const }));
         assert.ok(!CutsSchema.safeParse(many).success);
+    });
+});
+
+// Spec 020 item E3: trimming a section's edges, as the producer's own cuts.
+describe('trimming a section', () => {
+    const section = { startMs: 10_000, endMs: 20_000 };
+    const pause: Cut = { startMs: 9_000, endMs: 11_000, reason: 'pause' };     // runs into the section's start
+    const filler: Cut = { startMs: 19_500, endMs: 20_000, reason: 'filler' };  // at its end
+
+    test('the kept part: from the first moment no cut covers to the last', () => {
+        assert.deepEqual(keptBounds([], section), section);
+        assert.deepEqual(keptBounds([pause, filler], section), { startMs: 11_000, endMs: 19_500 });
+        // Touching cuts chain.
+        assert.deepEqual(keptBounds([pause, { startMs: 11_000, endMs: 12_000, reason: 'manual' }], section), { startMs: 12_000, endMs: 20_000 });
+        assert.equal(keptBounds([{ startMs: 5_000, endMs: 25_000, reason: 'manual' }], section), null);
+    });
+
+    test('moving the start in cuts from where the kept part began; moving it out brings that back', () => {
+        const trimmed = trimSection([pause, filler], section, 'start', 13_000);
+        assert.deepEqual(trimmed.at(-1), { startMs: 11_000, endMs: 13_000, reason: 'manual' });
+        assert.deepEqual(keptBounds(trimmed, section), { startMs: 13_000, endMs: 19_500 });
+        // Back out past where it was: the pause's part inside the section comes back too.
+        const back = trimSection(trimmed, section, 'start', 10_500);
+        assert.deepEqual(keptBounds(back, section), { startMs: 10_500, endMs: 19_500 });
+        assert.deepEqual(back.filter(c => c.reason === 'pause'), [{ startMs: 9_000, endMs: 10_500, reason: 'pause' }]);
+        // Never before the section, never past its other end.
+        assert.deepEqual(keptBounds(trimSection([], section, 'start', 2_000), section), section);
+        assert.deepEqual(keptBounds(trimSection([], section, 'start', 99_000), section), { startMs: 20_000 - MIN_PART_MS, endMs: 20_000 });
+        assert.equal(trimSection([pause], section, 'start', 11_000).length, 1);     // no change, no cut
+    });
+
+    test('the end works the same way from the other side', () => {
+        const trimmed = trimSection([filler], section, 'end', 18_000);
+        assert.deepEqual(trimmed.at(-1), { startMs: 18_000, endMs: 19_500, reason: 'manual' });
+        assert.deepEqual(keptBounds(trimmed, section), { startMs: 10_000, endMs: 18_000 });
+        assert.deepEqual(keptBounds(trimSection(trimmed, section, 'end', 20_000), section), section);
+        assert.deepEqual(keptBounds(trimSection([], section, 'end', 0), section), { startMs: 10_000, endMs: 10_000 + MIN_PART_MS });
+    });
+
+    test('a section cut whole comes back from the edge that is dragged', () => {
+        const all: Cut[] = [{ startMs: 10_000, endMs: 20_000, reason: 'manual' }];
+        assert.deepEqual(keptBounds(trimSection(all, section, 'start', 16_000), section), { startMs: 16_000, endMs: 20_000 });
+        assert.deepEqual(keptBounds(trimSection(all, section, 'end', 12_000), section), { startMs: 10_000, endMs: 12_000 });
+    });
+
+    test('the splits make the sections, in order', () => {
+        assert.deepEqual(sectionsOf([], 5000), [{ startMs: 0, endMs: 5000 }]);
+        assert.deepEqual(sectionsOf([3000, 1000, 9000], 5000), [{ startMs: 0, endMs: 1000 }, { startMs: 1000, endMs: 3000 }, { startMs: 3000, endMs: 5000 }]);
+        assert.deepEqual(sectionsOf([0, 5000], 5000), [{ startMs: 0, endMs: 5000 }]);
     });
 });

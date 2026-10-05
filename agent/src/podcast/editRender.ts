@@ -1,5 +1,5 @@
 // Editor Light (spec 015), phase 2: renders the edited episode as an mp4 with ffmpeg.
-// Cuts the episode to keepRanges, joins teasers → intro → edited → outro at 1920x1080 30fps,
+// Cuts the episode to its play order (lib/sequence.ts), joins teasers → intro → edited → outro at 1920x1080 30fps,
 // lays b-roll over the edited timeline (using kenBurns from media.ts), cleans audio
 // (highpass → afftdn/arnndn → acompressor → normalizeLoudness), and writes a JSON report.
 // Part I: burns in captions, text overlays (such as name titles) and image overlays (lib/onScreen.ts).
@@ -8,7 +8,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { keepRanges, editedDuration, editedTime, editedWords, applyToChapters, applyToQuotes, type EpisodeEdit } from '../../../lib/edit';
+import { editedWords, applyToChapters, applyToQuotes, type EpisodeEdit } from '../../../lib/edit';
+import { playOrder, sequenceLength, timelineTime } from '../../../lib/sequence';
 import { buildCues, toSrt } from '../../../lib/captions';
 import { kenBurns, normalizeLoudness, probeDuration } from './media';
 import { buildAss, imageOverlayFilter, placeOverlays, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
@@ -100,8 +101,10 @@ export async function renderEdit(opts: {
     const blockMinutes = opts.blockMinutes ?? 15;
     const inSeconds = await probeDuration(opts.video);
     const inMs = Math.round(inSeconds * 1000);
-    let ranges = keepRanges(inMs, opts.edit.cuts, 40, opts.words);
-    let editedMs = editedDuration(ranges);
+    // What plays, in order, and where each stretch lands in the edited episode: every time below
+    // (b-roll, on-screen items, captions, words, chapters, quotes) is mapped through it.
+    let ranges = playOrder(opts.edit, inMs, opts.words);
+    let editedMs = sequenceLength(ranges);
     const fadeSecs = 0.015;
 
     // Auphonic, run once when it detects cuts, cleans the voice, or both. It works in
@@ -119,8 +122,8 @@ export async function renderEdit(opts: {
         });
         if (clean === 'auphonic') cleanedAudio = result.cleanedAudio;
         if (opts.detect === 'auphonic') {
-            ranges = keepRanges(inMs, [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)], 40, opts.words);
-            editedMs = editedDuration(ranges);
+            ranges = playOrder({ ...opts.edit, cuts: [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)] }, inMs, opts.words);
+            editedMs = sequenceLength(ranges);
         }
     }
 
@@ -145,7 +148,7 @@ export async function renderEdit(opts: {
             fs.mkdirSync(tmpDir, { recursive: true });
             for (let i = 0; i < opts.broll.length; i++) {
                 const b = opts.broll[i];
-                const editedAt = editedTime(b.atMs, ranges, true);
+                const editedAt = timelineTime(ranges, b.atMs, true);
                 if (editedAt === null) { brollFiles.push(''); continue; }
                 const brollOut = path.join(tmpDir, `broll_${i}.mp4`);
                 await kenBurns(b.image, brollOut, b.seconds, 'in', 30);
@@ -289,7 +292,7 @@ export async function renderEdit(opts: {
         for (let i = 0; i < (opts.broll ?? []).length; i++) {
             if (brollIdxs[i] < 0) continue;
             const b = opts.broll![i];
-            const at = editedTime(b.atMs, ranges, true);
+            const at = timelineTime(ranges, b.atMs, true);
             if (at === null) continue;
             const startSec = at / 1000;
             const endSec = startSec + b.seconds;

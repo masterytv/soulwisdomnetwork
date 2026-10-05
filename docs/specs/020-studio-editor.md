@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#144); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -503,6 +503,37 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   peaks), each scroll or zoom step drew within two frames in the development build. **Not yet on the
   real episode:** its peaks and thumbnails need an ingest run from `main`.
 - **Not in E2:** the Blade tool and trimming a section's edge (E3); dragging on-screen items (E5).
+
+### E3 — Built (#145)
+
+- **`lib/sequence.ts`:** `playOrder(edit, durationMs, words)` gives the kept stretches in play order
+  (`keepRanges`), each with `atMs`, its place in the edited episode. `timelineTime`, `sourceTime` and
+  `sequenceLength` map through it. A kept range may now carry `atMs` (`KeptRange` in `lib/edit.ts`), and
+  `editedTime` and `editedDuration` follow it, so `applyToChapters`, `applyToQuotes`, `editedWords`,
+  `placeOverlays` and the render's on-screen checks all follow a stretch that starts early. Without
+  transitions nothing changes: each stretch starts where the one before ends. Tested against
+  `keepRanges` and `editedTime`, and with an overlapped pair such as E4's transitions will make.
+- **The render** (`editRender.ts`) maps every time through `playOrder`: b-roll, on-screen items,
+  captions, the final cut's words, chapters, quotes and its length. E4 only has to make `playOrder`
+  overlap the stretches at a transition, and join them in the render.
+- **Splits on the timeline:** the sections between splits show as clips on V1, with a gap at each split
+  and a bracket at each end of what is kept of them.
+  - **Blade** (B, or the tool button): click V1 or A1 to split there. It snaps as drags do and lands
+    between words unless Alt is held. **Select** (V) goes back. **✂ Split** (S) still splits at the
+    playhead.
+  - **Trim:** drag a bracket on V1. Moving a section's end in cuts from where its kept part ended, as
+    the producer's own cut; moving it out brings that stretch back (`trimSection` and `keptBounds` in
+    `lib/edit.ts`). It snaps, stops between words unless Alt is held, and keeps at least 100 ms. At a
+    split, the section on the pointer's side is trimmed. A whole drag is one undo step.
+  - **Select a section:** click it on V1, once there are splits. The tool row shows its times, length
+    and how much of it is cut, with **Cut section**, **Bring back**, and Delete to cut it whole. This
+    replaces #130's "section under the playhead".
+  - With the episode locked (V1's lock), the Blade, trims and the split handles are off.
+- **Checked:** unit tests (`lib/sequence.test.ts`; trimming, kept bounds and sections in
+  `lib/edit.test.ts`); the render tests pass unchanged. In Chromium with a test video: a Blade click at
+  10 s split at 10.05 s (a word's start); dragging that section's bracket cut from the split to 10.60 s
+  (the next word's start); selecting a section and pressing Delete cut it whole, and undo brought it
+  back; locked, the Blade did nothing.
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

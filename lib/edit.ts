@@ -44,6 +44,10 @@ export const SplitsSchema = z.array(ms).max(MAX_SPLITS).transform(s => [...new S
 export interface KeptRange {
     startMs: number;
     endMs: number;
+    // Where the range starts in the edited episode, when that is not straight after the range
+    // before it (a transition overlaps two ranges; set by playOrder in lib/sequence.ts). Missing,
+    // the ranges play back to back.
+    atMs?: number;
 }
 
 // A kept piece shorter than this is dropped — it would be a flash of audio between cuts.
@@ -104,19 +108,21 @@ export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40, words?: 
 
 // Where a moment of the original lands in the edited episode, or null if it was cut.
 // If `roundToNextKept` is true and the moment is in a cut, returns the start of the
-// next kept range instead of null.
+// next kept range instead of null. Ranges from playOrder (lib/sequence.ts) carry their own
+// place in the edited episode, so transitions that overlap two ranges move everything after them.
 export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextKept = false): number | null {
     let offset = 0;
     for (const r of ranges) {
+        const at = r.atMs ?? offset;
         if (originalMs < r.startMs) {
             // It's in the gap before this range — it was cut.
-            return roundToNextKept ? offset : null;
+            return roundToNextKept ? at : null;
         }
         if (originalMs <= r.endMs) {
             // It's inside this kept range.
-            return offset + (originalMs - r.startMs);
+            return at + (originalMs - r.startMs);
         }
-        offset += r.endMs - r.startMs;
+        offset = at + (r.endMs - r.startMs);
     }
     // Past the last kept range — either cut or past the end.
     return roundToNextKept ? offset : null;
@@ -124,7 +130,12 @@ export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextK
 
 // Total duration of the edited episode from the kept ranges.
 export function editedDuration(ranges: KeptRange[]): number {
-    return ranges.reduce((sum, r) => sum + (r.endMs - r.startMs), 0);
+    let offset = 0, end = 0;
+    for (const r of ranges) {
+        offset = (r.atMs ?? offset) + (r.endMs - r.startMs);
+        end = Math.max(end, offset);
+    }
+    return end;
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
@@ -326,6 +337,49 @@ export function restoreSection(cuts: Cut[], section: Section): Cut[] {
         if (c.startMs < section.startMs) out.push({ ...c, endMs: section.startMs });
         if (c.endMs > section.endMs) out.push({ ...c, startMs: section.endMs });
     }
+    return out;
+}
+
+// Where a section's kept part starts and ends once the cuts are taken out (spec 020 item E3): the
+// first and last moments inside it that no cut covers; null when it is cut whole.
+export function keptBounds(cuts: Cut[], section: Section): Section | null {
+    const inside = cuts.filter(c => c.endMs > section.startMs && c.startMs < section.endMs);
+    let head = section.startMs;
+    for (const c of [...inside].sort((a, b) => a.startMs - b.startMs)) if (c.startMs <= head) head = Math.max(head, c.endMs);
+    if (head >= section.endMs) return null;
+    let tail = section.endMs;
+    for (const c of [...inside].sort((a, b) => b.endMs - a.endMs)) if (c.endMs >= tail) tail = Math.min(tail, c.startMs);
+    return { startMs: head, endMs: Math.max(head, tail) };
+}
+
+// A trimmed section keeps at least this much.
+export const MIN_PART_MS = 100;
+
+// Trims a section's start or end to `toMs` (spec 020 item E3), with the producer's own cuts: moving
+// the edge in cuts from where the kept part began (or ended) to the new edge; moving it out brings
+// that stretch back. The edge stays inside the section, and MIN_PART_MS short of the other edge.
+export function trimSection(cuts: Cut[], section: Section, edge: 'start' | 'end', toMs: number): Cut[] {
+    const kept = keptBounds(cuts, section);
+    const v = Math.round(Math.min(section.endMs, Math.max(section.startMs, toMs)));
+    if (edge === 'start') {
+        const head = kept ? kept.startMs : section.endMs;
+        const t = kept ? Math.min(v, kept.endMs - MIN_PART_MS) : v;
+        if (t > head) return [...cuts, { startMs: head, endMs: t, reason: 'manual' }];
+        if (t < head) return restoreSection(cuts, { startMs: t, endMs: head });
+        return cuts;
+    }
+    const tail = kept ? kept.endMs : section.startMs;
+    const t = kept ? Math.max(v, kept.startMs + MIN_PART_MS) : v;
+    if (t < tail) return [...cuts, { startMs: t, endMs: tail, reason: 'manual' }];
+    if (t > tail) return restoreSection(cuts, { startMs: tail, endMs: t });
+    return cuts;
+}
+
+// The sections the splits make, in order.
+export function sectionsOf(splits: number[], totalMs: number): Section[] {
+    const edges = [0, ...[...splits].sort((a, b) => a - b).filter(s => s > 0 && s < totalMs), totalMs];
+    const out: Section[] = [];
+    for (let i = 0; i + 1 < edges.length; i++) if (edges[i + 1] > edges[i]) out.push({ startMs: edges[i], endMs: edges[i + 1] });
     return out;
 }
 

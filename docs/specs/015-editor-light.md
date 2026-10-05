@@ -39,10 +39,12 @@ transcribed before `disfluencies` was on) and the audio's silences are not measu
 one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
 before deciding.
 
-**Splits** (full-page editor): **✂ Split** on the timeline, or the S key, splits at the playhead,
-as in Descript. The section under the playhead is shaded, and **Cut section** or **Bring section
-back** acts on all of it. Click a split's handle on the ruler to remove it. Splits are
-saved with the edit (`edit.splits`) but the render does not use them; only the cuts matter.
+**Splits** (Studio editor): **✂ Split** on the timeline, or the S key, splits at the playhead, as in
+Descript; the **Blade** tool (B) splits where the timeline is clicked. The sections between splits
+show as clips on the timeline: click one to select it, then **Cut section**, **Bring back**, or Delete
+to cut it whole; drag the bracket at either end of a section to trim it (as the producer's own cuts).
+Click a split's handle on the ruler to remove it. Splits are saved with the edit (`edit.splits`); the
+render uses only the cuts.
 
 **Playing:**
 - **Edited** skips the cuts as the video plays; **Original** plays everything.
