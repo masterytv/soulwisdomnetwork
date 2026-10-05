@@ -29,15 +29,23 @@ function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: str
 
 const FILL_1080 = 'scale=iw*sar:ih,setsar=1,scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080,setsar=1';
 
-// Per-range audio filter chain (same cleanup and fades for blocks and single-pass).
-function audioFilter(clean: string, noiseModel: string | undefined, segDur: number, fadeSecs: number): string {
+// The voice cleanup, run once over the whole episode's sound (cleanTrack). Run per kept
+// range instead, the noise reducer and compressor would restart at every cut and pump.
+// aresample pins the track's first sample to time 0 and fills any gaps with silence, so a
+// moment in the cleaned track sits at the same time as in the video it came from.
+function cleanupFilter(clean: 'light' | 'strong', noiseModel: string | undefined): string {
+    const denoise = clean === 'strong' && noiseModel ? `arnndn=model=${noiseModel}` : 'afftdn=nr=12';
+    return `aresample=async=1:first_pts=0,highpass=f=80,${denoise},acompressor=threshold=-20dB:ratio=2:attack=5:release=50`;
+}
+
+async function cleanTrack(video: string, out: string, clean: 'light' | 'strong', noiseModel: string | undefined) {
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', video, '-vn',
+        '-af', cleanupFilter(clean, noiseModel), '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', out]);
+}
+
+// Per-range audio: trim, format and a short fade at each join so cuts don't click.
+function audioFilter(segDur: number, fadeSecs: number): string {
     let af = `atrim=duration=${segDur.toFixed(3)},asetpts=PTS-STARTPTS`;
-    if (clean !== 'off' && clean !== 'auphonic') {
-        af += ',highpass=f=80';
-        if (clean === 'strong' && noiseModel) af += `,arnndn=model=${noiseModel}`;
-        else af += ',afftdn=nr=12';
-        af += ',acompressor=threshold=-20dB:ratio=2:attack=5:release=50';
-    }
     af += ',aformat=sample_rates=48000:channel_layouts=stereo';
     if (segDur > fadeSecs * 2)
         af += `,afade=t=in:d=${fadeSecs},afade=t=out:st=${(segDur - fadeSecs).toFixed(3)}:d=${fadeSecs}`;
@@ -105,109 +113,120 @@ export async function renderEdit(opts: {
         }
     }
 
-    // Pre-render b-roll clips with kenBurns to temp files.
-    const tmpDir = path.join(path.dirname(opts.out), `_broll_${Date.now()}`);
-    const brollFiles: string[] = [];
-    if (opts.broll) {
-        fs.mkdirSync(tmpDir, { recursive: true });
-        for (let i = 0; i < opts.broll.length; i++) {
-            const b = opts.broll[i];
-            const editedAt = editedTime(b.atMs, ranges, true);
-            if (editedAt === null) { brollFiles.push(''); continue; }
-            const brollOut = path.join(tmpDir, `broll_${i}.mp4`);
-            await kenBurns(b.image, brollOut, b.seconds, 'in', 30);
-            brollFiles.push(brollOut);
-        }
-    }
-
-    // ── Block rendering ──────────────────────────────────────────────────────
-    // Every render goes through blocks: each range gets its own seeked input,
-    // so even a single-range episode is seeked rather than passed whole.
-    // Blocks are .mkv with pcm_s16le audio, joined with the concat demuxer.
-    // The joined file feeds the teasers/intro/b-roll/outro/loudness.
-    const useBlocks = ranges.length > 0;
-    let episodeVideoForAssembly = opts.video;
+    // Temporary files: the cleaned sound, b-roll clips and blocks. All of them are removed
+    // at the end, whether the render worked or not.
+    const stamp = Date.now();
+    const tmpDir = path.join(path.dirname(opts.out), `_broll_${stamp}`);
+    const cleanDir = path.join(path.dirname(opts.out), `_clean_${stamp}`);
     let blockDir = '';
-
-    if (useBlocks) {
-        blockDir = path.join(path.dirname(opts.out), `_blocks_${Date.now()}`);
-        fs.mkdirSync(blockDir, { recursive: true });
-
-        // Group ranges into blocks: accumulate source duration until blockMinutes.
-        type Block = { ranges: typeof ranges };
-        const blocks: Block[] = [];
-        let curBlock: Block = { ranges: [] };
-        let blockMs = 0;
-        for (const r of ranges) {
-            const rDur = r.endMs - r.startMs;
-            if ((blockMs + rDur > blockMinutes * 60 * 1000 || curBlock.ranges.length >= 20) && curBlock.ranges.length > 0) {
-                blocks.push(curBlock);
-                curBlock = { ranges: [] };
-                blockMs = 0;
-            }
-            curBlock.ranges.push(r);
-            blockMs += rDur;
-        }
-        if (curBlock.ranges.length > 0) blocks.push(curBlock);
-
-        // Render each block: each range gets its own seeked input.
-        const blockFiles: string[] = [];
-        for (let bi = 0; bi < blocks.length; bi++) {
-            const block = blocks[bi];
-            const blockFile = path.join(blockDir, `block_${bi}.mkv`);
-
-            const blockArgs: string[] = ['-y', '-hide_banner', '-loglevel', 'error'];
-            let bFilter = '';
-            const bSegV: string[] = [];
-            const bSegA: string[] = [];
-            for (let i = 0; i < block.ranges.length; i++) {
-                const r = block.ranges[i];
-                const segDur = (r.endMs - r.startMs) / 1000;
-                const seekStart = (r.startMs / 1000).toFixed(3);
-                const seekLen = (segDur + 1).toFixed(3);
-                // Video input: seeked from the original video.
-                blockArgs.push('-ss', seekStart, '-t', seekLen, '-i', opts.video);
-                // Audio input: seeked from cleaned audio (when present) or the original video.
-                if (cleanedAudio) {
-                    blockArgs.push('-ss', seekStart, '-t', seekLen, '-i', cleanedAudio);
-                }
-                const vIdx = i * (cleanedAudio ? 2 : 1);
-                const aIdx = cleanedAudio ? vIdx + 1 : vIdx;
-                bFilter += `[${vIdx}:v]trim=duration=${segDur.toFixed(3)},setpts=PTS-STARTPTS,${FILL_1080},format=yuv420p[bsv${i}];`;
-                bFilter += `[${aIdx}:a]${audioFilter(clean, opts.noiseModel, segDur, fadeSecs)}[bsa${i}];`;
-                bSegV.push(`bsv${i}`);
-                bSegA.push(`bsa${i}`);
-            }
-
-            // Concat this block's segments (video and audio interleaved: v0,a0,v1,a1,...).
-            const interleaved: string[] = [];
-            for (let i = 0; i < bSegV.length; i++) { interleaved.push(bSegV[i]); interleaved.push(bSegA[i]); }
-            bFilter += `${interleaved.map(l => `[${l}]`).join('')}concat=n=${bSegV.length}:v=1:a=1[bov][boa];`;
-
-            blockArgs.push('-filter_complex', bFilter, '-map', '[bov]', '-map', '[boa]');
-            blockArgs.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30');
-            blockArgs.push('-c:a', 'pcm_s16le', '-ar', '48000', blockFile);
-            await run('ffmpeg', blockArgs);
-            blockFiles.push(blockFile);
-        }
-
-        // Join the blocks with the concat demuxer. Full paths, because it reads each path
-        // relative to the list file, which breaks when the output folder is relative.
-        const concatList = path.join(blockDir, 'concat.txt');
-        fs.writeFileSync(concatList, blockFiles.map(f => `file '${path.resolve(f)}'`).join('\n') + '\n');
-        const joinedFile = path.join(blockDir, 'joined.mkv');
-        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
-            '-f', 'concat', '-safe', '0', '-i', concatList,
-            '-c', 'copy', joinedFile]);
-
-        episodeVideoForAssembly = joinedFile;
-        for (const bf of blockFiles) { try { fs.unlinkSync(bf); } catch {} }
-    }
-
-    // ── Assembly pass: teasers, intro, episode, b-roll, outro, loudness ──────
-    // When blocks are used, the episode sound comes from the joined file — do not
-    // add the cleaned audio as a separate input here.
     try {
+        // The voice cleanup runs once, over the whole episode (see cleanupFilter).
+        if ((clean === 'light' || clean === 'strong') && !cleanedAudio && ranges.length > 0) {
+            fs.mkdirSync(cleanDir, { recursive: true });
+            cleanedAudio = path.join(cleanDir, 'cleaned.wav');
+            await cleanTrack(opts.video, cleanedAudio, clean, opts.noiseModel);
+        }
+
+        // Pre-render b-roll clips with kenBurns to temp files.
+        const brollFiles: string[] = [];
+        if (opts.broll) {
+            fs.mkdirSync(tmpDir, { recursive: true });
+            for (let i = 0; i < opts.broll.length; i++) {
+                const b = opts.broll[i];
+                const editedAt = editedTime(b.atMs, ranges, true);
+                if (editedAt === null) { brollFiles.push(''); continue; }
+                const brollOut = path.join(tmpDir, `broll_${i}.mp4`);
+                await kenBurns(b.image, brollOut, b.seconds, 'in', 30);
+                brollFiles.push(brollOut);
+            }
+        }
+
+        // ── Block rendering ──────────────────────────────────────────────────────
+        // Every render goes through blocks: each range gets its own seeked input,
+        // so even a single-range episode is seeked rather than passed whole.
+        // Blocks are .mkv with pcm_s16le audio, joined with the concat demuxer.
+        // The joined file feeds the teasers/intro/b-roll/outro/loudness.
+        const useBlocks = ranges.length > 0;
+        let episodeVideoForAssembly = opts.video;
+
+        if (useBlocks) {
+            blockDir = path.join(path.dirname(opts.out), `_blocks_${stamp}`);
+            fs.mkdirSync(blockDir, { recursive: true });
+
+            // Group ranges into blocks: accumulate source duration until blockMinutes.
+            type Block = { ranges: typeof ranges };
+            const blocks: Block[] = [];
+            let curBlock: Block = { ranges: [] };
+            let blockMs = 0;
+            for (const r of ranges) {
+                const rDur = r.endMs - r.startMs;
+                if ((blockMs + rDur > blockMinutes * 60 * 1000 || curBlock.ranges.length >= 20) && curBlock.ranges.length > 0) {
+                    blocks.push(curBlock);
+                    curBlock = { ranges: [] };
+                    blockMs = 0;
+                }
+                curBlock.ranges.push(r);
+                blockMs += rDur;
+            }
+            if (curBlock.ranges.length > 0) blocks.push(curBlock);
+
+            // Render each block: each range gets its own seeked input.
+            const blockFiles: string[] = [];
+            for (let bi = 0; bi < blocks.length; bi++) {
+                const block = blocks[bi];
+                const blockFile = path.join(blockDir, `block_${bi}.mkv`);
+
+                const blockArgs: string[] = ['-y', '-hide_banner', '-loglevel', 'error'];
+                let bFilter = '';
+                const bSegV: string[] = [];
+                const bSegA: string[] = [];
+                for (let i = 0; i < block.ranges.length; i++) {
+                    const r = block.ranges[i];
+                    const segDur = (r.endMs - r.startMs) / 1000;
+                    const seekStart = (r.startMs / 1000).toFixed(3);
+                    const seekLen = (segDur + 1).toFixed(3);
+                    // Video input: seeked from the original video.
+                    blockArgs.push('-ss', seekStart, '-t', seekLen, '-i', opts.video);
+                    // Audio input: seeked from cleaned audio (when present) or the original video.
+                    if (cleanedAudio) {
+                        blockArgs.push('-ss', seekStart, '-t', seekLen, '-i', cleanedAudio);
+                    }
+                    const vIdx = i * (cleanedAudio ? 2 : 1);
+                    const aIdx = cleanedAudio ? vIdx + 1 : vIdx;
+                    bFilter += `[${vIdx}:v]trim=duration=${segDur.toFixed(3)},setpts=PTS-STARTPTS,${FILL_1080},format=yuv420p[bsv${i}];`;
+                    bFilter += `[${aIdx}:a]${audioFilter(segDur, fadeSecs)}[bsa${i}];`;
+                    bSegV.push(`bsv${i}`);
+                    bSegA.push(`bsa${i}`);
+                }
+
+                // Concat this block's segments (video and audio interleaved: v0,a0,v1,a1,...).
+                const interleaved: string[] = [];
+                for (let i = 0; i < bSegV.length; i++) { interleaved.push(bSegV[i]); interleaved.push(bSegA[i]); }
+                bFilter += `${interleaved.map(l => `[${l}]`).join('')}concat=n=${bSegV.length}:v=1:a=1[bov][boa];`;
+
+                blockArgs.push('-filter_complex', bFilter, '-map', '[bov]', '-map', '[boa]');
+                blockArgs.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', '30');
+                blockArgs.push('-c:a', 'pcm_s16le', '-ar', '48000', blockFile);
+                await run('ffmpeg', blockArgs);
+                blockFiles.push(blockFile);
+            }
+
+            // Join the blocks with the concat demuxer. Full paths, because it reads each path
+            // relative to the list file, which breaks when the output folder is relative.
+            const concatList = path.join(blockDir, 'concat.txt');
+            fs.writeFileSync(concatList, blockFiles.map(f => `file '${path.resolve(f)}'`).join('\n') + '\n');
+            const joinedFile = path.join(blockDir, 'joined.mkv');
+            await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+                '-f', 'concat', '-safe', '0', '-i', concatList,
+                '-c', 'copy', joinedFile]);
+
+            episodeVideoForAssembly = joinedFile;
+            for (const bf of blockFiles) { try { fs.unlinkSync(bf); } catch {} }
+        }
+
+        // ── Assembly pass: teasers, intro, episode, b-roll, outro, loudness ──────
+        // When blocks are used, the episode sound comes from the joined file — do not
+        // add the cleaned audio as a separate input here.
         const inputs: string[] = [];
         let idx = 0;
         const teasers = opts.teasers ?? [];
@@ -216,7 +235,6 @@ export async function renderEdit(opts: {
         const introIdx = opts.intro ? (inputs.push(opts.intro), idx++) : -1;
         const episodeIdx = idx++; inputs.push(episodeVideoForAssembly);
         const outroIdx = opts.outro ? (inputs.push(opts.outro), idx++) : -1;
-        const episodeAudioIdx = (!useBlocks && cleanedAudio) ? (inputs.push(cleanedAudio), idx++) : episodeIdx;
         const brollIdxs: number[] = [];
         for (const bf of brollFiles) { if (bf) { inputs.push(bf); brollIdxs.push(idx++); } else brollIdxs.push(-1); }
 
@@ -240,34 +258,10 @@ export async function renderEdit(opts: {
             filter += `[${outroIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo[outa];`;
         }
 
-        // Episode segments.
-        const segV: string[] = [];
-        const segA: string[] = [];
+        // The episode: the joined blocks, or, when everything was cut, a moment of black.
         if (useBlocks) {
-            filter += `[${episodeIdx}:v]${FILL_1080},format=yuv420p[sv0];`;
-            filter += `[${episodeIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo[sa0];`;
-            segV.push('sv0');
-            segA.push('sa0');
-        } else {
-            for (let i = 0; i < ranges.length; i++) {
-                const r = ranges[i];
-                const segDur = (r.endMs - r.startMs) / 1000;
-                filter += `[${episodeIdx}:v]trim=duration=${segDur.toFixed(3)},setpts=PTS-STARTPTS,${FILL_1080},format=yuv420p[sv${i}];`;
-                filter += `[${episodeAudioIdx}:a]${audioFilter(clean, opts.noiseModel, segDur, fadeSecs)}[sa${i}];`;
-                segV.push(`sv${i}`);
-                segA.push(`sa${i}`);
-            }
-        }
-
-        // Concat episode segments (video and audio interleaved: v0,a0,v1,a1,...).
-        if (segV.length > 0) {
-            if (useBlocks) {
-                filter += `[sv0][sa0]concat=n=1:v=1:a=1[epv][epa];`;
-            } else {
-                const interleave: string[] = [];
-                for (let i = 0; i < segV.length; i++) { interleave.push(segV[i]); interleave.push(segA[i]); }
-                filter += `${interleave.map(l => `[${l}]`).join('')}concat=n=${segV.length}:v=1:a=1[epv][epa];`;
-            }
+            filter += `[${episodeIdx}:v]${FILL_1080},format=yuv420p[epv];`;
+            filter += `[${episodeIdx}:a]aformat=sample_rates=48000:channel_layouts=stereo[epa];`;
         } else {
             filter += `color=c=black:s=1920x1080:d=0.04,format=yuv420p[epv];`;
             filter += `anullsrc=channel_layout=stereo:sample_rate=48000:d=0.04[epa];`;
@@ -350,8 +344,9 @@ export async function renderEdit(opts: {
         return report;
     } finally {
         // Clean up temp directories so failed runs leave nothing behind.
-        try { fs.rmSync(tmpDir, { recursive: true }); } catch {}
-        if (blockDir) { try { fs.rmSync(blockDir, { recursive: true }); } catch {} }
+        for (const dir of [tmpDir, cleanDir, blockDir]) {
+            if (dir) { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} }
+        }
     }
 }
 
