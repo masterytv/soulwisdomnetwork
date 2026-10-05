@@ -1,75 +1,159 @@
 # Spec 015: Editor Light
 
-**Date:** 1 October 2026
-**Status:** Built and tested locally; Studio wire-up compile-checked only (behind a flag)
-**Related:** `docs/specs/005-podcast-production-pipeline.md`, `docs/specs/009-edit-package.md`, `docs/specs/010-final-cut.md`
+**Date:** 1 October 2026, updated 5 October 2026
+**Status:** Built, tested locally and in this repo's checks; not yet run on a real episode.
+Descript stays the final edit: an Editor Light render is saved beside it and nothing downstream
+uses it yet.
+**Authors:** Jo Ann H (Lucid4224), in a fork; merged with fixes, see "Changes on merge".
+**Related:** `docs/specs/005-podcast-production-pipeline.md`, `docs/specs/009-edit-package.md`,
+`docs/specs/010-final-cut.md`
 
-A light editor that replaces the parts of Descript the pipeline uses: filler and pause removal,
-text-based editing with an instant preview, and a render with teasers, intro, outro, b-roll,
-voice cleanup and −14 LUFS. Descript is untouched and stays in place.
+A light editor for the parts of Descript the pipeline uses:
+- removing fillers and pauses;
+- editing by text, with an instant preview;
+- a render with teasers, intro, outro, b-roll, voice cleanup and −14 LUFS.
 
-## What is done
+## What the producer does
 
-- **Edit model (`lib/edit.ts`).** `Cut`, `EpisodeEdit`, `keepRanges` (merges cuts, 40 ms air at
-  each edge, drops kept pieces under 150 ms), `editedTime`, `editedDuration`, `applyToChapters`,
-  `applyToQuotes`. `suggestCuts` marks `um`/`uh`/`erm`/`uhm`/`hmm`, immediate repeats (keeps the
-  last), pauses over 1.2 s (shortened to 0.5 s) and, because AssemblyAI leaves fillers out by
-  default, gaps of 350 to 1200 ms inside a sentence (cut to 150 ms) as `filler`.
-- **Render job (`agent/src/podcast/editRender.ts`).** `renderEdit()` and a command line. One
-  `filter_complex`: trims to `keepRanges` with 15 ms audio fades at every join; b-roll through
-  `kenBurns`, placed at its **edited** time with a 0.5 s fade in and out; teasers → intro → edited
-  episode → outro at 1920x1080, 30 fps, AAC 48 kHz; `--clean off|light|strong|auphonic`
-  (highpass 80 Hz → `afftdn`, or `arnndn` with `--noise-model` → gentle `acompressor`), then
-  `normalizeLoudness` over the whole programme. Writes `<out>.report.json` (input and output
-  length, cuts, time saved from the episode itself, render seconds).
-- **Workflow (`.github/workflows/podcast_edit_render.yml`).** `workflow_dispatch` with
-  `episode_id`. Downloading the episode and edit is a marked `TODO`.
-- **Auphonic option (`agent/src/podcast/auphonic.ts`).** `auphonicProcess()` sends the audio with
-  `filler_cutter`, `silence_cutter`, `cough_cutter`, `denoise`, `loudnesstarget: -14` and
-  `cut_mode: "export_uncut_audio"` (detects without cutting, so timings stay aligned), and reads the
-  `ReaperRegions.csv` cut list (`parseReaperRegions`). `auphonicCutsToEdit()` maps fillers and
-  coughs to `filler`, silence to `pause`. `--detect auphonic` adds its cuts to the edit;
-  `--clean auphonic` uses its cleaned audio for the episode. Needs the `AUPHONIC_API_KEY` secret.
-- **Editor (`components/studio/editor.tsx`).** `Editor({ words, videoUrl, edit, onChange })`:
-  transcript by speaker; cut words struck through; every gap that holds a cut or is longer than
-  0.8 s shows as a chip (`um?` for a filler gap, `⏸` for a pause) that keeps or shortens it;
-  click to seek, drag or shift-click to select, Delete/Backspace to cut, click a cut to restore,
-  Ctrl/Cmd+Z and Shift+Z for undo and redo; "Mark filler words and long pauses" with counts per
-  reason, and "Clear suggestions"; the video skips cut ranges while playing (`timeupdate` and a
-  `requestAnimationFrame` loop), sized from the video's own duration; edited length and time saved.
-- **Studio wire-up.** `EpisodeNotes.edit` in `types/episode.ts`; `app/api/studio/episodes/[id]/edit/route.ts`
-  (GET and PUT, both `requireRole(request, STUDIO_ROLES)`, PUT requires `version` and answers 409
-  on a mismatch, stores `updatedAt` and `updatedBy`); on the show notes page, "Edit here instead
-  (preview)" inside the Edit package stage loads and saves through `useAutosave`, shown only when
-  `NEXT_PUBLIC_EDITOR_LIGHT=1`.
+**Where it is.** On an episode's show notes page, the **Edit package** stage has
+**Edit here instead (preview)**. It is shown only when `NEXT_PUBLIC_EDITOR_LIGHT=1` is set at
+build time (`apphosting.yaml`).
 
-## How it was tested
+**Editing:**
+- The transcript is shown by speaker, with the video beside it.
+- Click a word to jump the video there.
+- Drag, or shift-click, to select words; press Delete or Backspace to cut them.
+- Double-click a cut to bring it back.
+- Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z redoes.
+- Search finds words.
 
-Node 22, ffmpeg 6.1 with libass.
+**Suggestions.** **Mark filler words and long pauses** suggests cuts. The producer goes through
+them with Prev and Next, and can **Keep** one or **Hear it** before deciding.
 
-| Command | Result |
-|---|---|
-| `npx tsx --test lib/edit.test.ts` | 32 pass |
-| `npx tsx --test agent/src/podcast/editRender.test.ts` | 1 pass: 20 s generated clip, three cuts, teaser, intro, outro, one b-roll, `--clean light`; length within 150 ms, one 1920x1080 video and one 48 kHz audio stream, the b-roll visible mid-window and gone after it, report written |
-| `npx tsx --test agent/src/podcast/auphonic.test.ts` | 3 pass (no live call) |
-| `npx tsc --noEmit`, `npx eslint` on every changed file | clean |
-| `npm run build` | passes |
+**Playing:**
+- **Edited** skips the cuts as the video plays; **Original** plays everything.
+- It shows the edited length and the time saved.
 
-The editor was clicked through in a headless browser on a demo page with a 64 s two-speaker
-clip whose word timings are exact: suggestions found all nine planted items (three `um` words,
-three untranscribed `um` gaps, one `the the`, two pauses) and nothing else; restoring a chip,
-Delete on a selection, undo, redo and clear all behaved. Screenshots: `015-editor-light-before.png`,
-`015-editor-light-after.png` (the test browser has no H.264, so the video area is blank there).
+**Saving.** The edit saves itself as the producer works (`useAutosave`). If someone else saved
+in between, the save is refused and has to be reloaded.
 
-## Known gaps
+**Rendering.** **Render this edit** starts the render in GitHub Actions. The panel shows its
+progress. Once ready, it links to the video in "04 Final" in Drive, and says when the edit has
+changed since that render. A failed render shows its reason, and can be tried again.
 
-- The Studio part has not been run against Firebase; turn it on with `NEXT_PUBLIC_EDITOR_LIGHT=1` on staging.
-- `podcast_edit_render.yml` still needs the step that downloads the episode, teasers, intro, b-roll and saved edit.
-- `auphonicProcess()` has not made a live call; the first run with a real key should be watched.
-- Very long episodes render in one `filter_complex`; a faster path for 2-hour episodes is not built.
+## How it works
 
-## Suggested next step
+### Edit model
 
-Fill in the workflow's download step (episode from Drive, `edit` from Firestore, teasers, intro
-and b-roll as `package.ts` chooses them), then render one real episode with `--clean light` and
-`--clean auphonic` and compare by ear.
+`lib/edit.ts` holds the edit model: `Cut`, `EpisodeEdit` and `keepRanges`.
+
+**`keepRanges`** works out what plays:
+- It merges cuts less than 80 ms apart.
+- It stops each cut 40 ms short of the words on either side, so no kept word is clipped.
+- At the very start or end of the episode there is no word to protect.
+- Kept pieces under 150 ms are dropped.
+
+**Other functions:**
+- `editedTime` and `editedDuration` map original times onto the edit.
+- `applyToChapters`, `applyToQuotes` and `editedWords` move chapters, quotes and the transcript
+  onto the edited timeline.
+- `CutsSchema` checks what may be saved.
+
+**`suggestCuts` marks:**
+- `um`, `uh`, `erm`, `uhm` and `hmm`;
+- immediate repeats, keeping the last;
+- pauses over 1.2 s, shortened to 0.5 s;
+- gaps of 350 to 1,200 ms inside a sentence, cut to 150 ms, marked as `filler`. AssemblyAI leaves
+  fillers out of its transcript by default, so a gap is often where one was.
+
+### Editor
+
+`components/studio/editor.tsx`, with its panel `EditorLightStage` on the notes page.
+
+### Routes
+
+Both use `requireRole(STUDIO_ROLES)`:
+- **`/api/studio/episodes/[id]/edit`** (GET, PUT):
+  - The PUT takes `{ edit: { cuts }, version }`.
+  - It checks the cuts: whole milliseconds, start before end, a known reason, at most 10,000.
+  - It answers 409 when the version is not the saved one.
+  - The check and the write are one transaction.
+- **`/api/studio/episodes/[id]/edit-render`**: GET reports where the render stands, and POST
+  starts it (`lib/server/editRender.ts`). A request that is still marked busy after 6 hours
+  counts as lost.
+
+### Render job
+
+The workflow is `.github/workflows/podcast_edit_render.yml`. `agent/src/podcast/editRenderRun.ts`
+connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job, and
+`editRender.ts` renders.
+
+1. **Download.** It downloads:
+   - the episode: the edit package's copy, or the original;
+   - the edit package's teasers and intro (the intro is also used as the outro);
+   - the b-roll stills;
+   - the reviewed transcript.
+2. **Clean the voice**, once, over the whole sound track: highpass at 80 Hz, `afftdn`, and a gentle
+   `acompressor`.
+3. **Cut, in blocks.** The kept ranges go into blocks of up to 15 minutes or 20 ranges. Each
+   block seeks into the source once per range, with a 15 ms fade at every join, and is encoded
+   on its own. The blocks are then joined.
+4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
+   placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
+   normalized to −14 LUFS.
+5. **Save** everything:
+   - The video goes to `episodes/{id}/editRender/v{edit version}-{run id}/episode.mp4`.
+   - Beside it go the words, captions (.srt) and chapters/quotes on the new times.
+   - The video is also saved as "*title* (Editor Light).mp4" in "04 Final" in Drive.
+   - `episode.editRender` points at the new folder only once all of it is saved. The previous
+     render's folder is then deleted.
+6. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
+   cancelled or killed before it can, the workflow's last step (`editRenderStopped.ts`) marks it
+   failed instead.
+
+It uses the existing secrets `PODCAST_SA_JSON` and `RESEND_API_KEY`, and the repo variables
+`ALERT_EMAIL` and `DRIVE_PROCESSED_FOLDER_ID` (`DRIVE_FINAL_FOLDER_ID` optionally). The Studio
+starts it on `main`, like every podcast job, so the workflow must be on `main` before the button
+works.
+
+### Auphonic
+
+`agent/src/podcast/auphonic.ts` works from the command line only (`editRender.ts --clean auphonic`
+or `--detect auphonic`, with `AUPHONIC_API_KEY`). It has never made a live call, and the Studio
+never uses it.
+
+### Data
+
+On `episodes/{id}`, written only by the server routes and the job:
+- `edit`: `{ cuts, version, updatedAt, updatedBy }`;
+- `editRender`: status, paths, the Drive link, the length, the number of cuts and any warnings.
+
+No rules or index changes.
+
+## Changes on merge
+
+Fixed when this came into the main repo:
+- **Padding.** Cuts are padded inward. Before, every cut also took 40 ms of each neighbouring word.
+- **Voice cleanup.** It runs once over the whole track instead of restarting at every cut, where
+  it could pump.
+- **Temporary files.** They are removed when a render fails, too.
+- **Render folders.** Each render has its own folder. Before, a failed save could leave a new
+  video with old chapters.
+- **Stopped runs.** They show as failed at once, instead of after 6 hours.
+- **Saved edits.** They are validated, and the version check is a transaction.
+- **Editor speed.** The editor works out each word's cut once per edit. Before, it re-checked
+  every cut on every render, which lagged on long episodes.
+- **Demo page.** The public `/editor-demo` page and its sample video were removed.
+- **Dead code.** The unreachable single-pass render branch was removed.
+
+Checked with a one-minute flash-and-beep clip and 40 cuts. Every beep that survives the cuts is
+within two frames of its flash, with and without the voice cleanup.
+
+## Next
+
+- Run a real episode end to end and compare its sound with Descript's.
+- Let Editor Light make the final cut. This comes with Studio settings, and needs the chapters
+  tidied for YouTube: the first at 0:00, no duplicates, none under 10 s.
+- Editing on a phone: a Cut button and touch selection.
+- A faster render for long episodes: one encode instead of two, and resuming a failed run from
+  its last block.
