@@ -6,6 +6,8 @@
 // struck through and dimmed; long pauses show as chips; the video preview
 // skips cut ranges. Selection, delete, undo/redo, suggest/clear, search,
 // review suggestions, and follow-video are wired.
+// Part I: in the full-page editor, text and images show over the video and the "On screen" panel
+// edits them; `tools` adds buttons to the toolbar (Claude's retakes).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -14,6 +16,8 @@ import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
+import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
+import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
 
 interface SpeakerPara {
     speaker: string;
@@ -96,13 +100,18 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 }
 
 // workspace: the full-page editor — a larger video, a taller script and the timeline.
-export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
+// studioCaptions: the Studio's captions setting; overlayUrls: links to the overlay images (both Part I).
+export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools }: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
     onChange: (e: EpisodeEdit) => void;
     workspace?: boolean;
+    studioCaptions?: CaptionChoice;
+    overlayUrls?: Record<string, string>;
+    tools?: React.ReactNode;
 }) {
+    const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
@@ -541,7 +550,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
 
     // The reason button label for 'manual'.
     const reasonLabel = (reason: string): string =>
-        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason;
+        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason;
 
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
@@ -555,6 +564,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 <button onClick={onClearSuggestions} className={secondary}>
                     Clear suggestions
                 </button>
+                {/* Extra tools from the page, such as Claude's retakes. */}
+                {tools}
                 <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
                     Undo
                 </button>
@@ -636,13 +647,17 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
             <div className="flex flex-col gap-4 md:flex-row">
                 {/* Video preview */}
                 <div className={`${workspace ? 'md:w-3/5' : 'md:w-1/2'} md:sticky md:top-4 self-start`}>
-                    <video
-                        ref={videoRef}
-                        src={videoUrl}
-                        className="w-full rounded-lg bg-black"
-                        controls
-                        onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
-                    />
+                    {/* The video, with the on-screen text and images over it in the full-page editor. */}
+                    <div className="relative" style={{ containerType: 'inline-size' }}>
+                        <video
+                            ref={videoRef}
+                            src={videoUrl}
+                            className="w-full rounded-lg bg-black"
+                            controls
+                            onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
+                        />
+                        {workspace && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
+                    </div>
                     {/* Cuts map: every cut on one strip under the video; click a mark to jump there. */}
                     {totalMs > 0 && !workspace && (
                         <div aria-label="Cuts map" className="relative mt-2 h-3 w-full rounded bg-white/5">
@@ -801,9 +816,23 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false }: {
                 <Timeline
                     words={words}
                     cuts={edit.cuts}
+                    overlays={edit.overlays ?? []}
                     totalMs={totalMs}
                     video={videoRef}
                     editedMs={editedMs}
+                    onSeek={ms => seekToTime(ms / 1000)}
+                />
+            )}
+
+            {/* workspace: the On screen panel (Part I) under the timeline. */}
+            {workspace && (
+                <OnScreenPanel
+                    words={words}
+                    edit={edit}
+                    video={videoRef}
+                    studio={studio}
+                    onOverlays={overlays => updateEdit(prev => ({ ...prev, overlays }))}
+                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
                     onSeek={ms => seekToTime(ms / 1000)}
                 />
             )}

@@ -1,15 +1,18 @@
 // Why: the Descript-style timeline under the editor — a ruler, speaker turns in
 // colour, cut marks, a red playhead, zoom in and out, click anywhere to jump there.
+// Part I: an "On screen" row shows the text (violet) and images (sky) laid over the video.
 
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut } from '@/lib/edit';
+import type { Overlay } from '@/lib/onScreen';
 import {
     msAt, pct, speakerBlocks, speakerColors, tickLabel, ticks, zoomIn, zoomOut, ZOOMS,
 } from '@/lib/timeline';
 import { secondary } from '@/components/studio/ui';
+import { useVideoTime } from '@/components/studio/useVideoTime';
 
 // mmss local, to format block/cut titles.
 function mmss(ms: number): string {
@@ -36,19 +39,10 @@ function usePlayheadScroll(scrollRef: React.RefObject<HTMLDivElement | null>, wi
 
 // The playhead follows the video itself, so playing redraws only the timeline, not the whole
 // transcript in the editor.
-export function Timeline({ words, cuts, totalMs, video, editedMs, onSeek }: {
-    words: SpokenWord[]; cuts: Cut[]; totalMs: number; video: React.RefObject<HTMLVideoElement | null>; editedMs: number; onSeek: (ms: number) => void;
+export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs, onSeek }: {
+    words: SpokenWord[]; cuts: Cut[]; overlays?: Overlay[]; totalMs: number; video: React.RefObject<HTMLVideoElement | null>; editedMs: number; onSeek: (ms: number) => void;
 }) {
-    const [currentMs, setCurrentMs] = useState(0);
-    useEffect(() => {
-        const el = video.current;
-        if (!el) return;
-        const update = () => setCurrentMs(el.currentTime * 1000);
-        update();
-        el.addEventListener('timeupdate', update);
-        el.addEventListener('seeked', update);
-        return () => { el.removeEventListener('timeupdate', update); el.removeEventListener('seeked', update); };
-    }, [video]);
+    const currentMs = useVideoTime(video);
     const [zoom, setZoom] = useState(1);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [visibleWidth, setVisibleWidth] = useState(0);
@@ -165,6 +159,20 @@ export function Timeline({ words, cuts, totalMs, video, editedMs, onSeek }: {
                             />
                         ))}
                     </div>
+
+                    {/* On screen: a 12px row, shown when there are overlays; text violet, images sky. */}
+                    {overlays.length > 0 && (
+                        <div className="relative h-3 mt-1" aria-label="On-screen items">
+                            {overlays.map(o => (
+                                <span
+                                    key={o.id}
+                                    className={`absolute top-0 h-full rounded-sm ${o.type === 'text' ? 'bg-violet-400' : 'bg-sky-400'}`}
+                                    style={blockStyle({ startMs: o.atMs, endMs: o.atMs + o.seconds * 1000 })}
+                                    title={`${o.type === 'text' ? o.text : o.name} ${mmss(o.atMs)}`}
+                                />
+                            ))}
+                        </div>
+                    )}
 
                     {/* Playhead: a 2px red line over all rows at left pct(currentMs)%. */}
                     <div

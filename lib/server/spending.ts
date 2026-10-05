@@ -23,6 +23,8 @@ export const ESTIMATE_USD = {
     finalPerHour: 0.21,   // transcribing the final cut (WORDS_USD_PER_HOUR in agent/src/podcast/final.ts)
     upload: 0.75,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR
     extras: 0.1,          // Claude's social posts and follow-up email
+    translation: 0.4,     // Claude translates one language's captions, title and description (Part I)
+    retakes: 0.3,         // Claude reads the accepted transcript for retakes (Part I)
 };
 
 interface Reservation { id: string; at: number; usd: number; what: string }
