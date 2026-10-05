@@ -87,7 +87,7 @@ for this work".
 | 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
 | 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#141); the count on the real episode waits on promotion |
-| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
+| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Built (#PR); "most markers are real" waits on a real episode |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#139) |
@@ -271,6 +271,22 @@ are only guessed from gaps (`suggestCuts`' 350–1,200 ms rule).
 - Pure function `unspokenSpans(words, silences, durationMs)` in `lib/edit.ts`, with tests.
 
 **Done when:** on the real episode, most markers are a real hesitation or breath.
+
+**Built (#PR):**
+- `unspokenSpans(words, silences)` in `lib/edit.ts` (no `durationMs`: only stretches **between**
+  words count, since before the first word and after the last there is nothing to compare with).
+  A word still running from an overlapping speaker covers the gap.
+- **Transcript:** each stretch shows as a small grey `…` chip in its gap; a click cuts it as a
+  `filler`. A cut one shows as the existing "hesitation 0.4s" chip (now its cut length, not the
+  whole gap), and double-click brings it back.
+- **Suggestions:** with silences, **Mark filler words and long pauses** also offers a stretch as a
+  `filler` when it is at most 1.5 s (`UNSPOKEN_SUGGEST_MAX_MS`; longer is more likely laughter,
+  music or crosstalk), between two words of one speaker, after a word that ends no sentence or
+  clause, and not beside a written-out filler. Every stretch still shows as `…`. These limits
+  keep the count down, as 1.6 asked; check them against the real episode.
+- With silences, the gap guess (`gaps: true`) is not used, and **Mark hesitations** is hidden.
+  Episodes without silences keep both.
+- Tests in `lib/edit.test.ts`.
 
 ### 1.3 Claude "Tighten": widen retakes (S, prompt ideas from CutScript, MIT)
 

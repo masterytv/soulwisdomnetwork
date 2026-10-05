@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     keepRanges, editedTime, editedDuration, suggestCuts,
     applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
-    replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS, savedByReason,
+    replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS, savedByReason, unspokenSpans,
     type Cut, type KeptRange,
 } from './edit';
 import type { SpokenWord } from './showNotes';
@@ -319,6 +319,47 @@ describe('suggestCuts', () => {
     test('measured pauses are whole milliseconds, as the edit route requires', () => {
         const cuts = suggestCuts([word('a', 0, 100)], { silences: [{ startMs: 100.4, endMs: 2000.6 }] });
         assert.ok(CutsSchema.safeParse(cuts).success);
+    });
+});
+
+describe('unspokenSpans and missed speech (spec 019 item 1.2)', () => {
+    const w = (text: string, start: number, end: number, speaker = 'Host'): SpokenWord => ({ text, start, end, speaker, clip: false });
+
+    test('a stretch no word covers and the audio says is not silent, at least 300 ms', () => {
+        const words = [w('I', 0, 200), w('think', 1000, 1400), w('so', 1500, 1700), w('yes', 3000, 3300)];
+        // 200-1000: silent 200-400, then sound 400-1000 (an "um" the transcript left out).
+        // 1400-1500: too short. 1700-3000: silent 1700-2900, 100 ms of sound left: too short.
+        const silences = [{ startMs: 200, endMs: 400 }, { startMs: 1700, endMs: 2900 }];
+        assert.deepEqual(unspokenSpans(words, silences), [{ startMs: 400, endMs: 1000, before: 1 }]);
+        // Sound on both sides of a silence inside one gap gives two stretches.
+        assert.deepEqual(unspokenSpans([w('a', 0, 100), w('b', 2000, 2100)], [{ startMs: 600, endMs: 1200 }]),
+            [{ startMs: 100, endMs: 600, before: 1 }, { startMs: 1200, endMs: 2000, before: 1 }]);
+        // No silence at all in the gap: all of it.
+        assert.deepEqual(unspokenSpans([w('a', 0, 100), w('b', 500, 600)], []), [{ startMs: 100, endMs: 500, before: 1 }]);
+    });
+
+    test('overlapping speakers: a word still running covers the gap', () => {
+        const words = [w('long', 0, 3000, 'Ana'), w('mm', 1000, 1200, 'Ben'), w('then', 3100, 3300, 'Ana')];
+        assert.deepEqual(unspokenSpans(words, []), []);
+    });
+
+    test('suggested as fillers only inside one speaker\'s clause, short, and not beside a filler', () => {
+        const silences = [{ startMs: 9000, endMs: 9100 }];   // measured, but not in these gaps
+        const fillers = (words: SpokenWord[]) => suggestCuts(words, { silences }).filter(c => c.reason === 'filler').map(c => [c.startMs, c.endMs]);
+        assert.deepEqual(fillers([w('I', 0, 200), w('think', 700, 1000)]), [[200, 700]]);
+        assert.deepEqual(fillers([w('done.', 0, 200), w('Next', 700, 1000)]), [], 'a breath after a full stop');
+        assert.deepEqual(fillers([w('well,', 0, 200), w('yes', 700, 1000)]), [], 'a breath after a comma');
+        assert.deepEqual(fillers([w('I', 0, 200, 'Ana'), w('think', 700, 1000, 'Ben')]), [], 'a change of speaker');
+        assert.deepEqual(fillers([w('I', 0, 200), w('think', 2000, 2300)]), [], 'over 1.5 s: laughter or music more likely');
+        assert.deepEqual(fillers([w('um', 0, 200), w('think', 700, 1000)]), [[0, 200]], 'beside a filler: only the filler');
+        // Without silences there is nothing to compare with.
+        assert.deepEqual(suggestCuts([w('I', 0, 200), w('think', 700, 1000)]), []);
+    });
+
+    test('with silences the hesitation guess is replaced', () => {
+        const words = [w('the', 0, 300), w('point', 1000, 1300)];
+        assert.deepEqual(suggestCuts(words, { gaps: true }).map(c => c.reason), ['gap']);
+        assert.deepEqual(suggestCuts(words, { gaps: true, silences: [{ startMs: 300, endMs: 1000 }] }), []);
     });
 });
 
