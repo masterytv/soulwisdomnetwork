@@ -1,7 +1,8 @@
 # Soul Wisdom Network
 
-Next.js community site for the Soul Wisdom podcast. A podcast production pipeline is specified but not yet built — see
-`docs/specs/005-podcast-production-pipeline.md`.
+Next.js community site for the Soul Wisdom podcast, with the Podcast Studio: a production pipeline
+(`docs/specs/005-podcast-production-pipeline.md`) whose jobs run in GitHub Actions. What is planned
+next, and in what order: `docs/PLANNING.md`.
 
 **Live:** https://soulwisdomcollective.com (from `main`) · **Staging:** https://staging.soulwisdomcollective.com
 (from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`.
@@ -137,8 +138,8 @@ show-notes approvals in its `approvals` subcollection),
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).
 
-**Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, social posts, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+**Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
+transcript, thumbnails, shorts picks and titles, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.

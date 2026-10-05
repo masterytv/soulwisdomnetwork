@@ -151,7 +151,9 @@ Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-
   each speaker's name, lower left, where they first speak.
 - **Images**: a PNG or JPEG (up to 20 MB), placed and sized on the frame. Uploaded to
   `overlays/` in Storage; the edit route checks each new one is a real PNG or JPEG.
-- **Captions**: burned in, in the Studio's look (settings) or this video's own.
+- **Captions**: burned in, in the Studio's look (settings) or this video's own. Off unless
+  turned on. Tom's answer U1 (spec 020) is "the YouTube caption track only", so whether to keep
+  this is open (`docs/PLANNING.md` N1).
 - The preview shows them over the video, and the timeline has a row for them.
 - The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
   The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.
@@ -202,10 +204,11 @@ within two frames of its flash, with and without the voice cleanup.
 
 ## Next
 
-- Run a real episode end to end and compare its sound with Descript's.
-- Editing on a phone: a Cut button and touch selection.
-- A faster render for long episodes: one encode instead of two, and resuming a failed run from
-  its last block.
+- **Run a real episode end to end** and compare its sound with Descript's (Tom). Write here: the
+  render time, the suggestion counts per kind on the 49-minute episode (019 item 1.6 measures
+  against them), and how many retakes the producer kept.
+- Editing on a phone: touch selection. (**✂ Cut selected** is built, #130.)
 
-The rest is planned in `docs/specs/019-editor-light-v2.md` (the faster render is its item 4.2),
-from a review of open-source editors (`docs/research/2026-10-05-open-source-editors.md`).
+Everything else is planned in `docs/specs/019-editor-light-v2.md`, whose status table is the
+record: the faster render is its item 4.2, fewer suggestions 1.6, wider retakes 1.3. Start at
+`docs/PLANNING.md`.
