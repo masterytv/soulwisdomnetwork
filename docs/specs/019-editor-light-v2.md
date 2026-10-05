@@ -49,6 +49,13 @@ pick up here, in order:
 ### Rules for this work
 
 - **One item, or a few small ones, per PR**, into `staging` (`CLAUDE.md`, Git).
+- **Model effort:** the table's "Model effort" column is the reasoning effort to build each item
+  with (Tom's choice, 5 October 2026). **Before starting an item, tell Tom which effort to switch
+  to**, and wait until he has. Medium is for small items with clear tests; High is the default;
+  Extra is for work where a mistake moves an episode's timing or the saved edit's shape (the
+  timeline, splits and transitions, layers, the faster render, moving clips).
+- **Compact after each major build:** Tom builds in one conversation and compacts it after each
+  phase or E item, so write what the next item needs into the specs, not only into chat.
 - **Licences:**
   - Copy code only from MIT or public-domain sources: CutScript, Rescript's tree at `a9b378e^`,
     and auto-editor. Copy the source's licence into `docs/licences/` and name it in the file's
@@ -70,49 +77,50 @@ pick up here, in order:
 
 ## The plan at a glance
 
-Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days.
+Effort: **S** = up to half a day, **M** = 1–2 days, **L** = 3–5 days. Model effort: see "Rules
+for this work".
 
-| # | Item | From | Effort | Needs | Status |
-|---|---|---|---|---|---|
-| **0** | **Safety net** | | | | |
-| 0.1 | Checks on every pull request | ours | S | — | Next |
-| 0.2 | Quality report on every render | ffmpeg | M | — | Not started |
-| **1** | **Better cut suggestions** | | | | |
-| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | — | Not started |
-| 1.2 | Speech the transcript missed | Rescript (idea only) | M | 1.1 | Not started |
-| 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | — | Not started (retakes exist, #130) |
-| 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | Done (#130: Clear these) |
-| 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | — | Not started |
-| 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | — | Partly done (#130) |
-| **2** | **Editing precision** | | | | |
-| 2.1 | Waveform on the timeline | Rescript (MIT) | M | — | Built in E2 |
-| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | 2.1 | Built in E2 |
-| 2.3 | Correct a misheard word | Rescript (MIT) | M | — | Not started |
-| 2.4 | Names spelled right from the start | AssemblyAI | S | — | Not started |
-| 2.5 | Highlight words the transcriber was unsure of | ours | S | — | Not started |
-| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | — | Not started |
-| **E** | **Studio editor: the full editing page (spec 020)** | | | | |
-| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | — | Partly done (#123: the full-page editor) |
-| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | E1 | Not started |
-| E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | E2 | Partly done (#130: splits) |
-| E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | E3 | Not started |
-| E5 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | E3 | Partly done (#130: image overlays) |
-| E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | E5 | Partly done (#130: text, Name titles) |
-| E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | E5, N2 | Not started |
-| E8 | YouTube caption track on the timeline; polish | ours | M | E6, N1 | Not started |
-| E9 | Later: move clips, drop a new intro or outro | ours | L | E4, Tom's go-ahead | Not started |
-| **3** | **Sound** | | | | |
-| 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | 0.2 | Not started |
-| 3.2 | The winner as a Studio setting | DeepFilterNet or Auphonic | M | 3.1 | Not started |
-| 3.3 | One track per speaker | Auphonic or ffmpeg | L | Stage 0 Zoom check | Not started |
-| **4** | **Render and hand-off** | | | | |
-| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | — | Not started |
-| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | 0.2 | Not started |
-| 4.3 | Smoother preview | ours | M | — | Not started |
-| **5** | **The rest of the pipeline** | | | | |
-| 5.1 | Audio podcast feed | ours | L | Decision D2 | Not started |
-| 5.2 | Animated captions and graphics, if wanted | Revideo | M | Decision D4 | Not started |
-| 5.3 | Retire Descript | — | S | 0.2, 3.2, three real episodes | Not started |
+| # | Item | From | Effort | Model effort | Needs | Status |
+|---|---|---|---|---|---|---|
+| **0** | **Safety net** | | | | | |
+| 0.1 | Checks on every pull request | ours | S | Medium | — | Next |
+| 0.2 | Quality report on every render | ffmpeg | M | High | — | Not started |
+| **1** | **Better cut suggestions** | | | | | |
+| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Not started |
+| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
+| 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Not started (retakes exist, #130) |
+| 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
+| 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Not started |
+| 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Partly done (#130) |
+| **2** | **Editing precision** | | | | | |
+| 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 |
+| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 |
+| 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Not started |
+| 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
+| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
+| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
+| **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
+| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Partly done (#123: the full-page editor) |
+| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Not started |
+| E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Partly done (#130: splits) |
+| E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Not started |
+| E5 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | Extra | E3 | Partly done (#130: image overlays) |
+| E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Partly done (#130: text, Name titles) |
+| E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Not started |
+| E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Not started |
+| E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
+| **3** | **Sound** | | | | | |
+| 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Not started |
+| 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Not started |
+| 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
+| **4** | **Render and hand-off** | | | | | |
+| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Not started |
+| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Not started |
+| 4.3 | Smoother preview | ours | M | High | — | Not started |
+| **5** | **The rest of the pipeline** | | | | | |
+| 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Not started |
+| 5.2 | Animated captions and graphics, if wanted | Revideo | M | — | — | Dropped for full episodes (D4); Shorts keep theirs |
+| 5.3 | Retire Descript | — | S | Medium | 0.2, 3.2, three real episodes | Not started |
 
 **Why this order:**
 - Phase 0 makes every later change safe to ship.
@@ -420,16 +428,24 @@ should choose by ear, on our own recordings.
     with 1 s overlaps, clean them in parallel, and join them with crossfades, or accept the
     time.
   - It stays inside the 350-minute job limit either way.
-- **Auphonic:**
+- **Auphonic, free plan only** (decision D1: we are leaving Descript to cut costs):
   - `AUPHONIC_API_KEY` becomes a repo secret.
-  - Each render reserves its cost through `withinDailyLimit`, about $1.20 an hour on the smallest
-    plan.
+  - The free plan gives 2 hours of audio a month, about two episodes. Count the hours used this
+    calendar month (in `studio/spending`), show what is left beside the choice, and refuse an
+    Auphonic render that would go over; the producer then picks DeepFilterNet or standard.
+    Never buy credits or a plan from the code.
+  - So DeepFilterNet or standard stays the everyday default; Auphonic is a per-episode choice
+    while hours remain.
   - Use detect-only cutting as today, so our cut list stays the record.
 
-### 3.3 One track per speaker (L, only if recordings have them)
+### 3.3 One track per speaker (L, optional)
 
-**Depends on** spec 005 Stage 0's Zoom check ("record a separate audio file for each
-participant").
+**An option, never a requirement** (decision D5). Zoom's "record a separate audio file for each
+participant" may or may not be ticked on a given recording, so:
+- an episode **without** separate files works exactly as today, from the mixed track;
+- an episode **with** them uses them. The upload (spec 018) gets an optional "speaker tracks"
+  field, and the Drive inbox picks up the files Zoom puts beside the video;
+- the editor and render say which one the episode used.
 
 **If the files exist:**
 - ingest them beside the mix;
@@ -502,9 +518,10 @@ prefer −16 LUFS.
   - or a podcast host's API.
 - `storage.rules` stays closed whichever way.
 
-### 5.2 Animated captions and graphics (M, needs decision D4)
+### 5.2 Animated captions and graphics — dropped for full episodes (D4)
 
-**Only if wanted.** Animated word-by-word captions, audiograms for audio-only clips, or speaker
+**Not for full episodes now** (decision D4). Shorts already have animated captions
+(`shortsRender.ts`) and keep them. If this comes back: Animated word-by-word captions, audiograms for audio-only clips, or speaker
 lower thirds.
 
 - Use **Revideo** (MIT, renders headless in Actions).
@@ -535,16 +552,16 @@ lower thirds.
 | OpenCut, Twick, Editly, Motion Canvas, Diffusion Studio | Rewriting, fragile in CI, stale, or watermarked (see the research document). |
 | OpenTimelineIO as our edit format | No JavaScript library. Our cut list stays the record; 4.1 converts it. |
 
-## Decisions needed (Tom)
+## Decisions (answered by Tom, 5 October 2026)
 
-| # | Question | Needed before |
+| # | Question | Answer |
 |---|---|---|
-| D1 | Is a paid Auphonic plan acceptable (from about $11 a month for 9 hours) if it wins the bake-off? | 3.2 |
-| D2 | Do we want an audio podcast feed (Apple, Spotify)? If so, on our own site or through a podcast host? | 5.1 |
-| D3 | Are the retirement criteria in 5.3 right, and who signs off each episode? | 5.3 |
-| D4 | Do we want animated captions or graphics? If so, will the company stay at 3 people or fewer (Remotion's free tier), or do we use Revideo? | 5.2 |
-| D5 | Will recordings have one audio track per speaker (spec 005 Stage 0's Zoom check)? | 3.3 |
-| D6 | Is the phase order right, or should something move up? | Phase 1 |
+| D1 | Is a paid Auphonic plan acceptable if it wins the bake-off? | **No. Free plan only, 2 hours a month**: we are leaving Descript to reduce costs. See 3.2. |
+| D2 | Do we want an audio podcast feed (Apple, Spotify)? | **Yes, later** (5.1), on our own site. |
+| D3 | Are the retirement criteria in 5.3 right, and who signs off each episode? | **Keep them**; Tom signs off. |
+| D4 | Do we want animated captions or graphics? | **Not for full episodes now.** Shorts already have animated captions. 5.2 is dropped. |
+| D5 | Will recordings have one audio track per speaker? | **Make it an option**, so episodes without separate files still work. See 3.3. |
+| D6 | Is the phase order right? | **Keep it.** |
 
 The Studio editor's decisions (U1–U5) are in spec 020, answered on 5 October 2026.
 

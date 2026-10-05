@@ -40,27 +40,40 @@ in what order to build, and how the plan fits the work already built.
 
 | # | Question | Answer |
 |---|---|---|
-| U1 | Captions | The **YouTube caption track** only; not burned into full episodes. (Part I already built an off-by-default burned-in option: see N1.) |
+| U1 | Captions | The **YouTube caption track**; nothing new burned in. Part I's burned-in option stays, off by default (N1). |
 | U2 | Music and effects | **Free or royalty-free sources; the team checks licences by hand.** Transitions: **Dissolve and Fade now**, others if available (14 more listed, all rendered with the runners' ffmpeg). |
 | U3 | Devices | **Desktop only** (1280 px and wider) for the Studio editor. |
 | U4 | Moving clips | **Not now.** Dragging clips to new places, such as dropping a new intro or outro, will be needed eventually: item E9. |
 | U5 | Name | **"Studio editor".** |
 
-## Needs Tom
+## Decisions answered by Tom (5 October 2026)
 
-Nothing here blocks item 0.1. Each has a recommendation; "needed before" says when it blocks.
-
-| # | Question | Recommendation | Needed before |
+| # | Question | Answer | What it changes |
 |---|---|---|---|
-| **N1** | Part I's **burned-in captions** (a Studio setting, `burnCaptions`, off by default, and a per-video choice in the editor) against U1 "YouTube caption track only" | **Hide the controls, keep the code** until E8. Nothing is burned in today unless someone turns it on, and hiding is easy to undo. E8 then either removes it or keeps it for Shorts-style clips. | E8 (or now, if the controls confuse the producer) |
-| **N2** | Part H's **ElevenLabs composed music** (and Sora video b-roll) against U2 "free or royalty-free, checked by hand" | **Drop Sora and ElevenLabs.** Reuse Part H's ducking mix and music upload in E7. Composed music has no licence page to check, and neither reserved its cost (Sora up to ~$7.20 a run). | E7 |
-| **N3** | `.firebase/` (24 files of Firebase Hosting build output, committed in `91670bd`) is in git | **Delete it** in a small PR of its own. It is a Firebase Hosting artifact, which this project never uses. Item 0.1 only tells lint to skip it. | — |
-| D1 | A paid Auphonic plan (from ~$11 a month), if it wins the bake-off | **Decide after 3.1**, which uses Auphonic's free 2 hours. | 3.2 |
-| D2 | An audio podcast feed (Apple, Spotify)? Own site or a host? | **Yes, later, on our own site** (a `podcast.xml` route from Firestore): no extra subscription, and the final cut already exists. | 5.1 |
-| D3 | Descript's retirement criteria (019 item 5.3), and who signs off | **As written; Tom signs off** each of the three episodes. | 5.3 |
-| D4 | Animated captions or graphics? Remotion or Revideo? | **Not now.** If ever, Revideo (MIT). | 5.2 |
-| D5 | One audio track per speaker? | **Turn on Zoom's "separate audio file for each participant"** on the next recording. It costs nothing, and 3.3 is impossible without it. | 3.3 |
-| D6 | Is the phase order right? | **Yes, with the changes below**: 1.6's leftovers and 1.3 (now "extend retakes") are small, so Phase 1 is shorter; E1 is mostly built. | Phase 1 |
+| **N1** | Part I's **burned-in captions** (drawn into the picture, so every viewer sees them) against U1 "YouTube caption track only" | **Keep, as long as they can be turned on or off.** | Nothing to build: they are already an option, off by default, per Studio (`burnCaptions`) and per video (`edit.captions`). The YouTube caption track is always uploaded. E8 keeps the switch in the Captions panel. |
+| **N2** | Part H's Sora video b-roll and ElevenLabs composed music | **Drop.** | E7 reuses only Part H's ducking mix and music upload. |
+| **N3** | `.firebase/` (24 files of Firebase Hosting build output, committed in `91670bd`) | **Delete.** | Removed in item 0.1, since it is what lint trips on. |
+| D1 | A paid Auphonic plan? | **No: the free plan, 2 hours a month.** We are leaving Descript to reduce costs. | 3.2 counts the month's Auphonic hours and refuses a render that would go over; DeepFilterNet or standard stays the everyday default. |
+| D2 | An audio podcast feed? | **Yes, later.** | 5.1, on our own site. |
+| D3 | Descript's retirement criteria | **Keep.** | 5.3 as written; Tom signs off. |
+| D4 | Animated captions or graphics? | **Not for full episodes now.** Shorts already have animated captions. | 5.2 dropped. |
+| D5 | One audio track per speaker? | **An option**, so a recording without separate files still works. | 3.3 uses speaker tracks when they exist and the mix when they don't. |
+| D6 | The phase order | **Keep.** | — |
+
+## Model effort, and how we build
+
+Tom builds in this conversation and **compacts after each major build** (each phase, or each E
+item). So:
+- **Before starting an item, Claude says which model effort to switch to**, from the table below
+  (also the "Model effort" column in spec 019 and spec 020), and waits until Tom has switched.
+- Anything the next item needs goes into the specs and this page, not only into chat, so it
+  survives compacting.
+
+| Effort | Items | Why |
+|---|---|---|
+| **Medium** | 0.1, 1.5, 1.6 (the rest), 2.4, 2.5, 2.6, 5.3; doc updates; CI fixes | Small, and the PR checks catch the usual mistakes |
+| **High** (the default) | 0.2, 1.1, 1.2, 1.3, 2.3, E1, E6, E7, E8, 3.1, 3.2, 3.3, 4.1, 4.3, 5.1 | Needs reading around the change: the gotchas below don't break the build, and some bugs only show on a real episode after promotion |
+| **Extra** | E2, E3, E4, E5, 4.2, E9 | A mistake moves an episode's timing (transitions shorten the programme, so chapters, quotes, captions and the intro offset must follow), changes the saved edit's shape, or costs a long render to find |
 
 ## Order of work
 
@@ -89,12 +102,12 @@ against the code on 5 October 2026.
 | 020 **E1** workspace | The full-page editor (`/admin/podcast/[id]/edit`, #123) with the timeline, the preview with overlays, the On screen panel and the help sheet | **Change:** E1 moves this page into spec 020's layout and renames the route. Nothing is rebuilt. Effort **M → S–M**. |
 | 020 **E3** split and trim, `parts` | **Splits** (`edit.splits`, ms in the original, up to 500, sorted and unique): **Split at the playhead** (S), **Cut this section**, **Bring this section back**; the render ignores them | **Change the model:** keep `splits: number[]` instead of a new `parts` array. While parts stay in source order (U4) they say the same thing, and splits are already saved. Joins (E4) are keyed by the split's ms. E9 adds `order` when moving is approved. Trim already works as cuts at a section's edge. Effort **M → S**. |
 | 020 **E5/E6** layers, titles, lower thirds | **On screen** (`lib/onScreen.ts`, `edit.overlays`, up to 100): text with a second line, **Name titles** per speaker, PNG/JPEG images at nine positions with `widthPct`; anchored at `atMs` in the original, `seconds` long in the edited video; rendered with one ASS file and ffmpeg overlays; drawn in the preview | **Evolve `OverlaySchema`** into spec 020's `Layer`: add `box` beside the nine positions, transitions in and out, opacity, video, tracks. The anchor is already `{ srcMs }` in effect. A migration reads old overlays. E6's lower thirds start from Name titles. |
-| 020 **U1** captions | **Burned-in captions** (Part I): `burnCaptions` setting, off by default, and `edit.captions` | **Ask Tom: N1.** Recommendation: hide the controls, keep the code until E8. |
+| 020 **U1** captions | **Burned-in captions** (Part I): `burnCaptions` setting, off by default, and `edit.captions` | **Keep as an on/off option** (Tom, N1). |
 | 020 **E5** uploads | Image uploads to `overlays/` in Storage, checked by the edit route (`checkUploaded('overlay')`) | **Reuse** for the media bin; add video and audio kinds with the same checks. |
-| 020 **E7** music and effects | **Part H** (`bc5b006` in Jo Ann's fork, not merged): `musicMix` (a looped bed, `sidechaincompress` keyed by the voice, `amix`), a music upload, and ElevenLabs composed music; Sora video b-roll | **Merge the useful part into E7:** `musicMix` and the upload path, credited to Jo Ann. **Drop** Sora and ElevenLabs (N2). Keep spec 020's licence record and "not checked" gate. E7 effort stays **M**. |
+| 020 **E7** music and effects | **Part H** (`bc5b006` in Jo Ann's fork, not merged): `musicMix` (a looped bed, `sidechaincompress` keyed by the voice, `amix`), a music upload, and ElevenLabs composed music; Sora video b-roll | **Merge the useful part into E7:** `musicMix` and the upload path, credited to Jo Ann. **Sora and ElevenLabs are dropped** (Tom, N2). Keep spec 020's licence record and "not checked" gate. E7 effort stays **M**. |
 | 019 **2.3** correct a misheard word | **Translations** translate the render's English captions (`episode.srt`) cue by cue | **Keep, with one rule:** translations made before a correction are stale. Record which captions file each translation came from, and show "Translate again" when it no longer matches. |
 | 019 **0.2** quality report | The render draws on-screen text, images and (if turned on) captions | **Keep, and add a plan check:** every overlay starts and ends inside the programme and is not anchored in a cut; the ASS file has as many text events as the plan. No pixel checks. |
-| 019 **0.1** checks | — | **Keep, corrected:** 9 lint errors in tracked files (also `scripts/make_admin.ts` and `types/user.ts`), not 7. Lint also skips `.firebase/` (N3). `npm test` must include `components/studio/*.test.ts`. The render tests call ffmpeg, so CI installs it. |
+| 019 **0.1** checks | — | **Keep, corrected:** 9 lint errors in tracked files (also `scripts/make_admin.ts` and `types/user.ts`), not 7, plus `.firebase/`, deleted (N3). `npm test` must include `components/studio/*.test.ts`. The render tests call ffmpeg, so CI installs it. |
 
 ## What the development conversation learned
 

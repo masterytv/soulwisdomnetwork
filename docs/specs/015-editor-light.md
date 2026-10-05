@@ -151,9 +151,10 @@ Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-
   each speaker's name, lower left, where they first speak.
 - **Images**: a PNG or JPEG (up to 20 MB), placed and sized on the frame. Uploaded to
   `overlays/` in Storage; the edit route checks each new one is a real PNG or JPEG.
-- **Captions**: burned in, in the Studio's look (settings) or this video's own. Off unless
-  turned on. Tom's answer U1 (spec 020) is "the YouTube caption track only", so whether to keep
-  this is open (`docs/PLANNING.md` N1).
+- **Captions**: burned in (drawn into the picture, so every viewer sees them and nobody can
+  turn them off), in the Studio's look (settings) or this video's own. **Off by default; an
+  option to turn on** per Studio or per video (Tom, N1 in `docs/PLANNING.md`). The YouTube
+  caption track, which viewers switch on and off themselves, is always uploaded either way.
 - The preview shows them over the video, and the timeline has a row for them.
 - The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
   The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.

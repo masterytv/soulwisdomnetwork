@@ -4,7 +4,7 @@
 **Status:** Planned; parts already built (#123 the full-page editor, #130 splits and on-screen
 text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
-5 October 2026 (see the end); N1 and N2 in `docs/PLANNING.md` are still open.
+5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
 Part of `docs/specs/019-editor-light-v2.md`, whose status table tracks these items (E1–E9). Read
 019's "Before you start" first.
 **Author:** Claude, from Tom's request: "split, drag and drop, the timeline with audio,
@@ -136,7 +136,8 @@ interface AudioItem {
   (`seconds`). A pure `toLayer(overlay)` turns each into a `Layer`: the nine positions become a
   `box`, `widthPct` its width, and fades default to today's look. The edit route keeps accepting
   `overlays` until every saved edit has been read and saved once as `layers`.
-- **`captions`** (Part I's burned-in choice) waits on `docs/PLANNING.md` N1.
+- **`captions`** (Part I's burned-in choice) stays as it is: off by default, an option per Studio
+  or per video (`docs/PLANNING.md` N1).
 
 **Rules:**
 - **Split** (B, or S at the playhead) adds a split point. A split on its own changes nothing you
@@ -199,7 +200,7 @@ The preview layers HTML over the 720p proxy. It is not a second renderer:
 - **Sounds** play in `<audio>` elements kept in step with the playhead. Ducking is approximated
   with Web Audio gain while a word is spoken.
 - **Captions on/off** shows the YouTube caption track's cues over the preview, so the producer can
-  check them. They are never burned into the video (decision U1).
+  check them. They are not burned into the video unless the burned-in option is on (U1, N1).
 - **The preview can differ slightly from the render** (font hinting, Ken Burns easing), and the
   page says so. The render's quality report (019 item 0.2) is the check.
 
@@ -322,8 +323,8 @@ The team checks every licence by hand (decision U2). The library makes that chec
 - volume and ducking for sounds;
 - text and style for text.
 
-**Captions:** the YouTube caption track only, uploaded as today (spec 012); nothing is burned in
-(decision U1). The panel lists its cues on the edited timeline:
+**Captions:** the YouTube caption track, uploaded as today (spec 012); nothing is burned in
+unless Part I's option is turned on (decision U1, and N1 in `docs/PLANNING.md`). The panel lists its cues on the edited timeline:
 - click a cue to jump there;
 - a wrong word is fixed in the script (019 item 2.3), which fixes the caption too;
 - a cue too long to read flags in amber.
@@ -391,7 +392,8 @@ the voices blend instead of clicking. Music and effects tracks are not affected.
   - images and video go through `scale` + `overlay=x:y:enable=…`, with alpha `fade`;
   - Ken Burns uses the existing still-to-clip code (`media.ts`);
   - text, lower thirds and titles go into one ASS file drawn with `ass=`, as `shortsRender.ts`
-    does, with the fonts from `agent/assets/fonts`. No captions are burned in (U1).
+    does, with the fonts from `agent/assets/fonts`. Captions are burned in only when the option
+    is on (U1, N1).
 - **every join's transition:** `xfade` and `acrossfade` instead of `concat` where a join has one,
   with `offset` = the leading clip's length minus the transition. Straight cuts stay `concat`.
   A split with a transition becomes a block boundary, so each block still encodes on its own.
@@ -406,17 +408,17 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 
 ## Building it (rows E1–E9 in 019's table)
 
-| # | Item | Effort | Needs |
-|---|---|---|---|
-| E1 | **Workspace shell.** The layout above, with resizable panels and the shortcut sheet. The existing full-page editor (#123: script, preview with overlays, On screen panel, timeline, help) moves into it, nothing new yet. `/edit` redirects here. Quick edit stays in step 3. | S–M | — |
-| E2 | **Timeline engine.** Tracks, virtual drawing, zoom and scroll, snapping, selection. Waveform and thumbnail sprites (019 items 2.1 and 2.2 are built here). Drag cut edges; time-range cuts. | L | E1 |
-| E3 | **Split and trim.** Split, cut a section and bring it back are built (#130, `edit.splits`). Left: the blade tool, dragging a section's edge to trim (as cuts), `lib/sequence.ts` with `playOrder` and `timelineTime` everywhere times are mapped, and splits drawn on the new timeline. | S | E2 |
-| E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | E3 |
-| E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | E3 |
-| E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. | M | E5 |
-| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | E5 |
-| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option is kept or removed here (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | E6 |
-| E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | E4, and Tom's go-ahead |
+| # | Item | Effort | Model effort | Needs |
+|---|---|---|---|---|
+| E1 | **Workspace shell.** The layout above, with resizable panels and the shortcut sheet. The existing full-page editor (#123: script, preview with overlays, On screen panel, timeline, help) moves into it, nothing new yet. `/edit` redirects here. Quick edit stays in step 3. | S–M | High | — |
+| E2 | **Timeline engine.** Tracks, virtual drawing, zoom and scroll, snapping, selection. Waveform and thumbnail sprites (019 items 2.1 and 2.2 are built here). Drag cut edges; time-range cuts. | L | Extra | E1 |
+| E3 | **Split and trim.** Split, cut a section and bring it back are built (#130, `edit.splits`). Left: the blade tool, dragging a section's edge to trim (as cuts), `lib/sequence.ts` with `playOrder` and `timelineTime` everywhere times are mapped, and splits drawn on the new timeline. | S | Extra | E2 |
+| E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | Extra | E3 |
+| E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | Extra | E3 |
+| E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. | M | High | E5 |
+| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | High | E5 |
+| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
+| E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;
@@ -435,13 +437,13 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 - **Two people editing at once.** Saves stay first-come; a stale save is refused (409) and
   reloads, as today.
 - **AI voice (overdub) or generated video.**
-- **Burned-in captions on full episodes** (U1). Shorts keep theirs (spec 013).
+- **New burned-in caption styles for full episodes** (U1). Part I's on/off option stays as built (N1); Shorts keep theirs (spec 013).
 
 ## Decisions (answered by Tom, 5 October 2026)
 
 | # | Question | Answer | What it changes |
 |---|---|---|---|
-| U1 | Burned-in captions on full episodes, or only YouTube's caption track? | **YouTube caption track.** | No caption styles, and nothing burned in. The Captions panel and track check the YouTube track (E8). |
+| U1 | Burned-in captions on full episodes, or only YouTube's caption track? | **YouTube caption track.** | The Captions panel and track check the YouTube track (E8). Part I's burned-in captions stay as an option, off by default (N1, 5 October 2026). |
 | U2 | Music and effects: which library, and who checks licences? | **Search for free or royalty-free music and effects; the team checks licences by hand.** Two transitions are needed now, dissolve and fade; add others that are available. | Sources in "Music and sound effects" below. Transitions section and item E4. |
 | U3 | Is desktop-only (1280 px and wider) fine? | **Yes.** | As planned. |
 | U4 | Should moving parts be allowed? | **Not now.** Dragging clips to new places on the timeline, such as dropping a new intro or outro, will be needed eventually. | Parts stay in source order. E3 is split and trim only. Moving becomes E9, later. Overlays, titles and music are still placed and dragged on their own tracks (E5–E7), because that is how they are added. |
