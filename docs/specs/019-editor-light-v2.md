@@ -90,7 +90,7 @@ for this work".
 | 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
-| 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#PR) |
+| 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#139) |
 | 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Done (#130, #136); the count on the real episode waits on Tom |
 | **2** | **Editing precision** | | | | | |
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 |
@@ -318,7 +318,7 @@ sounds choppy, and adds joins and render time.
 
 **Tests:** in `lib/edit.test.ts`.
 
-**Done (#PR):** `keepRanges(durationMs, cuts, padMs, words)` drops a kept piece under `SLIVER_MS`
+**Done (#139):** `keepRanges(durationMs, cuts, padMs, words)` drops a kept piece under `SLIVER_MS`
 (400 ms) unless a whole word lies inside it; a word only partly inside does not count. The editor
 and the render both pass the transcript's words, so the preview plays what the render makes. A
 render without words (the command line) keeps the old 150 ms rule only.
