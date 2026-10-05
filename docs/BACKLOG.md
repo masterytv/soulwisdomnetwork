@@ -29,8 +29,6 @@ it here when it ships.
 ## Editor Light (replacing Descript)
 
 - Being built in a fork from `docs/specs/015-editor-light.md` (to come with the first PR).
-  Turn on AssemblyAI's `disfluencies` option, or "um" and "uh" are left out of the transcript
-  and cannot be found as fillers.
 
 ## Studio
 

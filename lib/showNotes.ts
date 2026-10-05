@@ -5,6 +5,7 @@
 import { z } from 'zod';
 import { BROLL_STYLE_IDS } from './broll';
 import type { DescriptionLinks } from './studioSettings';
+import { isFiller } from './fillers';
 
 const ms = z.number().int().describe('Milliseconds from the start of the episode');
 
@@ -103,7 +104,7 @@ export function parseShowNotes(input: unknown): ShowNotes {
 export interface SpokenWord { text: string; start: number; end: number; speaker: string; clip: boolean }
 
 const token = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
-const tokens = (s: string) => s.replace(/(\.\.\.|…)\s*$/, '').split(/\s+/).map(token).filter(Boolean);
+const tokens = (s: string) => s.replace(/(\.\.\.|…)\s*$/, '').split(/\s+/).map(token).filter(t => t && !isFiller(t));
 
 type Found = { startMs: number; endMs: number; speaker: string };
 
@@ -124,10 +125,12 @@ const LONGEST_MS = 3 * 60_000;
 // Finds `text` word for word in the transcript and returns its exact times and speaker, or
 // null if it was not said. A long passage that differs somewhere in the middle (a word
 // Claude tidied up) is still found by its first and last words, and `text` is then the
-// transcript's own wording.
-export function locate(text: string, words: SpokenWord[], nearMs = 0): (Found & { text?: string }) | null {
+// transcript's own wording. Filler words such as "um" are skipped on both sides, since Claude
+// leaves them out of quotes.
+export function locate(text: string, said: SpokenWord[], nearMs = 0): (Found & { text?: string }) | null {
     const want = tokens(text);
     if (!want.length) return null;
+    const words = said.filter(w => !isFiller(token(w.text)));
     const have = words.map(w => token(w.text));
     const exact = find(want, words, have, nearMs);
     if (exact) return exact.found;

@@ -68,11 +68,14 @@ changed since that render. A failed render shows its reason, and can be tried ag
 - `CutsSchema` checks what may be saved.
 
 **`suggestCuts` marks:**
-- `um`, `uh`, `erm`, `uhm` and `hmm`;
+- filler words (`lib/fillers.ts`): `um`, `uh`, `er`, `erm`, `uhm`, `hm`, `hmm` and `mhm`, however many
+  letters they are written with. Ingest turns on AssemblyAI's `disfluencies` option, so they are in
+  the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
 - immediate repeats, keeping the last;
 - pauses over 1.2 s, shortened to 0.5 s;
-- gaps of 350 to 1,200 ms inside a sentence, cut to 150 ms, marked as `filler`. AssemblyAI leaves
-  fillers out of its transcript by default, so a gap is often where one was.
+- gaps of 350 to 1,200 ms inside a sentence, cut to 150 ms, marked as `filler`. Episodes transcribed
+  before `disfluencies` was on have no fillers in the transcript, and AssemblyAI still misses some,
+  so a gap is often where one was.
 
 ### Editor
 

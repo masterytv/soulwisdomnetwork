@@ -5,6 +5,8 @@
 // exactly once in each are paired, the pairs that keep their order are kept, and any other
 // time is placed in proportion between the nearest pairs. docs/specs/010-final-cut.md
 
+import { isFiller } from './fillers';
+
 export interface TimedWord { text: string; start: number; end: number }
 
 // Word runs this long, found exactly once in each transcript, pair the two up. The cold open
@@ -21,7 +23,9 @@ function tokens(words: TimedWord[]) {
     const out: { t: string; start: number }[] = [];
     for (const w of words) {
         const t = token(w.text);
-        if (t) out.push({ t, start: w.start });
+        // The original has "um"s and the final cut's transcript does not, so they would
+        // break runs that otherwise match.
+        if (t && !isFiller(t)) out.push({ t, start: w.start });
     }
     return out;
 }

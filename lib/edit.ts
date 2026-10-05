@@ -3,6 +3,7 @@
 
 import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
+import { isFiller } from './fillers';
 
 export interface Cut {
     startMs: number;
@@ -97,7 +98,6 @@ export function editedDuration(ranges: KeptRange[]): number {
     return ranges.reduce((sum, r) => sum + (r.endMs - r.startMs), 0);
 }
 
-const FILLER_WORDS = new Set(['um', 'uh', 'erm', 'uhm', 'hmm']);
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 
 export interface SuggestOptions {
@@ -116,7 +116,7 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         const norm = normalize(w.text);
 
         // Filler words
-        if (FILLER_WORDS.has(norm)) {
+        if (isFiller(norm)) {
             cuts.push({ startMs: w.start, endMs: w.end, reason: 'filler' });
             continue;
         }
@@ -140,8 +140,9 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         }
     }
 
-    // Filler-as-gap: AssemblyAI leaves out "um" and "uh" by default, so fillers
-    // often show up as a gap between two words inside a sentence. Inside a sentence
+    // Filler-as-gap: episodes transcribed before `disfluencies` was turned on have no "um"
+    // or "uh", and AssemblyAI still misses some, so fillers often show up as a gap between
+    // two words inside a sentence. Inside a sentence
     // (previous word not ending in . ? !), a gap of 350–1200 ms becomes a 'filler'
     // cut leaving 150 ms of air.
     const FILLER_GAP_MIN = 350;

@@ -137,8 +137,8 @@ export function notesSystemPrompt(s: StudioSettings): string {
             `Never claim as fact what a speaker offered as belief or experience; attribute it ("${someone} describes…").`,
         'Timestamps: every paragraph of the transcript starts with its time in milliseconds, e.g. [65000ms 1:05]. ' +
             'Use those numbers for startMs. Chapters and b-roll must start at a paragraph\'s time; quotes at the paragraph they come from.',
-        'Quotes and teaser clips must be copied exactly from the transcript, with the speaker name exactly as the ' +
-            `transcript gives it. ${people}`,
+        'Quotes and teaser clips must be copied exactly from the transcript, leaving out only filler words such as ' +
+            `"um" and "uh", with the speaker name exactly as the transcript gives it. ${people}`,
         'Quotes are raw material for shorts: give up to twenty, from a single striking sentence to a passage of up to two ' +
             'minutes that stands on its own. Producers find it easier to delete than to add, so err towards more.',
         'The YouTube description is written to be found and clicked: front-load the hook and keywords in the first two lines, ' +
