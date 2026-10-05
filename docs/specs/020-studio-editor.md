@@ -1,7 +1,10 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Planned. Not started. Decisions U1–U5 answered by Tom on 5 October 2026 (see the end).
+**Status:** Planned; parts already built (#123 the full-page editor, #130 splits and on-screen
+text and images). Reconciled on 5 October 2026: the model below grows the existing
+`EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
+5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
 Part of `docs/specs/019-editor-light-v2.md`, whose status table tracks these items (E1–E9). Read
 019's "Before you start" first.
 **Author:** Claude, from Tom's request: "split, drag and drop, the timeline with audio,
@@ -15,9 +18,11 @@ additional media, overlays … an optional page to the simplified pipeline where
 Editing happens in a narrow column inside step 3 of the six-step pipeline. The full-page editor
 (`/admin/podcast/[episodeId]/edit`, spec 015) is wider, but it is still the same editor:
 - only transcript cuts;
-- a timeline you can only click to seek;
+- a timeline you can click to seek, split at the playhead, and cut or bring back a whole section
+  (#130), but not drag;
 - no waveform;
-- no way to split, move or add anything.
+- on-screen text and images (#130), placed from a panel with nine positions, not dragged;
+- no way to move clips, or to add video, music or transitions.
 
 Descript, used today, offers:
 - a script on the left;
@@ -26,8 +31,8 @@ Descript, used today, offers:
 - a timeline with thumbnails, captions and a waveform, with split and zoom.
 
 **Also seen on a real 48-minute episode:** the editor offered **2,970 suggestions** (2,250
-"fillers", 300 repeats, 420 pauses). Most "fillers" are gap guesses shown as "um". Nobody
-reviews 2,970 items one at a time. 019 item 1.6 deals with this; the new page must not make it
+"fillers", 300 repeats, 420 pauses). Most "fillers" were gap guesses shown as "um". #130 made
+those opt-in (**Mark hesitations**); 019 item 1.6 does the rest. The new page must not make it
 worse.
 
 ## What we build
@@ -83,20 +88,23 @@ worse.
 
 ## The edit model, version 2 (`lib/sequence.ts`)
 
-Today an edit is `{ cuts, version }`: time removed from one source, played in order. Version 2
-keeps that and adds the rest. **An edit saved today is a valid version 2 edit.**
+Today an edit is `EpisodeEdit` in `lib/edit.ts`:
+`{ cuts, version, splits?, overlays?, captions? }`, saved as `episodes/{id}.edit` and checked
+field by field in the edit route. Version 2 **grows that type**; it is not a second document.
+**An edit saved today is a valid version 2 edit.**
 
 ```ts
-interface Sequence {
+interface Sequence {               // = EpisodeEdit, grown
     version: number;               // save version, checked as today (409 when stale)
     cuts: Cut[];                   // source-time cuts from the transcript, as today
-    parts?: Part[];                // the episode split into parts, in source order; missing = one part
+    splits?: number[];             // as today (#130): split points, ms in the original, sorted; the
+                                   // parts are the stretches between them, in source order (U4)
     joins?: Join[];                // transitions where sections and parts meet; missing = straight cuts
-    layers: Layer[];               // pictures and text over the episode
-    audio: AudioItem[];            // music, effects, stingers
+    layers?: Layer[];              // pictures and text over the episode; grown from today's `overlays`
+    audio?: AudioItem[];           // music, effects, stingers
 }
-interface Part { id: string; srcStartMs: number; srcEndMs: number }
-type JoinAt = 'start' | 'afterTeasers' | 'afterIntro' | 'beforeOutro' | 'end' | { afterPart: string };
+// E9 (moving clips) adds `order?: number[]`, the parts in play order, when Tom approves it.
+type JoinAt = 'start' | 'afterTeasers' | 'afterIntro' | 'beforeOutro' | 'end' | { atSplit: number };
 interface Join { at: JoinAt; transition: TransitionKind; durationMs: number }   // see Transitions
 type Anchor = { srcMs: number } | { atMs: number };   // stick to the words, or pin to the timeline
 interface Layer {
@@ -119,14 +127,27 @@ interface AudioItem {
 }
 ```
 
+**From today's edit:**
+- **`splits` stay as they are.** While parts keep their source order (U4), a sorted list of split
+  points says exactly what a `parts` array would, and edits already have them. A join at a split
+  is keyed by the split's ms (`{ atSplit }`); removing a split removes its join.
+- **`overlays` become `layers`.** Today's `TextOverlay` and `ImageOverlay` (`lib/onScreen.ts`)
+  already have an anchor in the original (`atMs`) and a length on the edited timeline
+  (`seconds`). A pure `toLayer(overlay)` turns each into a `Layer`: the nine positions become a
+  `box`, `widthPct` its width, and fades default to today's look. The edit route keeps accepting
+  `overlays` until every saved edit has been read and saved once as `layers`.
+- **`captions`** (Part I's burned-in choice) stays as it is: off by default, an option per Studio
+  or per video (`docs/PLANNING.md` N1).
+
 **Rules:**
-- **Split** (B, or S at the playhead) turns one part into two at that source time. A split on its
-  own changes nothing you hear. It is where a transition, a trim or (later) a move can go.
+- **Split** (B, or S at the playhead) adds a split point. A split on its own changes nothing you
+  hear. It is where a transition, a trim or (later) a move can go. **Built (#130)**, as **Split
+  at the playhead** on the timeline.
 - **Parts stay in source order for now** (decision U4). Dragging a part to a new place, and
-  dropping a new intro or outro onto the timeline, come later as item E9. `parts` is already
-  shaped for it.
+  dropping a new intro or outro onto the timeline, come later as item E9, which adds `order`.
 - **Ripple delete** of a part cuts its whole range, as a `manual` cut, so the transcript shows it
-  struck through and double-click restores it, as today.
+  struck through and double-click restores it, as today. **Built (#130)** as **Cut this section**
+  and **Bring this section back** (`cutSection`, `restoreSection` in `lib/edit.ts`).
 - **Trimming a part's edge** adds or shortens a cut at that edge, so the transcript shows it.
 - **Anchors:**
   - A layer or sound anchored to `srcMs` moves with its words when cuts change. This is the
@@ -134,21 +155,22 @@ interface AudioItem {
   - Pinned (`atMs`) items stay at a timeline time. This is the default for music beds.
   - An item whose anchor word is cut is flagged in the timeline, not deleted.
 - **Teasers, intro and outro** (Studio settings) show as locked clips before and after the
-  episode, with a join between each. They are not part of `parts`.
+  episode, with a join between each. They are outside the episode, so splits never fall in them.
 - **Existing b-roll** from the notes plan (spec 008) appears as V2 layers on first open, so it
   can be moved, trimmed or deleted. Until then the render uses the notes plan as today.
-- **Validation:** zod `SequenceSchema`, checked on save as `CutsSchema` is today. At most
-  10,000 cuts, 500 parts, 500 joins, 500 layers and 200 sounds, which keeps the document well
-  under Firestore's 1 MiB.
+- **Validation:** zod schemas, checked on save field by field as today (`CutsSchema`,
+  `SplitsSchema`, `OverlaysSchema`). At most 10,000 cuts, 500 splits, 500 joins, 500 layers
+  (today 100 overlays) and 200 sounds, which keeps the document well under Firestore's 1 MiB.
 
 **Pure functions, all in `lib/` and tested:**
-- `playOrder(seq)`: the kept source ranges in play order (parts ∩ `keepRanges`).
+- `playOrder(seq)`: the kept source ranges in play order (`keepRanges`, split at `splits`).
 - `timelineTime(seq, srcMs)` and `sourceTime(seq, atMs)`: generalize `editedTime`. They take
   account of the time each transition overlaps (see Transitions), and of moved parts once E9
   exists.
 - `itemsAt(seq, atMs)`: what is visible and audible at a moment. Both the preview and the render
   plan use it, so they cannot disagree.
-- `split`, `trimPart`, `setJoin`, `moveLayer`, `snap(…)`.
+- `sectionAt`, `cutSection`, `restoreSection` (built, `lib/edit.ts`), and `trimSection`,
+  `setJoin`, `moveLayer`, `snap(…)`.
 
 **Transitions shift times.** A transition overlaps the two clips it joins, so the programme is
 shorter by its length (measured: two 4 s clips with a 1 s dissolve make 7 s). These all move to
@@ -178,7 +200,7 @@ The preview layers HTML over the 720p proxy. It is not a second renderer:
 - **Sounds** play in `<audio>` elements kept in step with the playhead. Ducking is approximated
   with Web Audio gain while a word is spoken.
 - **Captions on/off** shows the YouTube caption track's cues over the preview, so the producer can
-  check them. They are never burned into the video (decision U1).
+  check them. They are not burned into the video unless the burned-in option is on (U1, N1).
 - **The preview can differ slightly from the render** (font hinting, Ken Burns easing), and the
   page says so. The render's quality report (019 item 0.2) is the check.
 
@@ -301,8 +323,8 @@ The team checks every licence by hand (decision U2). The library makes that chec
 - volume and ducking for sounds;
 - text and style for text.
 
-**Captions:** the YouTube caption track only, uploaded as today (spec 012); nothing is burned in
-(decision U1). The panel lists its cues on the edited timeline:
+**Captions:** the YouTube caption track, uploaded as today (spec 012); nothing is burned in
+unless Part I's option is turned on (decision U1, and N1 in `docs/PLANNING.md`). The panel lists its cues on the edited timeline:
 - click a cue to jump there;
 - a wrong word is fixed in the script (019 item 2.3), which fixes the caption too;
 - a cue too long to read flags in amber.
@@ -370,7 +392,8 @@ the voices blend instead of clicking. Music and effects tracks are not affected.
   - images and video go through `scale` + `overlay=x:y:enable=…`, with alpha `fade`;
   - Ken Burns uses the existing still-to-clip code (`media.ts`);
   - text, lower thirds and titles go into one ASS file drawn with `ass=`, as `shortsRender.ts`
-    does, with the fonts from `agent/assets/fonts`. No captions are burned in (U1).
+    does, with the fonts from `agent/assets/fonts`. Captions are burned in only when the option
+    is on (U1, N1).
 - **every join's transition:** `xfade` and `acrossfade` instead of `concat` where a join has one,
   with `offset` = the leading clip's length minus the transition. Straight cuts stay `concat`.
   A split with a transition becomes a block boundary, so each block still encodes on its own.
@@ -385,17 +408,17 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 
 ## Building it (rows E1–E9 in 019's table)
 
-| # | Item | Effort | Needs |
-|---|---|---|---|
-| E1 | **Workspace shell.** The layout above, with resizable panels and the shortcut sheet. The existing editor moves into it, nothing new yet. `/edit` redirects here. Quick edit stays in step 3. | M | — |
-| E2 | **Timeline engine.** Tracks, virtual drawing, zoom and scroll, snapping, selection. Waveform and thumbnail sprites (019 items 2.1 and 2.2 are built here). Drag cut edges; time-range cuts. | L | E1 |
-| E3 | **Split and trim.** `lib/sequence.ts` v2 with `parts` (source order). Split, trim and ripple delete on V1. `timelineTime` everywhere times are mapped. | M | E2 |
-| E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | E3 |
-| E5 | **Media and overlays.** Episode bin and uploads. Image and video layers with box, transitions in and out, and motion. Preview layers with react-rnd. Existing b-roll becomes layers. Overlays in the render. | L | E3 |
-| E6 | **Elements.** Title, lower third, logo bug and text, with the Properties panel and the ASS render. | M | E5 |
-| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render. | M | E5 |
-| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Copy and paste items. J/K/L. | M | E6 |
-| E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | E4, and Tom's go-ahead |
+| # | Item | Effort | Model effort | Needs |
+|---|---|---|---|---|
+| E1 | **Workspace shell.** The layout above, with resizable panels and the shortcut sheet. The existing full-page editor (#123: script, preview with overlays, On screen panel, timeline, help) moves into it, nothing new yet. `/edit` redirects here. Quick edit stays in step 3. | S–M | High | — |
+| E2 | **Timeline engine.** Tracks, virtual drawing, zoom and scroll, snapping, selection. Waveform and thumbnail sprites (019 items 2.1 and 2.2 are built here). Drag cut edges; time-range cuts. | L | Extra | E1 |
+| E3 | **Split and trim.** Split, cut a section and bring it back are built (#130, `edit.splits`). Left: the blade tool, dragging a section's edge to trim (as cuts), `lib/sequence.ts` with `playOrder` and `timelineTime` everywhere times are mapped, and splits drawn on the new timeline. | S | Extra | E2 |
+| E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | Extra | E3 |
+| E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | Extra | E3 |
+| E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. | M | High | E5 |
+| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | High | E5 |
+| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
+| E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;
@@ -414,13 +437,13 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 - **Two people editing at once.** Saves stay first-come; a stale save is refused (409) and
   reloads, as today.
 - **AI voice (overdub) or generated video.**
-- **Burned-in captions on full episodes** (U1). Shorts keep theirs (spec 013).
+- **New burned-in caption styles for full episodes** (U1). Part I's on/off option stays as built (N1); Shorts keep theirs (spec 013).
 
 ## Decisions (answered by Tom, 5 October 2026)
 
 | # | Question | Answer | What it changes |
 |---|---|---|---|
-| U1 | Burned-in captions on full episodes, or only YouTube's caption track? | **YouTube caption track.** | No caption styles, and nothing burned in. The Captions panel and track check the YouTube track (E8). |
+| U1 | Burned-in captions on full episodes, or only YouTube's caption track? | **YouTube caption track.** | The Captions panel and track check the YouTube track (E8). Part I's burned-in captions stay as an option, off by default (N1, 5 October 2026). |
 | U2 | Music and effects: which library, and who checks licences? | **Search for free or royalty-free music and effects; the team checks licences by hand.** Two transitions are needed now, dissolve and fade; add others that are available. | Sources in "Music and sound effects" below. Transitions section and item E4. |
 | U3 | Is desktop-only (1280 px and wider) fine? | **Yes.** | As planned. |
 | U4 | Should moving parts be allowed? | **Not now.** Dragging clips to new places on the timeline, such as dropping a new intro or outro, will be needed eventually. | Parts stay in source order. E3 is split and trim only. Moving becomes E9, later. Overlays, titles and music are still placed and dragged on their own tracks (E5–E7), because that is how they are added. |
