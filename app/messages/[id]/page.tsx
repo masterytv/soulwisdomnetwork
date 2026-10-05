@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, doc, getDoc, type Timestamp } from "firebase/firestore";
 import { sendMessage } from "@/lib/firebase/messaging";
 import { formatDistanceToNow } from "date-fns";
 
@@ -12,7 +12,7 @@ interface Message {
     id: string;
     senderId: string;
     content: string;
-    createdAt: any;
+    createdAt: Timestamp | null;    // null until the server timestamp lands
 }
 
 interface UserProfile {

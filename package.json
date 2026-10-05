@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "video": "npm --prefix remotion run dev"
+    "test": "tsx --test lib/*.test.ts agent/src/podcast/*.test.ts components/studio/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

@@ -18,5 +18,5 @@ export interface UserProfile {
     role: UserRole;
     bio?: string;
     banned?: boolean;    // set only by an admin (app/api/admin/users/ban)
-    createdAt: any; // Firestore Timestamp
+    createdAt: unknown; // Firestore Timestamp (a server timestamp, written once)
 }

@@ -53,6 +53,7 @@ npm run dev      # local, needs .env.local
 npm run build    # next build
 npm run lint     # eslint
 npx tsc --noEmit # typecheck
+npm test         # every lib/, agent/src/podcast/ and components/studio/ *.test.ts (needs ffmpeg; ~5 minutes)
 ```
 
 Develop locally. An App Hosting build takes ~10 minutes, so never deploy to test a change.
@@ -66,7 +67,9 @@ confusingly similar names. App Hosting runs the app on Cloud Run and builds from
 Never enable Firebase Hosting, and never tick "Also set up Firebase Hosting" anywhere.
 
 Pushing to `main` triggers a build and rollout automatically. There is no deploy workflow
-in CI — App Hosting connects to the repo directly. Do not add one.
+in CI — App Hosting connects to the repo directly. Do not add one. The `checks` workflow
+(`.github/workflows/checks.yml`) only checks pull requests into `staging` and `main`: typecheck,
+lint, tests and a build with placeholder config. It deploys nothing and uses no secrets.
 
 ### Secrets
 
@@ -215,8 +218,9 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 
 ## Conventions
 
-- Verify with `npx tsc --noEmit` and `npm run build` before pushing — a red build costs a
-  ten-minute cycle.
+- Verify with `npx tsc --noEmit`, `npm run lint`, `npm test` and `npm run build` before
+  pushing — a red build costs a ten-minute cycle. The `checks` workflow runs the same on every
+  pull request; lint errors fail it, warnings don't.
 - Specs live in `docs/specs/NNN-name.md` and are numbered sequentially.
 - `.env.local` and `serviceAccountKey.json` are gitignored. Keep it that way.
 

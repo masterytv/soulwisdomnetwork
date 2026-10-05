@@ -1,0 +1,61 @@
+# Checks on every pull request into staging or main (docs/specs/019-editor-light-v2.md, item 0.1):
+# typecheck, lint, tests and a production build. It deploys nothing: App Hosting builds from the
+# repo on its own (CLAUDE.md), and this needs no secrets.
+name: checks
+
+on:
+  pull_request:
+    branches: [staging, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    # The render tests run ffmpeg, with the fonts podcast_edit_render.yml installs.
+    - name: Install ffmpeg
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-open-sans fonts-roboto fonts-lato fonts-ebgaramond fonts-dejavu-core
+
+    - name: Typecheck
+      run: npx tsc --noEmit
+
+    - name: Lint
+      run: npm run lint
+
+    - name: Test
+      run: npm test
+
+    # The browser's Firebase config is public, but placeholders keep this free of any project's
+    # values; nothing is fetched at build time. Without YOUTUBE_API_KEY the Videos pages build empty.
+    - name: Build
+      env:
+        NEXT_PUBLIC_FIREBASE_API_KEY: placeholder
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: placeholder.firebaseapp.com
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: placeholder
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: placeholder.firebasestorage.app
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: '0'
+        NEXT_PUBLIC_FIREBASE_APP_ID: placeholder
+        NEXT_TELEMETRY_DISABLED: '1'
+      run: npm run build
