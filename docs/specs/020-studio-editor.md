@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#PR); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#147); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -535,7 +535,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   (the next word's start); selecting a section and pressing Delete cut it whole, and undo brought it
   back; locked, the Blade did nothing.
 
-### E4 — Built (#PR)
+### E4 — Built (#147)
 
 - **Model** (`lib/transitions.ts`): `edit.joins`, one transition a place. `at` is a section join
   (`start`, `betweenTeasers`, `afterTeasers`, `afterIntro`, `beforeOutro`, `end`) or `{ atSplit }`;
