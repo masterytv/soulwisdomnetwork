@@ -12,7 +12,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit } from '@/lib/edit';
-import { keepRanges, editedDuration, suggestCuts } from '@/lib/edit';
+import {
+    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, SUGGESTED_REASONS, HESITATION_REASONS,
+} from '@/lib/edit';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
@@ -195,6 +197,32 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
         }
     }, [onChange]);
 
+    // Cuts the selected words (Delete, Backspace or the Cut selected button). Returns false when
+    // there was nothing left to cut, as when every selected word is cut already.
+    const cutSelection = useCallback((): boolean => {
+        if (!selectedRange) return false;
+        const [start, end] = selectedRange;
+        let anyUncut = false;
+        for (let i = start; i <= end; i++) {
+            if (!isCut(i, words, edit.cuts)) { anyUncut = true; break; }
+        }
+        if (!anyUncut) return false;
+        const startMs = words[start]?.start ?? 0;
+        const endMs = words[end]?.end ?? startMs;
+        // Never add a cut that matches an existing one.
+        if (!edit.cuts.some(c => c.startMs === startMs && c.endMs === endMs)) {
+            updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }] }));
+        }
+        setSelectedRange(null);
+        return true;
+    }, [selectedRange, words, edit.cuts, updateEdit]);
+
+    // Splits (full-page editor): set at the playhead; each one once, in order.
+    const addSplit = useCallback((ms: number) => {
+        updateEdit(prev => (prev.splits ?? []).includes(ms) ? prev
+            : { ...prev, splits: [...(prev.splits ?? []), ms].sort((a, b) => a - b) });
+    }, [updateEdit]);
+
     // Keyboard: Delete/Backspace to cut, Ctrl/Cmd+Z for undo/redo, Space to play/pause.
     // When focus is in a text box (INPUT, TEXTAREA, contentEditable), only Delete is
     // handled (it cuts the selected match). Typing, Backspace, Space and Ctrl/Cmd+Z
@@ -242,29 +270,20 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 return;
             }
             if (selectedRange && (e.key === 'Delete' || e.key === 'Backspace')) {
-                // Skip when the selection is only cut words.
-                const [start, end] = selectedRange;
-                let anyUncut = false;
-                for (let i = start; i <= end; i++) {
-                    if (!isCut(i, words, edit.cuts)) { anyUncut = true; break; }
-                }
-                if (!anyUncut) return;
+                if (cutSelection()) e.preventDefault();
+                return;
+            }
+            // S splits at the playhead in the full-page editor.
+            if (workspace && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 's') {
+                const video = videoRef.current;
+                if (!video) return;
                 e.preventDefault();
-                const startMs = words[start]?.start ?? 0;
-                const endMs = words[end]?.end ?? startMs;
-                // Never add a cut that matches an existing one.
-                if (!edit.cuts.some(c => c.startMs === startMs && c.endMs === endMs)) {
-                    updateEdit(prev => ({
-                        ...prev,
-                        cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }],
-                    }));
-                }
-                setSelectedRange(null);
+                addSplit(Math.round(video.currentTime * 1000));
             }
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -386,9 +405,9 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
         if (cut) onCutClick(cut);
     };
 
-    // Word drag start.
-    const onWordMouseDown = (index: number) => {
-        if (isCut(index, words, edit.cuts)) return;
+    // Word drag start. A shift-click leaves the selection for the click to extend.
+    const onWordMouseDown = (index: number, e: React.MouseEvent) => {
+        if (e.shiftKey || isCut(index, words, edit.cuts)) return;
         setDragStart(index);
         setSelectedRange([index, index]);
     };
@@ -415,10 +434,24 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
         }));
     }, [updateEdit]);
 
-    // Suggest filler words and long pauses.
+    // Suggest filler words, repeats and long pauses; marking again replaces the earlier ones.
     const onSuggest = () => {
-        const suggested = suggestCuts(words);
-        updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, ...suggested] }));
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words), SUGGESTED_REASONS) }));
+        setReviewIdx(0);
+        setReviewKind(null);
+    };
+
+    // Hesitations: short silences inside a sentence where an "um" may have been. Guesses, so they
+    // have their own button and their own group to review or clear.
+    const onHesitations = () => {
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words, { gaps: true }), HESITATION_REASONS) }));
+        setReviewIdx(0);
+        setReviewKind('gap');
+    };
+
+    // Clears the suggestions of one kind (the group chosen in the counts).
+    const onClearKind = (reason: string) => {
+        updateEdit(prev => ({ ...prev, cuts: prev.cuts.filter(c => c.reason !== reason) }));
         setReviewIdx(0);
         setReviewKind(null);
     };
@@ -550,7 +583,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
 
     // The reason button label for 'manual'.
     const reasonLabel = (reason: string): string =>
-        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason;
+        reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason === 'gap' ? 'Hesitations' : reason;
 
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
@@ -561,9 +594,17 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 <button onClick={onSuggest} className={primary}>
                     Mark filler words and long pauses
                 </button>
+                <button onClick={onHesitations} className={secondary}
+                    title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
+                    Mark hesitations
+                </button>
                 <button onClick={onClearSuggestions} className={secondary}>
                     Clear suggestions
                 </button>
+                {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. */}
+                {selectedRange && (
+                    <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
+                )}
                 {/* Extra tools from the page, such as Claude's retakes. */}
                 {tools}
                 <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
@@ -597,6 +638,11 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                         </button>
                     );
                 })}
+                {reviewKind && reviewKind !== 'manual' && reasonCounts[reviewKind] > 0 && (
+                    <button onClick={() => onClearKind(reviewKind)} className={`${secondary} px-2 py-0.5`}>
+                        Clear these
+                    </button>
+                )}
                 {/* Search box with a clear button that shows once there is text. */}
                 <div className="ml-auto flex items-center gap-1">
                     <input
@@ -772,8 +818,10 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                                                     }}
                                                 >
                                                     {gapCut
-                                                        ? (gapCuts.some(c => c.reason === 'filler')
-                                                            ? `um · ${(prevGap / 1000).toFixed(1)}s`
+                                                        // A cut silence between words is a hesitation ('gap', or 'filler' in
+                                                        // edits marked before hesitations had their own kind), never a word.
+                                                        ? (gapCuts.some(c => c.reason === 'filler' || c.reason === 'gap')
+                                                            ? `hesitation ${(prevGap / 1000).toFixed(1)}s`
                                                             : `pause ${(prevGap / 1000).toFixed(1)}s → ${((prevGap - (gapCuts[0]?.endMs ?? 0) + (gapCuts[0]?.startMs ?? 0)) / 1000).toFixed(1)}s`)
                                                         : `pause ${(prevGap / 1000).toFixed(1)}s`}
                                                 </span>
@@ -796,7 +844,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                                                 title={cut ? 'Double-click to bring back' : undefined}
                                                 onClick={(e) => onWordClick(index, e)}
                                                 onDoubleClick={() => onWordDoubleClick(index)}
-                                                onMouseDown={() => onWordMouseDown(index)}
+                                                onMouseDown={e => onWordMouseDown(index, e)}
                                                 onMouseEnter={() => onWordMouseEnter(index)}
                                             >
                                                 {word.text}
@@ -821,6 +869,13 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                     video={videoRef}
                     editedMs={editedMs}
                     onSeek={ms => seekToTime(ms / 1000)}
+                    split={{
+                        splits: edit.splits ?? [],
+                        onSplit: addSplit,
+                        onRemoveSplit: ms => updateEdit(prev => ({ ...prev, splits: (prev.splits ?? []).filter(s => s !== ms) })),
+                        onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
+                        onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
+                    }}
                 />
             )}
 

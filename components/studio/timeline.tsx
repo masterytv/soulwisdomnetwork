@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
-import type { Cut } from '@/lib/edit';
+import { sectionAt, type Cut, type Section } from '@/lib/edit';
 import type { Overlay } from '@/lib/onScreen';
 import {
     msAt, pct, speakerBlocks, speakerColors, tickLabel, ticks, zoomIn, zoomOut, ZOOMS,
@@ -37,10 +37,39 @@ function usePlayheadScroll(scrollRef: React.RefObject<HTMLDivElement | null>, wi
     }, [scrollRef, widthPx, zoom, currentMs, totalMs]);
 }
 
+// How much of a section the cuts cover, 0 to 1.
+function cutShare(cuts: Cut[], s: Section): number {
+    const len = s.endMs - s.startMs;
+    if (len <= 0) return 0;
+    const inside = cuts
+        .map(c => ({ a: Math.max(c.startMs, s.startMs), b: Math.min(c.endMs, s.endMs) }))
+        .filter(r => r.b > r.a)
+        .sort((x, y) => x.a - y.a);
+    let covered = 0, reach = s.startMs;
+    for (const r of inside) {
+        if (r.b <= reach) continue;
+        covered += r.b - Math.max(r.a, reach);
+        reach = r.b;
+    }
+    return covered / len;
+}
+
+// Splits: set at the playhead, they divide the episode into sections, as in Descript. The section
+// under the playhead is shaded and can be cut or brought back whole; click a split's handle to
+// remove it. Shown when the editor passes `onSplit`.
+export interface SplitControls {
+    splits: number[];
+    onSplit: (ms: number) => void;
+    onRemoveSplit: (ms: number) => void;
+    onCutSection: (section: Section) => void;
+    onRestoreSection: (section: Section) => void;
+}
+
 // The playhead follows the video itself, so playing redraws only the timeline, not the whole
 // transcript in the editor.
-export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs, onSeek }: {
+export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs, onSeek, split }: {
     words: SpokenWord[]; cuts: Cut[]; overlays?: Overlay[]; totalMs: number; video: React.RefObject<HTMLVideoElement | null>; editedMs: number; onSeek: (ms: number) => void;
+    split?: SplitControls;
 }) {
     const currentMs = useVideoTime(video);
     const [zoom, setZoom] = useState(1);
@@ -79,6 +108,10 @@ export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs,
     });
 
     const playheadPct = pct(currentMs, totalMs);
+    const splits = split?.splits ?? [];
+    const section = sectionAt(splits, Math.round(currentMs), totalMs);
+    const share = cutShare(cuts, section);
+    const atSplit = splits.includes(Math.round(currentMs));
 
     return (
         <section aria-label="Timeline" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-2">
@@ -108,6 +141,28 @@ export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs,
                     className={`${secondary} px-2 py-0.5`}
                 >Fit</button>
             </div>
+
+            {/* Split and section controls, for the section under the playhead. */}
+            {split && (
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <button
+                        onClick={() => split.onSplit(Math.round(currentMs))}
+                        disabled={atSplit || currentMs <= 0 || currentMs >= totalMs}
+                        title="Split at the playhead (S)"
+                        className={`${secondary} px-2 py-0.5`}
+                    >✂ Split at {tickLabel(currentMs)}</button>
+                    <span className="text-gray-400">
+                        Section {tickLabel(section.startMs)}–{tickLabel(section.endMs)}
+                        {share >= 0.999 ? ' · cut' : share > 0 ? ` · ${Math.round(share * 100)}% cut` : ''}
+                    </span>
+                    {share < 0.999 && (
+                        <button onClick={() => split.onCutSection(section)} className={`${secondary} px-2 py-0.5`}>Cut this section</button>
+                    )}
+                    {share > 0 && (
+                        <button onClick={() => split.onRestoreSection(section)} className={`${secondary} px-2 py-0.5`}>Bring this section back</button>
+                    )}
+                </div>
+            )}
 
             {/* Horizontal scroller; its visible width drives the ruler. */}
             <div ref={scrollRef} className="overflow-x-auto">
@@ -174,6 +229,25 @@ export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs,
                         </div>
                     )}
 
+                    {/* The section under the playhead, shaded once there are splits. */}
+                    {splits.length > 0 && (
+                        <div aria-hidden className="absolute top-0 h-full bg-amber-300/10 pointer-events-none" style={blockStyle(section)} />
+                    )}
+
+                    {/* Splits: a dashed line over all rows, with a handle on the ruler that removes it. */}
+                    {splits.map(s => (
+                        <div key={s} className="absolute top-0 h-full pointer-events-none" style={{ left: `${pct(s, totalMs)}%` }}>
+                            <div className="h-full border-l border-dashed border-white/70" />
+                            <button
+                                type="button"
+                                aria-label={`Remove the split at ${tickLabel(s)}`}
+                                title={`Split at ${tickLabel(s)}: click to remove it`}
+                                onClick={e => { e.stopPropagation(); split?.onRemoveSplit(s); }}
+                                className="pointer-events-auto absolute -top-1 -translate-x-1/2 w-3 h-3 rounded-full bg-white text-[8px] leading-3 text-black"
+                            >×</button>
+                        </div>
+                    ))}
+
                     {/* Playhead: a 2px red line over all rows at left pct(currentMs)%. */}
                     <div
                         aria-hidden
@@ -191,7 +265,7 @@ export function Timeline({ words, cuts, overlays = [], totalMs, video, editedMs,
                         {speaker}
                     </span>
                 ))}
-                <span className="ml-auto">Click anywhere to jump there.</span>
+                <span className="ml-auto">Click anywhere to jump there.{split ? ' Split, then cut or bring back the section under the playhead.' : ''}</span>
             </div>
         </section>
     );

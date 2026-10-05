@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
     keepRanges, editedTime, editedDuration, suggestCuts,
     applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
-    type KeptRange,
+    replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS,
+    type Cut, type KeptRange,
 } from './edit';
 import type { SpokenWord } from './showNotes';
 
@@ -207,29 +208,85 @@ describe('suggestCuts', () => {
         assert.deepEqual(suggestCuts(words), []);
     });
 
-    test('filler-as-gap detected inside a sentence', () => {
+    test('hesitations only when asked for', () => {
         // A 600 ms gap between two words in the middle of a sentence.
         const words: SpokenWord[] = [
             { text: 'the', start: 0, end: 300, speaker: 'Host', clip: false },
             { text: 'meaning', start: 900, end: 1200, speaker: 'Host', clip: false },
         ];
-        const cuts = suggestCuts(words);
-        const fillers = cuts.filter(c => c.reason === 'filler');
-        assert.equal(fillers.length, 1);
-        // Cut starts at 300 + 150 = 450, ends at 900.
-        assert.equal(fillers[0].startMs, 450);
-        assert.equal(fillers[0].endMs, 900);
+        assert.deepEqual(suggestCuts(words), []);
+        const gaps = suggestCuts(words, { gaps: true });
+        // Cut starts at 300 + 150 = 450, ends at 900; a hesitation, not a filler word.
+        assert.deepEqual(gaps, [{ startMs: 450, endMs: 900, reason: 'gap' }]);
     });
 
-    test('filler-as-gap not detected after sentence end', () => {
-        // A 600 ms gap after a word ending with a period — not a filler, it's a pause.
-        const words: SpokenWord[] = [
-            { text: 'done.', start: 0, end: 300, speaker: 'Host', clip: false },
-            { text: 'Next', start: 900, end: 1200, speaker: 'Host', clip: false },
+    test('no hesitation after a sentence or clause ends, or under half a second', () => {
+        const pair = (first: string, gapMs: number): SpokenWord[] => [
+            { text: first, start: 0, end: 300, speaker: 'Host', clip: false },
+            { text: 'next', start: 300 + gapMs, end: 600 + gapMs, speaker: 'Host', clip: false },
         ];
-        const cuts = suggestCuts(words);
-        const fillers = cuts.filter(c => c.reason === 'filler');
-        assert.equal(fillers.length, 0);
+        for (const end of ['done.', 'really?', 'well,', 'so;', 'this:', 'and \u2014', 'said."']) {
+            assert.deepEqual(suggestCuts(pair(end, 700), { gaps: true }), [], end);
+        }
+        assert.deepEqual(suggestCuts(pair('the', 450), { gaps: true }), []);
+        assert.equal(suggestCuts(pair('the', 500), { gaps: true }).length, 1);
+    });
+
+    test('no hesitation before a filler word, which is cut on its own', () => {
+        const words: SpokenWord[] = [
+            { text: 'the', start: 0, end: 300, speaker: 'Host', clip: false },
+            { text: 'um', start: 1000, end: 1200, speaker: 'Host', clip: false },
+        ];
+        assert.deepEqual(suggestCuts(words, { gaps: true }).map(c => c.reason), ['filler']);
+    });
+});
+
+describe('replaceSuggestions', () => {
+    test('marking again replaces the earlier suggestions of those kinds only', () => {
+        const cuts: Cut[] = [
+            { startMs: 0, endMs: 100, reason: 'filler' },
+            { startMs: 200, endMs: 300, reason: 'manual' },
+            { startMs: 400, endMs: 500, reason: 'retake' },
+            { startMs: 600, endMs: 700, reason: 'gap' },
+        ];
+        const fresh: Cut[] = [{ startMs: 0, endMs: 100, reason: 'filler' }, { startMs: 800, endMs: 900, reason: 'gap' }];
+        assert.deepEqual(replaceSuggestions(cuts, fresh, ['filler', 'repeat', 'pause']), [
+            { startMs: 200, endMs: 300, reason: 'manual' },
+            { startMs: 400, endMs: 500, reason: 'retake' },
+            { startMs: 600, endMs: 700, reason: 'gap' },
+            { startMs: 0, endMs: 100, reason: 'filler' },
+        ]);
+    });
+});
+
+describe('sections', () => {
+    test('sectionAt finds the splits around a moment', () => {
+        assert.deepEqual(sectionAt([], 500, 10_000), { startMs: 0, endMs: 10_000 });
+        assert.deepEqual(sectionAt([2000, 6000], 500, 10_000), { startMs: 0, endMs: 2000 });
+        assert.deepEqual(sectionAt([2000, 6000], 2000, 10_000), { startMs: 2000, endMs: 6000 });
+        assert.deepEqual(sectionAt([6000, 2000], 7000, 10_000), { startMs: 6000, endMs: 10_000 });
+    });
+
+    test('cutSection cuts it whole; restoreSection keeps cuts outside it', () => {
+        const section = { startMs: 2000, endMs: 6000 };
+        assert.deepEqual(cutSection([], section), [{ startMs: 2000, endMs: 6000, reason: 'manual' }]);
+        const cuts: Cut[] = [
+            { startMs: 1000, endMs: 3000, reason: 'pause' },   // runs into the section
+            { startMs: 4000, endMs: 4500, reason: 'filler' },  // inside it
+            { startMs: 5500, endMs: 7000, reason: 'manual' },  // runs out of it
+            { startMs: 8000, endMs: 9000, reason: 'manual' },  // outside it
+        ];
+        assert.deepEqual(restoreSection(cuts, section), [
+            { startMs: 1000, endMs: 2000, reason: 'pause' },
+            { startMs: 6000, endMs: 7000, reason: 'manual' },
+            { startMs: 8000, endMs: 9000, reason: 'manual' },
+        ]);
+    });
+
+    test('SplitsSchema keeps each split once, in order, in whole milliseconds', () => {
+        assert.deepEqual(SplitsSchema.parse([5000.4, 1000, 5000]), [1000, 5000]);
+        assert.ok(!SplitsSchema.safeParse([-1]).success);
+        assert.ok(!SplitsSchema.safeParse(Array.from({ length: MAX_SPLITS + 1 }, (_, i) => i)).success);
     });
 });
 
