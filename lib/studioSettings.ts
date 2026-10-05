@@ -110,7 +110,8 @@ function words(s: StudioSettings) {
     }[s.format];
 }
 
-const extra = (s: StudioSettings) =>
+// The producer's extra instructions, worded for the end of a system prompt (empty when there are none).
+export const producerInstructions = (s: StudioSettings) =>
     s.extraInstructions ? `\n\nAlso follow these instructions from the producer:\n${s.extraInstructions}` : '';
 
 function list(items: string[]) {
@@ -154,7 +155,7 @@ export function notesSystemPrompt(s: StudioSettings): string {
         'The YouTube description is written to be found and clicked: front-load the hook and keywords in the first two lines, ' +
             `because only those show before "more". ${added.charAt(0).toUpperCase()}${added.slice(1)} are added ` +
             'automatically, so do not write them yourself.',
-    ].join('\n\n') + extra(s);
+    ].join('\n\n') + producerInstructions(s);
 }
 
 // The Shorts headline and title request (agent/src/podcast/shorts.ts).
@@ -164,7 +165,7 @@ export function shortsSystemPrompt(s: StudioSettings): string {
         (s.about ? ` The ${w.noun} ${s.about}.` : '') +
         ' A good Short grabs attention in its first two seconds, makes sense to someone who has never seen the ' +
         `${w.episode}, and ends on a complete thought or a line that lands. ` +
-        `Never state as fact what a ${w.speaker} offered as belief or experience.` + extra(s);
+        `Never state as fact what a ${w.speaker} offered as belief or experience.` + producerInstructions(s);
 }
 
 // The thumbnail text request (agent/src/podcast/thumbnails.ts).
@@ -173,7 +174,7 @@ export function thumbnailsSystemPrompt(s: StudioSettings): string {
     return `You write the text for YouTube thumbnails for the ${s.showName} ${w.noun}` +
         (s.about ? `, which ${s.about}` : '') +
         '. The text is a few large words on the image, read in a second on a phone. ' +
-        `Never state as fact what a ${w.speaker} offered as belief or experience.` + extra(s);
+        `Never state as fact what a ${w.speaker} offered as belief or experience.` + producerInstructions(s);
 }
 
 // ─── Branding ───────────────────────────────────────────────────────────────

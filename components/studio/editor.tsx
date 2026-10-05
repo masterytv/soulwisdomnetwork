@@ -7,7 +7,8 @@
 // skips cut ranges. Selection, delete, undo/redo, suggest/clear, search,
 // review suggestions, and follow-video are wired.
 // Part I: in the full-page editor, text and images show over the video and the "On screen" panel
-// edits them; `tools` adds buttons to the toolbar (Claude's retakes).
+// edits them; `tools` adds buttons to the toolbar (Claude's tighter edit), and `cutNotes` says why
+// Claude suggested a cut, beside it in the review row.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -104,7 +105,8 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 
 // workspace: the full-page editor — a larger video, a taller script and the timeline.
 // studioCaptions: the Studio's captions setting; overlayUrls: links to the overlay images (both Part I).
-export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools }: {
+// cutNotes: by `${startMs}-${endMs}`, a suggestion's kind and why ("False start: changed tack").
+export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {} }: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
@@ -113,6 +115,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     studioCaptions?: CaptionChoice;
     overlayUrls?: Record<string, string>;
     tools?: React.ReactNode;
+    cutNotes?: Record<string, string>;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -613,7 +616,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 {selectedRange && (
                     <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
                 )}
-                {/* Extra tools from the page, such as Claude's retakes. */}
+                {/* Extra tools from the page, such as Claude's tighter edit. */}
                 {tools}
                 <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
                     Undo
@@ -693,6 +696,9 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                     <button onClick={reviewNext} className={secondary}>Next ›</button>
                     <button onClick={reviewKeep} className={secondary}>Keep this</button>
                     <button onClick={hearCut} className={secondary} data-start-ms={reviewCut?.startMs} data-end-ms={reviewCut?.endMs}>Hear it</button>
+                    {reviewCut && cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`] && (
+                        <span className={hint}>{cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`]}</span>
+                    )}
                 </div>
             )}
 

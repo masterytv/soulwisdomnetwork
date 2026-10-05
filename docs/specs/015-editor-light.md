@@ -169,11 +169,15 @@ captions, title and description into up to five languages (the settings choose t
 The YouTube upload adds each as a caption track with the title and description in that language.
 Five at most, because each track costs 450 of YouTube's 10,000 daily API units.
 
-**Retakes** (`lib/retakes.ts`): Claude reads the accepted transcript for lines said again, and
-suggests cutting the earlier tries; the producer accepts them like any other suggestion.
+**Suggest a tighter edit** (`lib/retakes.ts`, spec 019 item 1.3; until then **Find retakes with
+Claude**): Claude reads the accepted transcript for retakes, false starts, restarts, verbal tics
+("you know", "I mean"), housekeeping ("can you hear me?") and tangents, and suggests cutting them.
+Nothing touching an approved key quote or teaser clip is suggested. Each is a `retake` cut,
+counted under **Retakes**; the review row shows its kind and Claude's reason. The producer reviews
+them like any other suggestion.
 
 Both run in `podcast_notes.yml` with `mode: translations` or `mode: retakes`, never touching the
-notes, and reserve $0.40 per language and $0.30 against the daily spending limit.
+notes, and reserve $0.40 per language and $0.50 against the daily spending limit.
 
 ### Auphonic
 
@@ -212,9 +216,10 @@ within two frames of its flash, with and without the voice cleanup.
 
 - **Run a real episode end to end** and compare its sound with Descript's (Tom). Write here: the
   render time, the suggestion counts per kind on the 49-minute episode (019 item 1.6 measures
-  against them), and how many retakes the producer kept.
+  against them), how many of Claude's tighter-edit suggestions the producer kept (019 item 1.3),
+  and what that run cost (`usage_reports`, against the $0.50 reserved).
 - Editing on a phone: touch selection. (**✂ Cut selected** is built, #130.)
 
 Everything else is planned in `docs/specs/019-editor-light-v2.md`, whose status table is the
-record: the faster render is its item 4.2, fewer suggestions 1.6, wider retakes 1.3. Start at
+record: the faster render is its item 4.2, fewer suggestions 1.6, the tighter edit 1.3. Start at
 `docs/PLANNING.md`.

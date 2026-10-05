@@ -140,13 +140,14 @@ test('retakes: found word for word on their line, timed, added once as suggestio
             { text: 'So', start: 900, end: 1100 }, { text: 'what', start: 1100, end: 1300 }, { text: 'I', start: 1300, end: 1400 }, { text: 'mean,', start: 1400, end: 1700 }] },
         { name: 'Ben', words: [{ text: 'Right.', start: 2000, end: 2400 }] },
     ];
-    assert.equal(retakesUserMessage(lines), '<transcript>\n0\tAna: So what I— So what I mean,\n1\tBen: Right.\n</transcript>\n\nList the retakes.');
+    assert.equal(retakesUserMessage(lines), '<transcript>\n0\tAna: So what I— So what I mean,\n1\tBen: Right.\n</transcript>\n\nList what can be cut for a tighter edit.');
     assert.deepEqual(findWords(lines[0].words, 'so what I'), [0, 2]);
     assert.equal(findWords(lines[0].words, 'what mean'), null);
     const { retakes, notFound } = timeRetakes(lines, { retakes: [
-        { line: 0, text: 'So what I', why: ' restarted the sentence ' }, { line: 1, text: 'Wrong', why: 'x' }, { line: 9, text: 'So', why: 'x' },
+        { line: 0, kind: 'retake', text: 'So what I', why: ' restarted the sentence ' }, { line: 1, kind: 'retake', text: 'Wrong', why: 'x' },
+        { line: 9, kind: 'retake', text: 'So', why: 'x' },
     ] });
-    assert.deepEqual(retakes, [{ startMs: 0, endMs: 600, why: 'restarted the sentence' }]);
+    assert.deepEqual(retakes, [{ startMs: 0, endMs: 600, kind: 'retake', why: 'restarted the sentence' }]);
     assert.equal(notFound, 2);
     const cuts = addRetakes([{ startMs: 5000, endMs: 6000, reason: 'manual' }], retakes);
     assert.deepEqual(cuts, [{ startMs: 5000, endMs: 6000, reason: 'manual' }, { startMs: 0, endMs: 600, reason: 'retake' }]);

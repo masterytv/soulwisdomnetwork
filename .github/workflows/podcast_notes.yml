@@ -3,7 +3,7 @@
 # tab with the episode ID (the Drive file ID shown in the Studio URL).
 # mode "notes" (the default) drafts the show notes; "extras" writes the social posts and
 # follow-up email from the approved notes; "translations" translates the captions and "retakes"
-# finds retakes for the editor (Part I). The mode is passed explicitly so a queued run never
+# suggests a tighter edit for the editor (Part I; retakes and more since spec 019 item 1.3). The mode is passed explicitly so a queued run never
 # guesses from the episode's state which of the two it was started for.
 
 name: Podcast Show Notes

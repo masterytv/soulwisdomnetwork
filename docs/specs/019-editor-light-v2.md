@@ -88,7 +88,7 @@ for this work".
 | **1** | **Better cut suggestions** | | | | | |
 | 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Not started |
 | 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
-| 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Not started (retakes exist, #130) |
+| 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#PR); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Not started |
 | 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Done (#130, #136); the count on the real episode waits on Tom |
@@ -281,6 +281,24 @@ Nothing is applied without the producer.
 
 **Done when:** on the real episode, the producer keeps most suggestions. Write the share kept in
 spec 015.
+
+**Built (#PR):**
+- `lib/retakes.ts`: the prompt names six kinds, each with what to remove, and keeps the
+  conservative rule and CutScript's list of tics (`docs/licences/cutscript.md`). The Studio
+  settings' extra instructions are appended (`producerInstructions`, also used by the notes).
+- `kind` is required in Claude's answer and saved on each suggestion. Retakes found before this
+  have none and read as **Retake**.
+- **Protection:** `protectedSpans` takes the approved notes' key quotes and teaser clips (the
+  draft's before approval); `protectedLines` lists the lines they touch for Claude, and
+  `timeRetakes` drops anything still touching one, counted as `retakes.protectedCount`.
+- **Editor:** **Suggest a tighter edit**, then **Add N suggestions to review**, with the count by
+  kind ("3 retakes, 1 false start"). In the review row, a suggestion from Claude shows its kind and
+  why ("False start: changed tack"). The cut reason stays `retake`, and the count stays **Retakes**.
+- **Cost:** `ESTIMATE_USD.retakes` is now $0.50. A 49-minute transcript is about 12,000 tokens in
+  ($0.05); the wider answer, with its thinking, can reach 15,000 to 20,000 tokens out ($0.30 to
+  $0.40). The reservation is a ceiling; the job records the real cost. Lower it once the real
+  episode shows it in `usage_reports`.
+- Tests: `lib/retakes.test.ts`.
 
 ### 1.4 Accept or restore a whole kind of cut — Done (#130)
 

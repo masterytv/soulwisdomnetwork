@@ -1,14 +1,17 @@
 // Why: the two Part I jobs Claude does for the editor and YouTube, run by the notes job when the
 // producer asks for them: translating the final cut's captions (and the YouTube title and description)
-// into other languages, and finding retakes in the accepted transcript. GitHub Actions only.
+// into other languages, and suggesting a tighter edit (retakes and more, spec 019 item 1.3) from the
+// accepted transcript. GitHub Actions only.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import type { z } from 'zod';
 import { buildCues, toSrt } from '../../../lib/captions';
 import type { TimedWord } from '../../../lib/retime';
-import { RetakesSchema, retakesSystemPrompt, retakesUserMessage, timeRetakes, type RetakeLine, type Retake } from '../../../lib/retakes';
-import type { StudioSettings } from '../../../lib/studioSettings';
+import {
+    protectedLines, protectedSpans, RetakesSchema, retakesSystemPrompt, retakesUserMessage, timeRetakes, type RetakeLine, type Retake,
+} from '../../../lib/retakes';
+import { producerInstructions, type StudioSettings } from '../../../lib/studioSettings';
 import {
     applyTranslations, captionsSystemPrompt, captionsUserMessage, cleanMeta, cueBatches, languageName, metaSystemPrompt, metaUserMessage,
     TranslatedCuesSchema, TranslatedMetaSchema,
@@ -91,13 +94,18 @@ export async function translateCaptions(client: Anthropic, episodeId: string, ep
     return { tracks, finalAt, usd: Math.round(usd * 100) / 100 };
 }
 
-// Finds the retakes in the accepted transcript, timed from its words.
-export async function findRetakes(client: Anthropic, episode: Episode, download: TranslateDeps['download']):
-    Promise<{ found: Retake[]; notFound: number; usd: number }> {
+// Suggests a tighter edit from the accepted transcript, timed from its words. The approved key quotes
+// and teaser clips (or the draft's, before approval) are protected: Claude is told which lines hold
+// them, and anything that still touches one is dropped.
+export async function findRetakes(client: Anthropic, episode: Episode, settings: StudioSettings, download: TranslateDeps['download']):
+    Promise<{ found: Retake[]; notFound: number; protectedCount: number; usd: number }> {
     const reviewedPath = episode.review?.reviewedPath;
     if (!reviewedPath) throw new Error('Accept the transcript first');
     const lines = (JSON.parse((await download(reviewedPath)).toString('utf8')) as { lines: RetakeLine[] }).lines;
-    const { parsed, usd } = await ask(client, RetakesSchema, retakesSystemPrompt(), retakesUserMessage(lines), 'medium', 32000);
-    const { retakes, notFound } = timeRetakes(lines, parsed);
-    return { found: retakes, notFound, usd: Math.round(usd * 100) / 100 };
+    const notes = episode.notes?.approved ?? episode.notes?.draft;
+    const spans = protectedSpans(notes);
+    const { parsed, usd } = await ask(client, RetakesSchema, retakesSystemPrompt(producerInstructions(settings)),
+        retakesUserMessage(lines, protectedLines(lines, spans)), 'medium', 32000);
+    const { retakes, notFound, protectedCount } = timeRetakes(lines, parsed, spans);
+    return { found: retakes, notFound, protectedCount, usd: Math.round(usd * 100) / 100 };
 }
