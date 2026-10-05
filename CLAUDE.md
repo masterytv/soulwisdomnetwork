@@ -96,7 +96,8 @@ into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 P
 when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive), and a "ready for speaker review" email with the readable transcript goes
 to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
-(`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. Once notes are approved, "Generate b-roll
+(`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The same workflow with
+`mode: extras` writes the social posts and follow-up email from the approved notes. Once notes are approved, "Generate b-roll
 images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
 `docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. "Build edit package" starts
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
@@ -133,7 +134,7 @@ show-notes approvals in its `approvals` subcollection),
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts picks and titles, social posts, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.

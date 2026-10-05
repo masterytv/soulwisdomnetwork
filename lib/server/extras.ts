@@ -53,7 +53,7 @@ export async function requestExtras(id: string, body: { direction?: unknown }) {
         });
     });
     try {
-        await withinDailyLimit('social posts', ESTIMATE_USD.extras, () => startNotes(id));
+        await withinDailyLimit('social posts', ESTIMATE_USD.extras, () => startNotes(id, 'extras'));
     } catch (error) {
         const message = `Could not start writing: ${(error as Error).message}`;
         await ref.update({ 'extras.status': 'failed', 'extras.error': message });

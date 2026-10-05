@@ -27,16 +27,18 @@ if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';
 const serviceAccount = JSON.parse(required('PODCAST_SA_JSON'));
-initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket(serviceAccount) });
+initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket() });
 const ref = getFirestore().collection('episodes').doc(episodeId);
 let approved = false;   // never overwrite approved notes, even to record a failure
-let extrasRun = false;  // the extras run, so the catch handler knows which failure to record
+// What this run was started for (podcast_notes.yml's mode input): never guessed from the episode.
+const mode = process.env.NOTES_MODE || 'notes';
+if (mode !== 'notes' && mode !== 'extras') throw new Error(`Not a notes job: ${mode}`);
+const extrasRun = mode === 'extras';   // so the catch handler knows which failure to record
 
 async function main() {
     const episode = (await ref.get()).data() as Episode | undefined;
     if (!episode) throw new Error(`Episode ${episodeId} not found`);
-    // Notes waiting to be drafted go first; the other run started does the extras.
-    if (episode.extras?.status === 'queued' && episode.notes?.status !== 'queued') return runExtras(episode);
+    if (extrasRun) return runExtras(episode);
     const reviewedPath = episode.review?.reviewedPath;
     if (episode.status !== 'speakers_confirmed' || !reviewedPath) {
         throw new Error('The transcript has not been accepted yet');
@@ -100,7 +102,7 @@ async function main() {
 
 // Writes the social posts and follow-up email when the producer asked for them; the notes are already approved.
 async function runExtras(episode: Episode) {
-    extrasRun = true;
+    if (episode.notes?.status !== 'approved' || !episode.notes.approved) throw new Error('Approve the show notes first');
     await ref.update({
         'extras.status': 'working',
         'extras.startedAt': FieldValue.serverTimestamp(),
