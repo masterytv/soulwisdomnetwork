@@ -8,7 +8,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { keepRanges, editedDuration, editedTime, type Cut, type EpisodeEdit } from '../../../lib/edit';
-import { renderEdit } from './editRender';
+import { playOrder, sequenceLength } from '../../../lib/sequence';
+import { FPS, frameAt, framesOf, renderEdit } from './editRender';
 
 function run(cmd: string, args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -208,13 +209,11 @@ test('block rendering for long episodes', async () => {
         cuts.push({ startMs: i * 6000, endMs: i * 6000 + 2000, reason: 'filler' });
     }
     const edit: EpisodeEdit = { cuts, version: 1 };
-    const ranges = keepRanges(180_000, cuts);
 
-    // Expected seconds: sum over keepRanges of Math.ceil(lengthMs * 30 / 1000) / 30.
-    const expectedSec = ranges.reduce((sum, r) => {
-        const frames = Math.ceil((r.endMs - r.startMs) * 30 / 1000);
-        return sum + frames / 30;
-    }, 0);
+    // Expected: the edited length the Studio works out (its play order), to the nearest frame. Each
+    // stretch was once rounded up to a whole frame on its own, which made the video 20 ms longer
+    // per cut than the edit said: here 0.6 s, on a long episode with many cuts many seconds.
+    const expectedSec = frameAt(sequenceLength(playOrder(edit, 180_000))) / FPS;
 
     const out = path.join(dir, 'output.mp4');
     await renderEdit({
@@ -225,10 +224,10 @@ test('block rendering for long episodes', async () => {
         blockMinutes: 1,
     });
 
-    // Check output length within 200 ms of expected.
+    // Check output length within 2 frames of expected.
     const probe = await probeStreams(out);
     const diff = Math.abs(probe.duration - expectedSec);
-    assert.ok(diff < 0.200, `output duration ${probe.duration}s differs from expected ${expectedSec}s by ${diff}s`);
+    assert.ok(diff < 2 / FPS, `output duration ${probe.duration}s differs from expected ${expectedSec}s by ${diff}s`);
 
     // Exactly one video stream and one audio stream.
     assert.equal(probe.video, 1, 'exactly one video stream');
@@ -271,4 +270,17 @@ test('single-range seek: cut removes the first colour, second colour shows', asy
     // Frame at 1 s should be blue (blue channel greater than red channel).
     const colour = await frameColour(out, 1);
     assert.ok(colour[2] > colour[0], `frame at 1s is blue (b=${colour[2]} > r=${colour[0]})`);
+});
+
+test('each stretch fills the frames between its start and end in the edited episode', () => {
+    // Three stretches of 780 ms (23.4 frames each): 23, 24 and 23 frames, so the edit's times at
+    // their ends (780, 1560, 2340 ms) land within half a frame of the video's (767, 1567, 2333 ms).
+    const clips = [{ startMs: 0, endMs: 780, atMs: 0 }, { startMs: 1000, endMs: 1780, atMs: 780 }, { startMs: 2000, endMs: 2780, atMs: 1560 }];
+    assert.deepEqual(clips.map(framesOf), [23, 24, 23]);
+    let frames = 0;
+    for (const c of clips) {
+        frames += framesOf(c);
+        assert.ok(Math.abs(frames * 1000 / FPS - (c.atMs + c.endMs - c.startMs)) <= 500 / FPS);
+    }
+    assert.equal(framesOf({ startMs: 0, endMs: 5, atMs: 0 }), 1);       // never less than a frame
 });
