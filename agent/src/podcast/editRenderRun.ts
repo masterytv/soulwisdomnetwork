@@ -16,6 +16,7 @@ import type { AuphonicHold } from '../../../lib/voice';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
 import { renderEdit } from './editRender';
+import { makeEditExports } from './editExport';
 import { runEditRender } from './editRenderJob';
 import { withRetry } from './errors';
 import { cutClip } from './media';
@@ -63,16 +64,19 @@ async function main() {
         },
         // "04 Final" sits beside "02 Processed" unless a folder is set explicitly, as in final.ts.
         // With no Drive folders set up, the video stays in Cloud Storage only.
-        saveToDrive: async (local, name) => {
+        saveToDrive: async (local, name, contentType = 'video/mp4', subfolder) => {
             if (!process.env.DRIVE_FINAL_FOLDER_ID && !process.env.DRIVE_PROCESSED_FOLDER_ID) return null;
-            const folderId = process.env.DRIVE_FINAL_FOLDER_ID
+            const final = process.env.DRIVE_FINAL_FOLDER_ID
                 || await ensureFolder(drive, await parentOf(drive, required('DRIVE_PROCESSED_FOLDER_ID')), '04 Final');
-            const fileId = await putFile(drive, folderId, name, 'video/mp4', local);
+            const folderId = subfolder ? await ensureFolder(drive, final, subfolder) : final;
+            const fileId = await putFile(drive, folderId, name, contentType, local);
             return { fileId, folderId };
         },
         update: async fields => { await ref.update(fields); },
         removeFolder: async prefix => { await bucket.deleteFiles({ prefix: `${prefix}/` }); },
         render: renderEdit,
+        // The files for Resolve, Premiere and Final Cut (spec 019 item 4.1), with the auto-editor the workflow downloads.
+        ...(process.env.AUTO_EDITOR_BIN ? { exportEdit: o => makeEditExports({ ...o, bin: process.env.AUTO_EDITOR_BIN! }) } : {}),
         now: () => FieldValue.serverTimestamp(),
         // The Studio settings: intro, teasers, and whether this becomes the final cut.
         settings: await loadSettings(getFirestore()),

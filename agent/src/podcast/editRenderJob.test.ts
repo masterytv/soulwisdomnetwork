@@ -309,3 +309,47 @@ test('the voice clean-up: the edit\'s own choice or the Studio\'s, given to the 
     assert.equal(planEditRender(episode({ edit: { version: 1, cuts: [] } })).voice, 'standard');
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the files for other editors are saved with the render; when they cannot be made, the render is kept with a warning (spec 019 item 4.1)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-files-'));
+    const run = async (exportEdit: EditRenderDeps['exportEdit']) => {
+        const uploads: string[] = [];
+        const drive: { name: string; type?: string; folder?: string }[] = [];
+        const result = await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 4, cuts: [{ startMs: 1000, endMs: 3000, reason: 'manual' }] } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async (_l, p) => { uploads.push(p); },
+            saveToDrive: async (_l, name, type, folder) => { drive.push({ name, type, folder }); return { fileId: `f${drive.length}`, folderId: 'F' }; },
+            update: async () => {},
+            render: async opts => {
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 20, outputSeconds: 18, cuts: 1, timeSavedSeconds: 2, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            exportEdit,
+        }, path.join(dir, 'work'), '5');
+        return { result, uploads, drive };
+    };
+    let asked: Parameters<NonNullable<EditRenderDeps['exportEdit']>>[0] | null = null;
+    const local = path.join(dir, 'r.xml');
+    fs.writeFileSync(local, '<xmeml/>');
+    const made = await run(async o => {
+        asked = o;
+        return { files: [{ kind: 'resolve', local, name: 'Test- Episode - One - DaVinci Resolve.xml', contentType: 'application/xml' }], warnings: ['varies'], frameRate: { rate: '25/1', fps: 25, variable: true } };
+    });
+    // The play order of the saved edit, on the recording's length (two stretches around the cut), and the recording's
+    // file name (here the stored one; an episode from Drive gives its original name).
+    assert.equal(asked!.clips.length, 2);
+    assert.equal(asked!.clips[1].endMs, 20_000);
+    assert.equal(asked!.name, path.basename(planEditRender(episode()).video));
+    assert.ok(made.uploads.includes(`episodes/${ID}/editRender/v4-5/edit-files/resolve.xml`));
+    assert.deepEqual(made.drive[1], { name: 'Test- Episode - One - DaVinci Resolve.xml', type: 'application/xml', folder: 'Test- Episode - One (for other editors)' });
+    assert.deepEqual(made.result.exports, [{ kind: 'resolve', name: 'Test- Episode - One - DaVinci Resolve.xml', path: `episodes/${ID}/editRender/v4-5/edit-files/resolve.xml`, driveUrl: 'https://drive.google.com/file/d/f2/view' }]);
+    assert.ok(made.result.warnings.includes('varies'));
+
+    const failed = await run(async () => { throw new Error('auto-editor exited 1'); });
+    assert.deepEqual(failed.result.exports, []);
+    assert.ok(failed.result.warnings.some(w => /files for Resolve, Premiere and Final Cut were not made: auto-editor exited 1/.test(w)));
+    assert.equal(failed.result.videoPath, `episodes/${ID}/editRender/v4-5/episode.mp4`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

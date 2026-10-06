@@ -24,7 +24,7 @@ export function VoiceChoice({ voice, view, disabled, onChange }: {
                 Voice clean-up
                 <select aria-label="Voice clean-up for this episode" value={voice ?? ""} disabled={disabled}
                     onChange={e => onChange(e.target.value ? e.target.value as VoiceCleanup : null)}
-                    className="rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
+                    className="max-w-full min-w-0 rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
                     <option value="">Studio setting ({VOICE_SHORT[view.voice.studio]})</option>
                     {VOICE_CLEANUPS.map(v => <option key={v} value={v}>{VOICE_LABELS[v]}</option>)}
                 </select>

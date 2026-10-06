@@ -114,7 +114,7 @@ for this work".
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
 | 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
 | **4** | **Render and hand-off** | | | | | |
-| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Not started |
+| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
 | 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Not started |
 | 4.3 | Smoother preview | ours | M | High | — | Not started |
 | **5** | **The rest of the pipeline** | | | | | |
@@ -725,6 +725,32 @@ every run. Descript cannot import these files, so this is the replacement path.
   editor app may drift, and offer a constant-frame-rate proxy.
 
 **Done when:** each file opens in DaVinci Resolve (free) with the right cuts in sync.
+
+**Built (#165):** every Editor Light render now also saves files that open its cuts in another editor
+(`agent/src/podcast/editExport.ts`, tests in `editExport.test.ts`), linked from the Render panel
+(`components/studio/editFiles.tsx`) and put in Drive in a "<title> (for other editors)" folder inside "04 Final".
+- **The timeline:** the saved edit's play order (`lib/sequence.ts`), back to back, written as auto-editor's v3
+  JSON and exported by the pinned 31.7.2 binary (`podcast_edit_render.yml` downloads it and checks its SHA-256;
+  Unlicense, `docs/licences/auto-editor.md`) as **FCP7 XML for DaVinci Resolve** (`resolve-fcp7`), **FCP7 XML
+  for Premiere Pro** (`premiere`) and **FCPXML 1.10 for Final Cut Pro** (`final-cut-pro:version=10`).
+- **Frames, not milliseconds** (a change from the plan above): with `-tb 1000` auto-editor writes a 1000 fps
+  timeline (`frameDuration="1/1000s"`), which no editor app opens. So the timeline is in whole frames of the
+  recording's own rate (the nearest standard one to ffprobe's `r_frame_rate`, e.g. `30000/1001`): each stretch
+  from the frame nearest its start to the frame nearest its end, as the render rounds.
+- **What is in it:** straight cuts only. Transitions become cuts, and the teasers, intro, outro, b-roll, layers,
+  sounds and burned-in captions are left out; the panel says so. A **captions .srt on the exported timeline**
+  goes with it (the render's own .srt is on the render's times, teasers and intro included).
+- **Paths:** each file names only the recording, by its original file name (`drive.fileName`); the producer
+  points the editor at their copy when it asks.
+- **Variable frame rate:** when ffprobe's average rate is more than 0.5% from the nominal one, a
+  **constant-frame-rate copy** of the recording is made (`-fps_mode cfr`, x264 veryfast, CRF 20) and saved beside
+  the files, which name it instead; the render's warnings say to relink to it. On a long episode that copy
+  adds an encode of the whole recording to the render.
+- **Never fails the render:** if the files cannot be made, the render is kept with a warning.
+- **Checked:** the real binary on a 29.97 fps and a variable-rate test file (in and out points in frames, paths,
+  the copy's rate); the tests use a stand-in for it, since CI does not download it. **Not checked: opening
+  them in Resolve, Premiere or Final Cut**, which needs Tom: render an episode on `main`, open the Resolve file
+  in DaVinci Resolve, relink, and check a few cuts against the render.
 
 ### 4.2 Faster, resumable render (L, spec 015 "Next")
 
