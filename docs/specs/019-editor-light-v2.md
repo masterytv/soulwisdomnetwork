@@ -118,7 +118,7 @@ for this work".
 | 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
 | 4.3 | Smoother preview | ours | M | High | — | Built (#167) |
 | **5** | **The rest of the pipeline** | | | | | |
-| 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Not started |
+| 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Built (#169); submitting the feed to Apple and Spotify waits on Tom |
 | 5.2 | Animated captions and graphics, if wanted | Revideo | M | — | — | Dropped for full episodes (D4); Shorts keep theirs |
 | 5.3 | Retire Descript | — | S | Medium | 0.2, 3.2, three real episodes | Not started |
 
@@ -863,6 +863,30 @@ prefer −16 LUFS.
     bucket path;
   - or a podcast host's API.
 - `storage.rules` stays closed whichever way.
+
+**Built (#169)**, on our own site (the first way above):
+- **The MP3** (`agent/src/podcast/podcastAudio.ts`, run by **Podcast Audio**, `podcast_audio.yml`, from the show notes
+  page's new "Podcast feed" part once there is a final cut): the final cut's sound at **−16 LUFS** (two loudnorm
+  passes, one linear gain), MP3 128 kb/s 44.1 kHz stereo, the final cut's chapters as **ID3 CHAP** frames, and the
+  feed's artwork (else the Studio's logo, else the site's) fitted into a **1400×1400** cover on the brand's
+  background. Saved to `episodes/{id}/podcast/episode.mp3`; `episode.podcast` records it (`types/episode.ts`).
+  Making it again replaces it and keeps it in the feed; the panel says when the final cut changed since.
+- **In the feed or not:** a checkbox on the same part (`/api/studio/episodes/[id]/podcast`, `requireRole`); its date
+  in the feed is when it first went in.
+- **The feed** (`lib/podcastFeed.ts`): RSS 2.0 with Apple's `itunes:` tags at **`/podcast/feed.xml`**, newest first,
+  each episode with the approved YouTube title and description (chapters, links and credits included), the MP3 as
+  its enclosure (size and duration) and the episode ID as its GUID. The show is the Studio settings' name, about,
+  hosts and the new **Podcast feed** section: on or off (off by default; the feed is then a 404), artwork (square,
+  1400–3000 px), Apple category (Religion & Spirituality by default), explicit, and an optional owner email.
+- **Public routes, by design:** podcast apps read without signing in, so `/podcast/feed.xml`,
+  `/podcast/audio/{id}.mp3` and `/podcast/art.jpg` are site routes (not under `/api`) with no `requireRole`. They show
+  only episodes put in the feed, and nothing while it is off. The MP3s and artwork stay in the private bucket
+  (`storage.rules` closed): the audio and art routes send the app on to a signed link (6 hours) each time, which
+  podcast apps follow. Links in the feed use the address the request came in on, so staging's feed points at staging.
+- **Checked:** the MP3 at −16 LUFS (±1) with both chapters and a 1400×1400 attached cover; the feed's escaping,
+  order, enclosure, duration, dates and owner. Not checked: Apple's and Spotify's validators, which need the feed on
+  the live site (Tom: turn it on in the settings, put an episode in, then submit the feed's address in Apple Podcasts
+  Connect and Spotify for Creators).
 
 ### 5.2 Animated captions and graphics — dropped for full episodes (D4)
 

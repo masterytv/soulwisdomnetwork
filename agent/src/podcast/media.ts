@@ -11,7 +11,7 @@ function run(cmd: string, args: string[]): Promise<string> {
 const redactUrls = (text: string) => text.replace(/(https?:\/\/[^\s?]+)\?\S+/g, '$1?…');
 
 // Also returns the end of stderr, where ffmpeg's filters print their reports.
-function runWithLog(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+export function runWithLog(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
@@ -188,7 +188,7 @@ export const LOUDNESS = { integrated: -14, truePeak: -1, range: 11 };
 
 interface LoudnormReport { input_i: string; input_tp: string; input_lra: string; input_thresh: string; target_offset: string; output_i: string; output_tp: string; normalization_type?: string }
 
-function loudnormReport(stderr: string): LoudnormReport {
+export function loudnormReport(stderr: string): LoudnormReport {
     const json = stderr.slice(stderr.lastIndexOf('{'), stderr.lastIndexOf('}') + 1);
     try {
         return JSON.parse(json) as LoudnormReport;
@@ -200,8 +200,9 @@ function loudnormReport(stderr: string): LoudnormReport {
 // Two passes of ffmpeg's loudnorm: measure, then correct in one linear gain change (no
 // pumping). The picture is copied untouched. Returns the loudness before and after, in LUFS, and
 // how the second pass worked: 'linear' as asked, or 'dynamic' when the peak limit forced it.
-export async function normalizeLoudness(input: string, output: string) {
-    const target = `I=${LOUDNESS.integrated}:TP=${LOUDNESS.truePeak}:LRA=${LOUDNESS.range}`;
+// `to`: another target (the podcast feed's −16 LUFS, spec 019 item 5.1); YouTube's by default.
+export async function normalizeLoudness(input: string, output: string, to: { integrated: number; truePeak: number; range: number } = LOUDNESS) {
+    const target = `I=${to.integrated}:TP=${to.truePeak}:LRA=${to.range}`;
     const measured = loudnormReport((await runWithLog('ffmpeg', [
         '-hide_banner', '-nostats', '-i', input, '-vn', '-af', `loudnorm=${target}:print_format=json`, '-f', 'null', '-',
     ])).stderr);

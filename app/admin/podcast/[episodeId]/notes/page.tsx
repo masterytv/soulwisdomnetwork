@@ -16,6 +16,7 @@ import { FinalCut } from "@/components/studio/finalCut";
 import { Shorts } from "@/components/studio/shorts";
 import { Thumbnails } from "@/components/studio/thumbnails";
 import { Youtube } from "@/components/studio/youtube";
+import { PodcastFeed } from "@/components/studio/podcastFeed";
 import { ago, minutes } from "@/components/studio/format";
 import { Part, Stage, StepTracker, type TrackedStage } from "@/components/studio/Stage";
 import { failure, STAGES, stageStatus, type StageId, type StepId, type StepState, flowFor, labelIn, nextStep, stageIn } from "@/components/studio/steps";
@@ -1107,6 +1108,9 @@ export default function ShowNotesPage() {
                                         </Part>
                                         <Part id="youtube" title="YouTube upload" hint="The approved episode, with the final cut's chapters, the approved thumbnail, captions and the AI disclosure.">
                                             <Youtube episodeId={episodeId} enabled={on} report={report} revision={revision} />
+                                        </Part>
+                                        <Part id="podcast" title="Podcast feed" hint="The final cut's sound as an MP3 for podcast apps, in the site's own feed (spec 019 item 5.1).">
+                                            <PodcastFeed episodeId={episodeId} enabled={on} />
                                         </Part>
                                         {/* Part I: the captions, title and description in other languages, for viewers beyond English. */}
                                         <Part id="translations" title="Captions in other languages" hint="Claude translates the final cut's captions, title and description; YouTube shows each viewer their own language.">
