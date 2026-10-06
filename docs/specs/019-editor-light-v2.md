@@ -98,7 +98,7 @@ for this work".
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#151); a test episode's spelling waits on an ingest run from `main` |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#152); in the editor once a transcript is accepted again |
-| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Built (#PR) |
+| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Built (#153) |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
 | E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Built (#144; spec 020, "E2 — Built"); the waveform on a real episode waits on an ingest run from `main` |
@@ -550,7 +550,7 @@ YouTube captions of a test upload.
 - The server's version check (409) still decides; a stale draft is never written over a newer
   save.
 
-**Built (#PR):**
+**Built (#153):**
 - **`useAutosave`** takes an optional browser key. With it:
   - each change is also kept in `localStorage` with the saved version it was made on
     (`lib/localDraft.ts`, every call wrapped, so a full or blocked store changes nothing);
