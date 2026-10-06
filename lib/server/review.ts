@@ -9,8 +9,9 @@ import {
     buildLines, emptyCorrections, isNamed, parseCorrections, reviewedText, speakerName,
     type ReviewUtterance,
 } from '@/lib/transcript';
-import type { Episode } from '@/types/episode';
-import type { EpisodeReview } from '@/types/studio';
+import { applyOps, MAX_FIXES, parseFixOps, parseRef } from '@/lib/wordFixes';
+import type { Episode, TranscriptCorrections } from '@/types/episode';
+import type { EpisodeReview, WordFixResult } from '@/types/studio';
 import { studioDrive } from './drive';
 import { requestNotes } from './notes';
 import { episodeProgress } from './pipeline';
@@ -107,7 +108,7 @@ export async function saveCorrections(id: string, input: unknown, version: unkno
     const utterances = await loadUtterances(episode.transcription!.transcriptPath!);
     let corrections;
     try {
-        corrections = parseCorrections(input, utterances.length);
+        corrections = parseCorrections(input, utterances.map(u => u.words.length));
     } catch (error) {
         throw new HttpError(400, (error as Error).message);
     }
@@ -126,25 +127,12 @@ function docIdFrom(url: string) {
     return url.match(/\/d\/([\w-]+)/)?.[1] ?? null;
 }
 
-// Writes transcripts/reviewed.json and .txt, replaces the Google Doc's text (Drive keeps
-// the earlier version in its history) and marks the speakers confirmed.
-export async function acceptReview(id: string, version: unknown, user: { uid: string }) {
-    const episode = await loadEpisode(id);
-    if (version !== (episode.correctionsVersion ?? 0)) {
-        throw new HttpError(409, 'Someone else changed this review. Reload to see their changes.');
-    }
+// Writes transcripts/reviewed.json and .txt from the corrections, and replaces the Google Doc's text
+// (Drive keeps the earlier version in its history). The Doc failing is reported, not thrown.
+async function publishTranscript(id: string, episode: Episode, corrections: TranscriptCorrections, acceptedBy: { uid: string; name: string }) {
     const utterances = await loadUtterances(episode.transcription!.transcriptPath!);
     const voices = episode.transcription?.speakers ?? [];
-    const corrections = { ...emptyCorrections(), ...episode.corrections };
     const lines = buildLines(utterances, voices, corrections);
-
-    const unnamed = [...new Set(lines.map(l => l.label))].filter(label => !isNamed(voices, corrections, label));
-    if (unnamed.length) {
-        throw new HttpError(400, `Name every voice first: ${unnamed.map(l => speakerName(voices, corrections, l)).join(', ')}`);
-    }
-
-    const profile = (await adminDb().collection('users').doc(user.uid).get()).data() ?? {};
-    const acceptedBy = { uid: user.uid, name: (profile.displayName as string) || (profile.email as string) || 'a producer' };
     const acceptedAt = new Date();
     const prefix = episode.transcription!.transcriptPath!.replace(/\/raw\.json$/, '');
     const reviewedPath = `${prefix}/reviewed.json`;
@@ -153,6 +141,8 @@ export async function acceptReview(id: string, version: unknown, user: { uid: st
         lines, acceptedBy.name, acceptedAt,
     );
 
+    // Each word keeps its ref (the word heard it stands for), and a corrected one what was heard,
+    // so the editor can correct words too (spec 019 item 2.3).
     const reviewed = {
         episodeId: id,
         acceptedBy,
@@ -189,6 +179,33 @@ export async function acceptReview(id: string, version: unknown, user: { uid: st
             console.error('Doc update failed', error);
         }
     }
+    return { reviewedPath, lines, docUpdated: !!docId && !docError, docError };
+}
+
+async function producerOf(uid: string) {
+    const profile = (await adminDb().collection('users').doc(uid).get()).data() ?? {};
+    return { uid, name: (profile.displayName as string) || (profile.email as string) || 'a producer' };
+}
+
+// Writes transcripts/reviewed.json and .txt, replaces the Google Doc's text (Drive keeps
+// the earlier version in its history) and marks the speakers confirmed.
+export async function acceptReview(id: string, version: unknown, user: { uid: string }) {
+    const episode = await loadEpisode(id);
+    if (version !== (episode.correctionsVersion ?? 0)) {
+        throw new HttpError(409, 'Someone else changed this review. Reload to see their changes.');
+    }
+    const utterances = await loadUtterances(episode.transcription!.transcriptPath!);
+    const voices = episode.transcription?.speakers ?? [];
+    const corrections = { ...emptyCorrections(), ...episode.corrections };
+    const lines = buildLines(utterances, voices, corrections);
+
+    const unnamed = [...new Set(lines.map(l => l.label))].filter(label => !isNamed(voices, corrections, label));
+    if (unnamed.length) {
+        throw new HttpError(400, `Name every voice first: ${unnamed.map(l => speakerName(voices, corrections, l)).join(', ')}`);
+    }
+
+    const acceptedBy = await producerOf(user.uid);
+    const { reviewedPath, docUpdated, docError } = await publishTranscript(id, episode, corrections, acceptedBy);
 
     await episodeRef(id).update({
         status: 'speakers_confirmed',
@@ -209,5 +226,73 @@ export async function acceptReview(id: string, version: unknown, user: { uid: st
             console.error('Could not start show notes', error);
         }
     }
-    return { docUpdated: !!docId && !docError, docError, notesStarted };
+    return { docUpdated, docError, notesStarted };
+}
+
+// Words corrected in the editor (spec 019 item 2.3): saved to the speaker review corrections and
+// published straight away, so the accepted transcript, the notes, the editor and the next render see
+// them. Refused while speaker review has saved changes not yet accepted, which this would publish too.
+// Returns the corrected stretches' words as the editor has them, and the ops that undo this.
+export async function fixWords(id: string, input: unknown, user: { uid: string }): Promise<WordFixResult> {
+    const episode = await loadEpisode(id);
+    if (episode.status !== 'speakers_confirmed' || !episode.review?.reviewedPath) {
+        throw new HttpError(409, 'Accept the transcript in speaker review first');
+    }
+    const utterances = await loadUtterances(episode.transcription!.transcriptPath!);
+    let ops;
+    try {
+        ops = parseFixOps(input, utterances.map(u => u.words.length));
+    } catch (error) {
+        throw new HttpError(400, (error as Error).message);
+    }
+    const ref = episodeRef(id);
+    const saved = await adminDb().runTransaction(async tx => {
+        const now = (await tx.get(ref)).data() as Episode;
+        const current = now.correctionsVersion ?? 0;
+        if ((now.review?.acceptedVersion ?? 0) !== current) {
+            throw new HttpError(409, 'Speaker review has changes that are not accepted yet. Accept them there first, then correct words here.');
+        }
+        const base = { ...emptyCorrections(), ...now.corrections };
+        const applied = applyOps(base.words ?? {}, ops, utterances);
+        if (Object.keys(applied.fixes).length > MAX_FIXES) throw new HttpError(400, `At most ${MAX_FIXES} word corrections on one episode`);
+        const corrections = { ...base, words: applied.fixes };
+        tx.update(ref, {
+            corrections, correctionsVersion: current + 1, 'review.acceptedVersion': current + 1,
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        return { corrections, version: current + 1, undo: applied.undo, spans: applied.spans };
+    });
+
+    const by = await producerOf(user.uid);
+    let published = await publishTranscript(id, episode, saved.corrections, by);
+    // A correction from another tab can land while this one writes; whichever finishes last writes the
+    // latest (unless speaker review has changes waiting, which are for Accept to publish).
+    const after = (await ref.get()).data() as Episode;
+    const latest = after.correctionsVersion ?? 0;
+    if (latest !== saved.version && after.review?.acceptedVersion === latest) {
+        published = await publishTranscript(id, after, { ...emptyCorrections(), ...after.corrections }, by);
+    }
+    await ref.update({
+        'review.acceptedBy': by,
+        'review.acceptedAt': FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    const words = buildLines(utterances, episode.transcription?.speakers ?? [], saved.corrections)
+        .flatMap(l => l.words.map(w => ({ ...w, speaker: l.name, clip: l.clip })));
+    return {
+        version: saved.version,
+        undo: saved.undo,
+        spans: saved.spans.map(s => {
+            const at = parseRef(s.ref)!;
+            return {
+                ...s,
+                words: words.filter(w => {
+                    const r = parseRef(w.ref)!;
+                    return r.utterance === at.utterance && r.word >= at.word && r.word < at.word + s.count;
+                }),
+            };
+        }),
+        docError: published.docError,
+    };
 }

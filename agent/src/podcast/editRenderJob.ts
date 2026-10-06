@@ -125,7 +125,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
 
     await deps.update({
         'editRender.status': 'downloading', 'editRender.startedAt': deps.now(), 'editRender.error': null,
-        'editRender.editVersion': plan.edit.version, updatedAt: deps.now(),
+        'editRender.editVersion': plan.edit.version, 'editRender.transcriptVersion': episode.review?.acceptedVersion ?? 0,
+        updatedAt: deps.now(),
     });
     // Each file is downloaded once, under a name that keeps its extension for ffmpeg.
     const fetched = new Map<string, string>();

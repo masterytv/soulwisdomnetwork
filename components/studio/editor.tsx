@@ -9,6 +9,8 @@
 // Part I: in the full-page editor, text and images show over the video and the "On screen" panel
 // edits them; `tools` adds buttons to the toolbar (Claude's tighter edit), and `cutNotes` says why
 // Claude suggested a cut, beside it in the review row.
+// Spec 019 item 2.3: double-click a word to retype a misheard one, or replace a name everywhere
+// (`onFixWords`, saved with speaker review's corrections).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -29,6 +31,8 @@ import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
 import { TransitionsPanel } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
+import { FindReplace } from '@/components/studio/review/FindReplace';
+import { fixGroup, fixOp, putBackOp, type FixOp } from '@/lib/wordFixes';
 
 // No splits yet: one array, so the timeline does not redraw on every render.
 const NO_SPLITS: number[] = [];
@@ -121,9 +125,10 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // `status` (saving) and `actions` (render), and `panels` beside the On screen panel; `timelineMedia`
 // is its timeline's waveform and thumbnails (item E2; null while they load), and `studioJoins` the
 // Studio's transitions between sections, for the Transitions panel (item E4).
+// onFixWords: saves word corrections and resolves with the ops that undo them (null when it failed).
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
-    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null,
+    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null, onFixWords, fixBusy = false,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -141,6 +146,8 @@ export function Editor({
     panels?: WorkspacePanel[];
     timelineMedia?: TimelineMedia | null;
     studioJoins?: SectionJoins | null;
+    onFixWords?: (ops: FixOp[]) => Promise<FixOp[] | null>;
+    fixBusy?: boolean;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -158,6 +165,11 @@ export function Editor({
     const [searchMatches, setSearchMatches] = useState<number[]>([]);
     const [searchCursor, setSearchCursor] = useState(0);
     const searchRef = useRef<HTMLInputElement>(null);
+    // A misheard word being retyped: the words it covers (one correction's words) and the text.
+    const [fixing, setFixing] = useState<{ from: number; to: number; text: string } | null>(null);
+    const [replaceOpen, setReplaceOpen] = useState(false);
+    // Words can be corrected here once the transcript was accepted with word refs (spec 019 item 2.3).
+    const canFix = !!onFixWords && words.some(w => w.ref);
 
     // Review suggestions state.
     const [reviewIdx, setReviewIdx] = useState(0);
@@ -288,6 +300,8 @@ export function Editor({
         if (!el) return;
         const handler = (e: KeyboardEvent) => {
             const target = e.target as HTMLElement;
+            // Retyping a word: its keys are its own.
+            if (target.closest('[data-word-fix]')) return;
             const inTextBox = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
             // In a text box, only handle Delete (cut the selected match).
             if (inTextBox) {
@@ -495,9 +509,18 @@ export function Editor({
         }
     };
 
+    // Double-click a cut word to bring it back, or a kept one to retype it (spec 019 item 2.3).
     const onWordDoubleClick = (index: number) => {
         const cut = findCut(index, words, edit.cuts);
-        if (cut) onCutClick(cut);
+        if (cut) { onCutClick(cut); return; }
+        if (!canFix || !words[index].ref) return;
+        const [from, to] = fixGroup(words, index);
+        setSelectedRange(null);
+        setFixing({ from, to, text: words.slice(from, to + 1).map(w => w.text).join(' ') });
+    };
+    const saveFix = async (op: FixOp | null) => {
+        if (!op || !onFixWords) return;
+        if (await onFixWords([op])) setFixing(null);
     };
 
     // Word drag start. A shift-click leaves the selection for the click to extend.
@@ -690,7 +713,7 @@ export function Editor({
     const reasonLabel = (reason: string): string =>
         reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason === 'gap' ? 'Hesitations' : reason;
 
-    const helpLine = 'Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Shift + Ctrl or ⌘ + Z (or Ctrl + Y) redoes';
+    const helpLine = 'Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back, or a kept word to retype it · Space plays and pauses · Ctrl or ⌘ + Z undoes, Shift + Ctrl or ⌘ + Z (or Ctrl + Y) redoes';
 
     // The suggestion tools: mark, clear, cut the selection, and the page's own (Claude's tighter edit).
     const suggestTools = (
@@ -708,10 +731,10 @@ export function Editor({
             <button onClick={onClearSuggestions} className={secondary}>
                 Clear suggestions
             </button>
-            {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. */}
-            {selectedRange && (
-                <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
-            )}
+            {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. Always
+                there, so selecting a word does not move the transcript (a double-click would miss it). */}
+            <button onClick={cutSelection} disabled={!selectedRange} className={secondary}
+                title={selectedRange ? undefined : 'Select words first'}>✂ Cut selected</button>
             {/* Extra tools from the page, such as Claude's tighter edit. */}
             {tools}
         </>
@@ -795,7 +818,24 @@ export function Editor({
                     {searchCursor < 0 ? `${searchMatches.length} matches` : `${searchCursor + 1}/${searchMatches.length}`}
                 </span>
             )}
+            {canFix && (
+                <button type="button" onClick={() => setReplaceOpen(o => !o)} aria-expanded={replaceOpen}
+                    className={`${secondary} px-2 py-0.5`} title="Correct a misheard name everywhere">
+                    Replace
+                </button>
+            )}
         </>
+    );
+
+    // Find and replace a misheard name (spec 019 item 2.3), under the search box when opened.
+    const replaceRow = canFix && replaceOpen && (
+        <div data-word-fix className="flex flex-wrap items-center gap-2">
+            <FindReplace words={words} onReplace={ops => onFixWords!(ops)} busy={fixBusy} />
+            <span className={hint}>Saved with speaker review&apos;s corrections; render again to put it in the captions.</span>
+        </div>
+    );
+    const oldTranscript = !!onFixWords && !canFix && words.length > 0 && (
+        <p className={hint}>To correct words here, accept the transcript again in speaker review (it was accepted before word corrections).</p>
     );
 
     // Review suggestions row
@@ -878,6 +918,30 @@ export function Editor({
                         </p>
                         <p className="text-sm leading-relaxed text-gray-200">
                             {para.words.map(({ word, index }, wi) => {
+                                // Retyping: the box stands in for the correction's words.
+                                if (fixing && index > fixing.from && index <= fixing.to) return null;
+                                if (fixing && index === fixing.from) {
+                                    const fixed = putBackOp(words, index);
+                                    return (
+                                        <span key={wi} data-word-fix className="inline-flex flex-wrap items-center gap-1 align-baseline mx-0.5">
+                                            <input aria-label="Corrected words" autoFocus value={fixing.text} maxLength={200} disabled={fixBusy}
+                                                size={Math.max(4, Math.min(40, fixing.text.length + 2))}
+                                                onChange={e => setFixing({ ...fixing, text: e.target.value })}
+                                                onKeyDown={e => {
+                                                    if (e.key === 'Enter') { e.preventDefault(); void saveFix(fixOp(words, fixing.from, fixing.to, fixing.text)); }
+                                                    if (e.key === 'Escape') { e.preventDefault(); setFixing(null); containerRef.current?.focus(); }
+                                                }}
+                                                className="px-1 py-0 text-sm rounded bg-white/10 text-gray-100 outline-none ring-1 ring-sky-400/60" />
+                                            <button type="button" disabled={fixBusy || !fixing.text.trim()} className="text-xs text-sky-300 hover:underline"
+                                                onClick={() => void saveFix(fixOp(words, fixing.from, fixing.to, fixing.text))}>Save</button>
+                                            {fixed && (
+                                                <button type="button" disabled={fixBusy} className="text-xs text-gray-400 hover:underline" title={`Heard as "${word.heard}"`}
+                                                    onClick={() => void saveFix(fixed)}>Put back &ldquo;{word.heard}&rdquo;</button>
+                                            )}
+                                            <button type="button" className="text-xs text-gray-400 hover:underline" onClick={() => setFixing(null)}>Cancel</button>
+                                        </span>
+                                    );
+                                }
                                 const wordCut = cutsByWord.wordCut[index];
                                 const cut = !!wordCut;
                                 const isManual = wordCut?.reason === 'manual';
@@ -963,8 +1027,8 @@ export function Editor({
                                                 isCurrent && !cut ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''
                                             } ${isMatch && !cut ? 'bg-amber-400/10' : ''} ${
                                                 isReview ? ' ring-2 ring-amber-400' : ''
-                                            }`}
-                                            title={cut ? 'Double-click to bring back' : undefined}
+                                            } ${word.heard !== undefined ? 'underline decoration-dotted decoration-sky-400 underline-offset-2' : ''}`}
+                                            title={cut ? 'Double-click to bring back' : word.heard !== undefined ? `Corrected; heard as "${word.heard}". Double-click to change it` : undefined}
                                             onClick={(e) => onWordClick(index, e)}
                                             onDoubleClick={() => onWordDoubleClick(index)}
                                             onMouseDown={e => onWordMouseDown(index, e)}
@@ -1001,6 +1065,8 @@ export function Editor({
                         <div className="flex flex-wrap items-center gap-2">{suggestTools}</div>
                         {Object.keys(reasonCounts).length > 0 && <div className="flex flex-wrap items-center gap-2">{reasonButtons}</div>}
                         <div className="flex items-center gap-2">{search}</div>
+                        {replaceRow}
+                        {oldTranscript}
                         {reviewRow}
                         {transcript}
                     </>}
@@ -1093,7 +1159,7 @@ export function Editor({
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
             {/* Help line: how to edit, and the keys on Undo and Redo. */}
-            <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
+            <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back, or a kept word to retype it · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
             {/* What only the Studio editor shows (spec 020): it stays as it is, and word cuts still work here. */}
             {studioOnlySummary(edit) && (
                 <p className={`${hint} text-amber-200/80`}>
@@ -1109,6 +1175,8 @@ export function Editor({
                 {reasonButtons}
                 {search}
             </div>
+            {replaceRow}
+            {oldTranscript}
 
             {/* Help panel: the editing help and the hint line, opened by the "?" button. */}
             {helpOpen && (

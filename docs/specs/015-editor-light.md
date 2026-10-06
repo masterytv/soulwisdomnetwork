@@ -29,6 +29,9 @@ bottom, and saving, Undo, Redo, the shortcut sheet (**?**) and **Render ▸** in
 - Drag, or shift-click, to select words; press Delete or Backspace, or **✂ Cut selected** (for
   phones and tablets), to cut them.
 - Double-click a cut to bring it back.
+- Double-click a kept word to retype a misheard one; **Replace** beside the search box corrects a
+  name everywhere (spec 019 item 2.3). They are saved with speaker review's corrections, not in the
+  edit's undo, and reach the captions at the next render.
 - Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z redoes.
 - Search finds words.
 
