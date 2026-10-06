@@ -33,6 +33,8 @@ bottom, and saving, Undo, Redo, the shortcut sheet (**?**) and **Render ▸** in
   name everywhere (spec 019 item 2.3). They are saved with speaker review's corrections, not in the
   edit's undo, and reach the captions at the next render.
 - Words the transcriber was unsure of (under 60%) are underlined in dotted amber (spec 019 item 2.5).
+- Unsaved changes are also kept in this browser; if the tab closes first, the next visit offers them back
+  while the saved edit has not moved on (spec 019 item 2.6).
 - Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z redoes.
 - Search finds words.
 
