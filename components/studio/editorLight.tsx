@@ -48,6 +48,7 @@ function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
     return { ...edit, layers, overlays: [] };
 }
 import { QualityReport } from '@/components/studio/qualityReport';
+import { VoiceChoice } from '@/components/studio/voice';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
 // suggested cuts to review (kind Retakes in the counts). `onNotes` gets each suggestion's kind and why,
@@ -305,6 +306,12 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         </div>
     );
 
+    // This episode's voice clean-up (spec 019 item 3.2), saved with the edit like its other choices.
+    const voiceChoice = render && (
+        <VoiceChoice voice={edit.voice} view={render} disabled={rendering}
+            onChange={voice => { const e = { ...edit, voice }; setEdit(e); change(e); }} />
+    );
+
     // The Studio editor's bar: the Render button and a few words on where the render stands; the
     // rest is in the Render panel.
     const renderBar = (
@@ -339,6 +346,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         <div className="flex flex-col gap-2">
             <h2 className="text-sm font-semibold text-gray-200">Render</h2>
             <p className={small}>GitHub Actions makes the finished video from the saved edit{render?.status === 'ready' ? '' : ': press Render ▸ in the bar'}.</p>
+            {voiceChoice}
             {renderControls}
             {renderResult}
         </div>
@@ -378,6 +386,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             {saveStatus}
             {draftBanner}
             {editor}
+            <div className="mt-4">{voiceChoice}</div>
             {renderControls}
             {renderResult}
         </>

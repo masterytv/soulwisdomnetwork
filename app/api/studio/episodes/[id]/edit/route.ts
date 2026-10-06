@@ -7,8 +7,10 @@
 // Layers (spec 020 item E5, lib/layers.ts) replace the overlays once saved: each picture's file must be in the
 // episode's media bin (lib/server/mediaBin.ts) or be an overlay upload, and GET links every file they use.
 // Sounds (spec 020 item E7, lib/audio.ts): a show library file must have its licence checked, and an
-// episode's own sound its uploader's word on the rights; GET links them too.
+// episode's own sound its uploader's word on the rights; GET links them too. The voice clean-up (spec 019 item 3.2)
+// is one of lib/voice.ts's choices, or null for the Studio's.
 import { FieldValue } from 'firebase-admin/firestore';
+import { z } from 'zod';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
@@ -20,6 +22,7 @@ import { binItems, binPaths } from '@/lib/server/mediaBin';
 import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
 import { SoundsSchema, type Sound } from '@/lib/audio';
+import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import type { Episode } from '@/types/episode';
 
 export const dynamic = 'force-dynamic';
@@ -64,7 +67,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -109,6 +112,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const r = CaptionChoiceSchema.nullable().safeParse(body.edit.captions);
         if (!r.success) throw new HttpError(400, `Captions: ${r.error.issues[0]?.message ?? 'not valid'}`);
         captions = r.data;
+    }
+    // The voice clean-up (spec 019 item 3.2). Left out of the request, it stays as saved.
+    let voice: VoiceCleanup | null | undefined;
+    if (body.edit.voice !== undefined) {
+        const r = z.enum(VOICE_CLEANUPS).nullable().safeParse(body.edit.voice);
+        if (!r.success) throw new HttpError(400, 'Voice clean-up: not one of the choices');
+        voice = r.data;
     }
 
     // A picture is checked once, when it first appears on the edit: an overlay upload must be a real PNG
@@ -171,6 +181,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 overlays: (layers ?? current?.layers) ? [] : overlays ?? current?.overlays ?? [],
                 ...((layers ?? current?.layers) ? { layers: layers ?? current?.layers } : {}),
                 captions: captions !== undefined ? captions : current?.captions ?? null,
+                voice: voice !== undefined ? voice : current?.voice ?? null,
                 splits: keptSplits,
                 joins: keptJoins,
                 ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),

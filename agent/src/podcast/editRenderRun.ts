@@ -1,7 +1,9 @@
 // Editor Light (spec 015): the render job as GitHub Actions runs it
 // (.github/workflows/podcast_edit_render.yml). Connects Firestore, Cloud Storage and Drive,
 // as final.ts does, then hands them to runEditRender in editRenderJob.ts. On failure it
-// marks the render failed and emails the alert address, so the Studio can offer a retry.
+// marks the render failed and emails the alert address, so the Studio can offer a retry. A render with Auphonic
+// as its voice clean-up (spec 019 item 3.2) that fails before sending anything gives its hold on the month's
+// free hours back (lib/server/spending.ts holdAuphonic).
 
 import * as path from 'path';
 import { cert, initializeApp } from 'firebase-admin/app';
@@ -10,6 +12,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { mmss } from '../../../lib/showNotes';
 import type { Episode } from '../../../types/episode';
 import { EMPTY_LICENCE, type LibraryEntry } from '../../../lib/audio';
+import type { AuphonicHold } from '../../../lib/voice';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
 import { renderEdit } from './editRender';
@@ -35,6 +38,19 @@ const ref = getFirestore().collection('episodes').doc(episodeId);
 const bucket = getStorage().bucket();
 const drive = createDrive(serviceAccount);
 const workDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'edit-render', episodeId);
+// Set once audio has gone to Auphonic: its hours are then spent, whatever happens next.
+let auphonicSent = false;
+
+// Gives this render's hold on Auphonic's free hours back, in the same document the Studio counts them in.
+async function releaseHold() {
+    const hold = ((await ref.get()).data() as Episode | undefined)?.editRender?.auphonicHold;
+    if (!hold || auphonicSent) return;
+    const ledger = getFirestore().collection('studio').doc('spending');
+    await getFirestore().runTransaction(async tx => {
+        const holds = ((await tx.get(ledger)).get('auphonic') as AuphonicHold[] | undefined) ?? [];
+        tx.set(ledger, { auphonic: holds.filter(h => h.id !== hold) }, { merge: true });
+    });
+}
 
 async function main() {
     const result = await runEditRender(episodeId, {
@@ -76,6 +92,12 @@ async function main() {
             await Promise.all(ids.map(id => items.doc(id).update({ uses: FieldValue.arrayUnion(use) })));
         },
         cutClip: async (input, output, start, seconds) => { await cutClip(input, output, start, seconds, true); },
+        // The voice clean-ups (spec 019 item 3.2): the workflow downloads deep-filter; Auphonic's key is a repo secret.
+        voice: {
+            deepFilter: process.env.DEEPFILTER_BIN || undefined,
+            auphonicKey: process.env.AUPHONIC_API_KEY || undefined,
+            onAuphonicSending: async () => { auphonicSent = true; },
+        },
     }, workDir, process.env.GITHUB_RUN_ID || undefined);
     const episode = (await ref.get()).data() as Episode;
     console.log(`✅ Rendered ${mmss(result.durationSeconds * 1000)}, ${result.cuts} cuts: ${result.driveUrl}`);
@@ -90,6 +112,7 @@ async function main() {
 main().catch(async error => {
     const message = (error as Error).message;
     console.error(`❌ ${message}`);
+    await releaseHold().catch(e => console.warn(`⚠️ Could not give Auphonic's hours back: ${(e as Error).message}`));
     await ref.update({
         'editRender.status': 'failed', 'editRender.error': message, 'editRender.finishedAt': FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),

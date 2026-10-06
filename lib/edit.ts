@@ -7,6 +7,7 @@ import type { CaptionChoice, Overlay } from './onScreen';
 import type { Join } from './transitions';
 import type { Layer } from './layers';
 import type { Sound } from './audio';
+import type { VoiceCleanup } from './voice';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -36,6 +37,8 @@ export interface EpisodeEdit {
     layers?: Layer[];
     // Music and effects (spec 020 item E7, lib/audio.ts) on A2 and A3, from the show library or the episode's media.
     audio?: Sound[];
+    // This episode's voice clean-up in the render (spec 019 item 3.2, lib/voice.ts); null or missing: the Studio's.
+    voice?: VoiceCleanup | null;
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

@@ -2,13 +2,15 @@
 // runaway loop or a misused account cannot run up a bill. The jobs record what each run cost
 // on its episode (`costs.items`), but only when it finishes, so each paid start also reserves
 // its estimate in `studio/spending`; the limit counts whichever of the two is higher. Runs that
-// cost no money (the edit package, Descript's plan credits, YouTube) are not limited.
+// cost no money (the edit package, Descript's plan credits, YouTube) are not limited. The same document
+// counts Auphonic's free hours this month (spec 019 item 3.2), which are a limit of their own.
 
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentSnapshot } from 'firebase-admin/firestore';
 import { randomUUID } from 'node:crypto';
 import type { Episode } from '@/types/episode';
 import { adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
+import { auphonicRefusal, auphonicUsed, AUPHONIC_FREE_SECONDS, monthOf, type AuphonicHold } from '@/lib/voice';
 
 export const DAILY_LIMIT_USD = 10;
 const DAY_MS = 24 * 60 * 60_000;
@@ -74,7 +76,8 @@ export async function withinDailyLimit<T>(what: string, usd: number, start: () =
             throw new HttpError(429, `Daily spending limit: about ${money(spent)} spent on paid runs in the last 24 hours, and this `
                 + `would add about ${money(usd)}; the limit is ${money(DAILY_LIMIT_USD)}. It frees up as earlier runs pass 24 hours.`);
         }
-        tx.set(ledger(), { entries: [...entries, { id, at: Date.now(), usd, what }], updatedAt: FieldValue.serverTimestamp() });
+        // Merged, so Auphonic's hours (below) in the same document stay.
+        tx.set(ledger(), { entries: [...entries, { id, at: Date.now(), usd, what }], updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     });
     try {
         return await start();
@@ -85,4 +88,39 @@ export async function withinDailyLimit<T>(what: string, usd: number, start: () =
         }).catch(() => {});
         throw error;
     }
+}
+
+// ─── Auphonic's free hours (spec 019 item 3.2, lib/voice.ts) ───────────────────
+
+// The month's holds on Auphonic's free plan, in the ledger's `auphonic` field: each render that uses it,
+// held when it starts (the render job gives it back if it fails before sending anything), and each
+// clean-up comparison that used it.
+const holdsOf = (d: DocumentSnapshot) => ((d.get('auphonic') as AuphonicHold[] | undefined) ?? []);
+
+// Hours used this month and the free plan's allowance, for the Render panel.
+export async function auphonicHours() {
+    const now = Date.now();
+    return { usedSeconds: auphonicUsed(holdsOf(await ledger().get()), now), freeSeconds: AUPHONIC_FREE_SECONDS };
+}
+
+// Holds `seconds` of this month's free hours for a render, or refuses (429) when they would not fit.
+// Earlier months' holds are dropped as it writes.
+export async function holdAuphonic(episodeId: string, seconds: number): Promise<string> {
+    const id = randomUUID();
+    await adminDb().runTransaction(async tx => {
+        const now = Date.now();
+        const holds = holdsOf(await tx.get(ledger())).filter(h => monthOf(h.at) === monthOf(now));
+        const refusal = auphonicRefusal(holds, seconds, now);
+        if (refusal) throw new HttpError(429, refusal);
+        tx.set(ledger(), { auphonic: [...holds, { id, at: now, seconds: Math.ceil(seconds), episodeId }] }, { merge: true });
+    });
+    return id;
+}
+
+// Gives a hold back (a render that could not start).
+export async function releaseAuphonic(id: string) {
+    await adminDb().runTransaction(async tx => {
+        const holds = holdsOf(await tx.get(ledger()));
+        tx.set(ledger(), { auphonic: holds.filter(h => h.id !== id) }, { merge: true });
+    });
 }

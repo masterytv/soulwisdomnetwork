@@ -1,15 +1,17 @@
 // The voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1): cuts a stretch of an
 // episode (10 minutes by default) and makes it up to five ways, each brought to −14 LUFS (cleanupVersions.ts):
-// as recorded, today's chain, DeepFilterNet in that chain, Auphonic, and Descript's Studio Sound from
+// as recorded, today's chain, DeepFilterNet in that chain (as the render runs it, voiceCleanup.ts), Auphonic, and Descript's Studio Sound from
 // the same stretch of its final cut. The files are named A, B, C… so they can be heard blind, with the
 // key in its own file. They go to Cloud Storage and, when Drive is on, a "Clean-up comparison" folder
 // beside "04 Final"; an email gives the links and each one's loudness, time and cost. Read-only: nothing
-// on the episode changes. Runs in GitHub Actions (.github/workflows/podcast_cleanup_compare.yml), by hand.
+// on the episode changes, but Auphonic's minutes are counted with the renders' (studio/spending, spec 019 item 3.2).
+// Runs in GitHub Actions (.github/workflows/podcast_cleanup_compare.yml), by hand.
 
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import * as path from 'node:path';
 import { cert, initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { randomUUID } from 'node:crypto';
+import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { timeMap, type TimedWord } from '../../../lib/retime';
 import type { Episode } from '../../../types/episode';
@@ -17,6 +19,8 @@ import {
     answerKey, applyChain, auphonicClean, blindLetters, chainFor, chooseStretch, chooseVersions, clock, cutStretch, reportTable,
     type VersionResult,
 } from './cleanupVersions';
+import { deepFilterTrack } from './voiceCleanup';
+import type { AuphonicHold } from '../../../lib/voice';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
 import { normalizeLoudness } from './media';
@@ -71,11 +75,16 @@ async function main() {
                 if (!key) throw new Error('no AUPHONIC_API_KEY repo secret');
                 await auphonicClean(stretch, raw, key, `Clean-up comparison: ${episode.title} ${span}`);
                 cost = `${Math.ceil(seconds / 60)} min of Auphonic credit (2 h free a month)`;
+                await countAuphonic(db, seconds).catch(e => console.warn(`  ⚠️ Auphonic's minutes not counted: ${(e as Error).message}`));
             } else if (kind === 'descript') {
                 await descriptStretch(episode, startSec, seconds, raw, link);
                 cost = 'already paid (Descript)';
+            } else if (kind === 'deepfilter') {
+                const bin = process.env.DEEPFILTER_BIN;
+                if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
+                await deepFilterTrack(stretch, raw, { bin, workDir, durationSec: seconds });
             } else {
-                await applyChain(stretch, chainFor(kind, process.env.DEEPFILTER_LADSPA), raw);
+                await applyChain(stretch, chainFor(kind), raw);
             }
             const took = (Date.now() - t0) / 1000;
             const loud = await normalizeLoudness(raw, file);
@@ -135,6 +144,16 @@ async function main() {
         'Nothing on the episode was changed. Write the choice and why in spec 015 (spec 019 item 3.1).',
     ].join('\n'), [{ filename: 'which-is-which.txt', content: keyText }]);
     rmSync(workDir, { recursive: true, force: true });
+}
+
+// Adds the minutes Auphonic was sent to the month's count, beside the renders' holds (lib/server/spending.ts).
+async function countAuphonic(db: Firestore, seconds: number) {
+    const ledger = db.collection('studio').doc('spending');
+    await db.runTransaction(async tx => {
+        const holds = ((await tx.get(ledger)).get('auphonic') as AuphonicHold[] | undefined) ?? [];
+        const hold: AuphonicHold = { id: randomUUID(), at: Date.now(), seconds: Math.ceil(seconds), episodeId };
+        tx.set(ledger, { auphonic: [...holds, hold] }, { merge: true });
+    });
 }
 
 // The same stretch of Descript's final cut, found through the words: where the stretch's start and end

@@ -161,8 +161,10 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - the edit package's teasers and intro (the intro is also used as the outro);
    - the b-roll stills;
    - the reviewed transcript.
-2. **Clean the voice**, once, over the whole sound track: highpass at 80 Hz, `afftdn`, and a gentle
-   `acompressor`.
+2. **Clean the voice**, once, over the whole sound track, as the Studio settings or the episode choose
+   (spec 019 item 3.2, `lib/voice.ts`): **standard** is highpass at 80 Hz, `afftdn` (less its 25 ms delay, fixed
+   in #164) and a gentle `acompressor`; **DeepFilterNet** or **Auphonic** instead make the track in
+   `voiceCleanup.ts`.
 3. **Cut, in blocks.** The kept ranges, in their play order (`lib/sequence.ts`), go into blocks of up
    to 15 minutes or 20 ranges. Each block seeks into the source once per range, with a 15 ms fade at
    every join, and is encoded on its own. The blocks are then joined. Each range becomes a whole
@@ -231,9 +233,9 @@ notes, and reserve $0.40 per language and $0.50 against the daily spending limit
 
 ### Auphonic
 
-`agent/src/podcast/auphonic.ts` works from the command line only (`editRender.ts --clean auphonic`
-or `--detect auphonic`, with `AUPHONIC_API_KEY`). It has never made a live call, and the Studio
-never uses it.
+Auphonic as the voice clean-up is a Studio choice since spec 019 item 3.2 (`voiceCleanup.ts`, free plan only).
+`agent/src/podcast/auphonic.ts` is left for its cut detection from the command line (`editRender.ts --detect
+auphonic`, with `AUPHONIC_API_KEY`). That has never made a live call, and the Studio never uses it.
 
 ### Data
 
@@ -269,7 +271,8 @@ it had been 48.003 s).
 
 **Not chosen yet.** Run **Podcast Clean-up Comparison** from the Actions tab (on `main`) on a real
 episode, listen to A–E without the key, then write here which one was chosen, by whom, and why, with
-the run's loudness and time numbers. Item 3.2 makes the winner a Studio setting.
+the run's loudness and time numbers. All three are already choices (spec 019 item 3.2, #164, standard by
+default): the winner becomes the Studio settings' "Voice clean-up in the render".
 
 ## Next
 

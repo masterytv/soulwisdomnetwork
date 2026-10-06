@@ -9,6 +9,7 @@ import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
 import type { Brand } from './layers';
 import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
+import { VOICE_CLEANUPS } from './voice';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -54,6 +55,8 @@ export const StudioSettingsSchema = z.object({
     // episode (spec 020 item E4); straight cuts until chosen. An episode can choose its own.
     joins: SectionJoinsSchema,
     finalSource: z.enum(['descript', 'editorLight']),
+    // The Editor Light render's voice clean-up (spec 019 item 3.2, lib/voice.ts); an episode can choose its own.
+    voiceCleanup: z.enum(VOICE_CLEANUPS),
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
 });
 
@@ -84,6 +87,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     teasers: true,
     joins: DEFAULT_SECTION_JOINS,
     finalSource: 'descript',
+    voiceCleanup: 'standard',
     useDrive: true,
 };
 
