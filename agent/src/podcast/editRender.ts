@@ -16,8 +16,9 @@ import { sequenceLength, sequenceOf, timelineTime, type Clip } from '../../../li
 import { DEFAULT_SECTION_JOINS, SECTION_JOIN_LABELS, XFADE, type SectionJoin, type SectionJoins, type Transition } from '../../../lib/transitions';
 import { buildCues, toSrt } from '../../../lib/captions';
 import { mmss } from '../../../lib/showNotes';
-import { kenBurns, normalizeLoudness, probeDuration } from './media';
-import { buildAss, imageOverlayFilter, placeOverlays, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
+import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
+import type { CaptionStyle } from '../../../lib/onScreen';
+import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
 
@@ -141,9 +142,9 @@ export async function renderEdit(opts: {
     detect?: 'auphonic';
     noiseModel?: string;
     blockMinutes?: number;
-    // On-screen text and pictures (Part I): captions in this look (null for none), text overlays and
-    // image overlays (each with its local file), all placed on the edited episode.
-    onScreen?: { captions: CaptionStyle | null; texts: TextOverlay[]; images: { overlay: ImageOverlay; file: string }[] };
+    // On screen (Part I, and layers since spec 020 item E5): captions in this look (null for none), text
+    // layers, and picture and video layers (each with its local file), all placed on the edited episode.
+    onScreen?: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: { layer: PictureLayer; file: string }[] };
     // The accepted transcript and show-note times, when known: their new times are written
     // next to the output, so the final cut never has to be transcribed again.
     words?: { text: string; start: number; end: number }[];
@@ -213,6 +214,25 @@ export async function renderEdit(opts: {
                 brollFiles.push(brollOut);
             }
         }
+
+        // Layers (spec 020 item E5): when each picture is up, and a moving still made into a clip with
+        // the b-roll's Ken Burns. A still is looped for its length; a video is used as it is.
+        const MOTION_OF = { kenBurnsIn: 'in', kenBurnsOut: 'out', pan: 'right' } as const;
+        const pictures: { layer: PictureLayer; file: string; span: { startMs: number; endMs: number }; clip: boolean; sound: boolean }[] = [];
+        for (const [i, p] of [...(opts.onScreen?.pictures ?? [])].sort((a, b) => a.layer.track - b.layer.track).entries()) {
+            const span = layerSpan(p.layer, ranges, editedMs);
+            if (!span) continue;
+            let file = p.file, clip = p.layer.kind === 'video';
+            if (p.layer.kind === 'image' && p.layer.motion !== 'none') {
+                fs.mkdirSync(tmpDir, { recursive: true });
+                file = path.join(tmpDir, `layer_${i}.mp4`);
+                await kenBurns(p.file, file, (span.endMs - span.startMs) / 1000, MOTION_OF[p.layer.motion], FPS);
+                clip = true;
+            }
+            const sound = p.layer.kind === 'video' && p.layer.volumeDb !== null && await hasAudio(p.file);
+            pictures.push({ layer: p.layer, file, span, clip, sound });
+        }
+        pictures.sort((a, b) => a.layer.track - b.layer.track || a.span.startMs - b.span.startMs);
 
         // ── Block rendering ──────────────────────────────────────────────────────
         // Every render goes through blocks: each range gets its own seeked input,
@@ -309,16 +329,15 @@ export async function renderEdit(opts: {
         // ── Assembly pass: teasers, intro, episode, b-roll, outro, loudness ──────
         // When blocks are used, the episode sound comes from the part files — do not
         // add the cleaned audio as a separate input here.
-        const inputs: string[] = [];
-        const add = (file: string) => inputs.push(file) - 1;
-        const teaserIdxs = (opts.teasers ?? []).map(add);
+        const inputs: { file: string; before: string[] }[] = [];
+        const add = (file: string, before: string[] = []) => inputs.push({ file, before }) - 1;
+        const teaserIdxs = (opts.teasers ?? []).map(t => add(t));
         const introIdx = opts.intro ? add(opts.intro) : -1;
         const partIdxs = partFiles.map(p => add(p.file));
         const outroIdx = opts.outro ? add(opts.outro) : -1;
         const brollIdxs = brollFiles.map(bf => bf ? add(bf) : -1);
-        // Image overlays: one input each, placed on the edited timeline.
-        const images = placeOverlays((opts.onScreen?.images ?? []).map(i => ({ ...i.overlay, file: i.file })), ranges, editedMs);
-        const imageIdxs = images.map(im => add(im.overlay.file));
+        // Picture layers: one input each; a still is looped for as long as it is up.
+        const pictureIdxs = pictures.map(p => add(p.file, p.clip ? [] : ['-loop', '1', '-t', ((p.span.endMs - p.span.startMs) / 1000 + 0.5).toFixed(3)]));
         // Every section's length in whole frames.
         const framesOfFile = async (f: string) => Math.max(1, frameAt(Math.round((await probeDuration(f)) * 1000)));
         const teaserFrames = await Promise.all((opts.teasers ?? []).map(framesOfFile));
@@ -378,22 +397,31 @@ export async function renderEdit(opts: {
             bi++;
         }
 
-        // On screen (Part I): images over the b-roll, then captions and text over everything.
-        images.forEach((im, i) => {
-            filter += imageOverlayFilter(imageIdxs[i], epV, `im${i}`, im);
-            epV = `im${i}`;
+        // On screen: picture layers over the b-roll (V2 first), each video's own sound mixed under the
+        // voice, then captions and text over everything.
+        let epA = 'epa';
+        const sounds: string[] = [];
+        pictures.forEach((p, i) => {
+            filter += pictureFilter(pictureIdxs[i], epV, `ly${i}`, p.layer, p.span);
+            epV = `ly${i}`;
+            const sound = p.sound && p.layer.kind === 'video' ? layerAudioFilter(pictureIdxs[i], `lya${i}`, p.layer, p.span) : null;
+            if (sound) { filter += sound; sounds.push(`[lya${i}]`); }
         });
+        if (sounds.length) {
+            filter += `[epa]${sounds.join('')}amix=inputs=${sounds.length + 1}:normalize=0:duration=first:dropout_transition=0[epam];`;
+            epA = 'epam';
+        }
         if (opts.onScreen) {
             const cues = opts.onScreen.captions && opts.words?.length ? buildCues(editedWords(opts.words, ranges)) : [];
-            const placedTexts = placeOverlays(opts.onScreen.texts, ranges, editedMs);
-            const ass = buildAss(cues, opts.onScreen.captions, placedTexts);
+            const texts = opts.onScreen.texts.flatMap(layer => { const span = layerSpan(layer, ranges, editedMs); return span ? [{ layer, span }] : []; });
+            const ass = layersAss(cues, opts.onScreen.captions, texts);
             // For the quality report: what the plan asked for against the edit and the subtitle file.
             onScreenWarnings.push(
                 ...onScreenChecks([
-                    ...opts.onScreen.texts.map(t => ({ atMs: t.atMs, seconds: t.seconds, label: t.text })),
-                    ...opts.onScreen.images.map(i => ({ atMs: i.overlay.atMs, seconds: i.overlay.seconds, label: i.overlay.name || 'image' })),
+                    ...opts.onScreen.texts.map(t => ({ anchor: t.anchor, durationMs: t.durationMs, label: t.text })),
+                    ...(opts.onScreen.pictures).map(p => ({ anchor: p.layer.anchor, durationMs: p.layer.durationMs, label: p.layer.media.name || 'picture' })),
                 ], ranges, editedMs),
-                ...assCheck(ass, cues.length + placedTexts.length),
+                ...assCheck(ass, cues.length + texts.length),
             );
             if (ass) {
                 fs.mkdirSync(tmpDir, { recursive: true });
@@ -424,7 +452,7 @@ export async function renderEdit(opts: {
         teaserIdxs.forEach((ti, i) => put(section(ti, `ts${i}`, teaserFrames[i]), i > 0 ? 'betweenTeasers' : null));
         if (introIdx >= 0) put(section(introIdx, 'in', introFrames), teaserIdxs.length ? 'afterTeasers' : null);
         const episodePiece = pieces.length;
-        put({ v: epV, a: 'epa', frames: episodeFrames }, introIdx >= 0 ? 'afterIntro' : teaserIdxs.length ? 'afterTeasers' : null);
+        put({ v: epV, a: epA, frames: episodeFrames }, introIdx >= 0 ? 'afterIntro' : teaserIdxs.length ? 'afterTeasers' : null);
         if (outroIdx >= 0) put(section(outroIdx, 'ou', outroFrames), 'beforeOutro');
         const programme = chainPieces(pieces, { v: 'pgv', a: 'pga' }, 'pg');
         filter += programme.filter;
@@ -446,7 +474,7 @@ export async function renderEdit(opts: {
         // Run ffmpeg.
         const rawOut = opts.out + '.raw.mp4';
         const args: string[] = ['-y', '-hide_banner', '-loglevel', 'error'];
-        for (const inp of inputs) args.push('-i', inp);
+        for (const inp of inputs) args.push(...inp.before, '-i', inp.file);
         args.push('-filter_complex', filter, '-map', '[outv]', '-map', '[outa]');
         args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS));
         args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000', '-movflags', '+faststart', rawOut);

@@ -6,7 +6,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyToChapters, applyToQuotes, editedDuration, editedTime, editedWords, keepRanges, type Cut } from './edit';
-import { placeOverlays } from './onScreen';
+import { layerSpan } from './layers';
 import { playOrder, previewRanges, sequenceLength, sequenceOf, sourceTime, timelineTime, type Clip } from './sequence';
 import type { Join } from './transitions';
 
@@ -54,7 +54,7 @@ test('a stretch that starts early moves everything after it', () => {
     assert.deepEqual(applyToChapters([{ startMs: 7000, title: 'Two' }], overlapped), [{ startMs: 4000, title: 'Two' }]);
     assert.deepEqual(applyToQuotes([{ startMs: 6500, endMs: 9000, text: 'q', speaker: 'A' }], overlapped)[0], { startMs: 3500, endMs: 6000, text: 'q', speaker: 'A' });
     assert.deepEqual(editedWords([{ start: 6200, end: 6500 }, { start: 3900, end: 6100 }], overlapped), [{ start: 3200, end: 3500 }]);
-    assert.deepEqual(placeOverlays([{ atMs: 9000, seconds: 5 }], overlapped, 7000), [{ overlay: { atMs: 9000, seconds: 5 }, startMs: 6000, endMs: 7000 }]);
+    assert.deepEqual(layerSpan({ anchor: { srcMs: 9000 }, durationMs: 5000 }, overlapped, 7000), { startMs: 6000, endMs: 7000 });
 });
 
 // Spec 020 item E4: transitions at splits.
@@ -117,5 +117,5 @@ test('chapters, quotes, words and on-screen items follow a transition', () => {
     const clips = playOrder({ cuts: [], splits: [5000], joins: [dissolveAt(5000, 1000, 'fade')] }, 10_000);
     assert.deepEqual(applyToChapters([{ startMs: 8000, title: 'Late' }], clips), [{ startMs: 7000, title: 'Late' }]);
     assert.deepEqual(editedWords([{ start: 6000, end: 6400 }], clips), [{ start: 5000, end: 5400 }]);
-    assert.deepEqual(placeOverlays([{ atMs: 9000, seconds: 2 }], clips, sequenceLength(clips))[0], { overlay: { atMs: 9000, seconds: 2 }, startMs: 8000, endMs: 9000 });
+    assert.deepEqual(layerSpan({ anchor: { srcMs: 9000 }, durationMs: 2000 }, clips, sequenceLength(clips)), { startMs: 8000, endMs: 9000 });
 });

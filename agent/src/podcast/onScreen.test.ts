@@ -1,6 +1,7 @@
 // Part I, text and pictures on screen, translations and retakes: the settings, the overlay checks,
-// the ASS captions file, image placement, the translation and retake helpers, the render plan, and a
-// real render (ffmpeg) proving captions, a text overlay and an image overlay land where and when they should.
+// the ASS captions file, the translation and retake helpers, the render plan, and a real render (ffmpeg)
+// proving captions, a text overlay and an image overlay land where and when they should, drawn as layers
+// since spec 020 item E5 (lib/layers.ts), in the same places as before.
 // Run: npx tsx --test agent/src/podcast/onScreen.test.ts
 
 import { test } from 'node:test';
@@ -12,9 +13,10 @@ import * as path from 'node:path';
 import { buildCues } from '../../../lib/captions';
 import { keepRanges } from '../../../lib/edit';
 import {
-    assRgba, assText, assTime, buildAss, captionLook, DEFAULT_CAPTION_STYLE, FONT_NAMES, imageOverlayFilter, imagePlacement,
-    nameTitles, newText, onScreenProblem, OVERLAYS_MAX, placeOverlays, type ImageOverlay, type TextOverlay,
+    assRgba, assText, assTime, captionLook, DEFAULT_CAPTION_STYLE, FONT_NAMES,
+    nameTitles, newText, onScreenProblem, OVERLAYS_MAX, type ImageOverlay, type TextOverlay,
 } from '../../../lib/onScreen';
+import { brollLayer, layersAss, layerSpan, toLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import { addRetakes, findWords, retakesUserMessage, timeRetakes } from '../../../lib/retakes';
 import { DEFAULT_SETTINGS, withDefaults } from '../../../lib/studioSettings';
 import {
@@ -80,10 +82,8 @@ test('name titles: one per speaker where they first speak, never twice', () => {
 
 test('placing: overlays move with the cuts and end with the video', () => {
     const ranges = keepRanges(10000, [{ startMs: 2000, endMs: 4000, reason: 'manual' }], 0);   // keeps 0-2 s and 4-10 s
-    const placed = placeOverlays([
-        { atMs: 1000, seconds: 2 }, { atMs: 3000, seconds: 1 }, { atMs: 5000, seconds: 30 }, { atMs: 12000, seconds: 1 },
-    ], ranges, 8000);
-    assert.deepEqual(placed.map(p => [p.startMs, p.endMs]), [[1000, 3000], [2000, 3000], [3000, 8000]]);
+    const spans = [[1000, 2], [3000, 1], [5000, 30], [12000, 1]].map(([atMs, seconds]) => layerSpan(toLayer(text({ atMs, seconds })), ranges, 8000));
+    assert.deepEqual(spans.map(p => p && [p.startMs, p.endMs]), [[1000, 3000], [2000, 3000], [3000, 8000], null]);
 });
 
 test('ASS: colours, times, safe text, styles and events', () => {
@@ -91,24 +91,17 @@ test('ASS: colours, times, safe text, styles and events', () => {
     assert.equal(assRgba('#000000', 0x50), '&H50000000');
     assert.equal(assTime(3_723_456), '1:02:03.46');
     assert.equal(assText('a {b} c\\d\ne'), 'a (b) c/d\\Ne');
-    assert.equal(buildAss([], DEFAULT_CAPTION_STYLE, []), null);
+    assert.equal(layersAss([], DEFAULT_CAPTION_STYLE, []), null);
     const cues = [{ startMs: 500, endMs: 2500, lines: ['Hello there,', 'friend'] }];
-    const ass = buildAss(cues, { font: 'Open Sans', size: 'large', color: '#ffff00', background: 'box', position: 'top' },
-        [{ overlay: text({ text: 'Ana Ruiz', subtext: 'Guest', position: 'bottom-left', size: 'medium', background: 'outline' }), startMs: 1000, endMs: 6000 }])!;
+    const ass = layersAss(cues, { font: 'Open Sans', size: 'large', color: '#ffff00', background: 'box', position: 'top' },
+        [{ layer: toLayer(text({ text: 'Ana Ruiz', subtext: 'Guest', position: 'bottom-left', size: 'medium', background: 'outline' })) as TextLayer, span: { startMs: 1000, endMs: 6000 } }])!;
     assert.match(ass, /^\[Script Info\]\nScriptType: v4\.00\+\nPlayResX: 1920\nPlayResY: 1080\n/);
     assert.ok(ass.includes('Style: Captions,Open Sans,80,&H0000FFFF,&H0000FFFF,&H50000000,&H60000000,-1,0,0,0,100,100,0,0,3,12,0,8,90,90,70,1'), ass);
-    assert.ok(ass.includes('Style: Text1,Outfit SemiBold,60,&H00FFFFFF,&H00FFFFFF,&H00000000,&H60000000,0,0,0,0,100,100,0,0,1,4,0,1,90,90,80,1'), ass);
+    // The text's own \an and \pos place it, at the spot the style's alignment and margins used to.
+    assert.ok(ass.includes('Style: Text1,Outfit SemiBold,60,&H00FFFFFF,&H00FFFFFF,&H00000000,&H60000000,0,0,0,0,100,100,0,0,1,4,0,2,90,90,80,1'), ass);
     assert.ok(ass.includes('Dialogue: 0,0:00:00.50,0:00:02.50,Captions,,0,0,0,,Hello there,\\Nfriend'));
-    assert.ok(ass.includes('Dialogue: 1,0:00:01.00,0:00:06.00,Text1,,0,0,0,,{\\fad(250,250)}Ana Ruiz\\N{\\fs36}Guest'));
-    assert.equal(buildAss(cues, null, []), null);
-});
-
-test('images: size and place on the frame', () => {
-    assert.deepEqual(imagePlacement('top-right', 20), { width: 384, x: 'W-w-60', y: '60' });
-    assert.deepEqual(imagePlacement('middle', 100), { width: 1920, x: '(W-w)/2', y: '(H-h)/2' });
-    assert.deepEqual(imagePlacement('bottom-left', 15), { width: 288, x: '60', y: 'H-h-60' });
-    assert.equal(imageOverlayFilter(4, 'ep1', 'im0', { overlay: image(), startMs: 1000, endMs: 3000 }),
-        "[4:v]scale=384:-2,format=rgba[im0_img];[ep1][im0_img]overlay=x=W-w-60:y=60:enable='between(t,1.000,3.000)',format=yuv420p[im0];");
+    assert.ok(ass.includes('Dialogue: 1,0:00:01.00,0:00:06.00,Text1,,0,0,0,,{\\an1\\pos(90,1000)\\fad(250,250)}Ana Ruiz\\N{\\fs36}Guest'));
+    assert.equal(layersAss(cues, null, []), null);
 });
 
 test('translation: languages, batches, timing kept, lines wrapped, YouTube limits', () => {
@@ -154,7 +147,7 @@ test('retakes: found word for word on their line, timed, added once as suggestio
     assert.equal(addRetakes(cuts, retakes).length, 2);
 });
 
-test('plan: captions from the settings or the edit, text and image overlays split', () => {
+test('plan: captions from the settings or the edit, text and picture layers split; b-roll from the notes plan only before layers', () => {
     const base = {
         title: 'T', status: 'speakers_confirmed', media: { sourcePath: 'episodes/x/source/a.mp4' },
         review: { reviewedPath: 'episodes/x/transcripts/reviewed.json' },
@@ -163,14 +156,22 @@ test('plan: captions from the settings or the edit, text and image overlays spli
     const off = planEditRender(base);
     assert.equal(off.onScreen.captions, null);
     assert.deepEqual(off.onScreen.texts.map(t => t.id), ['t1']);
-    assert.deepEqual(off.onScreen.images.map(i => i.path), ['overlays/logo.png']);
+    assert.deepEqual(off.onScreen.pictures.map(p => p.media.path), ['overlays/logo.png']);
     const on = planEditRender(base, { ...DEFAULT_SETTINGS, burnCaptions: true });
     assert.deepEqual(on.onScreen.captions, DEFAULT_CAPTION_STYLE);
     const noWords = planEditRender({ ...base, review: undefined } as Episode, { ...DEFAULT_SETTINGS, burnCaptions: true });
     assert.equal(noWords.onScreen.captions, null);
     assert.match(noWords.warnings.join(' '), /Captions are on, but the transcript is not accepted/);
     const plain = planEditRender({ ...base, edit: { version: 1, cuts: [] } } as Episode);
-    assert.deepEqual(plain.onScreen, { captions: null, texts: [], images: [] });
+    assert.deepEqual(plain.onScreen, { captions: null, texts: [], pictures: [] });
+    // The notes plan's b-roll is drawn the old way until the edit has layers; then only as layers.
+    const images = { '0': { index: 0, idea: 'sea', startMs: 12000, durationSeconds: 2, path: 'episodes/x/broll/0.png' } };
+    const before = planEditRender({ ...base, broll: { status: 'ready', only: null, images } } as unknown as Episode);
+    assert.deepEqual(before.broll, [{ atMs: 12000, seconds: 2, image: 'episodes/x/broll/0.png' }]);
+    const layered = planEditRender({ ...base, broll: { status: 'ready', only: null, images },
+        edit: { version: 2, cuts: [], layers: [brollLayer(images['0'])] } } as unknown as Episode);
+    assert.deepEqual(layered.broll, []);
+    assert.deepEqual(layered.onScreen.pictures.map(p => [p.media.path, p.kind === 'image' && p.motion]), [['episodes/x/broll/0.png', 'kenBurnsIn']]);
 });
 
 test('a real render: captions, a text overlay and an image overlay, where and when they should be', { timeout: 300_000 }, async () => {
@@ -189,8 +190,8 @@ test('a real render: captions, a text overlay and an image overlay, where and wh
         edit: { version: 1, cuts: [{ startMs: 1000, endMs: 2000, reason: 'manual' }] },   // everything after 2 s plays 1 s earlier
         onScreen: {
             captions: { font: 'Outfit SemiBold', size: 'large', color: '#ffffff', background: 'outline', position: 'bottom' },
-            texts: [text({ atMs: 5000, seconds: 2, text: 'HELLO', size: 'huge', color: '#ffffff', background: 'shadow', position: 'top' })],
-            images: [{ overlay: image({ atMs: 0, seconds: 1.5 }), file: logo }],
+            texts: [toLayer(text({ atMs: 5000, seconds: 2, text: 'HELLO', size: 'huge', color: '#ffffff', background: 'shadow', position: 'top' })) as TextLayer],
+            pictures: [{ layer: toLayer(image({ atMs: 0, seconds: 1.5 })) as PictureLayer, file: logo }],
         },
     });
     const bottom = { x: 560, y: 900, w: 800, h: 140 }, top = { x: 660, y: 70, w: 600, h: 140 };

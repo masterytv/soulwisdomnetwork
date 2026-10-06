@@ -34,6 +34,12 @@ export async function probeDuration(file: string): Promise<number> {
     return seconds;
 }
 
+// Whether a file has a sound track (a video layer's own sound is mixed in only when it has one).
+export async function hasAudio(file: string): Promise<boolean> {
+    const out = await run('ffprobe', ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file]).catch(() => '');
+    return out.trim().length > 0;
+}
+
 // 720p (never upscaled) H.264 preview for the review page and later AI passes.
 export function makeProxy(input: string, output: string) {
     return run('ffmpeg', [

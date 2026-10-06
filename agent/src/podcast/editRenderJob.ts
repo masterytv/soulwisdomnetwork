@@ -11,12 +11,14 @@
 // With the default settings and a built edit package, it renders exactly as before.
 // Part I: captions (the edit's own choice or the Studio's), text overlays and image overlays go to the renderer.
 // Spec 020 item E4: so do the transitions between the video's sections (the edit's own, or the Studio's);
-// the ones at splits come with the edit.
+// the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
+// and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
-import { captionLook, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
+import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
+import { layersOf, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -48,8 +50,8 @@ export interface EditRenderPlan {
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
-    // On screen (Part I): the captions look (null for none), text overlays and image overlays (Storage paths).
-    onScreen: { captions: CaptionStyle | null; texts: TextOverlay[]; images: ImageOverlay[] };
+    // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
+    onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
     wordsPath: string | null;            // reviewed transcript, Storage path
     chapters: { title: string; startMs: number }[];
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
@@ -97,11 +99,13 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         teaserClips,
         intro,
         showIntro,
-        broll: images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
+        // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
+        // first opened the edit), so the notes plan's is drawn only for an edit without.
+        broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
         onScreen: {
             captions: wordsPath ? captions : null,
-            texts: (edit.overlays ?? []).filter((o): o is TextOverlay => o.type === 'text'),
-            images: (edit.overlays ?? []).filter((o): o is ImageOverlay => o.type === 'image'),
+            texts: layersOf(edit).filter((l): l is TextLayer => l.kind === 'text'),
+            pictures: layersOf(edit).filter((l): l is PictureLayer => l.kind !== 'text'),
         },
         wordsPath,
         chapters: notes?.chapters ?? [],
@@ -153,11 +157,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         : plan.showIntro && deps.showIntro && fs.existsSync(deps.showIntro) ? deps.showIntro : undefined;
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
-    // Image overlays, downloaded once each; the renderer leaves out what has nothing to show.
-    const images: { overlay: ImageOverlay; file: string }[] = [];
-    for (const [i, o] of plan.onScreen.images.entries()) images.push({ overlay: o, file: await get(o.path, `overlay-${i + 1}`) });
-    const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || images.length
-        ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, images } : undefined;
+    // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
+    const pictures: { layer: PictureLayer; file: string }[] = [];
+    for (const [i, l] of plan.onScreen.pictures.entries()) pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
+    const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
+        ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
     let words: TimedWord[] | undefined;
     if (plan.wordsPath) {
         const local = await get(plan.wordsPath, 'reviewed');

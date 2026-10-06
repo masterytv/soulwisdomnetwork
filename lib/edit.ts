@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
 import type { CaptionChoice, Overlay } from './onScreen';
 import type { Join } from './transitions';
+import type { Layer } from './layers';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -28,6 +29,10 @@ export interface EpisodeEdit {
     // Transitions (spec 020 item E4, lib/transitions.ts): at splits, and this episode's own at the
     // start, between its teasers, intro and outro, and at the end (missing: the Studio's).
     joins?: Join[];
+    // Pictures, video and text over the episode (spec 020 item E5, lib/layers.ts), grown from `overlays`.
+    // Once an edit has them, `overlays` is empty and the render draws the notes plan's b-roll only as
+    // layers; before that, `layersOf` reads the overlays.
+    layers?: Layer[];
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode
