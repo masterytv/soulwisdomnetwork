@@ -112,7 +112,7 @@ for this work".
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
-| 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
+| 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Built (#168), the ffmpeg route; a Zoom recording with separate files waits on Tom |
 | **4** | **Render and hand-off** | | | | | |
 | 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
 | 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
@@ -704,6 +704,30 @@ Auphonic multitrack does all of this in one call. The ffmpeg route (`agate` and 
 track, then `amix`) is free but harder to tune. Choose after 3.1.
 
 **Bonus:** speaker detection becomes almost free of errors, because each track is one person.
+
+**Built (#168), the ffmpeg route** (free; Auphonic's multitrack would spend the free plan's 2 hours on every
+episode, D1). Tom said to go with my suggestion rather than wait for 3.1's listening.
+- **Where tracks come from** (`lib/speakerTracks.ts`, kept as `media.speakerTracks`, at most 8):
+  - **The Studio editor's Render panel** (`components/studio/speakerTracks.tsx`): "Add speaker tracks" uploads the
+    files (kind `track`, MP3, M4A or WAV under 2 GB, checked like other uploads) to
+    `episodes/{id}/source/tracks/`, through `/api/studio/episodes/[id]/tracks` (add, rename, remove; `requireRole`).
+    This works for any episode, Drive or upload, so the upload page needs no extra field.
+  - **The Drive inbox:** a folder in "01 To Process" with exactly one video is one episode (Zoom's local recording
+    folder). Its tracks are the audio files in its subfolders (Zoom's "Audio Record"), or two or more audio files
+    beside the video when there are none (one alone is the mix). Ingest copies them beside the original, names them
+    from the file name ("audioTomWood1…" → "Tom Wood"), and moves the whole folder to "02 Processed". Loose video
+    files work as before; a folder with no video or several is left with a warning.
+- **The render** (`voiceCleanup.ts` `speakerMix`): each track is lined up with the recording (the shift at which
+  their loudness every 10 ms over the first 10 minutes matches best, within ±10 s, preferring the smallest shift),
+  then high-passed, gated (`agate`, so the room and others' voices leaking in drop away between the person's words)
+  and levelled (`dynaudnorm`), and the tracks are summed. That mix then goes through the chosen voice clean-up
+  (standard, DeepFilterNet or Auphonic, 3.2) in place of the recording's own sound.
+- **Optional, per episode:** "Make the voice from these tracks" (`edit.speakerTracks`, on when there are tracks);
+  the render records how many it used (`editRender.tracks`) and the panel says which the current render used.
+- **Checked:** two synthetic speakers taking turns, one track 300 ms late and one 200 ms early, are lined up within
+  10 ms and the mix keeps step with the recording; a real render with two tracks keeps in step (0.4 ms) with a clean
+  quality report. Not checked: a real Zoom recording with separate files, and the speaker detection bonus (the
+  transcript still comes from the mix).
 
 ## Phase 4 — Render and hand-off
 

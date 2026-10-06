@@ -39,6 +39,9 @@ export interface EpisodeEdit {
     audio?: Sound[];
     // This episode's voice clean-up in the render (spec 019 item 3.2, lib/voice.ts); null or missing: the Studio's.
     voice?: VoiceCleanup | null;
+    // Whether the render makes the voice from the episode's speaker tracks, when it has them (spec 019 item 3.3);
+    // null or missing: yes.
+    speakerTracks?: boolean | null;
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

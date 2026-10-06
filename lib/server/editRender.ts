@@ -30,6 +30,7 @@ export interface EditRenderView {
     qc: NonNullable<EpisodeEditRender['qc']> | null;   // the quality report (spec 019 item 0.2)
     // The voice clean-up (spec 019 item 3.2): the Studio's, what the next render uses, and what this one used.
     voice: { studio: VoiceCleanup; next: VoiceCleanup; rendered: VoiceCleanup | null };
+    tracks: number | null;            // the speaker tracks the ready render's voice was made from (spec 019 item 3.3)
     // Auphonic's free hours this month, and what the saved edit would use (null: not known).
     auphonic: { usedSeconds: number; freeSeconds: number; needSeconds: number | null };
     // Files that open the render's cuts in another editor (spec 019 item 4.1), each with an hour-long download link.
@@ -120,6 +121,7 @@ export async function getEditRender(id: string): Promise<EditRenderView> {
         warnings: ready ? r.warnings ?? [] : [],
         qc: ready ? r.qc ?? null : null,
         voice: { studio: settings.voiceCleanup, next: voiceFor(episode.edit, settings.voiceCleanup), rendered: ready ? r.voice ?? null : null },
+        tracks: ready ? r.tracks ?? 0 : null,
         auphonic: { ...hours, needSeconds: auphonicSeconds(episode) },
         exports: ready ? await Promise.all((r.exports ?? []).map(async e => ({
             kind: e.kind, name: e.name, driveUrl: e.driveUrl,

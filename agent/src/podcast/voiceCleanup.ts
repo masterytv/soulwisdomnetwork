@@ -111,3 +111,67 @@ export function placeAt(cleaned: string, startMs: number, durationSec: number, o
     return ffmpeg(['-i', cleaned, '-af', `aresample=48000,aformat=channel_layouts=stereo,adelay=${Math.round(startMs)}:all=1,apad,atrim=end=${durationSec.toFixed(6)}`,
         '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', out]);
 }
+
+// ─── Speaker tracks (spec 019 item 3.3) ──────────────────────────────────────
+
+// Each person's track, before they are mixed: from time 0, rumble off, a gate that closes between their words (so
+// their room and the others' voices leaking into their microphone drop away), and a gentle leveller.
+export const TRACK_CHAIN = 'aresample=async=1:first_pts=0,highpass=f=80,agate=threshold=0.02:ratio=4:attack=10:release=250:range=0.06,dynaudnorm=f=500:g=31:m=8';
+
+// How loud a sound is every 10 ms over its first `seconds` (one channel at 8 kHz, root mean square), for lining a
+// track up with the recording.
+export async function envelope(file: string, seconds = 600): Promise<Float32Array> {
+    const raw = await new Promise<Buffer>((resolve, reject) => {
+        const p = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-t', String(seconds), '-i', file, '-vn', '-af', 'aresample=async=1:first_pts=0',
+            '-ac', '1', '-ar', '8000', '-f', 's16le', '-'], { stdio: ['ignore', 'pipe', 'pipe'] });
+        const chunks: Buffer[] = [];
+        let err = '';
+        p.stdout.on('data', d => chunks.push(d));
+        p.stderr.on('data', d => { err += d; });
+        p.on('error', reject);
+        p.on('close', code => (code === 0 ? resolve(Buffer.concat(chunks)) : reject(new Error(`ffmpeg exited ${code}: ${err.slice(-300)}`))));
+    });
+    const s = new Int16Array(raw.buffer, raw.byteOffset, Math.floor(raw.length / 2));
+    const out = new Float32Array(Math.floor(s.length / 80));
+    for (let i = 0; i < out.length; i++) {
+        let t = 0;
+        for (let j = i * 80; j < i * 80 + 80; j++) t += s[j] * s[j];
+        out[i] = Math.sqrt(t / 80);
+    }
+    return out;
+}
+
+// How many ms later a track runs than the recording (negative: earlier), within ±`maxMs`: the shift at which the
+// two loudness envelopes match best. Shifts are tried from the smallest out, and a larger one wins only when it
+// matches clearly better (by 2%), so a sound that repeats (music, a test tone) is never moved by a repeat.
+export function bestLagMs(recording: Float32Array, track: Float32Array, maxMs = 10_000): number {
+    const mean = (a: Float32Array) => a.reduce((t, v) => t + v, 0) / (a.length || 1);
+    const ma = mean(recording), mb = mean(track);
+    const max = Math.round(maxMs / 10);
+    let best = -Infinity, lag = 0;
+    for (let k = 0; k <= 2 * max; k++) {
+        const L = k % 2 ? (k + 1) / 2 : -k / 2;
+        let s = 0;
+        for (let i = Math.max(0, -L); i < recording.length && i + L < track.length; i++) s += (recording[i] - ma) * (track[i + L] - mb);
+        if (s > (best > 0 ? best * 1.02 : best)) { best = s; lag = L; }
+    }
+    return lag * 10;
+}
+
+// The voice made from the speaker tracks: each lined up with the recording, cleaned and gated on its own, then
+// summed, as 48 kHz stereo WAV as long as the recording. The voice clean-up then runs on it as on the recording's
+// own sound. Returns each track's shift, for the log.
+export async function speakerMix(video: string, tracks: string[], out: string, durationSec: number): Promise<number[]> {
+    const rec = await envelope(video);
+    const lags: number[] = [];
+    for (const t of tracks) lags.push(bestLagMs(rec, await envelope(t)));
+    const inputs = tracks.flatMap(t => ['-i', t]);
+    const chains = tracks.map((_, i) => {
+        // A track that runs late starts that much in; one that runs early is delayed.
+        const shift = lags[i] > 0 ? `atrim=start=${(lags[i] / 1000).toFixed(3)},asetpts=PTS-STARTPTS,` : lags[i] < 0 ? `adelay=${-lags[i]}:all=1,` : '';
+        return `[${i}:a]${TRACK_CHAIN},${shift}aformat=sample_rates=48000:channel_layouts=stereo[t${i}];`;
+    }).join('');
+    const mix = `${tracks.map((_, i) => `[t${i}]`).join('')}amix=inputs=${tracks.length}:normalize=0:duration=longest:dropout_transition=0,apad,atrim=end=${durationSec.toFixed(6)}[v]`;
+    await ffmpeg([...inputs, '-filter_complex', chains + mix, '-map', '[v]', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le', out]);
+    return lags;
+}

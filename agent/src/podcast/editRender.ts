@@ -27,7 +27,7 @@ import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLaye
 import { soundFilter, soundsMix, soundSpan, type Sound } from '../../../lib/audio';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
-import { auphonicInput, deepFilterTrack, placeAt } from './voiceCleanup';
+import { auphonicInput, deepFilterTrack, placeAt, speakerMix } from './voiceCleanup';
 import { auphonicClean, auphonicCreditsHours } from './cleanupVersions';
 import { auphonicSpan, hm } from '../../../lib/voice';
 import {
@@ -177,6 +177,8 @@ export async function renderEdit(opts: {
     // Where finished windows (and an expensive voice clean-up) are kept, so a retried run skips them (spec 019
     // item 4.2): `get` fetches a kept file to `local` and says whether there was one.
     store?: { get: (name: string, local: string) => Promise<boolean>; put: (local: string, name: string) => Promise<void> };
+    // One audio file per speaker (spec 019 item 3.3), local: the voice is made from them instead of the recording's sound.
+    tracks?: string[];
 }): Promise<RenderReport> {
     const start = Date.now();
     const clean = opts.clean ?? 'light';
@@ -216,20 +218,29 @@ export async function renderEdit(opts: {
     const onScreenWarnings: string[] = [];
     try {
         // The voice cleanup runs once, over the whole episode (see cleanupFilter), into a track at the video's times.
+        // Speaker tracks (spec 019 item 3.3): the voice is made from them, then cleaned up as the recording's would be.
+        let voiceSource = opts.video;
+        if (opts.tracks?.length && ranges.length > 0) {
+            fs.mkdirSync(cleanDir, { recursive: true });
+            voiceSource = path.join(cleanDir, 'tracks.wav');
+            const lags = await speakerMix(opts.video, opts.tracks, voiceSource, inSeconds);
+            console.log(`  🎚️ ${opts.tracks.length} speaker tracks, shifted ${lags.map(l => `${l} ms`).join(', ')} to the recording`);
+            if (clean === 'off') cleanedAudio = voiceSource;
+        }
         if (clean !== 'off' && ranges.length > 0) {
             fs.mkdirSync(cleanDir, { recursive: true });
             cleanedAudio = path.join(cleanDir, 'cleaned.wav');
             // DeepFilterNet's minutes and Auphonic's hours are not spent twice: a retried run finds the cleaned
             // track an earlier attempt kept (as FLAC, about half the size).
-            const keptName = `voice-${clean}-${windowKey([path.basename(opts.video), String(inMs), JSON.stringify(auphonicSpan(opts.edit, inMs, opts.words))], '', 0)}.flac`;
+            const keptName = `voice-${clean}-${windowKey([path.basename(opts.video), String(inMs), JSON.stringify(auphonicSpan(opts.edit, inMs, opts.words)), ...(opts.tracks ?? []).map(t => path.basename(t))], '', 0)}.flac`;
             const keptFile = path.join(cleanDir, keptName);
             const kept = (clean === 'deepfilter' || clean === 'auphonic') && opts.store
                 && await opts.store.get(keptName, keptFile).catch(() => false);
             if (kept) await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', keptFile, '-c:a', 'pcm_s16le', cleanedAudio]);
-            else if (clean === 'light' || clean === 'strong') await cleanTrack(opts.video, cleanedAudio, clean, opts.noiseModel);
+            else if (clean === 'light' || clean === 'strong') await cleanTrack(voiceSource, cleanedAudio, clean, opts.noiseModel);
             else if (clean === 'deepfilter') {
                 if (!opts.voice?.deepFilter) throw new Error('DeepFilterNet was chosen, but its program is not on the runner (DEEPFILTER_BIN)');
-                await deepFilterTrack(opts.video, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds });
+                await deepFilterTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds });
             } else {
                 const a = opts.voice?.auphonic;
                 if (!a) throw new Error('Auphonic was chosen, but there is no AUPHONIC_API_KEY repo secret');
@@ -240,7 +251,7 @@ export async function renderEdit(opts: {
                     throw new Error(`The Auphonic account has ${hm(hours * 3600)} left and this episode needs ${hm(needed * 3600)}. Choose Standard or DeepFilterNet for it.`);
                 }
                 const sent = path.join(cleanDir, 'auphonic-in.flac'), back = path.join(cleanDir, 'auphonic-out.flac');
-                await auphonicInput(opts.video, span, sent);
+                await auphonicInput(voiceSource, span, sent);
                 await a.onSending?.();
                 await auphonicClean(sent, back, a.apiKey, a.title);
                 await placeAt(back, span.startMs, inSeconds, cleanedAudio);

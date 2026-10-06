@@ -14,6 +14,7 @@
 // the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
 // Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
+// Item 3.3: when the episode has speaker tracks (lib/speakerTracks.ts), the voice is made from them unless its edit says not.
 // Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
 // they cannot be made, the render is still kept, with a warning.
 
@@ -27,6 +28,7 @@ import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
 import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
+import { usesTracks, type SpeakerTrack } from '../../../lib/speakerTracks';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
 import type { ExportResult } from './editExport';
@@ -78,6 +80,7 @@ export interface EditRenderPlan {
     sections: SectionJoins;              // the transitions between the video's sections
     sounds: Sound[];                     // music and effects (spec 020 item E7)
     voice: VoiceCleanup;                 // the voice clean-up (spec 019 item 3.2)
+    tracks: SpeakerTrack[];              // the speaker tracks the voice is made from (spec 019 item 3.3); empty: the recording's sound
     warnings: string[];
 }
 
@@ -139,6 +142,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         sections: sectionJoins(edit.joins, settings.joins),
         sounds: edit.audio ?? [],
         voice: voiceFor(edit, settings.voiceCleanup),
+        tracks: usesTracks(episode.media?.speakerTracks, edit) ? episode.media!.speakerTracks! : [],
         warnings,
     };
 }
@@ -209,6 +213,9 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
+    // The speaker tracks, when the render uses them.
+    const tracks: string[] = [];
+    for (const [i, t] of plan.tracks.entries()) tracks.push(await get(t.path, `track-${i + 1}`));
     let words: TimedWord[] | undefined;
     if (plan.wordsPath) {
         const local = await get(plan.wordsPath, 'reviewed');
@@ -237,6 +244,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             },
             put: (local: string, name: string) => deps.upload(local, `${work}/${name}`, name.endsWith('.flac') ? 'audio/flac' : 'video/x-matroska'),
         } } : {}),
+        ...(tracks.length ? { tracks } : {}),
         clean: CLEAN_FOR[plan.voice],
         voice: {
             deepFilter: deps.voice?.deepFilter,
@@ -308,6 +316,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
         'editRender.voice': plan.voice,
+        'editRender.tracks': tracks.length,
         updatedAt: deps.now(),
         ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps, usedLibrary) : {}),
     });

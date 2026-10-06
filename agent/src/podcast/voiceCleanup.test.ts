@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { auphonicInput, deepFilterTrack, joinGraph, pieces, PIECE_OVERLAP_SEC, placeAt } from './voiceCleanup';
+import { auphonicInput, bestLagMs, deepFilterTrack, joinGraph, pieces, PIECE_OVERLAP_SEC, placeAt, speakerMix } from './voiceCleanup';
 import { cleanupFilter } from './editRender';
 import { auphonicCreditsHours } from './cleanupVersions';
 
@@ -113,4 +113,26 @@ test('Auphonic: the hours left on the account, when it says', async () => {
     assert.equal(await auphonicCreditsHours('k', { fetch: reply({ credits: 1.25 }) }), 1.25);
     assert.equal(await auphonicCreditsHours('k', { fetch: reply({ username: 'x' }) }), null);
     await assert.rejects(auphonicCreditsHours('k', { fetch: (async () => new Response('no', { status: 401 })) as unknown as typeof fetch }), /401/);
+});
+
+test('speaker tracks are lined up with the recording, cleaned on their own and mixed to its length (spec 019 item 3.3)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tracks-'));
+    // Two people taking turns over 40 s: A speaks in odd 3 s turns, B in even ones (a few rising tones each).
+    const turns = (odd: boolean) => `0.4*sin(2*PI*(${odd ? 180 : 260}+30*mod(t\\,3))*t)*eq(mod(floor(t/3)\\,2)\\,${odd ? 1 : 0})*lt(mod(t\\,1.1)\\,0.7)`;
+    const a = path.join(dir, 'a.wav'), b = path.join(dir, 'b.wav'), rec = path.join(dir, 'rec.wav');
+    ff(['-f', 'lavfi', '-i', `aevalsrc=${turns(true)}:s=48000:d=40`, '-ac', '1', a]);
+    ff(['-f', 'lavfi', '-i', `aevalsrc=${turns(false)}:s=48000:d=40`, '-ac', '1', b]);
+    ff(['-i', a, '-i', b, '-filter_complex', '[0][1]amix=inputs=2:normalize=0', '-ac', '2', rec]);
+    // A's track starts 300 ms late (as if its recording began earlier), B's 200 ms early.
+    const aLate = path.join(dir, 'a-late.wav'), bEarly = path.join(dir, 'b-early.wav');
+    ff(['-i', a, '-af', 'adelay=300', aLate]);
+    ff(['-i', b, '-af', 'atrim=start=0.2,asetpts=PTS-STARTPTS', bEarly]);
+    const out = path.join(dir, 'voice.wav');
+    const lags = await speakerMix(rec, [aLate, bEarly], out, 40);
+    assert.ok(Math.abs(lags[0] - 300) <= 10 && Math.abs(lags[1] + 200) <= 10, String(lags));
+    assert.ok(Math.abs(seconds(out) - 40) < 0.01);
+    // The mix is in step with the recording.
+    assert.ok(Math.abs(lagMs(samples(rec), samples(out), 10)) <= 10, String(lagMs(samples(rec), samples(out), 10)));
+    assert.equal(bestLagMs(new Float32Array([0, 1, 0, 0, 2, 0]), new Float32Array([0, 0, 1, 0, 0, 2]), 30), 10);
+    fs.rmSync(dir, { recursive: true, force: true });
 });
