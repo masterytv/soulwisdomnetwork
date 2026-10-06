@@ -10,6 +10,10 @@
 // them to the accepted transcript; the editor's words are swapped for the corrected ones.
 // Spec 019 item 2.6: unsaved changes are also kept in this browser, and offered back on the next load
 // when the saved edit has not moved on since (lib/localDraft.ts).
+// Spec 020 item E5: the Studio editor loads the episode's media bin with the edit, and before the editor
+// first draws, turns an edit without layers into one with them: its overlays, and the notes plan's b-roll
+// (as the render draws it). That is saved only with the producer's next change. Without the bin, layers
+// cannot be changed, so a save could never drop the b-roll.
 
 "use client";
 
@@ -30,6 +34,19 @@ import type { StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
+import { brollLayer, layersOf, type BinItem } from '@/lib/layers';
+
+// An edit as the Studio editor works on it: with layers, the notes plan's b-roll among them.
+function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
+    if (edit.layers) return edit;
+    const layers = layersOf(edit);
+    const have = new Set(layers.flatMap(l => (l.kind === 'text' ? [] : [l.media.path])));
+    for (const b of bin) {
+        if (b.source !== 'broll' || have.has(b.path) || b.startMs === undefined) continue;
+        layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));
+    }
+    return { ...edit, layers, overlays: [] };
+}
 import { QualityReport } from '@/components/studio/qualityReport';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
@@ -119,6 +136,9 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
     const [cutNotes, setCutNotes] = useState<Record<string, string>>({});
+    // The episode's media bin (Studio editor only): null while loading or when it failed (`binError`).
+    const [bin, setBin] = useState<BinItem[] | null>(null);
+    const [binError, setBinError] = useState('');
     // Unsaved changes found in this browser from an earlier visit (spec 019 item 2.6), and a note when
     // some were dropped because a newer save overtook them.
     const draftKey = `swc-studio-edit:${episodeId}`;
@@ -138,9 +158,16 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     );
 
     useEffect(() => {
-        studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`)
-            .then((data) => {
-                setEdit(data.edit);
+        const binLoad = workspace
+            ? studioFetch<{ items: BinItem[] }>(`/api/studio/episodes/${episodeId}/media`).then(v => v.items, e => { setBinError(`The media did not load: ${(e as Error).message}`); return null; })
+            : Promise.resolve(null);
+        Promise.all([
+            studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`),
+            binLoad,
+        ])
+            .then(([data, items]) => {
+                setBin(items);
+                setEdit(workspace && items ? withLayers(data.edit, items) : data.edit);
                 setOverlayUrls(data.overlayUrls ?? {});
                 setSilences(data.silences ?? null);
                 reset(data.edit.version);
@@ -152,7 +179,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 setLoaded(true);
             })
             .catch(() => { setLoaded(true); });
-    }, [episodeId, reset, draftKey]);
+    }, [episodeId, reset, draftKey, workspace]);
 
     // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
     // Either may be missing on an episode the ingest catch-up has not reached yet.
@@ -215,7 +242,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     // A local copy from an earlier visit: put it back (it saves against the version it was made on), or drop it.
     const restoreDraft = () => {
         if (!localDraft) return;
-        const restored = { ...localDraft.value, version: edit.version };
+        const restored = { ...(workspace && bin ? withLayers(localDraft.value, bin) : localDraft.value), version: edit.version };
         setEdit(restored);
         change(restored);
         setLocalDraft(null);
@@ -335,6 +362,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             timelineMedia={timelineMedia}
             studioJoins={studioJoins}
             onFixWords={fixWords}
+            media={workspace ? { episodeId, items: bin, error: binError, onItems: setBin } : undefined}
+            layersEditable={!workspace || !!bin}
             fixBusy={fixBusy}
         />
     );

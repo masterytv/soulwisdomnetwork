@@ -4,6 +4,8 @@
 // Part I: on-screen items are checked before saving, and GET adds hour-long links to the overlay images.
 // GET also gives the audio's measured silences, for the pause suggestions (spec 019 item 1.1).
 // Transitions (spec 020 item E4) are checked too, and one at a split that is no longer there is dropped.
+// Layers (spec 020 item E5, lib/layers.ts) replace the overlays once saved: each picture's file must be in the
+// episode's media bin (lib/server/mediaBin.ts) or be an overlay upload, and GET links every file they use.
 import { FieldValue } from 'firebase-admin/firestore';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
@@ -11,6 +13,9 @@ import { checkUploaded } from '@/lib/server/uploads';
 import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
+import { layersOf, LayersSchema, type Layer } from '@/lib/layers';
+import { binPaths } from '@/lib/server/mediaBin';
+import type { Episode } from '@/types/episode';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,12 +32,12 @@ export const GET = handle<Context>(async (request, { params }) => {
     if (!doc.exists) throw new HttpError(404, 'Episode not found');
     const data = doc.data() as { edit?: EpisodeEdit; media?: { silencesPath?: string } };
     const edit = data.edit ?? { cuts: [], version: 0 };
-    // Links to the image overlays, so the editor can show them over the video.
+    // Links to every picture the layers (or the overlays they grew from) use, so the editor can show them.
     const overlayUrls: Record<string, string> = {};
-    for (const o of edit.overlays ?? []) {
-        if (o.type !== 'image' || overlayUrls[o.path]) continue;
-        const url = await adminBucket().file(o.path).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 }).then(([u]) => u).catch(() => null);
-        if (url) overlayUrls[o.path] = url;
+    for (const l of layersOf(edit)) {
+        if (l.kind === 'text' || overlayUrls[l.media.path]) continue;
+        const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
+        if (url) overlayUrls[l.media.path] = url;
     }
     // The silences measured at ingest; null for an episode not measured yet, so the editor uses word gaps.
     let silences: Silence[] | null = null;
@@ -47,7 +52,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -73,6 +78,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         if (!r.success) throw new HttpError(400, `Transitions: ${r.error.issues[0]?.message ?? 'not valid'}`);
         joins = r.data;
     }
+    // Layers (Studio editor). Once sent, they replace the overlays for good.
+    let layers: Layer[] | undefined;
+    if (body.edit.layers !== undefined) {
+        const r = LayersSchema.safeParse(body.edit.layers);
+        if (!r.success) throw new HttpError(400, `Layers: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        layers = r.data;
+    }
     let captions: CaptionChoice | null | undefined;
     if (body.edit.captions !== undefined) {
         const r = CaptionChoiceSchema.nullable().safeParse(body.edit.captions);
@@ -80,13 +92,21 @@ export const PUT = handle<Context>(async (request, { params }) => {
         captions = r.data;
     }
 
-    // An image is checked once, when it first appears on the edit: it must be a real PNG or JPEG
-    // uploaded through the Studio (lib/server/uploads.ts).
-    if (overlays) {
-        const saved = new Set(((await ref.get()).data() as { edit?: EpisodeEdit } | undefined)?.edit?.overlays
-            ?.flatMap(o => o.type === 'image' ? [o.path] : []) ?? []);
-        for (const path of new Set(overlays.flatMap(o => o.type === 'image' ? [o.path] : []))) {
-            if (!saved.has(path)) await checkUploaded('overlay', path);
+    // A picture is checked once, when it first appears on the edit: an overlay upload must be a real PNG
+    // or JPEG uploaded through the Studio (lib/server/uploads.ts); any other file must be in the episode's
+    // media bin.
+    const pictures = layers ? layers.flatMap(l => l.kind === 'text' ? [] : [l.media.path])
+        : overlays ? overlays.flatMap(o => o.type === 'image' ? [o.path] : []) : [];
+    if (pictures.length) {
+        const episode = (await ref.get()).data() as Episode | undefined;
+        if (!episode) throw new HttpError(404, 'Episode not found');
+        const saved = new Set(layersOf(episode.edit ?? { cuts: [], version: 0 }).flatMap(l => l.kind === 'text' ? [] : [l.media.path]));
+        let bin: Set<string> | null = null;
+        for (const path of new Set(pictures)) {
+            if (saved.has(path)) continue;
+            if (path.startsWith('overlays/')) { await checkUploaded('overlay', path); continue; }
+            bin ??= await binPaths(ref.id, episode);
+            if (!bin.has(path)) throw new HttpError(400, 'A layer uses a file that is not in this episode\'s media bin');
         }
     }
 
@@ -105,7 +125,9 @@ export const PUT = handle<Context>(async (request, { params }) => {
         tx.update(ref, {
             edit: {
                 cuts: cuts.data, version, updatedAt: new Date().toISOString(), updatedBy: uid,
-                overlays: overlays ?? current?.overlays ?? [],
+                // Layers, once sent, replace the overlays; the overlays stay for an edit that has none.
+                overlays: (layers ?? current?.layers) ? [] : overlays ?? current?.overlays ?? [],
+                ...((layers ?? current?.layers) ? { layers: layers ?? current?.layers } : {}),
                 captions: captions !== undefined ? captions : current?.captions ?? null,
                 splits: keptSplits,
                 joins: keptJoins,

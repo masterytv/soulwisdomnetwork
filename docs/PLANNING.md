@@ -85,8 +85,8 @@ item). So:
 3. **019 Phase 1:** 1.6's leftovers (done, #136), 1.3 as wider retakes (built, #138), 1.5 (done, #139), 1.1 (built, #141), 1.2 (built, #142).
 4. **020 E1–E4:** workspace (moving the existing full-page editor into it; built, #143), timeline engine with
    waveform (built, #144), splits that transitions can attach to (built, #145), transitions (built, #147,
-   after #146 made the render's timing frame-accurate).
-5. **019 Phase 2** (built: 2.3, #149; 2.4, #151; 2.5, #152; 2.6, #153), **Phase 3** (3.1 the sound bake-off, built, #155; 3.2 and 3.3 wait on its choice), then **020 E5–E8**.
+   after #146 made the render's timing frame-accurate). E5, layers and the media bin, built (#157).
+5. **019 Phase 2** (built: 2.3, #149; 2.4, #151; 2.5, #152; 2.6, #153), **Phase 3** (3.1 the sound bake-off, built, #155; 3.2 and 3.3 wait on its choice), then **020 E6–E8**.
 6. **019 Phase 4** (hand-off export, faster render), then **Phase 5**.
 7. **020 E9** (move clips) when Tom says.
 

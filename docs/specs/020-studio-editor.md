@@ -1,7 +1,7 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#147); parts already built before the plan (#123 the full-page editor,
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#147), E5 built (#157); parts already built before the plan (#123 the full-page editor,
 #130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
@@ -590,6 +590,74 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   - **Not yet on a real episode, or in a render from `main`.**
 - **Not built:** previewing the teasers', intro's and outro's transitions. The quality report's black
   picture check may flag a long Fade (through black) at a split, since its middle is black.
+
+### E5 — Built (#157)
+
+- **Model** (`lib/layers.ts`, tested in `lib/layers.test.ts`): `edit.layers`, grown from `overlays` as PLANNING decided
+  ("add box beside the nine positions"), in the sketched type's spirit with two changes:
+  - **Place, not a full box:** `place: { x, y, align }`, the point of the frame (fractions) that one of the layer's nine
+    points is pinned to (`align`, 1 bottom left … 9 top right, as ASS and the nine positions number them), and for
+    pictures `w`, the width as a share of the frame. A picture's height follows its own shape, and text has no box, so
+    neither needs an `h`. Today's nine positions are exactly such places (`placeOf`), so nothing moves.
+  - **Kinds:** `image`, `video` and `text`. Lower thirds, logos and title cards come with E6 (they are text and images
+    with a style).
+  - Each has an `anchor` (`{ srcMs }` moves with its words, the default; `{ atMs }` stays at a time in the edited
+    video), `durationMs` (at least 0.5 s), `opacity`, `in` and `out` (`fade`, `none`, or a slide left, right, up or
+    down, 0–3 s), a still's `motion` (none, slow zoom in or out, slow pan: the b-roll's Ken Burns, which fills a 16:9
+    box), and a video's `trimInMs` and `volumeDb` (its own sound under the voice; null: silent, the default).
+  - `track`: V2 pictures and video, V3 text. At most 500 layers (`LayersSchema`), ids unique.
+- **From today's edit:** `toLayer` converts each overlay to the same place, time and look (text 90 px and 80 px in,
+  fading over 250 ms; pictures 60 px in, popping on); `layersOf` reads `layers`, or the overlays converted until there
+  are layers. The Studio editor, on opening an edit without layers, adds the notes plan's b-roll as layers too
+  (`brollLayer`: the whole frame, slow zoom in, half-second fades, as the render drew it). That is saved with the
+  producer's next change; until then the render draws the b-roll from the notes plan as before. If the media bin does
+  not load, layers cannot be changed, so a save can never drop the b-roll. Once saved as layers, `overlays` is empty.
+- **The media bin** (`lib/server/mediaBin.ts`, `GET/POST/DELETE /api/studio/episodes/[id]/media`, all with
+  `requireRole`): the notes plan's b-roll stills, the edit package's teaser clips, the intro, the Studio's logo, and
+  uploads. Uploads are a new kind, `media` (`lib/server/uploads.ts`): pictures up to 20 MB (PNG, JPEG, WebP), video up
+  to 2 GB (MP4, MOV), sounds up to 200 MB (MP3, M4A, WAV), each checked by type, size and first bytes; kept at
+  `episodes/{id}/media/` and listed in the episode's `media` subcollection (Admin SDK only; at most 300). The browser
+  measures each one first (a picture's size, a video's or sound's length). An upload the saved edit uses cannot be
+  removed. **The edit route takes a layer's file only from the bin** (or an overlay upload of Part I, checked as
+  before), and GET links every file the layers use.
+- **Studio editor:**
+  - **Media** panel (first on the rail): the bin by group, **+ At playhead** (b-roll also **+ As planned**), drag an
+    item onto the timeline, upload, remove an upload. Sounds are listed but placed with E7.
+  - **Preview** (`components/studio/layers.tsx`): every layer at its place and time, with its fades, slides, slow zoom
+    and opacity, every frame while playing; a video layer plays in step with the episode. Click one to select it; drag
+    the selected one to move it (its pinned point snaps to the edges, the 60-pixel margins, the thirds and the centre;
+    Alt turns that off); drag its corner to resize a picture. Full-frame pictures let clicks through to the video's
+    controls unless selected.
+  - **On screen** panel: the captions choice as before, **+ Text** and **+ Name titles**, and every layer with its
+    time (**Start at** the playhead, its length), anchor, position (the nine, or "where you dragged it"), width, motion,
+    a video's start and sound, opacity, and In and Out. A layer whose moment is cut says so.
+  - **Timeline:** **V3 Text** and **V2 Pictures** lanes. Click a layer to select it (the tool row shows its times,
+    **Remove**); drag it to move it; drag an end to trim it; snapping to the playhead, word edges and splits (Alt or
+    **Snap** off). Delete removes the selected layer. Each drag is one undo step.
+- **Render** (`editRender.ts`): pictures in track order, then by start: a still is looped for its length, a moving still
+  is made a clip with the b-roll's `kenBurns`, a video is trimmed from `trimInMs`; each is scaled, faded
+  (`fade`, alpha), made see-through (`colorchannelmixer`), and laid over with `overlay` at its place, a slide being a
+  time expression in the overlay's `x` or `y` (`pictureFilter`, `overlayXY`). A video's sound, when on and present
+  (`hasAudio`), is trimmed, set to its level, placed (`adelay`) and mixed under the voice with `amix` (normalize off),
+  before loudness. Text goes in the ASS file with `\an` and `\pos` (the same spot the nine positions gave), `\fad`,
+  `\alpha`, and `\move` for slides (`textEvents`, `layersAss`). The quality report's on-screen checks read anchors
+  (a pinned layer is never "in a cut"). The old overlay-only helpers (`buildAss`, `imagePlacement`,
+  `imageOverlayFilter`, `placeOverlays`) were removed.
+- **Not as sketched:** **react-rnd** and **@dnd-kit/core** were not added. react-rnd's dragging relies on
+  `findDOMNode`, which React 19 removed; the preview's drag and resize are Pointer Events with pointer capture, as the
+  timeline's are, and the bin uses the browser's own drag and drop. No new dependencies.
+- **Checked:**
+  - Unit tests: `lib/layers.test.ts` (conversion, schema, times, preview looks, filters, ASS, the bin's defaults),
+    `renderQc`, `sequence`, `transitions`.
+  - ffmpeg: the existing on-screen render test now runs through layers and keeps its pixel checks (caption, text,
+    image where and when they were); `agent/src/podcast/layersRender.test.ts` renders a video layer sliding in from the
+    right with its 1 kHz tone mixed in only while it is up, a still with a slow zoom filling the frame, and a
+    half see-through picture, all after a cut.
+  - Chromium, with a test video and bin: an old edit's text title showed as a layer; **+ At playhead** put a picture
+    60 render pixels in from the top right at 20% width; dragging it snapped to the centre line; its corner resized it
+    (20% → 34%); on the timeline it moved and trimmed; a b-roll still dropped onto the timeline became a full-frame layer
+    with a slow zoom; **Slide left** was set in the panel; Delete removed a layer and Ctrl+Z brought it back.
+  - **Not yet on a real episode, or in a render from `main`.**
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

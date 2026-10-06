@@ -40,7 +40,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:
               /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
               components/studio/timeline.tsx; the old /edit address redirects there); its render sits beside Descript's final cut,
-              or replaces it when the Studio settings say so
+              or replaces it when the Studio settings say so. Pictures, video and text over the episode are layers (lib/layers.ts,
+              spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media)
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
@@ -144,7 +145,7 @@ firebase deploy --only firestore:rules,firestore:indexes,storage --project soulw
 Collections: `users`, `posts` and `comments` (the community feed, `docs/specs/016-community-feed.md`;
 each has a `votes` subcollection; server only), `community_limits` (hourly post and comment
 limits, server only), `conversations`, `messages`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`; earlier
-show-notes approvals in its `approvals` subcollection),
+show-notes approvals in its `approvals` subcollection, and the media bin's uploads in its `media` subcollection),
 `studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger; Admin SDK only), `usage_reports`
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).

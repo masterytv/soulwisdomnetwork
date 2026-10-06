@@ -1,5 +1,5 @@
-// Uploads from the Studio: a recording (a new episode), a logo, an intro video or an image to lay
-// over a video (Part I). The browser
+// Uploads from the Studio: a recording (a new episode), a logo, an intro video, an image to lay
+// over a video (Part I), or a picture, video or sound for an episode's media bin (spec 020 item E5). The browser
 // sends the file straight to Cloud Storage through a one-time upload link made here, so nothing
 // in the browser needs Storage access (storage.rules stays closed) and no Drive is involved.
 // A finished recording becomes an episode and the ingest job is started for it, which then
@@ -15,22 +15,44 @@ import { HttpError } from './staff';
 import { ESTIMATE_USD, withinDailyLimit } from './spending';
 import { getSettings } from './studioSettings';
 
-export type UploadKind = 'episode' | 'logo' | 'intro' | 'overlay';
+export type UploadKind = 'episode' | 'logo' | 'intro' | 'overlay' | 'media';
 
-const MAX_BYTES: Record<UploadKind, number> = { episode: 20e9, logo: 5e6, intro: 2e9, overlay: 2e7 };
+const MAX_BYTES: Record<UploadKind, number> = { episode: 20e9, logo: 5e6, intro: 2e9, overlay: 2e7, media: 2e9 };
 const TYPES: Record<UploadKind, RegExp> = {
     episode: /^video\//,
     logo: /^image\/(png|jpeg)$/,
     intro: /^video\/(mp4|quicktime)$/,
     overlay: /^image\/(png|jpeg)$/,
+    media: /^(image\/(png|jpeg|webp)|video\/(mp4|quicktime)|audio\/(mpeg|mp4|x-m4a|wav|x-wav|wave))$/,
 };
+// The media bin's limits by what the file is (spec 020, "Uploads").
+export function mediaKindOf(contentType: string): 'image' | 'video' | 'audio' | null {
+    if (!TYPES.media.test(contentType)) return null;
+    return contentType.startsWith('image/') ? 'image' : contentType.startsWith('video/') ? 'video' : 'audio';
+}
+const MEDIA_MAX: Record<'image' | 'video' | 'audio', number> = { image: 2e7, video: 2e9, audio: 2e8 };
+const limitOf = (kind: UploadKind, contentType: string) => {
+    const media = kind === 'media' ? mediaKindOf(contentType) : null;
+    return media ? MEDIA_MAX[media] : MAX_BYTES[kind];
+};
+const isPng = (h: Buffer) => h.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+const isJpeg = (h: Buffer) => h.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
+const isWebp = (h: Buffer) => h.subarray(0, 4).toString('latin1') === 'RIFF' && h.subarray(8, 12).toString('latin1') === 'WEBP';
+const isIsoMedia = (h: Buffer) => h.subarray(4, 8).toString('latin1') === 'ftyp';     // MP4, MOV, M4A
+const isMp3 = (h: Buffer) => h.subarray(0, 3).toString('latin1') === 'ID3' || (h[0] === 0xff && (h[1] & 0xe0) === 0xe0);
+const isWav = (h: Buffer) => h.subarray(0, 4).toString('latin1') === 'RIFF' && h.subarray(8, 12).toString('latin1') === 'WAVE';
 // What the file must start with: the browser names its own content type, so the bytes are checked.
-const MAGIC: Partial<Record<UploadKind, (head: Buffer) => boolean>> = {
-    logo: h => h.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) || h.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])),
-    intro: h => h.subarray(4, 8).toString('latin1') === 'ftyp',
-    overlay: h => h.subarray(0, 4).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47])) || h.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])),
+const MAGIC: Partial<Record<UploadKind, (head: Buffer, contentType: string) => boolean>> = {
+    logo: h => isPng(h) || isJpeg(h),
+    intro: h => isIsoMedia(h),
+    overlay: h => isPng(h) || isJpeg(h),
+    media: (h, type) => type === 'image/png' ? isPng(h) : type === 'image/jpeg' ? isJpeg(h) : type === 'image/webp' ? isWebp(h)
+        : type === 'audio/mpeg' ? isMp3(h) : /wav|wave/.test(type) ? isWav(h) : isIsoMedia(h),
 };
-const EXT: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
+const EXT: Record<string, string> = {
+    'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov',
+    'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav',
+};
 
 // Keeps a file name safe as part of a Storage path.
 const safeName = (s: string) => s.replace(/[^\w.\- ]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 150) || 'recording.mp4';
@@ -39,16 +61,18 @@ export interface UploadStart { uploadUrl: string; path: string; episodeId: strin
 
 // A one-time resumable upload link for one file. The origin is the Studio page's own, so the
 // browser may send the file to it (Cloud Storage answers that origin only).
-export async function startUpload(body: { kind?: string; fileName?: string; contentType?: string; size?: number }, origin: string): Promise<UploadStart> {
+export async function startUpload(body: { kind?: string; fileName?: string; contentType?: string; size?: number; episodeId?: string }, origin: string): Promise<UploadStart> {
     const kind = body.kind as UploadKind;
     if (!(kind in MAX_BYTES)) throw new HttpError(400, 'Unknown upload');
     const fileName = String(body.fileName ?? '');
     const contentType = String(body.contentType ?? '');
     const size = Number(body.size ?? 0);
     if (!fileName || !TYPES[kind].test(contentType)) {
-        throw new HttpError(400, kind === 'logo' || kind === 'overlay' ? 'The image must be a PNG or JPEG' : kind === 'intro' ? 'The intro must be an MP4 or MOV video' : 'Choose a video recording (an MP4 from Zoom works)');
+        throw new HttpError(400, kind === 'logo' || kind === 'overlay' ? 'The image must be a PNG or JPEG' : kind === 'intro' ? 'The intro must be an MP4 or MOV video'
+            : kind === 'media' ? 'Choose a PNG, JPEG or WebP picture, an MP4 or MOV video, or an MP3, M4A or WAV sound' : 'Choose a video recording (an MP4 from Zoom works)');
     }
-    if (!(size > 0) || size > MAX_BYTES[kind]) throw new HttpError(400, `That file is too large (the limit is ${MAX_BYTES[kind] >= 1e9 ? `${MAX_BYTES[kind] / 1e9} GB` : `${MAX_BYTES[kind] / 1e6} MB`})`);
+    const limit = limitOf(kind, contentType);
+    if (!(size > 0) || size > limit) throw new HttpError(400, `That file is too large (the limit is ${limit >= 1e9 ? `${limit / 1e9} GB` : `${limit / 1e6} MB`})`);
     if (!/^https?:\/\/[^/\s]+$/.test(origin)) throw new HttpError(400, 'Upload from the Studio page');
 
     let episodeId: string | null = null;
@@ -56,6 +80,11 @@ export async function startUpload(body: { kind?: string; fileName?: string; cont
     if (kind === 'episode') {
         episodeId = `up${Date.now().toString(36)}${randomBytes(4).toString('hex')}`;
         path = `episodes/${episodeId}/source/${safeName(fileName)}`;
+    } else if (kind === 'media') {
+        // An episode's media bin (spec 020 item E5): kept with the episode, one name per upload.
+        const owner = String(body.episodeId ?? '');
+        if (!/^[\w-]{10,}$/.test(owner) || !(await adminDb().collection('episodes').doc(owner).get()).exists) throw new HttpError(404, 'Episode not found');
+        path = `episodes/${owner}/media/m${Date.now().toString(36)}${randomBytes(3).toString('hex')}.${EXT[contentType] ?? 'bin'}`;
     } else if (kind === 'overlay') {
         // Images laid over videos live apart from the settings, one name per upload.
         path = `overlays/${Date.now().toString(36)}${randomBytes(3).toString('hex')}.${EXT[contentType] ?? 'bin'}`;
@@ -79,16 +108,20 @@ export async function checkUploaded(kind: UploadKind, path: string) {
     if (!exists) throw new HttpError(409, 'The upload did not finish; try again');
     const [meta] = await file.getMetadata();
     const size = Number(meta.size ?? 0);
-    let ok = TYPES[kind].test(String(meta.contentType ?? '')) && size > 0 && size <= MAX_BYTES[kind];
+    const type = String(meta.contentType ?? '');
+    let ok = TYPES[kind].test(type) && size > 0 && size <= limitOf(kind, type);
     const magic = MAGIC[kind];
     if (ok && magic) {
         const [head] = await file.download({ start: 0, end: 15 });
-        ok = magic(head);
+        ok = magic(head, type);
     }
     if (!ok) {
         await file.delete().catch(() => {});
         throw new HttpError(400, kind === 'logo' ? 'That file is not a PNG or JPEG image under 5 MB'
-            : kind === 'intro' ? 'That file is not an MP4 or MOV video under 2 GB' : 'That file is not a video under 20 GB');
+            : kind === 'intro' ? 'That file is not an MP4 or MOV video under 2 GB'
+            : kind === 'overlay' ? 'That file is not a PNG or JPEG image under 20 MB'
+            : kind === 'media' ? 'That file is not a picture under 20 MB, a video under 2 GB or a sound under 200 MB of the kinds the Studio takes'
+            : 'That file is not a video under 20 GB');
     }
     return meta;
 }

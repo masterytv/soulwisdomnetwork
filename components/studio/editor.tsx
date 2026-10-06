@@ -11,6 +11,9 @@
 // Claude suggested a cut, beside it in the review row.
 // Spec 019 item 2.3: double-click a word to retype a misheard one, or replace a name everywhere
 // (`onFixWords`, saved with speaker review's corrections).
+// Spec 020 item E5: layers (lib/layers.ts) in place of the overlays: the Media panel adds pictures and
+// video from the episode's bin, the preview draws them and drags them into place, the On screen panel
+// sets each one's look, and the timeline's V2 and V3 tracks move and trim them.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -26,6 +29,9 @@ import { Timeline, type TimelineMedia, type TimelineSelection } from '@/componen
 import { SPEEDS } from '@/lib/studioUi';
 import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
+import { LayersPreview } from '@/components/studio/layers';
+import { MediaPanel } from '@/components/studio/mediaBin';
+import { layerFromBin, layersOf, type BinItem, type Layer } from '@/lib/layers';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
 import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
@@ -126,9 +132,11 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // is its timeline's waveform and thumbnails (item E2; null while they load), and `studioJoins` the
 // Studio's transitions between sections, for the Transitions panel (item E4).
 // onFixWords: saves word corrections and resolves with the ops that undo them (null when it failed).
+// media: the episode's bin for the Media panel (item E5); `layersEditable` is false when the bin could not
+// load, so a save could never drop the notes plan's b-roll (the Studio editor adds it as layers on opening).
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
-    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null, onFixWords, fixBusy = false,
+    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null, onFixWords, fixBusy = false, media, layersEditable = true,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -148,6 +156,8 @@ export function Editor({
     studioJoins?: SectionJoins | null;
     onFixWords?: (ops: FixOp[]) => Promise<FixOp[] | null>;
     fixBusy?: boolean;
+    media?: { episodeId: string; items: BinItem[] | null; error: string; onItems: (items: BinItem[]) => void };
+    layersEditable?: boolean;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -191,6 +201,8 @@ export function Editor({
     const [timelineSel, setTimelineSel] = useState<TimelineSelection | null>(null);
     // The V2 track's eye: on-screen items hidden in the preview (never in the render).
     const [overlaysHidden, setOverlaysHidden] = useState(false);
+    // The layer chosen on the preview, the timeline or the On screen panel (item E5).
+    const [selectedLayer, setSelectedLayer] = useState<string | null>(null);
     // Hear it: while a preview runs, cuts are played (not skipped) and playback pauses at endMs.
     const previewRef = useRef<{ endMs: number } | null>(null);
 
@@ -246,6 +258,32 @@ export function Editor({
     const updateEdit = useCallback((updater: (e: EpisodeEdit) => EpisodeEdit) => {
         onChange(updater({ ...edit, version: edit.version }));
     }, [edit, onChange]);
+
+    // Layers (item E5): the edit's own, or its overlays converted until it has them. Changing them saves
+    // them as layers for good. Links to their files come from the edit and the bin.
+    const layers = useMemo(() => layersOf(edit), [edit]);
+    const setLayers = useCallback((next: Layer[]) => {
+        if (layersEditable) updateEdit(prev => ({ ...prev, layers: next, overlays: [] }));
+    }, [layersEditable, updateEdit]);
+    const mediaUrls = useMemo(() => {
+        const urls: Record<string, string> = { ...overlayUrls };
+        for (const it of media?.items ?? []) if (it.url && !urls[it.path]) urls[it.path] = it.url;
+        return urls;
+    }, [overlayUrls, media?.items]);
+    // Choosing a layer on the preview or the timeline keeps the keys with the editor (Delete removes it),
+    // even when the element that was clicked goes away. Not from the panel, whose fields need the keys.
+    const pickLayer = useCallback((id: string | null) => {
+        setSelectedLayer(id);
+        if (id) containerRef.current?.focus({ preventScroll: true });
+    }, []);
+    // A bin item as a layer: at a moment of the recording, or at the playhead.
+    const addFromBin = useCallback((itemId: string, srcMs: number | null) => {
+        const item = media?.items?.find(i => i.id === itemId);
+        const layer = item && layerFromBin(item, srcMs ?? (videoRef.current?.currentTime ?? 0) * 1000);
+        if (!layer || !layersEditable) return;
+        setLayers([...layers, layer]);
+        pickLayer(layer.id);
+    }, [media?.items, layers, layersEditable, setLayers, pickLayer]);
 
     const undo = useCallback(() => {
         if (historyIdx.current > 0) {
@@ -350,6 +388,14 @@ export function Editor({
                 redo();
                 return;
             }
+            // A layer chosen on the preview, the timeline or the panel: Delete removes it.
+            if (workspace && selectedLayer && !selectedRange && !timelineSel && (e.key === 'Delete' || e.key === 'Backspace')) {
+                e.preventDefault();
+                setLayers(layers.filter(l => l.id !== selectedLayer));
+                setSelectedLayer(null);
+                containerRef.current?.focus({ preventScroll: true });
+                return;
+            }
             if (selectedRange && (e.key === 'Delete' || e.key === 'Backspace')) {
                 if (cutSelection()) e.preventDefault();
                 return;
@@ -391,7 +437,7 @@ export function Editor({
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -866,7 +912,12 @@ export function Editor({
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
             {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
-            {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
+            {workspace && !overlaysHidden && (
+                <LayersPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls}
+                    selected={selectedLayer} onSelect={pickLayer}
+                    onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
+            )}
+            {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} />}
         </div>
     );
 
@@ -1076,6 +1127,14 @@ export function Editor({
                         <div className="flex-1 min-h-0" style={{ containerType: 'size' }}>{video}{playControls}</div>
                     </>}
                     panels={[
+                        ...(media ? [{
+                            id: 'media',
+                            label: 'Media',
+                            node: (
+                                <MediaPanel episodeId={media.episodeId} items={media.items} error={media.error} canEdit={layersEditable}
+                                    onItems={media.onItems} onAdd={(item, srcMs) => addFromBin(item.id, srcMs)} />
+                            ),
+                        }] : []),
                         {
                             id: 'on-screen',
                             label: 'On screen',
@@ -1083,9 +1142,15 @@ export function Editor({
                                 <OnScreenPanel
                                     words={words}
                                     edit={edit}
+                                    layers={layers}
+                                    clips={kept}
+                                    editedMs={editedMs}
                                     video={videoRef}
                                     studio={studio}
-                                    onOverlays={overlays => updateEdit(prev => ({ ...prev, overlays }))}
+                                    selected={selectedLayer}
+                                    canEdit={layersEditable}
+                                    onSelect={setSelectedLayer}
+                                    onLayers={setLayers}
                                     onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
                                     onSeek={ms => seekToTime(ms / 1000)}
                                 />
@@ -1115,7 +1180,13 @@ export function Editor({
                             words={words}
                             cuts={edit.cuts}
                             ranges={kept}
-                            overlays={edit.overlays ?? []}
+                            layers={layers}
+                            clips={kept}
+                            editedMs={editedMs}
+                            selectedLayer={selectedLayer}
+                            onSelectLayer={id => { pickLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); setPanelId('on-screen'); } }}
+                            onLayers={layersEditable ? setLayers : undefined}
+                            onDropMedia={addFromBin}
                             totalMs={totalMs}
                             video={videoRef}
                             onSeek={ms => seekToTime(ms / 1000)}

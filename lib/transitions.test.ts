@@ -73,4 +73,6 @@ test('the quick edit\'s line about what only the Studio editor shows', () => {
         joins: [{ at: { atSplit: 1000 }, transition: 'dissolve', durationMs: 500 }, { at: 'end', transition: 'fade', durationMs: 500 }, { at: { atSplit: 9 }, transition: 'fade', durationMs: 500 }],
         overlays: [{}, {}, {}],
     }), '2 splits, 2 transitions, 3 on-screen items');
+    // Layers (spec 020 item E5) count instead of the overlays once the edit has them.
+    assert.equal(studioOnlySummary({ overlays: [], layers: [{}, {}] }), '2 on-screen items');
 });
