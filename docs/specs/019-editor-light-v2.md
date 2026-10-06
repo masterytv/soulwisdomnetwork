@@ -116,7 +116,7 @@ for this work".
 | **4** | **Render and hand-off** | | | | | |
 | 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
 | 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
-| 4.3 | Smoother preview | ours | M | High | — | Not started |
+| 4.3 | Smoother preview | ours | M | High | — | Built (#167) |
 | **5** | **The rest of the pipeline** | | | | | |
 | 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Not started |
 | 5.2 | Animated captions and graphics, if wanted | Revideo | M | — | — | Dropped for full episodes (D4); Shorts keep theirs |
@@ -804,6 +804,25 @@ a cut.
 - At the cut, swap which element is visible and playing.
 - A 15 ms volume ramp on each side, through Web Audio, to match the render's join fades.
 - Fall back to seeking when the next cut is under 1 s away.
+
+**Built (#167):** `components/studio/cutBridge.tsx` (tests in `cutBridge.test.ts`), in the Studio editor.
+- **A second video** on the same proxy waits, seeked to the start of the next kept stretch, from three seconds
+  before each cut. At the cut (40 ms before it) it plays on top while the main video jumps 300 ms ahead and
+  waits there at the slowest rate browsers allow (1/16). When the second video reaches it, the main video plays
+  on at its own speed and the second one hides.
+- **The main video stays the one everything follows** (the timeline, the script, layers, captions, J/K/L), so
+  nothing else changed; the plan's "swap which element is visible and playing" would have moved all of those
+  to whichever video was playing.
+- **Not pausing:** the main video waits at 1/16 speed rather than pausing, which would flash the Play button.
+- **The sound:** a 15 ms ramp on each video's volume at each hand-over. Not Web Audio, as planned: the Storage
+  bucket's CORS refuses the browser, and a video Web Audio cannot read plays silent (the same reason the
+  waveform's peaks come through the server).
+- **Left as before:** a next stretch under a second (the second video could not be ready again), a cut where a
+  transition plays (TransitionPreview), Original, Hear it and reverse play.
+- **Measured** in Chromium on the editor with a 3-minute test video, playing through a cut and sampling every
+  frame: with the video served slowly (each request held 400 ms, as a far Storage link can be), the picture
+  froze for 82–92 ms at the cut without it and for 17 ms (one frame) with it. Served locally, both were
+  50–72 ms (the seek was fast already).
 
 ## Phase 5 — The rest of the pipeline
 

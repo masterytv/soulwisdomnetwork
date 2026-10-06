@@ -50,6 +50,7 @@ import { previewRanges, sequenceLength, sequenceOf, timelineTime } from '@/lib/s
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
 import { TransitionsPanel } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
+import { CutBridge } from '@/components/studio/cutBridge';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 
@@ -252,6 +253,8 @@ export function Editor({
     const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.map(j => ({
         aEndMs: j.aEndMs, bStartMs: j.bStartMs, durationMs: j.durationMs, transition: j.transition,
     })), [sequence.joins]);
+    // Item 4.3 (CutBridge): cuts where a transition plays are left to TransitionPreview.
+    const bridgeSkips = useMemo(() => sequence.joins.map(j => j.aEndMs), [sequence.joins]);
     // The split whose transition the Transitions panel shows first (chosen on the timeline).
     const [joinFocus, setJoinFocus] = useState<number | null>(null);
 
@@ -987,6 +990,7 @@ export function Editor({
                 <ReversePlay video={videoRef} rate={reverse} onStop={() => setReverse(0)} clips={kept} ranges={ranges} edited={playMode === 'edited'} />
             )}
             {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
+            {workspace && <CutBridge video={videoRef} src={videoUrl} ranges={ranges} transitionsAt={bridgeSkips} hold={previewRef} active={playMode === 'edited' && reverse === 0} />}
             {workspace && !overlaysHidden && (
                 <LayersPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls}
                     selected={selectedLayer} onSelect={openLayer}
