@@ -60,6 +60,7 @@ async function main() {
         // The Studio settings: intro, teasers, and whether this becomes the final cut.
         settings: await loadSettings(getFirestore()),
         showIntro: path.resolve('assets/podcast/intro.mp4'),
+        siteLogo: path.resolve('public/logo.png'),
         cutClip: async (input, output, start, seconds) => { await cutClip(input, output, start, seconds, true); },
     }, workDir, process.env.GITHUB_RUN_ID || undefined);
     const episode = (await ref.get()).data() as Episode;

@@ -6,7 +6,7 @@
 // point the render at a file the Studio did not give it.
 
 import { FieldValue } from 'firebase-admin/firestore';
-import type { BinItem, BinKind } from '@/lib/layers';
+import { SITE_LOGO, SITE_LOGO_URL, type BinItem, type BinKind } from '@/lib/layers';
 import type { StudioSettings } from '@/lib/studioSettings';
 import type { Episode } from '@/types/episode';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -34,7 +34,8 @@ export async function binItems(id: string, episode: Episode, settings: StudioSet
     (pkg?.clipPaths ?? []).forEach((p, i) => items.push({ id: `teaser-${i}`, kind: 'video', source: 'teaser', path: p, name: `Teaser clip ${i + 1}` }));
     const intro = settings.intro === 'custom' ? settings.introPath : pkg?.introPath ?? null;
     if (intro) items.push({ id: 'intro', kind: 'video', source: 'intro', path: intro, name: 'Intro' });
-    if (settings.logoPath) items.push({ id: 'logo', kind: 'image', source: 'logo', path: settings.logoPath, name: 'Logo' });
+    // The Studio's logo, or the site's when none is uploaded (as Shorts and thumbnails do).
+    items.push({ id: 'logo', kind: 'image', source: 'logo', path: settings.logoPath ?? SITE_LOGO, name: 'Logo', width: settings.logoPath ? null : 512, height: settings.logoPath ? null : 512 });
     const uploads = await episodeRef(id).collection('media').orderBy('addedAt', 'desc').limit(BIN_MAX).get();
     for (const d of uploads.docs) {
         const u = d.data() as UploadDoc;
@@ -50,6 +51,7 @@ export async function getBin(id: string): Promise<{ items: BinItem[] }> {
     const items = await binItems(id, snap.data() as Episode, await getSettings());
     const expires = Date.now() + LINK_MS;
     await Promise.all(items.map(async it => {
+        if (it.path === SITE_LOGO) { it.url = SITE_LOGO_URL; return; }
         it.url = await adminBucket().file(it.path).getSignedUrl({ action: 'read', expires }).then(([u]) => u).catch(() => null);
     }));
     return { items };

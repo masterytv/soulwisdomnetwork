@@ -6,6 +6,7 @@
 
 import { z } from 'zod';
 import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
+import type { Brand } from './layers';
 import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
 
@@ -217,6 +218,13 @@ export function thumbnailsSystemPrompt(s: StudioSettings): string {
 }
 
 // ─── Branding ───────────────────────────────────────────────────────────────
+
+// The look of the Studio editor's titles, lower thirds and logo bug (spec 020 item E6): the captions' font,
+// the brand's colours, and the hosts.
+export function brandOf(s: Pick<StudioSettings, 'captionStyle' | 'colors' | 'hosts'>): Brand {
+    return { font: s.captionStyle.font, colors: { background: s.colors.background, accent: s.colors.accent }, hosts: s.hosts };
+}
+export const DEFAULT_BRAND = brandOf(DEFAULT_SETTINGS);
 
 function rgb(color: string): [number, number, number] {
     const n = parseInt(color.slice(1), 16);

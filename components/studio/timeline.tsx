@@ -21,7 +21,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
-import { LAYER_MIN_MS, layerSpan, type Layer } from '@/lib/layers';
+import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Layer } from '@/lib/layers';
 import { sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
@@ -661,7 +661,6 @@ export function Timeline({
     const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft : l));
     const selectedLayerShown = shownLayers.find(l => l.id === selectedLayer) ?? null;
     const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
-    const layerName = (l: Layer) => (l.kind === 'text' ? l.text : l.media.name);
 
     // Where a dragged edge lands: snapped (unless Alt, or Snap is off) or on a 10 ms step, then kept
     // within its limits and out of heard words (unless Alt).
@@ -983,7 +982,10 @@ export function Timeline({
                                 {shownLayers.map(l => {
                                     const b = layerBounds(l, clips, editedMs);
                                     if (!b || b.toMs < startMs || b.fromMs > endMs) return null;
-                                    const top = l.kind === 'text' ? V3_TOP : V2_TOP;
+                                    // A picture on a higher track (the logo bug, item E6) is a thin strip along the top of V2, so a
+                                    // whole-episode logo never covers the b-roll under it.
+                                    const thin = l.kind !== 'text' && l.track >= TRACK.logo;
+                                    const [top, height] = l.kind === 'text' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
                                     const isSel = l.id === selectedLayer;
                                     const color = l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
                                     const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
@@ -992,14 +994,14 @@ export function Timeline({
                                             key={l.id}
                                             role="button"
                                             tabIndex={-1}
-                                            aria-label={`${l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture'}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
+                                            aria-label={`${layerKind(l)}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
                                             title={`${layerName(l)}: drag to move, drag an end to trim`}
                                             onPointerDown={e => onLayerDown(e, l, 'move')}
                                             {...handles}
                                             className={`absolute rounded-sm ${color} ${overlaysHidden ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onLayers ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
-                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top: top + 3, height: LANE_H - 6 }}
+                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top, height }}
                                         >
-                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{layerName(l)}</span>
+                                            {!thin && <span className="pointer-events-none px-1 text-[9px] leading-[12px] text-black/80 whitespace-nowrap">{layerName(l)}</span>}
                                             {onLayers && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, l, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}

@@ -14,8 +14,8 @@
 import { z } from 'zod';
 import { editedTime, type KeptRange } from './edit';
 import {
-    ALIGN, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, SIZE_NAMES, styleLine, TEXT_SIZES,
-    type CaptionStyle, type Overlay, type Position,
+    ALIGN, assRgba, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, POSITIONS, SIZE_NAMES, styleLine, TEXT_SIZES,
+    type CaptionStyle, type FontName, type Overlay, type Position,
 } from './onScreen';
 import type { Cue } from './captions';
 
@@ -33,8 +33,9 @@ export const MOTIONS = ['none', 'kenBurnsIn', 'kenBurnsOut', 'pan'] as const;
 export type Motion = typeof MOTIONS[number];
 export const MOTION_LABELS: Record<Motion, string> = { none: 'Still', kenBurnsIn: 'Slow zoom in', kenBurnsOut: 'Slow zoom out', pan: 'Slow pan' };
 
-// The tracks: V2 pictures and video, V3 text (the timeline draws them in that order, V3 on top).
-export const TRACK = { pictures: 2, text: 3 } as const;
+// The tracks: V2 pictures and video, V3 text (the timeline draws them in that order, V3 on top). The logo bug
+// (item E6) is a picture on track 4, so it stays over full-frame b-roll; text is always drawn over pictures.
+export const TRACK = { pictures: 2, text: 3, logo: 4 } as const;
 
 export const LAYERS_MAX = 500;
 export const LAYER_MIN_MS = 500;
@@ -56,8 +57,12 @@ export type Place = z.infer<typeof PlaceSchema>;
 // Where a picture's file is in Cloud Storage: an upload of this Studio (`overlays/`, Part I), the
 // episode's own files (its media bin, b-roll, edit package) or the Studio's (`settings/`, the logo and
 // intro). The edit route checks that each new one belongs to the episode's bin (lib/server/mediaBin.ts).
+// `SITE_LOGO` is the site's own logo (public/logo.png), used when the Studio settings have none: the
+// render takes it from the repository and the editor from the site.
+export const SITE_LOGO = 'site/logo.png';
+export const SITE_LOGO_URL = '/logo.png';
 export const MediaPathSchema = z.string().max(300)
-    .regex(/^(overlays\/[\w.\- ]+|settings\/[\w.\-]+|episodes\/[\w-]{10,}\/[\w.\-/ ]+)$/, 'Not a Studio file')
+    .regex(/^(overlays\/[\w.\- ]+|settings\/[\w.\-]+|episodes\/[\w-]{10,}\/[\w.\-/ ]+|site\/logo\.png)$/, 'Not a Studio file')
     .refine(p => !p.includes('..'), 'Not a Studio file');
 
 const base = {
@@ -72,10 +77,17 @@ const base = {
 };
 const media = z.object({ path: MediaPathSchema, name: z.string().trim().max(150) });
 
+// What a layer was added as (item E6), for its name in the panels and on the timeline: a logo bug, a title
+// card or a lower third. Absent: a plain picture, video or text.
+export const ELEMENTS = ['logo', 'title', 'lowerThird'] as const;
+export type Element = typeof ELEMENTS[number];
+export const ELEMENT_LABELS: Record<Element, string> = { logo: 'Logo bug', title: 'Title card', lowerThird: 'Lower third' };
+
 export const ImageLayerSchema = z.object({
     ...base, kind: z.literal('image'), media,
     w: z.number().min(0.02).max(2),              // width, as a share of the frame's
     motion: z.enum(MOTIONS),
+    element: z.literal('logo').optional(),
 });
 export const VideoLayerSchema = z.object({
     ...base, kind: z.literal('video'), media,
@@ -91,6 +103,9 @@ export const TextLayerSchema = z.object({
     size: z.enum(SIZE_NAMES),
     color: hex,
     background: z.enum(BACKGROUNDS),
+    band: hex.optional(),                         // the band's colour when the background is a band; absent: dark
+    subColor: hex.optional(),                     // the second line's colour; absent: as the first
+    element: z.enum(['title', 'lowerThird']).optional(),
 });
 export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema]);
 export type ImageLayer = z.infer<typeof ImageLayerSchema>;
@@ -103,6 +118,18 @@ export const LayersSchema = z.array(LayerSchema).max(LAYERS_MAX)
 
 export const isPicture = (l: Layer): l is PictureLayer => l.kind !== 'text';
 
+// What a layer is, in words: its element, or its kind.
+export function layerKind(l: Layer): string {
+    if (l.kind !== 'video' && l.element) return ELEMENT_LABELS[l.element];
+    return l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture';
+}
+
+// A layer's name in the panels and on the timeline: what it says, or its file's name.
+export function layerName(l: Layer): string {
+    if (l.kind === 'text') return l.subtext ? `${l.text} · ${l.subtext}` : l.text;
+    return l.media.name;
+}
+
 // ─── from today's edit ──────────────────────────────────────────────────────
 
 // Where a nine-point position sits, `mh` and `mv` pixels in from the edges, as a place.
@@ -110,6 +137,24 @@ export function placeOf(position: Position, mh: number, mv: number): Place {
     const x = position.endsWith('left') ? mh / FRAME.width : position.endsWith('right') ? 1 - mh / FRAME.width : 0.5;
     const y = position.startsWith('top') ? mv / FRAME.height : position.startsWith('bottom') ? 1 - mv / FRAME.height : 0.5;
     return { x, y, align: ALIGN[position] };
+}
+
+// How far in from the frame's edges a layer sits at each of the nine positions, in render pixels: text 90
+// from the sides and 80 from the top or bottom (a lower third 120, clear of the captions), pictures 60,
+// and none for a picture as wide as the frame.
+export function marginsOf(l: Layer): [number, number] {
+    if (l.kind === 'text') return [90, l.element === 'lowerThird' ? 120 : 80];
+    return l.w >= 1 ? [0, 0] : [60, 60];
+}
+
+// Which of the nine positions a layer is at, or "custom" once dragged or typed somewhere else.
+export function positionOf(l: Layer): Position | 'custom' {
+    const [mh, mv] = marginsOf(l);
+    const hit = POSITIONS.find(p => {
+        const q = placeOf(p, mh, mv);
+        return Math.abs(q.x - l.place.x) < 1e-3 && Math.abs(q.y - l.place.y) < 1e-3 && q.align === l.place.align;
+    });
+    return hit ?? 'custom';
 }
 
 const NO_EDGE: Edge = { transition: 'none', durationMs: 0 };
@@ -277,11 +322,15 @@ export function layerAudioFilter(inputIdx: number, outLabel: string, layer: Vide
 
 const px = (f: number, size: number) => Math.round(f * size);
 
+// The second line's height, as a share of the first's.
+export const SUBTEXT_SCALE = 0.6;
+
 // The ASS events for one text layer: pinned with \an and \pos (the same spot the nine positions gave),
 // faded with \fad, see-through with \alpha, and a slide as a \move before and after the still part.
 export function textEvents(layer: TextLayer, span: Span, style: string): string[] {
     const x = px(layer.place.x, FRAME.width), y = px(layer.place.y, FRAME.height);
-    const second = layer.subtext ? `\\N{\\fs${Math.round(TEXT_SIZES[layer.size] * 0.6)}}${assText(layer.subtext)}` : '';
+    const subColor = layer.subColor && layer.subColor.toLowerCase() !== layer.color.toLowerCase() ? `\\c${assRgba(layer.subColor)}&` : '';
+    const second = layer.subtext ? `\\N{\\fs${Math.round(TEXT_SIZES[layer.size] * SUBTEXT_SCALE)}${subColor}}${assText(layer.subtext)}` : '';
     const body = `${assText(layer.text)}${second}`;
     const alpha = layer.opacity < 1 ? `\\alpha&H${Math.round((1 - layer.opacity) * 255).toString(16).padStart(2, '0').toUpperCase()}&` : '';
     const fadeIn = layer.in.transition === 'fade' ? layer.in.durationMs : 0;
@@ -385,5 +434,63 @@ export function layerFromBin(item: BinItem, srcMs: number): PictureLayer | null 
         id: newId('i'), kind: 'image', track: TRACK.pictures, anchor, durationMs: logo ? 60_000 : 5_000,
         place: placeOf('top-right', 60, 60), opacity: logo ? 0.9 : 1, in: FADE(300), out: FADE(300),
         media: { path: item.path, name: item.name }, w: logo ? 0.12 : 0.2, motion: 'none',
+    };
+}
+
+// ─── elements (item E6) ─────────────────────────────────────────────────────
+
+// The Studio's look for elements (Studio settings, spec 018): the captions' font, the brand's background
+// colour for bands and its accent for what stands out, and the hosts, whose lower thirds say "Host".
+export interface Brand {
+    font: FontName;
+    colors: { background: string; accent: string };
+    hosts: string[];
+}
+
+// A logo bug lasts the whole episode, however long the edit becomes: the longest a layer can be, which
+// layerSpan cuts at the episode's end.
+export const WHOLE_EPISODE_MS = 24 * 3600_000;
+export const isWhole = (l: { durationMs: number }) => l.durationMs >= WHOLE_EPISODE_MS;
+
+// A title card: centred, in the accent colour on a band of the brand's background, with a white second line.
+export function titleCard(srcMs: number, brand: Brand): TextLayer {
+    return {
+        id: newId('t'), kind: 'text', element: 'title', track: TRACK.text, anchor: { srcMs: Math.max(0, Math.round(srcMs)) },
+        durationMs: 4000, place: { x: 0.5, y: 0.5, align: 5 }, opacity: 1, in: FADE(500), out: FADE(500),
+        text: 'Your title', subtext: '', font: brand.font, size: 'huge', color: brand.colors.accent, background: 'box',
+        band: brand.colors.background, subColor: '#ffffff',
+    };
+}
+
+// A lower third: a name in white and a role in the accent colour, on a band of the brand's background in
+// the lower left, sliding in and fading out.
+export function lowerThird(srcMs: number, name: string, role: string, brand: Brand): TextLayer {
+    return {
+        id: newId('l'), kind: 'text', element: 'lowerThird', track: TRACK.text, anchor: { srcMs: Math.max(0, Math.round(srcMs)) },
+        durationMs: 5000, place: placeOf('bottom-left', 90, 120), opacity: 1,
+        in: { transition: 'slideRight', durationMs: 500 }, out: FADE(400),
+        text: name.slice(0, 200) || 'Name', subtext: role.slice(0, 200), font: brand.font, size: 'medium', color: '#ffffff', background: 'box',
+        band: brand.colors.background, subColor: brand.colors.accent,
+    };
+}
+
+// "Add for every speaker": a lower third the first time each speaker talks, from the transcript's names.
+// Speakers that already have a text layer with their name are left out, so pressing it twice adds nothing.
+export function lowerThirds(words: { speaker: string; start: number }[], layers: Layer[], brand: Brand): TextLayer[] {
+    const have = new Set(layers.flatMap(l => (l.kind === 'text' ? [l.text.trim().toLowerCase()] : [])));
+    const hosts = new Set(brand.hosts.map(h => h.trim().toLowerCase()));
+    const first = new Map<string, number>();
+    for (const w of words) if (w.speaker && !first.has(w.speaker)) first.set(w.speaker, w.start);
+    return [...first].filter(([speaker]) => !have.has(speaker.trim().toLowerCase()))
+        .map(([speaker, start], i) => ({ ...lowerThird(start, speaker, hosts.has(speaker.trim().toLowerCase()) ? 'Host' : '', brand), id: newId(`l${i}`) }));
+}
+
+// The logo bug: the Studio's logo small in the top right, a little see-through, for the whole episode
+// (pinned at its start, so it never moves with cuts).
+export function logoBug(logo: { path: string; name: string }): ImageLayer {
+    return {
+        id: newId('g'), kind: 'image', element: 'logo', track: TRACK.logo, anchor: { atMs: 0 }, durationMs: WHOLE_EPISODE_MS,
+        place: placeOf('top-right', 60, 60), opacity: 0.8, in: FADE(500), out: FADE(500),
+        media: { path: logo.path, name: logo.name || 'Logo' }, w: 0.08, motion: 'none',
     };
 }

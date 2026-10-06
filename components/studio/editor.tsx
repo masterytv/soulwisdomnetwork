@@ -31,7 +31,10 @@ import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
 import { LayersPreview } from '@/components/studio/layers';
 import { MediaPanel } from '@/components/studio/mediaBin';
-import { layerFromBin, layersOf, type BinItem, type Layer } from '@/lib/layers';
+import { ElementsPanel } from '@/components/studio/elements';
+import { PropertiesPanel } from '@/components/studio/properties';
+import { layerFromBin, layersOf, type BinItem, type Brand, type Layer } from '@/lib/layers';
+import { DEFAULT_BRAND } from '@/lib/studioSettings';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
 import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
@@ -134,9 +137,11 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 // onFixWords: saves word corrections and resolves with the ops that undo them (null when it failed).
 // media: the episode's bin for the Media panel (item E5); `layersEditable` is false when the bin could not
 // load, so a save could never drop the notes plan's b-roll (the Studio editor adds it as layers on opening).
+// brand: the Studio's colours, font and hosts for the Elements panel's titles, lower thirds and logo bug (item E6).
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
     heading, status, actions, panels = [], timelineMedia = null, studioJoins = null, onFixWords, fixBusy = false, media, layersEditable = true,
+    brand = DEFAULT_BRAND,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -158,6 +163,7 @@ export function Editor({
     fixBusy?: boolean;
     media?: { episodeId: string; items: BinItem[] | null; error: string; onItems: (items: BinItem[]) => void };
     layersEditable?: boolean;
+    brand?: Brand;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -276,6 +282,25 @@ export function Editor({
         setSelectedLayer(id);
         if (id) containerRef.current?.focus({ preventScroll: true });
     }, []);
+    // A layer chosen on the preview, the timeline or a panel's list, shown in the Properties panel (item E6).
+    const openLayer = useCallback((id: string | null) => {
+        pickLayer(id);
+        if (id) setPanelId('properties');
+    }, [pickLayer]);
+    // Removed from a panel: the editor keeps the keys, so Ctrl+Z brings it back (the button that was pressed
+    // goes away with it).
+    const removeLayer = useCallback((id: string) => {
+        setLayers(layers.filter(l => l.id !== id));
+        setSelectedLayer(s => (s === id ? null : s));
+        containerRef.current?.focus({ preventScroll: true });
+    }, [layers, setLayers]);
+    // Elements (item E6): added, and the first opened in Properties so its text can be typed straight away.
+    const addLayers = useCallback((made: Layer[]) => {
+        if (!layersEditable || !made.length) return;
+        setLayers([...layers, ...made]);
+        setSelectedLayer(made[0].id);
+        setPanelId('properties');
+    }, [layers, layersEditable, setLayers]);
     // A bin item as a layer: at a moment of the recording, or at the playhead.
     const addFromBin = useCallback((itemId: string, srcMs: number | null) => {
         const item = media?.items?.find(i => i.id === itemId);
@@ -914,7 +939,7 @@ export function Editor({
             {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
             {workspace && !overlaysHidden && (
                 <LayersPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls}
-                    selected={selectedLayer} onSelect={pickLayer}
+                    selected={selectedLayer} onSelect={openLayer}
                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
             {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} />}
@@ -1136,22 +1161,46 @@ export function Editor({
                             ),
                         }] : []),
                         {
+                            id: 'elements',
+                            label: 'Elements',
+                            node: (
+                                <ElementsPanel words={words} layers={layers} brand={brand} video={videoRef} canEdit={layersEditable}
+                                    logo={media?.items?.find(i => i.source === 'logo') ?? null}
+                                    onAdd={addLayers} onOpen={id => { setSelectedLayer(id); setPanelId('properties'); }} />
+                            ),
+                        },
+                        {
                             id: 'on-screen',
                             label: 'On screen',
                             node: (
                                 <OnScreenPanel
-                                    words={words}
                                     edit={edit}
                                     layers={layers}
                                     clips={kept}
                                     editedMs={editedMs}
-                                    video={videoRef}
                                     studio={studio}
                                     selected={selectedLayer}
                                     canEdit={layersEditable}
-                                    onSelect={setSelectedLayer}
-                                    onLayers={setLayers}
+                                    onOpen={id => { setSelectedLayer(id); setPanelId('properties'); }}
+                                    onRemove={removeLayer}
                                     onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ),
+                        },
+                        {
+                            id: 'properties',
+                            label: 'Properties',
+                            node: (
+                                <PropertiesPanel
+                                    layer={layers.find(l => l.id === selectedLayer) ?? null}
+                                    clips={kept}
+                                    editedMs={editedMs}
+                                    video={videoRef}
+                                    brand={brand}
+                                    canEdit={layersEditable}
+                                    onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))}
+                                    onRemove={removeLayer}
                                     onSeek={ms => seekToTime(ms / 1000)}
                                 />
                             ),
@@ -1184,7 +1233,7 @@ export function Editor({
                             clips={kept}
                             editedMs={editedMs}
                             selectedLayer={selectedLayer}
-                            onSelectLayer={id => { pickLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); setPanelId('on-screen'); } }}
+                            onSelectLayer={id => { openLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); } }}
                             onLayers={layersEditable ? setLayers : undefined}
                             onDropMedia={addFromBin}
                             totalMs={totalMs}
