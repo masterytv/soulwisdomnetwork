@@ -107,7 +107,7 @@ for this work".
 | E5 | Media bin, uploads, image and video overlays | ours (no react-rnd or dnd-kit; see 020 "E5 — Built") | L | Extra | E3 | Built (#157; spec 020, "E5 — Built"); a render with layers waits on `main` |
 | E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Built (#159; spec 020, "E6 — Built"); a render with elements waits on `main` |
 | E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Built (#160; spec 020, "E7 — Built"); a render with sounds waits on `main` |
-| E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Not started |
+| E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Built (#162; spec 020, "E8 — Built"); the fix for a word at a transition reaches renders from `main` |
 | E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |

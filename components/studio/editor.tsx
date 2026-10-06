@@ -14,6 +14,10 @@
 // Spec 020 item E5: layers (lib/layers.ts) in place of the overlays: the Media panel adds pictures and
 // video from the episode's bin, the preview draws them and drags them into place, the On screen panel
 // sets each one's look, and the timeline's V2 and V3 tracks move and trim them.
+// Spec 020 item E8: the YouTube caption track (lib/captions.ts editCues) on the timeline's CC lane, over the
+// preview with CC, and in the Captions panel (components/studio/captions.tsx), which also holds Part I's
+// burned-in option; Ctrl or ⌘ + C, X and V copy, cut and paste a layer or sound at the playhead; J, K and L
+// shuttle (K with J or L steps a frame).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -27,8 +31,11 @@ import { hasFillers } from '@/lib/fillers';
 import { primary, secondary, hint } from '@/components/studio/ui';
 import { Timeline, type TimelineMedia, type TimelineSelection } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
-import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
+import { captionLook, DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
+import { CaptionsPanel, CaptionTrackPreview } from '@/components/studio/captions';
+import { ReversePlay, useStudioKeys } from '@/components/studio/editorKeys';
+import { editCues } from '@/lib/captions';
 import { LayersPreview } from '@/components/studio/layers';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
@@ -239,6 +246,9 @@ export function Editor({
         : keepRanges(videoDuration || (words.length > 0 ? words[words.length - 1].end : 0), edit.cuts, 40, words),
     [workspace, sequence, videoDuration, words, edit.cuts]);
     const editedMs = useMemo(() => sequenceLength(kept), [kept]);
+    // The YouTube caption track (item E8): the cues the render's .srt will have, on the edited timeline. CC
+    // shows them over the preview.
+    const cues = useMemo(() => workspace ? editCues(words, kept) : [], [workspace, words, kept]);
     const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.map(j => ({
         aEndMs: j.aEndMs, bStartMs: j.bStartMs, durationMs: j.durationMs, transition: j.transition,
     })), [sequence.joins]);
@@ -285,12 +295,12 @@ export function Editor({
     const pickLayer = useCallback((id: string | null) => {
         setSelectedLayer(id);
         if (id) containerRef.current?.focus({ preventScroll: true });
-    }, []);
+    }, [setSelectedLayer]);
     // A layer chosen on the preview, the timeline or a panel's list, shown in the Properties panel (item E6).
     const openLayer = useCallback((id: string | null) => {
         pickLayer(id);
         if (id) setPanelId('properties');
-    }, [pickLayer]);
+    }, [pickLayer, setPanelId]);
     // Removed from a panel: the editor keeps the keys, so Ctrl+Z brings it back (the button that was pressed
     // goes away with it).
     const removeLayer = useCallback((id: string) => {
@@ -298,14 +308,14 @@ export function Editor({
         else updateEdit(prev => ({ ...prev, audio: (prev.audio ?? []).filter(s => s.id !== id) }));
         setSelectedLayer(s => (s === id ? null : s));
         containerRef.current?.focus({ preventScroll: true });
-    }, [layers, setLayers, updateEdit]);
+    }, [layers, setLayers, updateEdit, setSelectedLayer]);
     // Elements (item E6): added, and the first opened in Properties so its text can be typed straight away.
     const addLayers = useCallback((made: Layer[]) => {
         if (!layersEditable || !made.length) return;
         setLayers([...layers, ...made]);
         setSelectedLayer(made[0].id);
         setPanelId('properties');
-    }, [layers, layersEditable, setLayers]);
+    }, [layers, layersEditable, setLayers, setSelectedLayer, setPanelId]);
     // Music and effects (item E7): the edit's sounds, on A2 and A3.
     const sounds = edit.audio ?? NO_SOUNDS;
     const setSounds = useCallback((next: Sound[]) => updateEdit(prev => ({ ...prev, audio: next })), [updateEdit]);
@@ -331,6 +341,17 @@ export function Editor({
     }, [media?.items, layers, layersEditable, setLayers, pickLayer, sounds, setSounds, kept]);
     // The sound tracks muted in the preview (the timeline's A2 and A3 speakers).
     const [mutedTracks, setMutedTracks] = useState<number[]>([]);
+
+    // CC: the caption track over the preview (item E8; the CC button, the CC lane's header, the Captions panel).
+    const [ccShown, setCcShown] = useState(false);
+
+    // J, K and L, and copy and paste (item E8, components/studio/editorKeys.tsx). `reverse`: playing backwards.
+    const [reverse, setReverse] = useState(0);
+    useStudioKeys({
+        container: containerRef, video: videoRef, enabled: workspace, clips: kept, layers, sounds, layersEditable,
+        selected: selectedLayer, busy: !!selectedRange || !!timelineSel, setLayers, setSounds, pick: pickLayer, remove: removeLayer,
+        setReverse, setSpeed,
+    });
 
     const undo = useCallback(() => {
         if (historyIdx.current > 0) {
@@ -368,7 +389,7 @@ export function Editor({
         }
         setSelectedRange(null);
         return true;
-    }, [selectedRange, words, edit.cuts, updateEdit]);
+    }, [selectedRange, words, edit.cuts, updateEdit, setSelectedRange]);
 
     // Splits (full-page editor): set at the playhead; each one once, in order.
     const addSplit = useCallback((ms: number) => {
@@ -422,7 +443,8 @@ export function Editor({
                 e.preventDefault();
                 const video = videoRef.current;
                 if (!video) return;
-                if (video.paused) video.play(); else video.pause();
+                if (reverse) setReverse(0);
+                else if (video.paused) video.play(); else video.pause();
                 return;
             }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -485,7 +507,8 @@ export function Editor({
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers, sounds, setSounds]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers, sounds, setSounds,
+        reverse]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -583,6 +606,7 @@ export function Editor({
         video.pause();
         video.currentTime = seconds;
     }, []);
+    const seekToMs = useCallback((ms: number) => seekToTime(ms / 1000), [seekToTime]);
 
     // Word click: seek. Shift-click: extend selection. Double-click a cut word: bring it back.
     // A cut word is never selected — single click on a cut word seeks and clears selection.
@@ -959,13 +983,19 @@ export function Editor({
                 controls
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
+            {workspace && reverse > 0 && (
+                <ReversePlay video={videoRef} rate={reverse} onStop={() => setReverse(0)} clips={kept} ranges={ranges} edited={playMode === 'edited'} />
+            )}
             {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
             {workspace && !overlaysHidden && (
                 <LayersPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls}
                     selected={selectedLayer} onSelect={openLayer}
                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
-            {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} />}
+            {workspace && !overlaysHidden && <OnScreenPreview cues={cues} clips={kept} edit={edit} video={videoRef} studio={studio} />}
+            {workspace && ccShown && !(captionLook(edit, { burnCaptions: studio.on, captionStyle: studio.style }) && !overlaysHidden) && (
+                <CaptionTrackPreview cues={cues} clips={kept} video={videoRef} />
+            )}
             {workspace && sounds.length > 0 && (
                 <SoundsPreview sounds={sounds} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls} words={words} mutedTracks={mutedTracks} />
             )}
@@ -1005,6 +1035,14 @@ export function Editor({
                     {rate}×
                 </button>
             ))}
+            {workspace && (
+                <button type="button" aria-pressed={ccShown} onClick={() => setCcShown(v => !v)}
+                    title="Show the YouTube caption track over the preview (not burned in)"
+                    className={`${ccShown ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10" : `${secondary} px-2 py-0.5`} ml-3`}>
+                    CC
+                </button>
+            )}
+            {reverse > 0 && <span className="text-xs text-amber-200" aria-live="polite">◀ Backwards {reverse}× (K stops)</span>}
         </div>
     );
 
@@ -1200,17 +1238,31 @@ export function Editor({
                             label: 'On screen',
                             node: (
                                 <OnScreenPanel
-                                    edit={edit}
                                     layers={layers}
                                     clips={kept}
                                     editedMs={editedMs}
-                                    studio={studio}
                                     selected={selectedLayer}
                                     canEdit={layersEditable}
                                     onOpen={id => { setSelectedLayer(id); setPanelId('properties'); }}
                                     onRemove={removeLayer}
-                                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
                                     onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ),
+                        },
+                        {
+                            id: 'captions',
+                            label: 'Captions',
+                            node: (
+                                <CaptionsPanel
+                                    cues={cues}
+                                    clips={kept}
+                                    edit={edit}
+                                    studio={studio}
+                                    shown={ccShown}
+                                    onShown={setCcShown}
+                                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
+                                    video={videoRef}
+                                    onSeek={seekToMs}
                                 />
                             ),
                         },
@@ -1275,6 +1327,9 @@ export function Editor({
                             onDropMedia={addFromBin}
                             sounds={sounds}
                             onSounds={setSounds}
+                            captions={cues}
+                            captionsShown={ccShown}
+                            onCaptionsShown={setCcShown}
                             mutedTracks={mutedTracks}
                             onMutedTracks={setMutedTracks}
                             totalMs={totalMs}

@@ -422,13 +422,24 @@ export function applyToQuotes(
 // The transcript as it will be heard in the edited episode: words that are fully kept, moved
 // onto the edited timeline and shifted by `offsetMs` (whatever plays before the episode, such
 // as teasers and the intro). Cut words are dropped. This replaces re-transcribing the final cut.
+// A word inside one range takes that range's place: one starting exactly where a part after a
+// transition starts belongs to that part, not to the end of the one before (spec 020 item E8).
 export function editedWords<W extends { start: number; end: number }>(words: W[], ranges: KeptRange[], offsetMs = 0): W[] {
     const out: W[] = [];
     for (const w of words) {
-        const start = editedTime(w.start, ranges);
-        const end = editedTime(w.end, ranges);
-        if (start === null || end === null || end - start !== w.end - w.start) continue;
-        out.push({ ...w, start: start + offsetMs, end: end + offsetMs });
+        let start: number | null = null, offset = 0;
+        for (const r of ranges) {
+            const at = r.atMs ?? offset;
+            if (w.start >= r.startMs && w.end <= r.endMs) { start = at + (w.start - r.startMs); break; }
+            offset = at + (r.endMs - r.startMs);
+        }
+        if (start === null) {
+            // Across two ranges that play back to back.
+            const s = editedTime(w.start, ranges), e = editedTime(w.end, ranges);
+            if (s === null || e === null || e - s !== w.end - w.start) continue;
+            start = s;
+        }
+        out.push({ ...w, start: start + offsetMs, end: start + (w.end - w.start) + offsetMs });
     }
     return out;
 }
