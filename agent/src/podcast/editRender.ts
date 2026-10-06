@@ -1,7 +1,8 @@
 // Editor Light (spec 015), phase 2: renders the edited episode as an mp4 with ffmpeg.
 // Cuts the episode to its play order (lib/sequence.ts), joins teasers → intro → edited → outro at 1920x1080 30fps,
 // lays b-roll over the edited timeline (using kenBurns from media.ts), cleans audio
-// (highpass → afftdn/arnndn → acompressor → normalizeLoudness), and writes a JSON report.
+// (highpass → afftdn/arnndn → acompressor, or DeepFilterNet or Auphonic: spec 019 item 3.2, voiceCleanup.ts;
+// then normalizeLoudness), and writes a JSON report.
 // Part I: burns in captions, text overlays (such as name titles) and image overlays (lib/onScreen.ts).
 // Spec 020 item E4: transitions. At a split, the parts on either side overlap (xfade for the picture,
 // acrossfade for the sound); between the teasers, intro, episode and outro likewise; at the start and
@@ -22,6 +23,9 @@ import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLaye
 import { soundFilter, soundsMix, soundSpan, type Sound } from '../../../lib/audio';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
+import { auphonicInput, deepFilterTrack, placeAt } from './voiceCleanup';
+import { auphonicClean, auphonicCreditsHours } from './cleanupVersions';
+import { auphonicSpan, hm } from '../../../lib/voice';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -48,8 +52,13 @@ const FILL_1080 = 'scale=iw*sar:ih,setsar=1,scale=1920:1080:force_original_aspec
 // range instead, the noise reducer and compressor would restart at every cut and pump.
 // aresample pins the track's first sample to time 0 and fills any gaps with silence, so a
 // moment in the cleaned track sits at the same time as in the video it came from.
+// afftdn hands its sound on AFFTDN_DELAY_SEC late (measured at 44.1 and 48 kHz, whatever its settings), which
+// put the voice that much behind the picture; its first 25 ms are dropped and the end padded, so the
+// standard clean-up stays within a third of a millisecond (spec 019 item 3.2).
+export const AFFTDN_DELAY_SEC = 0.025;
 export function cleanupFilter(clean: 'light' | 'strong', noiseModel: string | undefined): string {
-    const denoise = clean === 'strong' && noiseModel ? `arnndn=model=${noiseModel}` : 'afftdn=nr=12';
+    const denoise = clean === 'strong' && noiseModel ? `arnndn=model=${noiseModel}`
+        : `afftdn=nr=12,atrim=start=${AFFTDN_DELAY_SEC},asetpts=PTS-STARTPTS,apad=pad_dur=${AFFTDN_DELAY_SEC}`;
     return `aresample=async=1:first_pts=0,highpass=f=80,${denoise},acompressor=threshold=-20dB:ratio=2:attack=5:release=50`;
 }
 
@@ -140,7 +149,15 @@ export async function renderEdit(opts: {
     intro?: string;
     outro?: string;
     broll?: BrollArg[];
-    clean?: 'off' | 'light' | 'strong' | 'auphonic';
+    // The voice clean-up: 'light' is the standard chain (cleanupFilter); 'deepfilter' and 'auphonic' are spec 019
+    // item 3.2's choices (voiceCleanup.ts), each needing its part of `voice`.
+    clean?: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic';
+    voice?: {
+        deepFilter?: string;                       // the deep-filter program
+        // Auphonic: the key, the production's title, and a call made just before the audio is sent (the job
+        // then keeps the hold on the month's free hours even if the render fails later).
+        auphonic?: { apiKey: string; title: string; onSending?: () => Promise<void> };
+    };
     detect?: 'auphonic';
     noiseModel?: string;
     blockMinutes?: number;
@@ -170,25 +187,21 @@ export async function renderEdit(opts: {
     let editedMs = sequenceLength(ranges);
     const fadeSecs = 0.015;
 
-    // Auphonic, run once when it detects cuts, cleans the voice, or both. It works in
-    // "export_uncut_audio" mode, so its cleaned audio keeps the original timing and
-    // the cuts above still line up with it.
+    // Auphonic's cut detection, when asked for. It works in "export_uncut_audio" mode, so our cut list stays the
+    // record. (Auphonic as the voice clean-up is below, with the other clean-ups.)
     let cleanedAudio: string | null = null;
-    if (opts.detect === 'auphonic' || clean === 'auphonic') {
+    if (opts.detect === 'auphonic') {
         const { auphonicProcess, auphonicCutsToEdit } = await import('./auphonic');
         const result = await auphonicProcess(opts.video, {
             detectOnly: true,
             fillerCutting: true,
             silenceCutting: true,
             coughCutting: true,
-            noiseReduction: clean === 'auphonic',
+            noiseReduction: false,
         });
-        if (clean === 'auphonic') cleanedAudio = result.cleanedAudio;
-        if (opts.detect === 'auphonic') {
-            seq = sequenceOf({ ...opts.edit, cuts: [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)] }, inMs, opts.words);
-            ranges = seq.clips;
-            editedMs = sequenceLength(ranges);
-        }
+        seq = sequenceOf({ ...opts.edit, cuts: [...opts.edit.cuts, ...auphonicCutsToEdit(result.regions)] }, inMs, opts.words);
+        ranges = seq.clips;
+        editedMs = sequenceLength(ranges);
     }
 
     // Temporary files: the cleaned sound, b-roll clips and blocks. All of them are removed
@@ -199,11 +212,29 @@ export async function renderEdit(opts: {
     let blockDir = '';
     const onScreenWarnings: string[] = [];
     try {
-        // The voice cleanup runs once, over the whole episode (see cleanupFilter).
-        if ((clean === 'light' || clean === 'strong') && !cleanedAudio && ranges.length > 0) {
+        // The voice cleanup runs once, over the whole episode (see cleanupFilter), into a track at the video's times.
+        if (clean !== 'off' && ranges.length > 0) {
             fs.mkdirSync(cleanDir, { recursive: true });
             cleanedAudio = path.join(cleanDir, 'cleaned.wav');
-            await cleanTrack(opts.video, cleanedAudio, clean, opts.noiseModel);
+            if (clean === 'light' || clean === 'strong') await cleanTrack(opts.video, cleanedAudio, clean, opts.noiseModel);
+            else if (clean === 'deepfilter') {
+                if (!opts.voice?.deepFilter) throw new Error('DeepFilterNet was chosen, but its program is not on the runner (DEEPFILTER_BIN)');
+                await deepFilterTrack(opts.video, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds });
+            } else {
+                const a = opts.voice?.auphonic;
+                if (!a) throw new Error('Auphonic was chosen, but there is no AUPHONIC_API_KEY repo secret');
+                const span = auphonicSpan(opts.edit, inMs, opts.words)!;
+                const hours = await auphonicCreditsHours(a.apiKey);
+                const needed = (span.endMs - span.startMs) / 3600_000;
+                if (hours !== null && hours < needed) {
+                    throw new Error(`The Auphonic account has ${hm(hours * 3600)} left and this episode needs ${hm(needed * 3600)}. Choose Standard or DeepFilterNet for it.`);
+                }
+                const sent = path.join(cleanDir, 'auphonic-in.flac'), back = path.join(cleanDir, 'auphonic-out.flac');
+                await auphonicInput(opts.video, span, sent);
+                await a.onSending?.();
+                await auphonicClean(sent, back, a.apiKey, a.title);
+                await placeAt(back, span.startMs, inSeconds, cleanedAudio);
+            }
         }
 
         // Pre-render b-roll clips with kenBurns to temp files.
@@ -558,7 +589,7 @@ function filterPath(p: string): string {
 interface ParsedArgs {
     video?: string; editPath?: string; out?: string;
     teasers: string[]; intro?: string; outro?: string;
-    broll: BrollArg[]; clean: 'off' | 'light' | 'strong' | 'auphonic'; detect?: 'auphonic'; noiseModel?: string; blockMinutes?: number;
+    broll: BrollArg[]; clean: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic'; detect?: 'auphonic'; noiseModel?: string; blockMinutes?: number;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -572,7 +603,7 @@ function parseArgs(argv: string[]): ParsedArgs {
             case '--intro': args.intro = argv[++i]; break;
             case '--outro': args.outro = argv[++i]; break;
             case '--broll': args.broll.push(JSON.parse(argv[++i])); break;
-            case '--clean': args.clean = argv[++i] as 'off' | 'light' | 'strong' | 'auphonic'; break;
+            case '--clean': args.clean = argv[++i] as ParsedArgs['clean']; break;
             case '--detect': args.detect = argv[++i] as 'auphonic'; break;
             case '--noise-model': args.noiseModel = argv[++i]; break;
             case '--block-minutes': args.blockMinutes = Number(argv[++i]); break;
@@ -584,7 +615,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 if (require.main === module) {
     const args = parseArgs(process.argv.slice(2));
     if (!args.video || !args.editPath || !args.out) {
-        console.error('Usage: editRender.ts --video in.mp4 --edit edit.json --out out.mp4 [--teaser a.mp4] [--intro intro.mp4] [--outro outro.mp4] [--broll json] [--clean off|light|strong] [--block-minutes N]');
+        console.error('Usage: editRender.ts --video in.mp4 --edit edit.json --out out.mp4 [--teaser a.mp4] [--intro intro.mp4] [--outro outro.mp4] [--broll json] [--clean off|light|strong|deepfilter|auphonic] [--block-minutes N]');
         process.exit(1);
     }
     // The edit file may also carry "words", "chapters" and "quotes" for the new times.

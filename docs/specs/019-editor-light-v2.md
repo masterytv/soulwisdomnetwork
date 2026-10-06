@@ -111,7 +111,7 @@ for this work".
 | E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
-| 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Not started |
+| 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
 | 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
 | **4** | **Render and hand-off** | | | | | |
 | 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Not started |
@@ -639,6 +639,51 @@ from the Actions tab once it is on `main`) runs `agent/src/podcast/cleanupCompar
   - So DeepFilterNet or standard stays the everyday default; Auphonic is a per-episode choice
     while hours remain.
   - Use detect-only cutting as today, so our cut list stays the record.
+
+**Built (#164):** Tom chose to build all three before the comparison is heard, with today's chain as the default;
+the comparison's answer only decides which one the Studio settings choose.
+- **The choice** (`lib/voice.ts`): `voiceCleanup: 'standard' | 'deepfilter' | 'auphonic'` in the Studio settings
+  (default `standard`; "Voice clean-up in the render" on the settings page), and `edit.voice` for one episode
+  (null: the Studio's), chosen in the Studio editor's Render panel (`components/studio/voice.tsx`). The job
+  (`editRenderJob.ts`) passes it to the renderer and keeps it on the render (`editRender.voice`); the panel says
+  when the current render used another one.
+- **Standard** is today's chain, with one fix found while measuring: `afftdn` hands its sound on 25 ms late (at
+  44.1 and 48 kHz, whatever its settings), so every render so far had the voice 25 ms behind the picture. The
+  chain now drops afftdn's first 25 ms and pads the end (`AFFTDN_DELAY_SEC`); measured within 0.3 ms.
+- **DeepFilterNet** (`agent/src/podcast/voiceCleanup.ts`) runs as its **command-line program**
+  (`deep-filter` v0.5.6, downloaded and checked against its SHA-256 by `podcast_edit_render.yml` and now also
+  `podcast_cleanup_compare.yml`), not the LADSPA plugin 3.1 used. Measured before building it in:
+  - the **plugin** works as if live, and slips silence in whenever it falls behind ("Underrun detected"), so the
+    voice drifted later than the picture: 20–30 ms at the start, 80–100 ms after 48 s, different on each run.
+    Unusable for a render. (The comparison's DeepFilterNet version could also have had those gaps; it now uses
+    the program too, so what is heard is what renders.)
+  - the **program with `-D`** keeps the voice where it was (0 samples at 48 kHz) and gives the same file every
+    run; it leaves the last 30 ms off, which is padded back.
+  - Before it: `highpass=f=80`, as one channel at 48 kHz. After it: today's compressor, and both channels again.
+  - **Speed:** 0.4× the audio's length on one core, so the recording is cut into up to four pieces (one per
+    core, none under a minute) that overlap by 1 s and are joined with crossfades. 4 minutes took 30 s here, so
+    an hour should take about 8 minutes on the runner. No shift at the joins, and no change in level (tests,
+    with a stand-in program, since CI does not download it).
+- **Auphonic** (free plan only, D1):
+  - It is sent **only the stretch the edit keeps** (`auphonicSpan`: the first to the last moment played,
+    transitions included, with 2 s either side), as 48 kHz stereo FLAC, with the same algorithms as the
+    comparison (denoise, leveller, −14 LUFS, high-pass), and put back at its place in a track of the
+    recording's length. No cutting algorithms, so our cut list stays the record. The upload is read from disk
+    as it goes (`fs.openAsBlob`).
+  - **The month's hours** are counted in `studio/spending` (`auphonic`: one hold per render, plus what each
+    comparison sent). Starting a render with Auphonic holds its stretch's length first and is refused (429)
+    when this calendar month's holds and it would pass 2 hours; the Render panel shows what is left and what
+    the edit needs before Render is pressed. A render that fails before sending anything gives its hold back
+    (`editRenderRun.ts`); one stopped by cancelling keeps it, to be safe.
+  - **The account's own count:** before sending, the job reads `credits` from `GET /api/user.json` and stops
+    with a clear message when the account has less than the stretch. That field name is from Auphonic's docs
+    and was not checked live (auphonic.com is blocked from the sandbox); if it is missing, the job only logs it
+    and relies on the Studio's count.
+  - Never buys credits or a plan. Needs the `AUPHONIC_API_KEY` repo secret (added by Tom).
+  - The older `auphonic.ts` stays only for `--detect auphonic` on the command line; `--clean auphonic` now uses
+    the above.
+- **First real render with each:** check the quality report's sync and listen at a few cuts; for Auphonic,
+  also that its file came back the same length as the stretch (a shift there would move the voice).
 
 ### 3.3 One track per speaker (L, optional)
 

@@ -276,3 +276,36 @@ test('job: library sounds play only while checked; their credits and uses are re
     assert.deepEqual(logged, [{ ids: ['ok'], kind: 'episode', ref: `episodes/${ID}/editRender/v3-9/episode.mp4` }]);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the voice clean-up: the edit\'s own choice or the Studio\'s, given to the renderer and kept with the render (spec 019 item 3.2)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-voice-'));
+    const run = async (voice: 'standard' | 'deepfilter' | 'auphonic' | null, studio: 'standard' | 'deepfilter' | 'auphonic') => {
+        const updates: Record<string, unknown>[] = [];
+        let given: Parameters<EditRenderDeps['render']>[0] | null = null;
+        await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [], voice } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async fields => { updates.push(fields); },
+            render: async opts => {
+                given = opts;
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, voiceCleanup: studio },
+            voice: { deepFilter: '/opt/deep-filter', auphonicKey: 'k3y' },
+        }, path.join(dir, 'work'), '1');
+        const ready = updates.find(u => u['editRender.status'] === 'ready')!;
+        return { clean: given!.clean, voice: given!.voice, kept: ready['editRender.voice'] };
+    };
+    assert.deepEqual(await run(null, 'standard').then(r => [r.clean, r.kept]), ['light', 'standard']);
+    assert.deepEqual(await run(null, 'deepfilter').then(r => [r.clean, r.kept]), ['deepfilter', 'deepfilter']);
+    assert.deepEqual(await run('auphonic', 'deepfilter').then(r => [r.clean, r.kept]), ['auphonic', 'auphonic']);
+    const tools = (await run('auphonic', 'standard')).voice!;
+    assert.equal(tools.deepFilter, '/opt/deep-filter');
+    assert.equal(tools.auphonic?.apiKey, 'k3y');
+    assert.equal(planEditRender(episode({ edit: { version: 1, cuts: [] } })).voice, 'standard');
+    fs.rmSync(dir, { recursive: true, force: true });
+});

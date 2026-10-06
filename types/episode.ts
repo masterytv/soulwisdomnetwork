@@ -5,6 +5,7 @@ import type { ShowNotes } from '../lib/showNotes';
 import type { RedraftScope } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
 import type { EpisodeEdit } from '../lib/edit';
+import type { VoiceCleanup } from '../lib/voice';
 import type { Extras } from '../lib/extras';
 import type { Retake } from '../lib/retakes';
 
@@ -232,6 +233,8 @@ export interface EpisodeEditRender {
     warnings?: string[];
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
+    voice?: VoiceCleanup;                 // the voice clean-up it used (spec 019 item 3.2)
+    auphonicHold?: string | null;         // its hold on Auphonic's free hours (lib/server/spending.ts), given back if it fails before sending
 }
 
 // Thumbnail options (spec 005 step 12; docs/specs/011-thumbnails.md). The job makes the raw

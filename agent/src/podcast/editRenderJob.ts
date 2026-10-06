@@ -13,6 +13,7 @@
 // Spec 020 item E4: so do the transitions between the video's sections (the edit's own, or the Studio's);
 // the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
+// Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -23,6 +24,7 @@ import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '..
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
+import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
 
@@ -45,6 +47,9 @@ export interface EditRenderDeps {
     // The show library's entries for the sounds' files (spec 020 item E7), and its log of uses.
     library?: (ids: string[]) => Promise<Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>>;
     logUses?: (ids: string[], use: LibraryUse) => Promise<void>;
+    // The voice clean-ups' tools (spec 019 item 3.2): the deep-filter program, the Auphonic key, and a call made
+    // just before the audio goes to Auphonic.
+    voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
 }
 
 export interface EditRenderPlan {
@@ -62,8 +67,12 @@ export interface EditRenderPlan {
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
     sections: SectionJoins;              // the transitions between the video's sections
     sounds: Sound[];                     // music and effects (spec 020 item E7)
+    voice: VoiceCleanup;                 // the voice clean-up (spec 019 item 3.2)
     warnings: string[];
 }
+
+// The renderer's name for each voice clean-up.
+const CLEAN_FOR = { standard: 'light', deepfilter: 'deepfilter', auphonic: 'auphonic' } as const satisfies Record<VoiceCleanup, string>;
 
 // Breathing room around a teaser clip cut here, as the edit package gives its clips.
 const CLIP_LEAD_MS = 300;
@@ -119,6 +128,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
             .map(q => ({ text: q.text, speaker: q.speaker, startMs: q.startMs, endMs: q.endMs })),
         sections: sectionJoins(edit.joins, settings.joins),
         sounds: edit.audio ?? [],
+        voice: voiceFor(edit, settings.voiceCleanup),
         warnings,
     };
 }
@@ -206,6 +216,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
         ...(sounds.length ? { sounds } : {}),
+        clean: CLEAN_FOR[plan.voice],
+        voice: {
+            deepFilter: deps.voice?.deepFilter,
+            ...(deps.voice?.auphonicKey ? { auphonic: { apiKey: deps.voice.auphonicKey, title: `${episode.title} (render)`, onSending: deps.voice.onAuphonicSending } } : {}),
+        },
     });
     // The credits the library files it played ask for, and those files, for the description and the log.
     const order = report.soundsPlayed ?? [];
@@ -250,6 +265,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
+        'editRender.voice': plan.voice,
         updatedAt: deps.now(),
         ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps, usedLibrary) : {}),
     });

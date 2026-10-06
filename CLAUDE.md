@@ -35,7 +35,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
-              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions, then a quality report
+              teasers, intro, outro, b-roll, voice cleanup (standard, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
+              spec 019 item 3.2), on-screen text, images and captions, then a quality report
               (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:
               /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
@@ -136,7 +137,8 @@ approves the episode there (Checkpoint D). "Upload to YouTube" then starts `podc
 `docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest moments), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
 (the shorts approved at Checkpoint E, scheduled one a day, with the same YouTube secrets). The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
-`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and optionally `AUPHONIC_API_KEY` (the clean-up comparison). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
+`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and `AUPHONIC_API_KEY` (the clean-up comparison, and renders with Auphonic as
+the voice clean-up: free plan only, its 2 hours a month counted in `studio/spending`). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
 `DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
 
 ### Firestore
@@ -152,7 +154,7 @@ Collections: `users`, `posts` and `comments` (the community feed, `docs/specs/01
 each has a `votes` subcollection; server only), `community_limits` (hourly post and comment
 limits, server only), `conversations`, `messages`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`; earlier
 show-notes approvals in its `approvals` subcollection, and the media bin's uploads in its `media` subcollection),
-`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger, and `media`, whose `items`
+`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger (with Auphonic's hours this month), and `media`, whose `items`
 are the show library's music and effects with their licence records (spec 020 item E7); Admin SDK only), `usage_reports`
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).

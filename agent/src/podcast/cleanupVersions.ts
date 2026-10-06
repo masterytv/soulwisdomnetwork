@@ -1,11 +1,12 @@
 // Why: the voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1). The same stretch of an
 // episode, cleaned up several ways and brought to the same loudness, so Tom and the producer can choose
 // by ear. This file holds the parts the job (cleanupCompare.ts) is made of: the ffmpeg chains, Auphonic's
-// calls, the blind letters and the report. DeepFilterNet (MIT or Apache-2.0, v0.5.6, frozen) runs as a
-// LADSPA plugin inside ffmpeg, as measured in docs/research/2026-10-05-open-source-editors.md.
+// calls, the blind letters and the report. DeepFilterNet (MIT or Apache-2.0, v0.5.6, frozen) runs as its own
+// program, as the render runs it (voiceCleanup.ts): its LADSPA plugin, used at first, let the voice drift.
 
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { cleanupFilter } from './editRender';
 
 export const VERSIONS = ['recorded', 'today', 'deepfilter', 'auphonic', 'descript'] as const;
@@ -51,15 +52,10 @@ export function chooseVersions(list: string | undefined): VersionKind[] {
     return VERSIONS.filter(v => asked.includes(v));
 }
 
-// The ffmpeg chain for each version made here. DeepFilterNet works on one channel at 48 kHz, so the
-// voice is mixed to mono first (halving the time; a recording's speech is the same in both channels)
-// and spread back to both after; `c0` is how far it may turn noise down, in dB (100: no limit).
-export function chainFor(kind: 'recorded' | 'today' | 'deepfilter', ladspa?: string): string {
-    if (kind === 'recorded') return 'aresample=48000';
-    if (kind === 'today') return cleanupFilter('light', undefined);
-    if (!ladspa) throw new Error('DeepFilterNet needs its LADSPA plugin (DEEPFILTER_LADSPA)');
-    return cleanupFilter('light', undefined).replace('afftdn=nr=12',
-        `aresample=48000,pan=mono|c0=0.5*c0+0.5*c1,ladspa=file=${ladspa}:plugin=deep_filter_mono:controls=c0=100,pan=stereo|c0=c0|c1=c0`);
+// The ffmpeg chain for the versions made with ffmpeg alone. DeepFilterNet runs as its own program, as the
+// render runs it (voiceCleanup.ts deepFilterTrack: today's high-pass before it and compressor after).
+export function chainFor(kind: 'recorded' | 'today'): string {
+    return kind === 'recorded' ? 'aresample=48000' : cleanupFilter('light', undefined);
 }
 
 function ffmpeg(args: string[]): Promise<void> {
@@ -126,8 +122,9 @@ export async function auphonicClean(wav: string, out: string, apiKey: string, ti
         body: JSON.stringify({ metadata: { title }, algorithms, output_files: [{ format: 'flac' }] }),
     });
     const uuid = created.data.uuid as string;
+    // Read from disk as it uploads: an episode's stretch is hundreds of MB.
     const form = new FormData();
-    form.append('input_file', new Blob([fs.readFileSync(wav)]), 'stretch.wav');
+    form.append('input_file', await fs.openAsBlob(wav), path.basename(wav));
     await call(`/production/${uuid}/upload.json`, { method: 'POST', body: form });
     await call(`/production/${uuid}/start.json`, { method: 'POST' });
     for (let i = 0; i < 360; i++) {
@@ -147,6 +144,15 @@ export async function auphonicClean(wav: string, out: string, apiKey: string, ti
         }
     }
     throw new Error('Auphonic took more than 30 minutes');
+}
+
+// The hours of audio left on the Auphonic account (`credits` in GET /api/user.json), or null when it does not
+// say: the render checks them before sending an episode, as well as the Studio's own count (lib/voice.ts).
+export async function auphonicCreditsHours(apiKey: string, deps: Pick<AuphonicDeps, 'fetch'> = { fetch }): Promise<number | null> {
+    const res = await deps.fetch(`${AUPHONIC}/user.json`, { headers: { Authorization: `bearer ${apiKey}` } });
+    if (!res.ok) throw new Error(`Auphonic /user.json: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    const credits = ((await res.json()) as { data?: { credits?: unknown } }).data?.credits;
+    return typeof credits === 'number' && Number.isFinite(credits) ? credits : null;
 }
 
 // ─── Blind letters and the report ────────────────────────────────────────────

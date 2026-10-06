@@ -18,6 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type StudioSettings } from "@/lib/studioSettings";
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
+import { VOICE_CLEANUPS, VOICE_SHORT, type VoiceCleanup } from "@/lib/voice";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
@@ -41,6 +42,13 @@ function Field({ label, help, children }: { label: string; help?: string; childr
         </label>
     );
 }
+
+// What each voice clean-up does, beside its choice (spec 019 item 3.2).
+const VOICE_HELP: Record<VoiceCleanup, string> = {
+    standard: "What the render always did: a gentle noise reduction and compressor. The quickest.",
+    deepfilter: "A noise-removal model, run on the render's own computer: no account and no cost.",
+    auphonic: "Sent to Auphonic, which removes noise and evens out the voices. Only on its free plan, which is used up after about two episodes a month; a render that would go over is refused.",
+};
 
 function Choice({ name, value, current, label, help, onPick, disabled }: {
     name: string; value: string; current: string; label: string; help?: string; onPick: () => void; disabled: boolean;
@@ -282,6 +290,14 @@ export default function StudioSettingsPage() {
                                         panel. A transition overlaps what it joins, so the video gets shorter by its length. At the start and end, any
                                         choice is a fade from or to black (white for Fade through white).
                                     </span>
+                                </fieldset>
+                                <fieldset className="flex flex-col gap-2">
+                                    <legend className="text-sm font-medium text-gray-200 mb-1">Voice clean-up in the render</legend>
+                                    {VOICE_CLEANUPS.map(v => (
+                                        <Choice key={v} name="voice" value={v} current={s.voiceCleanup} label={v === "standard" ? `${VOICE_SHORT[v]} (the default)` : VOICE_SHORT[v]} disabled={off} onPick={() => set("voiceCleanup", v)}
+                                            help={VOICE_HELP[v]} />
+                                    ))}
+                                    <span className={hint}>For every episode&apos;s Editor Light render; each episode can choose its own in the Studio editor&apos;s Render panel.</span>
                                 </fieldset>
                                 <div className="flex flex-col gap-2">
                                     <Choice name="final" value="descript" current={s.finalSource} label="Descript makes the final cut" disabled={off} onPick={() => set("finalSource", "descript")}
