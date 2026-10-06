@@ -384,6 +384,7 @@ export interface Episode {
         provider: 'assemblyai';
         transcriptId: string;
         speechModels: string[];
+        keyterms?: string[];              // names and terms sent to be spelled right (spec 019 item 2.4)
         transcriptPath?: string;          // full word-level JSON in Cloud Storage
         speakerIdStatus?: string | null;
         speakerMapping?: Record<string, string>;

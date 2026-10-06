@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     assColor, DEFAULT_SETTINGS, gradientExpr, notesSystemPrompt, shortsSystemPrompt, StudioSettingsSchema,
-    thumbnailsSystemPrompt, withDefaults,
+    thumbnailsSystemPrompt, transcriptionKeyterms, KEYTERMS_MAX, withDefaults,
 } from './studioSettings';
 
 // The prompts exactly as the Studio sent them before settings existed.
@@ -61,4 +61,19 @@ test('section transitions (spec 020 item E4): straight cuts by default; a bad sa
     assert.deepEqual(s.joins.end, DEFAULT_SETTINGS.joins.end);
     assert.deepEqual(s.joins.start, DEFAULT_SETTINGS.joins.start);
     assert.deepEqual(withDefaults({}).joins, DEFAULT_SETTINGS.joins);
+});
+
+test('names and terms to spell right: the show, the hosts and the list, once each, short enough to send', () => {
+    assert.deepEqual(DEFAULT_SETTINGS.recurringNames, []);
+    assert.deepEqual(transcriptionKeyterms(DEFAULT_SETTINGS), ['Soul Wisdom Collective', 'Daniel Endy', 'Tom Wood']);
+    const terms = transcriptionKeyterms({
+        showName: 'Soul Wisdom Collective', hosts: ['Tom Wood'],
+        recurringNames: ['tom  wood', 'Raymond   Moody', 'near-death experience', 'one two three four five six seven', 'x'.repeat(51)],
+    });
+    assert.deepEqual(terms, ['Soul Wisdom Collective', 'Tom Wood', 'Raymond Moody', 'near-death experience']);
+    const many = transcriptionKeyterms({ showName: 'Show', hosts: [], recurringNames: Array.from({ length: 300 }, (_, i) => `Name ${i}`) });
+    assert.equal(many.length, KEYTERMS_MAX);
+    // A saved list that is too long or holds a bad entry falls back to none, so ingest never stops.
+    assert.deepEqual(withDefaults({ recurringNames: ['ok', ''] }).recurringNames, []);
+    assert.deepEqual(withDefaults({ recurringNames: ['Raymond Moody'] }).recurringNames, ['Raymond Moody']);
 });

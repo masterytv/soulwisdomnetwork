@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { DetectedSpeaker, Episode, EpisodeStage } from '../../../types/episode';
 import { THUMBS, type ThumbIndex } from '../../../lib/thumbs';
-import { ASSEMBLYAI_USD_PER_HOUR, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
+import { ASSEMBLYAI_USD_PER_HOUR, KEYTERMS_USD_PER_HOUR, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
     checkFolderAccess, createDrive, createGoogleDoc, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
 } from './drive';
@@ -28,6 +28,7 @@ import { sendEmail, sendFailureAlert, type Failure } from './notify';
 import { postUsageReport } from './usageReport';
 import { readableTranscript, speakerSummary } from './readable';
 import { loadSettings } from './settings';
+import { transcriptionKeyterms } from '../../../lib/studioSettings';
 import { measureSilences } from './silences';
 import { makeThumbs, measurePeaks } from './timelineMedia';
 import { createAssemblyAI, hasFailed, submitTranscription, summariseSpeakers, waitForTranscript } from './transcribe';
@@ -238,7 +239,8 @@ async function catchUpReviews() {
 
 // `uploaded`: the recording was uploaded in the Studio; its original is already in Cloud
 // Storage, so it is read from there and there is no Drive file to move.
-async function processEpisode(video: DriveFile, candidates: string[], uploaded = false): Promise<Failure | null> {
+// `keyterms`: names and terms the transcriber should spell right (spec 019 item 2.4).
+async function processEpisode(video: DriveFile, candidates: string[], keyterms: string[], uploaded = false): Promise<Failure | null> {
     const fileId = video.id!;
     const fileName = video.name ?? fileId;
     const title = episodeTitle(fileName);
@@ -354,7 +356,8 @@ async function processEpisode(video: DriveFile, candidates: string[], uploaded =
         let transcriptId = existing?.transcription?.transcriptId;
         if (transcriptId && await hasFailed(assembly, transcriptId)) transcriptId = undefined;
         if (!transcriptId) {
-            const estimate = Math.round((media.durationSeconds ?? 0) / 3600 * ASSEMBLYAI_USD_PER_HOUR * 100) / 100;
+            const perHour = ASSEMBLYAI_USD_PER_HOUR + (keyterms.length ? KEYTERMS_USD_PER_HOUR : 0);
+            const estimate = Math.round((media.durationSeconds ?? 0) / 3600 * perHour * 100) / 100;
             const spent = existing?.costs?.totalUsd ?? 0;
             if (spent + estimate > config.costCapUsd) {
                 throw new PermanentError(`Cost cap: $${spent} spent + $${estimate} transcription exceeds the $${config.costCapUsd} cap`);
@@ -362,12 +365,12 @@ async function processEpisode(video: DriveFile, candidates: string[], uploaded =
             if (!fs.existsSync(localAudio)) {
                 await withRetry('Storage download', () => bucket.file(media.audioPath!).download({ destination: localAudio }));
             }
-            console.log(`  📝 Submitting to AssemblyAI with ${candidates.join(', ')}`);
-            transcriptId = await submitTranscription(assembly, localAudio, config.speechModels, candidates);
+            console.log(`  📝 Submitting to AssemblyAI with ${candidates.join(', ')}; ${keyterms.length} names and terms to spell right`);
+            transcriptId = await submitTranscription(assembly, localAudio, config.speechModels, candidates, keyterms);
             await touch(ref, {
                 status: 'transcribing',
                 stage,
-                transcription: { provider: 'assemblyai', transcriptId, speechModels: config.speechModels },
+                transcription: { provider: 'assemblyai', transcriptId, speechModels: config.speechModels, keyterms },
                 'costs.items': FieldValue.arrayUnion({ item: 'transcription_raw', usd: estimate, at: new Date() }),
                 'costs.totalUsd': FieldValue.increment(estimate),
             });
@@ -437,6 +440,7 @@ async function main() {
     console.log(`🔑 Using service account ${serviceAccount.client_email}`);
     const settings = await loadSettings(db);
     const candidates = settings.hosts;
+    const keyterms = transcriptionKeyterms(settings);
     const failures: Failure[] = [];
 
     // The Drive inbox is used unless the Studio settings turn it off; then its folders must be
@@ -459,7 +463,7 @@ async function main() {
 
         for (const video of videos) {
             try {
-                const failure = await processEpisode(video, candidates);
+                const failure = await processEpisode(video, candidates, keyterms);
                 if (failure) failures.push(failure);
             } catch (error) {
                 // Failed before an episode document existed (e.g. Drive unreachable).
@@ -483,7 +487,7 @@ async function main() {
     for (const doc of uploads) {
         const e = doc.data() as Episode;
         try {
-            const failure = await processEpisode({ id: doc.id, name: e.drive.fileName, mimeType: e.drive.mimeType, size: String(e.drive.sizeBytes) }, candidates, true);
+            const failure = await processEpisode({ id: doc.id, name: e.drive.fileName, mimeType: e.drive.mimeType, size: String(e.drive.sizeBytes) }, candidates, keyterms, true);
             if (failure) failures.push(failure);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
