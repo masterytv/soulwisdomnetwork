@@ -19,6 +19,7 @@ import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type Studi
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
 import { VOICE_CLEANUPS, VOICE_SHORT, type VoiceCleanup } from "@/lib/voice";
+import { PODCAST_CATEGORIES } from "@/lib/podcastFeed";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
@@ -305,6 +306,31 @@ export default function StudioSettingsPage() {
                                     <Choice name="final" value="editorLight" current={s.finalSource} label="Editor Light makes the final cut" disabled={off} onPick={() => set("finalSource", "editorLight")}
                                         help="Edit in “Edit here instead” on the show notes page and press “Render this edit”. Thumbnails, Shorts and the YouTube upload then use that video. No Descript needed." />
                                 </div>
+                            </Section>
+
+                            <Section title="Podcast feed" intro="Finished episodes as an audio podcast on this site, for Apple Podcasts, Spotify and other apps (spec 019 item 5.1). Each episode goes in from its show notes page.">
+                                <label className="flex items-start gap-2 text-sm text-gray-200">
+                                    <input type="checkbox" checked={s.podcastFeed} onChange={e => set("podcastFeed", e.target.checked)} disabled={off} className="mt-1" />
+                                    <span>The feed is on<span className={`block ${hint}`}>Its address, to give Apple Podcasts and Spotify once there is an episode in it: <code className="text-gray-300">{(s.siteUrl || s.studioUrl).replace(/\/$/, "")}/podcast/feed.xml</code> (staging has its own, for trying it)</span></span>
+                                </label>
+                                <div className="flex flex-col gap-1">
+                                    <span className="text-sm text-gray-200">Artwork</span>
+                                    <span className={hint}>Square, 1400 to 3000 pixels, JPEG or PNG, as Apple asks. {s.podcastArtPath ? "Uploaded." : "None yet: the logo is used."}</span>
+                                    {isAdmin && <UploadAsset kind="logo" label={s.podcastArtPath ? "Replace the artwork" : "Upload the artwork"} accept="image/png,image/jpeg" onUploaded={p => { set("podcastArtPath", p); setNotice("Artwork uploaded. Press Save to use it."); }} />}
+                                </div>
+                                <label className="flex flex-col gap-1 text-sm text-gray-200">
+                                    Category
+                                    <select className={`${field} !w-auto`} value={s.podcastCategory} disabled={off} onChange={e => set("podcastCategory", e.target.value as StudioSettings["podcastCategory"])}>
+                                        {PODCAST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </label>
+                                <label className="flex items-center gap-2 text-sm text-gray-200">
+                                    <input type="checkbox" checked={s.podcastExplicit} onChange={e => set("podcastExplicit", e.target.checked)} disabled={off} /> Explicit content
+                                </label>
+                                <label className="flex flex-col gap-1 text-sm text-gray-200">
+                                    Owner email (optional)
+                                    <input type="email" className={field} value={s.podcastEmail} disabled={off} onChange={e => set("podcastEmail", e.target.value)} placeholder="Apple may email it to confirm the show is yours" />
+                                </label>
                             </Section>
 
                             <Section title="Behind the scenes" intro="Leave these as they are unless you run your own copy of the Studio.">

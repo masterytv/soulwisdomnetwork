@@ -242,6 +242,23 @@ export interface EpisodeEditRender {
     auphonicHold?: string | null;         // its hold on Auphonic's free hours (lib/server/spending.ts), given back if it fails before sending
 }
 
+// The audio podcast feed (spec 019 item 5.1, lib/podcastFeed.ts): the final cut as an MP3 at −16 LUFS with its
+// chapters and the show's artwork (agent/src/podcast/podcastAudio.ts), and whether it is in the feed.
+export interface EpisodePodcast {
+    status: 'queued' | 'making' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    audioPath?: string;                   // Cloud Storage, episodes/{id}/podcast/episode.mp3
+    bytes?: number;
+    durationSeconds?: number;
+    finalAt?: number;                     // the final cut it was made from (its finishedAt, ms)
+    loudness?: { afterLufs: number; truePeak: number };
+    published?: boolean;                  // in the feed
+    publishedAt?: number;                 // when it first went in (ms): the feed's date for it
+}
+
 // Thumbnail options (spec 005 step 12; docs/specs/011-thumbnails.md). The job makes the raw
 // material: short texts from Claude, frames from the final cut, an AI background. The Studio
 // draws the three options from it and the producer picks one at Checkpoint D.
@@ -423,6 +440,7 @@ export interface Episode {
     thumbnails?: EpisodeThumbnails;       // thumbnail options, spec 005 step 12
     approval?: EpisodeApproval;           // Checkpoint D
     youtube?: EpisodeYoutube;             // the upload, spec 005 step 13
+    podcast?: EpisodePodcast;             // the audio podcast feed, spec 019 item 5.1
     shorts?: EpisodeShorts;               // shorts and Checkpoint E, spec 005 step 14
     extras?: EpisodeExtras;                // social posts and follow-up email from the approved notes
     translations?: EpisodeTranslations;    // captions, title and description in other languages (Part I)

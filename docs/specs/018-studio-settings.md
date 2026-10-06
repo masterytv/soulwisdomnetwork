@@ -31,6 +31,7 @@ and defaults are in `lib/studioSettings.ts`. Every reader goes through `withDefa
 | Transitions at the start and end, between teasers, after the teasers and intro, before the outro (spec 020 item E4) | The Editor Light render, for every episode; straight cuts by default, and each episode can choose its own in the Studio editor |
 | Voice clean-up: standard, DeepFilterNet or Auphonic (spec 019 item 3.2) | The Editor Light render's sound, for every episode; standard by default, and each episode can choose its own in the Studio editor's Render panel. Auphonic only on its free plan (2 hours a month, counted in `studio/spending`) |
 | Final cut (Descript or Editor Light) | Where thumbnails, Shorts and YouTube take the video from |
+| Podcast feed: on or off, artwork, Apple category, explicit, owner email (spec 019 item 5.1) | The site's audio podcast feed (`/podcast/feed.xml`); off by default |
 | Drive on or off | Whether recordings also come in through the Drive inbox |
 
 With the defaults, the prompts are word for word what they were (`lib/studioSettings.test.ts`).

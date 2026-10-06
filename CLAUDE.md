@@ -32,6 +32,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/thumbnails.ts — spec 005 step 12 (thumbnail texts, frames and AI background), GitHub Actions only;
               the Studio draws the options (components/studio/thumbnailCanvas.ts) and approves them (Checkpoint D)
               podcast/youtube.ts — spec 005 step 13 (YouTube upload via podcast/youtubeApi.ts), GitHub Actions only
+              podcast/podcastAudio.ts — spec 019 item 5.1 (the audio podcast feed's MP3 at −16 LUFS with chapters and artwork;
+              podcastAudioRun.ts, podcast_audio.yml), GitHub Actions only; the feed is lib/podcastFeed.ts and lib/server/podcast.ts
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
@@ -199,7 +201,9 @@ Adding a query with `where` + `orderBy` on different fields needs a composite in
 (`firestore.rules`); admins change roles from `/admin`, which calls a server route. The
 browser's role check only decides what to show. **Every API route must call
 `requireRole()`** (`lib/server/staff.ts`), which verifies the ID token and reads the role
-with the Admin SDK, and refuses banned members. Producers get the Podcast Studio
+with the Admin SDK, and refuses banned members. The only routes without it are the audio podcast feed's,
+public by design for podcast apps and outside `/api`: `/podcast/feed.xml`, `/podcast/audio/{id}.mp3` and
+`/podcast/art.jpg` (spec 019 item 5.1), which show only episodes put in the feed, and nothing while it is off. Producers get the Podcast Studio
 (`/admin/podcast`); only admins manage members and ban them (`/api/admin/users/ban`, which also
 disables their Firebase Auth account). Community routes use `requireMember()`
 (`lib/server/community.ts`): `requireRole` with every role, plus a confirmed email and App Check.
