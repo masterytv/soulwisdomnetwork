@@ -46,7 +46,7 @@ const FILL_1080 = 'scale=iw*sar:ih,setsar=1,scale=1920:1080:force_original_aspec
 // range instead, the noise reducer and compressor would restart at every cut and pump.
 // aresample pins the track's first sample to time 0 and fills any gaps with silence, so a
 // moment in the cleaned track sits at the same time as in the video it came from.
-function cleanupFilter(clean: 'light' | 'strong', noiseModel: string | undefined): string {
+export function cleanupFilter(clean: 'light' | 'strong', noiseModel: string | undefined): string {
     const denoise = clean === 'strong' && noiseModel ? `arnndn=model=${noiseModel}` : 'afftdn=nr=12';
     return `aresample=async=1:first_pts=0,highpass=f=80,${denoise},acompressor=threshold=-20dB:ratio=2:attack=5:release=50`;
 }
