@@ -6,6 +6,7 @@ import type { SpokenWord } from './showNotes';
 import type { CaptionChoice, Overlay } from './onScreen';
 import type { Join } from './transitions';
 import type { Layer } from './layers';
+import type { Sound } from './audio';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -33,6 +34,8 @@ export interface EpisodeEdit {
     // Once an edit has them, `overlays` is empty and the render draws the notes plan's b-roll only as
     // layers; before that, `layersOf` reads the overlays.
     layers?: Layer[];
+    // Music and effects (spec 020 item E7, lib/audio.ts) on A2 and A3, from the show library or the episode's media.
+    audio?: Sound[];
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

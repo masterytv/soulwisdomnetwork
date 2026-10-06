@@ -19,6 +19,7 @@ import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
 import { layersOf, SITE_LOGO, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -41,6 +42,9 @@ export interface EditRenderDeps {
     siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
     // Cuts a plain teaser clip from the recording, when there is no edit package to take clips from.
     cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number) => Promise<void>;
+    // The show library's entries for the sounds' files (spec 020 item E7), and its log of uses.
+    library?: (ids: string[]) => Promise<Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>>;
+    logUses?: (ids: string[], use: LibraryUse) => Promise<void>;
 }
 
 export interface EditRenderPlan {
@@ -57,6 +61,7 @@ export interface EditRenderPlan {
     chapters: { title: string; startMs: number }[];
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
     sections: SectionJoins;              // the transitions between the video's sections
+    sounds: Sound[];                     // music and effects (spec 020 item E7)
     warnings: string[];
 }
 
@@ -113,6 +118,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         quotes: (notes?.quotes ?? []).filter(q => q.endMs > q.startMs)
             .map(q => ({ text: q.text, speaker: q.speaker, startMs: q.startMs, endMs: q.endMs })),
         sections: sectionJoins(edit.joins, settings.joins),
+        sounds: edit.audio ?? [],
         warnings,
     };
 }
@@ -167,6 +173,20 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         }
         pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
     }
+    // Each sound's file. A show library file plays only while its licence is checked (an admin can take a
+    // check back after the sound was placed); the others are left out, with a warning.
+    const libraryIds = [...new Set(plan.sounds.flatMap(s => (s.library ? [s.library] : [])))];
+    const library = libraryIds.length && deps.library ? await deps.library(libraryIds) : new Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>();
+    const sounds: { sound: Sound; file: string }[] = [];
+    const soundWarnings: string[] = [];
+    for (const [i, s] of plan.sounds.entries()) {
+        if (s.library) {
+            const entry = library.get(s.library);
+            if (!entry || entry.path !== s.media.path) { soundWarnings.push(`The sound "${s.media.name}" is no longer in the show library, so it was left out.`); continue; }
+            if (!entry.checked) { soundWarnings.push(`The sound "${s.media.name}": its licence is not checked, so it was left out.`); continue; }
+        }
+        sounds.push({ sound: s, file: await get(s.media.path, `sound-${i + 1}`) });
+    }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
     let words: TimedWord[] | undefined;
@@ -185,7 +205,13 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
+        ...(sounds.length ? { sounds } : {}),
     });
+    // The credits the library files it played ask for, and those files, for the description and the log.
+    const order = report.soundsPlayed ?? [];
+    const played = new Set(order);
+    const credits = soundCredits(plan.sounds.map(s => ({ sound: s, span: played.has(s.id) ? { startMs: order.indexOf(s.id), endMs: order.indexOf(s.id) + 1 } : null })), library);
+    const usedLibrary = [...new Set(plan.sounds.flatMap(s => (played.has(s.id) && s.library && library.has(s.library) ? [s.library] : [])))];
 
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
     // it was given words, chapters or quotes; each one found is kept with the video.
@@ -217,15 +243,21 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
-        warnings: [...plan.warnings, ...(report.warnings ?? [])],
+        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? [])],
         qc: report.qc,
+        credits,
     };
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
         updatedAt: deps.now(),
-        ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps) : {}),
+        ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps, usedLibrary) : {}),
     });
+    // Every use of a library file is noted on its entry, so a Content ID claim can be traced to its licence.
+    if (usedLibrary.length && deps.logUses) {
+        await deps.logUses(usedLibrary, { episodeId, kind: 'episode', ref: videoPath, at: new Date().toISOString() })
+            .catch(error => console.warn(`⚠️ Could not log the library's uses: ${(error as Error).message}`));
+    }
     // The previous render is no longer used, unless it is still the final cut (the settings
     // changed back to Descript since). Only folders of their own are removed.
     const previous = episode.editRender?.videoPath ? path.posix.dirname(episode.editRender.videoPath) : null;
@@ -262,7 +294,7 @@ export function tidyChapters(chapters: { title: string; originalMs: number; star
 // rendered video, so the thumbnails, Shorts and YouTube steps work from it unchanged. Its words
 // go in the render's own folder; the record is written with the render's, after every upload.
 async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan, result: EditRenderResult,
-    workDir: string, deps: EditRenderDeps): Promise<Record<string, unknown>> {
+    workDir: string, deps: EditRenderDeps, library: string[] = []): Promise<Record<string, unknown>> {
     let wordsPath: string | null = null;
     const wordsFile = path.join(workDir, 'episode.words.json');
     if (fs.existsSync(wordsFile)) {
@@ -288,6 +320,8 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
             ...(result.driveFileId ? { driveFileId: result.driveFileId, driveUrl: result.driveUrl, folderUrl: result.folderUrl } : {}),
             durationSeconds: result.durationSeconds,
             qc: result.qc,
+            credits: result.credits,
+            library,
             chapters: tidy.chapters,
             quotes: plan.quotes.map((q, i) => ({
                 text: q.text, speaker: q.speaker, originalMs: q.startMs,
@@ -304,4 +338,4 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
 
 export type EditRenderResult = Required<Pick<EpisodeEditRender,
     'videoPath' | 'wordsPath' | 'captionsPath' | 'chaptersPath' | 'driveFileId' | 'driveUrl' | 'folderUrl'
-    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc'>>;
+    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits'>>;

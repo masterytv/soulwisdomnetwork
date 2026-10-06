@@ -213,9 +213,9 @@ export function layerSpan(layer: { anchor: Anchor; durationMs: number }, ranges:
 export const anchorCut = (layer: { anchor: Anchor }, ranges: KeptRange[]) =>
     'srcMs' in layer.anchor && editedTime(layer.anchor.srcMs, ranges) === null;
 
-// Moving a layer: to a new start in the edited episode, keeping how it is anchored (`sourceAt` maps an
-// edited time back to the recording, sourceTime in lib/sequence.ts).
-export function startAt<L extends Layer>(layer: L, editedMs: number, sourceAt: (atMs: number) => number | null): L {
+// Moving a layer (or a sound): to a new start in the edited episode, keeping how it is anchored (`sourceAt`
+// maps an edited time back to the recording, sourceTime in lib/sequence.ts).
+export function startAt<L extends { anchor: Anchor }>(layer: L, editedMs: number, sourceAt: (atMs: number) => number | null): L {
     if ('atMs' in layer.anchor) return { ...layer, anchor: { atMs: Math.max(0, Math.round(editedMs)) } };
     const src = sourceAt(Math.max(0, editedMs));
     return src === null ? layer : { ...layer, anchor: { srcMs: Math.round(src) } };
@@ -394,7 +394,7 @@ export function layersAss(cues: Cue[], captions: CaptionStyle | null, texts: { l
 // What the episode's media bin lists (lib/server/mediaBin.ts): its uploads and the files it already has.
 export const BIN_KINDS = ['image', 'video', 'audio'] as const;
 export type BinKind = typeof BIN_KINDS[number];
-export type BinSource = 'upload' | 'broll' | 'teaser' | 'intro' | 'logo';
+export type BinSource = 'upload' | 'broll' | 'teaser' | 'intro' | 'logo' | 'library';
 export interface BinItem {
     id: string;
     kind: BinKind;
@@ -409,6 +409,10 @@ export interface BinItem {
     startMs?: number;
     seconds?: number;
     index?: number;
+    // Sounds (item E7): a show library file's kind and licence state (only a checked one can be placed),
+    // or, for an episode's own upload, who said it is theirs to use and when.
+    sound?: { kind: 'music' | 'effect'; checked: boolean; credit: string; licence: string };
+    rights?: { name: string; on: string } | null;
 }
 
 const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
