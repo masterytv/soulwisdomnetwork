@@ -2,12 +2,15 @@
 // NEXT_PUBLIC_EDITOR_LIGHT is set; these routes answer either way, to producers and admins).
 // Matches the notes route pattern: requireRole, version check on PUT (409 on mismatch).
 // Part I: on-screen items are checked before saving, and GET adds hour-long links to the overlay images.
+// GET also gives the audio's measured silences, for the pause suggestions (spec 019 item 1.1).
+// Transitions (spec 020 item E4) are checked too, and one at a split that is no longer there is dropped.
 import { FieldValue } from 'firebase-admin/firestore';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
-import { CutsSchema, SplitsSchema, type EpisodeEdit } from '@/lib/edit';
+import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
+import { JoinsSchema, type Join } from '@/lib/transitions';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +25,8 @@ export const GET = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const doc = await episodeRef((await params).id).get();
     if (!doc.exists) throw new HttpError(404, 'Episode not found');
-    const edit = (doc.data() as { edit?: EpisodeEdit }).edit ?? { cuts: [], version: 0 };
+    const data = doc.data() as { edit?: EpisodeEdit; media?: { silencesPath?: string } };
+    const edit = data.edit ?? { cuts: [], version: 0 };
     // Links to the image overlays, so the editor can show them over the video.
     const overlayUrls: Record<string, string> = {};
     for (const o of edit.overlays ?? []) {
@@ -30,13 +34,20 @@ export const GET = handle<Context>(async (request, { params }) => {
         const url = await adminBucket().file(o.path).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[o.path] = url;
     }
-    return Response.json({ edit, overlayUrls });
+    // The silences measured at ingest; null for an episode not measured yet, so the editor uses word gaps.
+    let silences: Silence[] | null = null;
+    if (data.media?.silencesPath) {
+        const raw = await adminBucket().file(data.media.silencesPath).download().then(([b]) => JSON.parse(b.toString('utf8'))).catch(() => null);
+        const parsed = SilencesFileSchema.safeParse(raw);
+        if (parsed.success) silences = parsed.data.silences;
+    }
+    return Response.json({ edit, overlayUrls, silences });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -54,6 +65,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const r = SplitsSchema.safeParse(body.edit.splits);
         if (!r.success) throw new HttpError(400, `Splits: ${r.error.issues[0]?.message ?? 'not valid'}`);
         splits = r.data;
+    }
+    // Transitions (Studio editor). Left out of the request, they stay as saved.
+    let joins: Join[] | undefined;
+    if (body.edit.joins !== undefined) {
+        const r = JoinsSchema.safeParse(body.edit.joins);
+        if (!r.success) throw new HttpError(400, `Transitions: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        joins = r.data;
     }
     let captions: CaptionChoice | null | undefined;
     if (body.edit.captions !== undefined) {
@@ -81,12 +99,16 @@ export const PUT = handle<Context>(async (request, { params }) => {
             throw new HttpError(409, 'Version mismatch — someone else edited');
         }
         const version = (current?.version ?? 0) + 1;
+        // A transition at a split goes with its split.
+        const keptSplits = splits ?? current?.splits ?? [];
+        const keptJoins = (joins ?? current?.joins ?? []).filter(j => typeof j.at === 'string' || keptSplits.includes(j.at.atSplit));
         tx.update(ref, {
             edit: {
                 cuts: cuts.data, version, updatedAt: new Date().toISOString(), updatedBy: uid,
                 overlays: overlays ?? current?.overlays ?? [],
                 captions: captions !== undefined ? captions : current?.captions ?? null,
-                splits: splits ?? current?.splits ?? [],
+                splits: keptSplits,
+                joins: keptJoins,
             },
             updatedAt: FieldValue.serverTimestamp(),
         });

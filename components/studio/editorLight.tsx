@@ -1,10 +1,11 @@
 // Why: Editor Light (spec 015) panel moved out of the show notes page, so the show
 // notes page imports it and the full-page editor reuses it with workspace. It loads
 // the edit via GET, saves via PUT with useAutosave, and renders the Editor component.
-// `workspace` is the full-page editor.
+// `workspace` is the Studio editor (spec 020 item E1), with `heading` for its bar: there saving and
+// Render sit in the bar, and the render's result is a panel beside the preview.
 // Part I: it also loads the Studio's captions setting and the overlay image links for the full-page
 // editor, and gives the editor Claude's suggestions for a tighter edit (retakes and more, spec 019 item 1.3)
-// as a toolbar tool.
+// as a toolbar tool. The Studio editor also loads its timeline's waveform and thumbnails (item E2).
 
 "use client";
 
@@ -13,9 +14,12 @@ import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
 import { useAutosave } from '@/components/studio/useAutosave';
 import { mmss, type SpokenWord } from '@/lib/showNotes';
-import type { EpisodeEdit } from '@/lib/edit';
+import type { EpisodeEdit, Silence } from '@/lib/edit';
 import type { EditRenderView } from '@/lib/server/editRender';
-import { studioFetch } from '@/lib/studioClient';
+import { studioFetch, studioFetchBytes } from '@/lib/studioClient';
+import type { ThumbSheets } from '@/lib/thumbs';
+import type { TimelineMedia } from '@/components/studio/timeline';
+import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
@@ -72,14 +76,18 @@ function TightenTool({ episodeId, edit, onAdd, onNotes }: {
     );
 }
 
-export function EditorLightStage({ episodeId, words, videoUrl, workspace = false }: {
-    episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean;
+export function EditorLightStage({ episodeId, words, videoUrl, workspace = false, heading }: {
+    episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean; heading?: React.ReactNode;
 }) {
     const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
     const [loaded, setLoaded] = useState(false);
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
     const [studioCaptions, setStudioCaptions] = useState<CaptionChoice | undefined>(undefined);
+    // The Studio's transitions between sections (spec 020 item E4), for the Transitions panel.
+    const [studioJoins, setStudioJoins] = useState<SectionJoins | null>(null);
+    // The audio's silences measured at ingest (null before then), for the pause suggestions.
+    const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
     const [cutNotes, setCutNotes] = useState<Record<string, string>>({});
     const { change, reset, flush, saveState, saveError } = useAutosave<EpisodeEdit>(
@@ -94,21 +102,39 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
     );
 
     useEffect(() => {
-        studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string> }>(`/api/studio/episodes/${episodeId}/edit`)
+        studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`)
             .then((data) => {
                 setEdit(data.edit);
                 setOverlayUrls(data.overlayUrls ?? {});
+                setSilences(data.silences ?? null);
                 reset(data.edit.version);
                 setLoaded(true);
             })
             .catch(() => { setLoaded(true); });
     }, [episodeId, reset]);
 
+    // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
+    // Either may be missing on an episode the ingest catch-up has not reached yet.
+    const [timelineMedia, setTimelineMedia] = useState<TimelineMedia | null>(null);
+    useEffect(() => {
+        if (!workspace) return;
+        let gone = false;
+        studioFetch<{ thumbs: ThumbSheets | null; peaks: boolean }>(`/api/studio/episodes/${episodeId}/timeline`)
+            .then(async v => {
+                const peaks = v.peaks
+                    ? await studioFetchBytes(`/api/studio/episodes/${episodeId}/peaks`).then(b => new Int8Array(b), () => null)
+                    : null;
+                if (!gone) setTimelineMedia({ thumbs: v.thumbs, peaks });
+            })
+            .catch(() => { if (!gone) setTimelineMedia({ thumbs: null, peaks: null }); });
+        return () => { gone = true; };
+    }, [workspace, episodeId]);
+
     // The Studio's captions setting, read once for the full-page editor.
     useEffect(() => {
         if (!workspace) return;
         studioFetch<{ settings: StudioSettings }>('/api/studio/settings')
-            .then(v => setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }))
+            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); })
             .catch(() => {});
     }, [workspace]);
 
@@ -153,27 +179,15 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </p>
     );
 
-    // The editor component.
-    const editor = (
-        <Editor
-            words={words}
-            videoUrl={videoUrl}
-            edit={edit}
-            workspace={workspace}
-            studioCaptions={studioCaptions}
-            overlayUrls={overlayUrls}
-            cutNotes={cutNotes}
-            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
-            onChange={(e) => { setEdit(e); change(e); }}
-        />
-    );
-
     // Render this edit: GitHub Actions makes the finished video and saves it to "04 Final".
     const renderControls = (
         <div className={`${workspace ? '' : 'mt-4'} flex flex-wrap items-center gap-3`}>
-            <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
-                {render?.status === 'ready' ? 'Render this edit again' : 'Render this edit'}
-            </button>
+            {/* In the Studio editor the button is in the bar. */}
+            {!workspace && (
+                <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
+                    {render?.status === 'ready' ? 'Render this edit again' : 'Render this edit'}
+                </button>
+            )}
             {render?.status === 'ready' && render.videoUrl && (
                 <button onClick={() => setWatching(w => !w)} className={secondary}>
                     {watching ? 'Hide the render' : '▶ Watch the render'}
@@ -195,6 +209,20 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </div>
     );
 
+    // The Studio editor's bar: the Render button and a few words on where the render stands; the
+    // rest is in the Render panel.
+    const renderBar = (
+        <>
+            {rendering && <span className={small}>Rendering…</span>}
+            {render?.status === 'ready' && <span className={small}>{render.stale ? 'Rendered, before the latest changes' : 'Rendered'}</span>}
+            {render?.status === 'failed' && <span className="text-sm text-red-300">Render failed (see the Render panel)</span>}
+            {renderError && <span className="text-sm text-red-300">{renderError}</span>}
+            <button onClick={() => { void startRender(); }} disabled={rendering || render?.canStart === false} className={primary}>
+                {render?.status === 'ready' ? 'Render again ▸' : 'Render ▸'}
+            </button>
+        </>
+    );
+
     // The render player and the warnings list.
     const renderResult = (
         <>
@@ -210,19 +238,39 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         </>
     );
 
-    // workspace: the full-page editor pins saving and rendering in a bar under the site header,
-    // as Descript keeps Export at the top.
-    if (workspace) {
-        return (
-            <>
-                <div aria-label="Editor bar" className="sticky top-[65px] z-20 -mx-4 sm:-mx-6 mb-3 px-4 sm:px-6 py-2 flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0d0720]/95 backdrop-blur">
-                    {saveStatus}<span className="grow" />{renderControls}
-                </div>
-                {renderResult}
-                {editor}
-            </>
-        );
-    }
+    // The Studio editor's Render panel: the render's state and links, the player and the report.
+    const renderPanel = (
+        <div className="flex flex-col gap-2">
+            <h2 className="text-sm font-semibold text-gray-200">Render</h2>
+            <p className={small}>GitHub Actions makes the finished video from the saved edit{render?.status === 'ready' ? '' : ': press Render ▸ in the bar'}.</p>
+            {renderControls}
+            {renderResult}
+        </div>
+    );
+
+    // The editor component.
+    const editor = (
+        <Editor
+            words={words}
+            videoUrl={videoUrl}
+            edit={edit}
+            workspace={workspace}
+            studioCaptions={studioCaptions}
+            overlayUrls={overlayUrls}
+            cutNotes={cutNotes}
+            silences={silences}
+            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
+            onChange={(e) => { setEdit(e); change(e); }}
+            heading={heading}
+            status={saveStatus}
+            actions={workspace ? renderBar : undefined}
+            panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
+            timelineMedia={timelineMedia}
+            studioJoins={studioJoins}
+        />
+    );
+
+    if (workspace) return editor;
 
     return (
         <>

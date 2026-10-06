@@ -12,16 +12,26 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
-import type { Cut, EpisodeEdit } from '@/lib/edit';
+import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
-    keepRanges, editedDuration, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, SUGGESTED_REASONS, HESITATION_REASONS,
+    keepRanges, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
+    keptBounds,
+    type UnspokenSpan,
 } from '@/lib/edit';
 import { hasFillers } from '@/lib/fillers';
 import { primary, secondary, hint } from '@/components/studio/ui';
-import { Timeline } from '@/components/studio/timeline';
+import { Timeline, type TimelineMedia, type TimelineSelection } from '@/components/studio/timeline';
 import { SPEEDS } from '@/lib/studioUi';
 import { DEFAULT_CAPTION_STYLE, type CaptionChoice } from '@/lib/onScreen';
 import { OnScreenPanel, OnScreenPreview } from '@/components/studio/onScreen';
+import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
+import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
+import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
+import { TransitionsPanel } from '@/components/studio/transitionsPanel';
+import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
+
+// No splits yet: one array, so the timeline does not redraw on every render.
+const NO_SPLITS: number[] = [];
 
 interface SpeakerPara {
     speaker: string;
@@ -103,10 +113,18 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
     box.scrollTop = Math.max(0, elTop - box.clientHeight / 3);
 }
 
-// workspace: the full-page editor — a larger video, a taller script and the timeline.
+// workspace: the Studio editor (spec 020 item E1) — the same pieces in components/studio/workspace.tsx.
 // studioCaptions: the Studio's captions setting; overlayUrls: links to the overlay images (both Part I).
 // cutNotes: by `${startMs}-${endMs}`, a suggestion's kind and why ("False start: changed tack").
-export function Editor({ words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {} }: {
+// silences: the audio's measured silences, for the pause suggestions (null: not measured, use word gaps).
+// The Studio editor (workspace, spec 020 item E1) also takes the bar's `heading` (back link and title),
+// `status` (saving) and `actions` (render), and `panels` beside the On screen panel; `timelineMedia`
+// is its timeline's waveform and thumbnails (item E2; null while they load), and `studioJoins` the
+// Studio's transitions between sections, for the Transitions panel (item E4).
+export function Editor({
+    words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
+    heading, status, actions, panels = [], timelineMedia = null, studioJoins = null,
+}: {
     words: SpokenWord[];
     videoUrl: string;
     edit: EpisodeEdit;
@@ -116,6 +134,13 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     overlayUrls?: Record<string, string>;
     tools?: React.ReactNode;
     cutNotes?: Record<string, string>;
+    silences?: Silence[] | null;
+    heading?: React.ReactNode;
+    status?: React.ReactNode;
+    actions?: React.ReactNode;
+    panels?: WorkspacePanel[];
+    timelineMedia?: TimelineMedia | null;
+    studioJoins?: SectionJoins | null;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -147,19 +172,44 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     const [speed, setSpeed] = useState(1);
     // Help panel: opened by the "?" button, holding the editing and shortcuts help.
     const [helpOpen, setHelpOpen] = useState(false);
+    // The Studio editor's panel on the right, chosen on its rail.
+    const [panelId, setPanelId] = useState('on-screen');
+    // What is selected on the Studio editor's timeline (a stretch of time, or a cut). It and the
+    // selected words exclude each other, so Delete always means one thing.
+    const [timelineSel, setTimelineSel] = useState<TimelineSelection | null>(null);
+    // The V2 track's eye: on-screen items hidden in the preview (never in the render).
+    const [overlaysHidden, setOverlaysHidden] = useState(false);
     // Hear it: while a preview runs, cuts are played (not skipped) and playback pauses at endMs.
     const previewRef = useRef<{ endMs: number } | null>(null);
 
     const paras = useMemo(() => groupBySpeaker(words), [words]);
     const cutsByWord = useMemo(() => cutMaps(words, edit.cuts), [words, edit.cuts]);
+    // Speech the transcript missed (spec 019 item 1.2), by the word it comes before: shown as … in
+    // the gap, and cut with a click. Only with measured silences.
+    const unspokenByWord = useMemo(() => {
+        const by = new Map<number, UnspokenSpan[]>();
+        for (const s of silences?.length ? unspokenSpans(words, silences) : []) by.set(s.before, [...by.get(s.before) ?? [], s]);
+        return by;
+    }, [words, silences]);
     const [videoDuration, setVideoDuration] = useState(0);
-    const ranges = useMemo(() => keepRanges(
+    // The play order (lib/sequence.ts): with transitions at splits (spec 020 item E4) the parts
+    // overlap, so the edited length is shorter, and the preview plays the start of each later part
+    // on a second video over the end of the one before (TransitionPreview), so one video skips it.
+    const sequence = useMemo(() => sequenceOf(
+        { cuts: edit.cuts, splits: edit.splits, joins: edit.joins },
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
-        edit.cuts,
-        40,
         words,
-    ), [videoDuration, words, edit.cuts]);
-    const editedMs = useMemo(() => editedDuration(ranges), [ranges]);
+    ), [videoDuration, words, edit.cuts, edit.splits, edit.joins]);
+    const kept = sequence.clips;
+    const ranges = useMemo(() => workspace ? previewRanges(sequence)
+        : keepRanges(videoDuration || (words.length > 0 ? words[words.length - 1].end : 0), edit.cuts, 40, words),
+    [workspace, sequence, videoDuration, words, edit.cuts]);
+    const editedMs = useMemo(() => sequenceLength(kept), [kept]);
+    const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.map(j => ({
+        aEndMs: j.aEndMs, bStartMs: j.bStartMs, durationMs: j.durationMs, transition: j.transition,
+    })), [sequence.joins]);
+    // The split whose transition the Transitions panel shows first (chosen on the timeline).
+    const [joinFocus, setJoinFocus] = useState<number | null>(null);
 
     // One total for both numbers: videoDuration || last word end.
     const totalMs = videoDuration || (words.length > 0 ? words[words.length - 1].end : 0);
@@ -258,6 +308,17 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 return;
             }
             // Outside a text box, handle all keys.
+            // ? opens and closes the Studio editor's shortcut sheet; Esc closes it.
+            if (workspace && e.key === '?') {
+                e.preventDefault();
+                setHelpOpen(o => !o);
+                return;
+            }
+            if (workspace && e.key === 'Escape') {
+                setHelpOpen(false);
+                setTimelineSel(null);
+                return;
+            }
             if (e.key === ' ') {
                 e.preventDefault();
                 const video = videoRef.current;
@@ -279,6 +340,33 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                 if (cutSelection()) e.preventDefault();
                 return;
             }
+            // A stretch of time chosen on the timeline: Delete cuts it.
+            if (timelineSel?.kind === 'range' && (e.key === 'Delete' || e.key === 'Backspace')) {
+                e.preventDefault();
+                const { startMs, endMs } = timelineSel;
+                updateEdit(prev => ({ ...prev, cuts: [...prev.cuts, { startMs, endMs, reason: 'manual' }] }));
+                setTimelineSel(null);
+                return;
+            }
+            // A section selected on the timeline: Delete cuts it whole (unless it is cut already).
+            if (timelineSel?.kind === 'section' && (e.key === 'Delete' || e.key === 'Backspace')) {
+                e.preventDefault();
+                const section = { startMs: timelineSel.startMs, endMs: timelineSel.endMs };
+                if (keptBounds(edit.cuts, section)) updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) }));
+                return;
+            }
+            // Arrows step a frame (with Shift, a second) in the Studio editor, except on a divider,
+            // whose arrows resize.
+            if (workspace && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.ctrlKey && !e.metaKey && !e.altKey
+                && !target.closest('[role="separator"]')) {
+                const video = videoRef.current;
+                if (!video) return;
+                e.preventDefault();
+                const step = (e.shiftKey ? 1 : 1 / 30) * (e.key === 'ArrowLeft' ? -1 : 1);
+                video.pause();
+                video.currentTime = Math.max(0, Math.min(video.duration || Infinity, video.currentTime + step));
+                return;
+            }
             // S splits at the playhead in the full-page editor.
             if (workspace && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === 's') {
                 const video = videoRef.current;
@@ -289,7 +377,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -397,6 +485,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
             setSelectedRange(null);
             return;
         }
+        setTimelineSel(null);
         if (e.shiftKey && selectedRange) {
             const [start] = selectedRange;
             setSelectedRange([Math.min(start, index), Math.max(start, index)]);
@@ -414,6 +503,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     // Word drag start. A shift-click leaves the selection for the click to extend.
     const onWordMouseDown = (index: number, e: React.MouseEvent) => {
         if (e.shiftKey || isCut(index, words, edit.cuts)) return;
+        setTimelineSel(null);
         setDragStart(index);
         setSelectedRange([index, index]);
     };
@@ -442,7 +532,7 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
 
     // Suggest filler words, repeats and long pauses; marking again replaces the earlier ones.
     const onSuggest = () => {
-        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words), SUGGESTED_REASONS) }));
+        updateEdit(prev => ({ ...prev, cuts: replaceSuggestions(prev.cuts, suggestCuts(words, { silences }), SUGGESTED_REASONS) }));
         setReviewIdx(0);
         setReviewKind(null);
     };
@@ -515,7 +605,8 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
     // What each kind saves on its own, beside its count.
     const reasonSaved = useMemo(() => savedByReason(edit.cuts) as Record<string, number>, [edit.cuts]);
     // Transcripts made with `disfluencies` on have their "um"s as words, so there is nothing to
-    // guess from silences: Mark hesitations is only offered for older ones.
+    // guess from silences: Mark hesitations is only offered for older ones, and only before their
+    // audio's silences are measured (then the missed speech is marked with the fillers instead).
     const fillersTranscribed = useMemo(() => hasFillers(words), [words]);
 
     // Suggested cuts (reason not 'manual'), sorted by start time.
@@ -584,144 +675,457 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
 
     // Hear it: play from 2 s before the reviewed mark to 2 s after it, the mark included,
     // so the producer hears it in context before choosing Keep this or Next.
-    const hearCut = () => {
+    const hear = useCallback((startMs: number, endMs: number) => {
         const video = videoRef.current;
-        if (!video || !reviewCut) return;
-        previewRef.current = { endMs: reviewCut.endMs + 2000 };
-        video.currentTime = Math.max(0, reviewCut.startMs - 2000) / 1000;
+        if (!video) return;
+        previewRef.current = { endMs };
+        video.currentTime = Math.max(0, startMs) / 1000;
         void video.play();
+    }, []);
+    const hearCut = () => {
+        if (reviewCut) hear(reviewCut.startMs - 2000, reviewCut.endMs + 2000);
     };
 
     // The reason button label for 'manual'.
     const reasonLabel = (reason: string): string =>
         reason === 'filler' ? 'Fillers' : reason === 'repeat' ? 'Repeats' : reason === 'pause' ? 'Pauses' : reason === 'manual' ? 'Your cuts' : reason === 'retake' ? 'Retakes' : reason === 'gap' ? 'Hesitations' : reason;
 
+    const helpLine = 'Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Shift + Ctrl or ⌘ + Z (or Ctrl + Y) redoes';
+
+    // The suggestion tools: mark, clear, cut the selection, and the page's own (Claude's tighter edit).
+    const suggestTools = (
+        <>
+            <button onClick={onSuggest} className={primary}
+                title={silences?.length ? 'Long pauses are measured from the audio' : 'Long pauses are the gaps between words (this recording\'s silences are not measured yet)'}>
+                Mark filler words and long pauses
+            </button>
+            {!fillersTranscribed && !silences?.length && (
+                <button onClick={onHesitations} className={secondary}
+                    title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
+                    Mark hesitations
+                </button>
+            )}
+            <button onClick={onClearSuggestions} className={secondary}>
+                Clear suggestions
+            </button>
+            {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. */}
+            {selectedRange && (
+                <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
+            )}
+            {/* Extra tools from the page, such as Claude's tighter edit. */}
+            {tools}
+        </>
+    );
+
+    const history = (
+        <>
+            <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
+                Undo
+            </button>
+            <button onClick={redo} className={secondary} disabled={!canRedo} title="Ctrl or ⌘ + Y">
+                Redo
+            </button>
+        </>
+    );
+
+    const helpButton = (
+        <button type="button" onClick={() => setHelpOpen(o => !o)} aria-expanded={helpOpen}
+            aria-label={workspace ? 'Shortcuts' : 'Editing help'} title={workspace ? 'Shortcuts (?)' : undefined}
+            className={helpOpen
+                ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                : `${secondary} px-2 py-0.5`}>
+            {workspace ? '? Shortcuts' : '?'}
+        </button>
+    );
+
+    const lengthLabel = (
+        <span className={hint}>
+            Edited length {mmss(editedMs)} · saves {mmss(timeSavedMs)}
+        </span>
+    );
+
+    // Reason counts as buttons that filter the review, and Clear these for the chosen kind.
+    const reasonButtons = (
+        <>
+            {/* Reason counts as buttons that filter the review. */}
+            {Object.entries(reasonCounts).map(([reason, count]) => {
+                const label = reasonLabel(reason);
+                const isChosen = reviewKind === reason;
+                return (
+                    <button
+                        key={reason}
+                        onClick={() => { setReviewKind(isChosen ? null : reason); setReviewIdx(0); }}
+                        className={isChosen
+                            ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                            : `${secondary} px-2 py-0.5`}
+                    >
+                        {label} {count}{reasonSaved[reason] ? ` · ${mmss(reasonSaved[reason])}` : ''}
+                    </button>
+                );
+            })}
+            {reviewKind && reviewKind !== 'manual' && reasonCounts[reviewKind] > 0 && (
+                <button onClick={() => onClearKind(reviewKind)} className={`${secondary} px-2 py-0.5`}>
+                    Clear these
+                </button>
+            )}
+        </>
+    );
+
+    // Search box with a clear button that shows once there is text.
+    const search = (
+        <>
+            <div className={`${workspace ? 'grow min-w-0' : 'ml-auto'} flex items-center gap-1`}>
+                <input
+                    ref={searchRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={e => onSearchChange(e.target.value)}
+                    onKeyDown={onSearchKeyDown}
+                    placeholder="Search transcript…"
+                    className={`${workspace ? 'w-full min-w-0' : 'w-64'} px-3 py-1.5 text-sm rounded bg-white/5 text-gray-200 placeholder-gray-500 outline-none focus:ring-1 ring-amber-400/50`}
+                />
+                {searchQuery && (
+                    <button type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search" className={`${secondary} px-2 py-0.5`}>
+                        ×
+                    </button>
+                )}
+            </div>
+            {searchMatches.length > 0 && (
+                <span className={hint}>
+                    {searchCursor < 0 ? `${searchMatches.length} matches` : `${searchCursor + 1}/${searchMatches.length}`}
+                </span>
+            )}
+        </>
+    );
+
+    // Review suggestions row
+    const reviewRow = reviewCount > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+            <button onClick={reviewPrev} className={secondary}>‹ Previous</button>
+            <span className={hint}>{clampedReviewIdx + 1} of {reviewCount}</span>
+            <button onClick={reviewNext} className={secondary}>Next ›</button>
+            <button onClick={reviewKeep} className={secondary}>Keep this</button>
+            <button onClick={hearCut} className={secondary} data-start-ms={reviewCut?.startMs} data-end-ms={reviewCut?.endMs}>Hear it</button>
+            {reviewCut && cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`] && (
+                <span className={hint}>{cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`]}</span>
+            )}
+        </div>
+    );
+
+    // The video, with the on-screen text and images over it in the full-page editor.
+    const video = (
+        <div className="relative" style={workspace
+            // Scaled to fit the preview, leaving room for the play controls under it.
+            ? { containerType: 'inline-size', width: 'min(100cqw, calc((100cqh - 3rem) * 16 / 9))', aspectRatio: '16 / 9', margin: '0 auto' }
+            : { containerType: 'inline-size' }}>
+            <video
+                ref={videoRef}
+                src={videoUrl}
+                className={`w-full rounded-lg bg-black ${workspace ? 'h-full' : ''}`}
+                controls
+                onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
+            />
+            {workspace && <TransitionPreview video={videoRef} src={videoUrl} joins={previewJoins} active={playMode === 'edited'} />}
+            {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
+        </div>
+    );
+
+    // Play switch: Edited skips the cuts, Original plays everything.
+    const playControls = (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className={hint}>Play:</span>
+            {(['edited', 'original'] as const).map(mode => (
+                <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={playMode === mode}
+                    onClick={() => setPlayMode(mode)}
+                    className={playMode === mode
+                        ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                        : `${secondary} px-2 py-0.5`}
+                >
+                    {mode === 'edited' ? 'Edited' : 'Original'}
+                </button>
+            ))}
+            {/* Speed buttons: play at 0.75×, 1×, 1.25×, 1.5× or 2×. */}
+            <span className={`${hint} ml-3`}>Speed:</span>
+            {SPEEDS.map(rate => (
+                <button
+                    key={rate}
+                    type="button"
+                    aria-pressed={speed === rate}
+                    aria-label={`Play at ${rate} times speed`}
+                    onClick={() => setSpeed(rate)}
+                    className={speed === rate
+                        ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
+                        : `${secondary} px-2 py-0.5`}
+                >
+                    {rate}×
+                </button>
+            ))}
+        </div>
+    );
+
+    // Transcript
+    const transcript = (
+        <div ref={transcriptRef} className={`${workspace ? 'flex-1 min-h-0' : 'md:w-1/2 h-[calc(100vh-220px)] min-h-[400px]'} overflow-y-auto rounded-lg bg-[#130b29] p-4`}>
+                {paras.map((para, pi) => (
+                    <div key={pi} className="mb-4" style={{ contentVisibility: 'auto' }}>
+                        <p className="text-sm font-bold text-amber-400 mb-1">
+                            {para.speaker}
+                            {/* Turn start time, so the producer can find a turn by its time. */}
+                            <span className="ml-2 text-xs font-normal text-gray-400">{mmss(para.words[0].word.start)}</span>
+                        </p>
+                        <p className="text-sm leading-relaxed text-gray-200">
+                            {para.words.map(({ word, index }, wi) => {
+                                const wordCut = cutsByWord.wordCut[index];
+                                const cut = !!wordCut;
+                                const isManual = wordCut?.reason === 'manual';
+                                const isSelected = selectedRange &&
+                                    index >= selectedRange[0] && index <= selectedRange[1];
+                                const isCurrent = index === currentWord;
+                                const isMatch = matchSet.has(index);
+                                const isReview = reviewCut && wordCut &&
+                                    wordCut.startMs === reviewCut.startMs &&
+                                    wordCut.endMs === reviewCut.endMs;
+                                // The silence before this word, also across a change of speaker. It shows
+                                // as a chip when it is long, or when a cut sits in it (a filler AssemblyAI
+                                // left out of the transcript), so every suggestion can be seen and undone.
+                                const prev = index > 0 ? words[index - 1] : null;
+                                const prevGap = prev ? word.start - prev.end : 0;
+                                const gapCuts = prev ? cutsByWord.gapCuts[index] : [];
+                                const gapCut = gapCuts.length > 0;
+                                const gapCutIsManual = gapCuts.every(c => c.reason === 'manual');
+                                const gapCutIsReview = reviewCut && gapCuts.some(c =>
+                                    c.startMs === reviewCut.startMs && c.endMs === reviewCut.endMs);
+                                return (
+                                    <span key={wi}>
+                                        {prev && (prevGap > pauseThreshold || gapCut) && (
+                                            <span
+                                                ref={el => { chipRefs.current[index] = el; }}
+                                                title={gapCut ? (gapCutIsManual ? 'Double-click to bring back' : 'Double-click to keep it') : 'Click to shorten this pause'}
+                                                className={`inline-block mx-1 px-1.5 py-0.5 rounded text-xs cursor-pointer ${
+                                                    gapCut
+                                                        ? gapCutIsManual
+                                                            ? 'line-through text-gray-400'
+                                                            : 'line-through decoration-amber-400 text-amber-200/70 bg-amber-400/10'
+                                                        : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                                } ${gapCutIsReview ? ' ring-2 ring-amber-400' : ''}`}
+                                                onDoubleClick={(e) => {
+                                                    if (gapCut) {
+                                                        e.stopPropagation();
+                                                        updateEdit(cur => ({ ...cur, cuts: cur.cuts.filter(c => !gapCuts.includes(c)) }));
+                                                    }
+                                                }}
+                                                onClick={(e) => {
+                                                    if (!gapCut) {
+                                                        e.stopPropagation();
+                                                        updateEdit(cur => ({ ...cur, cuts: [...cur.cuts, {
+                                                            startMs: Math.round(prev.end + Math.min(500, prevGap / 2)),
+                                                            endMs: word.start,
+                                                            reason: 'pause',
+                                                        }] }));
+                                                    }
+                                                }}
+                                            >
+                                                {gapCut
+                                                    // A cut silence between words is a hesitation ('gap', or 'filler' in
+                                                    // edits marked before hesitations had their own kind), never a word.
+                                                    ? (gapCuts.some(c => c.reason === 'filler' || c.reason === 'gap')
+                                                        ? `hesitation ${(gapCuts.reduce((t, c) => t + Math.max(0, Math.min(c.endMs, word.start) - Math.max(c.startMs, prev.end)), 0) / 1000).toFixed(1)}s`
+                                                        : `pause ${(prevGap / 1000).toFixed(1)}s → ${((prevGap - (gapCuts[0]?.endMs ?? 0) + (gapCuts[0]?.startMs ?? 0)) / 1000).toFixed(1)}s`)
+                                                    : `pause ${(prevGap / 1000).toFixed(1)}s`}
+                                            </span>
+                                        )}
+                                        {(unspokenByWord.get(index) ?? [])
+                                            .filter(u => !gapCuts.some(c => c.startMs <= u.startMs + 50 && c.endMs >= u.endMs - 50))
+                                            .map(u => (
+                                                <span key={u.startMs}
+                                                    title={`Sound the transcript has no words for (${((u.endMs - u.startMs) / 1000).toFixed(1)} s): often an um or a false start. Click to cut it; Hear it first if unsure.`}
+                                                    className="inline-block mx-0.5 px-1 rounded text-xs cursor-pointer text-gray-400 bg-white/5 hover:bg-white/10"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        updateEdit(cur => ({ ...cur, cuts: [...cur.cuts, { startMs: u.startMs, endMs: u.endMs, reason: 'filler' }] }));
+                                                    }}
+                                                >…</span>
+                                            ))}
+                                        <span
+                                            ref={el => { if (index < words.length) wordRefs.current[index] = el; }}
+                                            className={`cursor-pointer select-none ${
+                                                cut
+                                                    ? isManual
+                                                        ? 'line-through text-gray-400'
+                                                        : 'line-through decoration-amber-400 text-amber-200/70'
+                                                    : isSelected
+                                                        ? 'bg-amber-500/30 rounded'
+                                                        : 'text-gray-200'
+                                            } ${isSelected ? 'ring-1 ring-amber-400/50' : ''} ${
+                                                isCurrent && !cut ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''
+                                            } ${isMatch && !cut ? 'bg-amber-400/10' : ''} ${
+                                                isReview ? ' ring-2 ring-amber-400' : ''
+                                            }`}
+                                            title={cut ? 'Double-click to bring back' : undefined}
+                                            onClick={(e) => onWordClick(index, e)}
+                                            onDoubleClick={() => onWordDoubleClick(index)}
+                                            onMouseDown={e => onWordMouseDown(index, e)}
+                                            onMouseEnter={() => onWordMouseEnter(index)}
+                                        >
+                                            {word.text}
+                                        </span>
+                                        {' '}
+                                    </span>
+                                );
+                            })}
+                        </p>
+                    </div>
+                ))}
+        </div>
+    );
+
+    // The Studio editor (spec 020 item E1): the same pieces in its layout, with the timeline along the
+    // bottom and the On screen panel (Part I) beside the preview.
+    if (workspace) {
+        return (
+            <div ref={containerRef} tabIndex={0} className="outline-none">
+                <Workspace
+                    header={<>
+                        {heading}
+                        {lengthLabel}
+                        {status}
+                        <span className="grow" />
+                        {history}
+                        {helpButton}
+                        {actions}
+                    </>}
+                    script={<>
+                        <div className="flex flex-wrap items-center gap-2">{suggestTools}</div>
+                        {Object.keys(reasonCounts).length > 0 && <div className="flex flex-wrap items-center gap-2">{reasonButtons}</div>}
+                        <div className="flex items-center gap-2">{search}</div>
+                        {reviewRow}
+                        {transcript}
+                    </>}
+                    preview={<>
+                        <div className="flex-1 min-h-0" style={{ containerType: 'size' }}>{video}{playControls}</div>
+                    </>}
+                    panels={[
+                        {
+                            id: 'on-screen',
+                            label: 'On screen',
+                            node: (
+                                <OnScreenPanel
+                                    words={words}
+                                    edit={edit}
+                                    video={videoRef}
+                                    studio={studio}
+                                    onOverlays={overlays => updateEdit(prev => ({ ...prev, overlays }))}
+                                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ),
+                        },
+                        {
+                            id: 'transitions',
+                            label: 'Transitions',
+                            node: (
+                                <TransitionsPanel
+                                    joins={edit.joins ?? []}
+                                    splits={edit.splits ?? NO_SPLITS}
+                                    studio={studioJoins}
+                                    warnings={sequence.skipped}
+                                    focus={joinFocus}
+                                    onJoins={joins => updateEdit(prev => ({ ...prev, joins }))}
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ),
+                        },
+                        ...panels,
+                    ]}
+                    panelId={panelId}
+                    onPanel={setPanelId}
+                    timeline={
+                        <Timeline
+                            words={words}
+                            cuts={edit.cuts}
+                            ranges={kept}
+                            overlays={edit.overlays ?? []}
+                            totalMs={totalMs}
+                            video={videoRef}
+                            onSeek={ms => seekToTime(ms / 1000)}
+                            media={timelineMedia}
+                            selection={timelineSel}
+                            onSelect={sel => { setTimelineSel(sel); if (sel) setSelectedRange(null); }}
+                            onCuts={cuts => updateEdit(prev => ({ ...prev, cuts }))}
+                            onHear={hear}
+                            keys={containerRef}
+                            overlaysHidden={overlaysHidden}
+                            onOverlaysHidden={setOverlaysHidden}
+                            transitions={(edit.splits ?? NO_SPLITS).map(splitMs => {
+                                const j = (edit.joins ?? []).find(x => joinKey(x.at) === joinKey({ atSplit: splitMs }));
+                                return {
+                                    splitMs,
+                                    label: j && j.transition !== 'cut' ? `${TRANSITION_LABELS[j.transition]}, ${j.durationMs / 1000} s` : null,
+                                    playing: sequence.joins.some(x => x.splitMs === splitMs),
+                                };
+                            })}
+                            overlaps={sequence.joins.flatMap(j => [{ fromMs: j.aFromMs, toMs: j.aEndMs }, { fromMs: j.bStartMs, toMs: j.bUntilMs }])}
+                            onJoin={splitMs => { setJoinFocus(splitMs); setPanelId('transitions'); }}
+                            split={{
+                                splits: edit.splits ?? NO_SPLITS,
+                                onSplit: addSplit,
+                                // A split's transition goes with it.
+                                onRemoveSplit: ms => updateEdit(prev => ({
+                                    ...prev,
+                                    splits: (prev.splits ?? []).filter(s => s !== ms),
+                                    joins: (prev.joins ?? []).filter(j => joinKey(j.at) !== joinKey({ atSplit: ms })),
+                                })),
+                                onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
+                                onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
+                            }}
+                        />
+                    }
+                />
+                {helpOpen && <ShortcutSheet onClose={() => { setHelpOpen(false); containerRef.current?.focus(); }} />}
+            </div>
+        );
+    }
+
+    // The quick edit, in step 3 of the pipeline.
     return (
         <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
             {/* Help line: how to edit, and the keys on Undo and Redo. */}
             <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
+            {/* What only the Studio editor shows (spec 020): it stays as it is, and word cuts still work here. */}
+            {studioOnlySummary(edit) && (
+                <p className={`${hint} text-amber-200/80`}>
+                    Also in this edit, from the Studio editor: {studioOnlySummary(edit)}. They stay as they are; open the Studio editor to change them.
+                </p>
+            )}
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2">
-                <button onClick={onSuggest} className={primary}>
-                    Mark filler words and long pauses
-                </button>
-                {!fillersTranscribed && (
-                    <button onClick={onHesitations} className={secondary}
-                        title="Short silences inside a sentence, where an um or uh may have been. The transcript leaves those words out, so these are guesses: check them with Hear it.">
-                        Mark hesitations
-                    </button>
-                )}
-                <button onClick={onClearSuggestions} className={secondary}>
-                    Clear suggestions
-                </button>
-                {/* Cuts the selected words: the Delete key's job, as a button for phones and tablets. */}
-                {selectedRange && (
-                    <button onClick={cutSelection} className={secondary}>✂ Cut selected</button>
-                )}
-                {/* Extra tools from the page, such as Claude's tighter edit. */}
-                {tools}
-                <button onClick={undo} className={secondary} disabled={!canUndo} title="Ctrl or ⌘ + Z">
-                    Undo
-                </button>
-                <button onClick={redo} className={secondary} disabled={!canRedo} title="Ctrl or ⌘ + Y">
-                    Redo
-                </button>
-                <button type="button" onClick={() => setHelpOpen(o => !o)} aria-expanded={helpOpen} aria-label="Editing help"
-                    className={helpOpen
-                        ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
-                        : `${secondary} px-2 py-0.5`}>
-                    ?
-                </button>
-                <span className={hint}>
-                    Edited length {mmss(editedMs)} · saves {mmss(timeSavedMs)}
-                </span>
-                {/* Reason counts as buttons that filter the review. */}
-                {Object.entries(reasonCounts).map(([reason, count]) => {
-                    const label = reasonLabel(reason);
-                    const isChosen = reviewKind === reason;
-                    return (
-                        <button
-                            key={reason}
-                            onClick={() => { setReviewKind(isChosen ? null : reason); setReviewIdx(0); }}
-                            className={isChosen
-                                ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
-                                : `${secondary} px-2 py-0.5`}
-                        >
-                            {label} {count}{reasonSaved[reason] ? ` · ${mmss(reasonSaved[reason])}` : ''}
-                        </button>
-                    );
-                })}
-                {reviewKind && reviewKind !== 'manual' && reasonCounts[reviewKind] > 0 && (
-                    <button onClick={() => onClearKind(reviewKind)} className={`${secondary} px-2 py-0.5`}>
-                        Clear these
-                    </button>
-                )}
-                {/* Search box with a clear button that shows once there is text. */}
-                <div className="ml-auto flex items-center gap-1">
-                    <input
-                        ref={searchRef}
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => onSearchChange(e.target.value)}
-                        onKeyDown={onSearchKeyDown}
-                        placeholder="Search transcript…"
-                        className="w-64 px-3 py-1.5 text-sm rounded bg-white/5 text-gray-200 placeholder-gray-500 outline-none focus:ring-1 ring-amber-400/50"
-                    />
-                    {searchQuery && (
-                        <button type="button" onClick={clearSearch} aria-label="Clear search" title="Clear search" className={`${secondary} px-2 py-0.5`}>
-                            ×
-                        </button>
-                    )}
-                </div>
-                {searchMatches.length > 0 && (
-                    <span className={hint}>
-                        {searchCursor < 0 ? `${searchMatches.length} matches` : `${searchCursor + 1}/${searchMatches.length}`}
-                    </span>
-                )}
+                {suggestTools}
+                {history}
+                {helpButton}
+                {lengthLabel}
+                {reasonButtons}
+                {search}
             </div>
 
             {/* Help panel: the editing help and the hint line, opened by the "?" button. */}
             {helpOpen && (
                 <div className={`${hint} rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 flex flex-col gap-1`}>
-                    {/* Help line: how to edit, and the keys on Undo and Redo. */}
-                    <p>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back · Space plays and pauses · Ctrl or ⌘ + Z undoes, Shift + Ctrl or ⌘ + Z (or Ctrl + Y) redoes</p>
-                    {/* Hint line */}
+                    <p>{helpLine}</p>
                     <p>Amber = suggested · Grey = your cuts · Enter in search: next match</p>
                 </div>
             )}
 
-            {/* Review suggestions row */}
-            {reviewCount > 0 && (
-                <div className="flex items-center gap-2">
-                    <button onClick={reviewPrev} className={secondary}>‹ Previous</button>
-                    <span className={hint}>{clampedReviewIdx + 1} of {reviewCount}</span>
-                    <button onClick={reviewNext} className={secondary}>Next ›</button>
-                    <button onClick={reviewKeep} className={secondary}>Keep this</button>
-                    <button onClick={hearCut} className={secondary} data-start-ms={reviewCut?.startMs} data-end-ms={reviewCut?.endMs}>Hear it</button>
-                    {reviewCut && cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`] && (
-                        <span className={hint}>{cutNotes[`${reviewCut.startMs}-${reviewCut.endMs}`]}</span>
-                    )}
-                </div>
-            )}
-
-            {/* Hint line: shortcuts (now in the help panel, opened with "?") */}
+            {reviewRow}
 
             <div className="flex flex-col gap-4 md:flex-row">
                 {/* Video preview */}
-                <div className={`${workspace ? 'md:w-3/5' : 'md:w-1/2'} md:sticky md:top-4 self-start`}>
-                    {/* The video, with the on-screen text and images over it in the full-page editor. */}
-                    <div className="relative" style={{ containerType: 'inline-size' }}>
-                        <video
-                            ref={videoRef}
-                            src={videoUrl}
-                            className="w-full rounded-lg bg-black"
-                            controls
-                            onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
-                        />
-                        {workspace && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} overlayUrls={overlayUrls} />}
-                    </div>
+                <div className="md:w-1/2 md:sticky md:top-4 self-start">
+                    {video}
                     {/* Cuts map: every cut on one strip under the video; click a mark to jump there. */}
-                    {totalMs > 0 && !workspace && (
+                    {totalMs > 0 && (
                         <div aria-label="Cuts map" className="relative mt-2 h-3 w-full rounded bg-white/5">
                             {edit.cuts.map((c, i) => (
                                 <button
@@ -737,176 +1141,11 @@ export function Editor({ words, videoUrl, edit, onChange, workspace = false, stu
                             ))}
                         </div>
                     )}
-                    {/* Play switch: Edited skips the cuts, Original plays everything. */}
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className={hint}>Play:</span>
-                        {(['edited', 'original'] as const).map(mode => (
-                            <button
-                                key={mode}
-                                type="button"
-                                aria-pressed={playMode === mode}
-                                onClick={() => setPlayMode(mode)}
-                                className={playMode === mode
-                                    ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
-                                    : `${secondary} px-2 py-0.5`}
-                            >
-                                {mode === 'edited' ? 'Edited' : 'Original'}
-                            </button>
-                        ))}
-                        {/* Speed buttons: play at 0.75×, 1×, 1.25×, 1.5× or 2×. */}
-                        <span className={`${hint} ml-3`}>Speed:</span>
-                        {SPEEDS.map(rate => (
-                            <button
-                                key={rate}
-                                type="button"
-                                aria-pressed={speed === rate}
-                                aria-label={`Play at ${rate} times speed`}
-                                onClick={() => setSpeed(rate)}
-                                className={speed === rate
-                                    ? "text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10"
-                                    : `${secondary} px-2 py-0.5`}
-                            >
-                                {rate}×
-                            </button>
-                        ))}
-                    </div>
+                    {playControls}
                 </div>
 
-                {/* Transcript */}
-                <div ref={transcriptRef} className={`${workspace ? 'md:w-2/5 h-[calc(100vh-360px)]' : 'md:w-1/2 h-[calc(100vh-220px)]'} min-h-[400px] overflow-y-auto rounded-lg bg-[#130b29] p-4`}>
-                    {paras.map((para, pi) => (
-                        <div key={pi} className="mb-4" style={{ contentVisibility: 'auto' }}>
-                            <p className="text-sm font-bold text-amber-400 mb-1">
-                                {para.speaker}
-                                {/* Turn start time, so the producer can find a turn by its time. */}
-                                <span className="ml-2 text-xs font-normal text-gray-400">{mmss(para.words[0].word.start)}</span>
-                            </p>
-                            <p className="text-sm leading-relaxed text-gray-200">
-                                {para.words.map(({ word, index }, wi) => {
-                                    const wordCut = cutsByWord.wordCut[index];
-                                    const cut = !!wordCut;
-                                    const isManual = wordCut?.reason === 'manual';
-                                    const isSelected = selectedRange &&
-                                        index >= selectedRange[0] && index <= selectedRange[1];
-                                    const isCurrent = index === currentWord;
-                                    const isMatch = matchSet.has(index);
-                                    const isReview = reviewCut && wordCut &&
-                                        wordCut.startMs === reviewCut.startMs &&
-                                        wordCut.endMs === reviewCut.endMs;
-                                    // The silence before this word, also across a change of speaker. It shows
-                                    // as a chip when it is long, or when a cut sits in it (a filler AssemblyAI
-                                    // left out of the transcript), so every suggestion can be seen and undone.
-                                    const prev = index > 0 ? words[index - 1] : null;
-                                    const prevGap = prev ? word.start - prev.end : 0;
-                                    const gapCuts = prev ? cutsByWord.gapCuts[index] : [];
-                                    const gapCut = gapCuts.length > 0;
-                                    const gapCutIsManual = gapCuts.every(c => c.reason === 'manual');
-                                    const gapCutIsReview = reviewCut && gapCuts.some(c =>
-                                        c.startMs === reviewCut.startMs && c.endMs === reviewCut.endMs);
-                                    return (
-                                        <span key={wi}>
-                                            {prev && (prevGap > pauseThreshold || gapCut) && (
-                                                <span
-                                                    ref={el => { chipRefs.current[index] = el; }}
-                                                    title={gapCut ? (gapCutIsManual ? 'Double-click to bring back' : 'Double-click to keep it') : 'Click to shorten this pause'}
-                                                    className={`inline-block mx-1 px-1.5 py-0.5 rounded text-xs cursor-pointer ${
-                                                        gapCut
-                                                            ? gapCutIsManual
-                                                                ? 'line-through text-gray-400'
-                                                                : 'line-through decoration-amber-400 text-amber-200/70 bg-amber-400/10'
-                                                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                                                    } ${gapCutIsReview ? ' ring-2 ring-amber-400' : ''}`}
-                                                    onDoubleClick={(e) => {
-                                                        if (gapCut) {
-                                                            e.stopPropagation();
-                                                            updateEdit(cur => ({ ...cur, cuts: cur.cuts.filter(c => !gapCuts.includes(c)) }));
-                                                        }
-                                                    }}
-                                                    onClick={(e) => {
-                                                        if (!gapCut) {
-                                                            e.stopPropagation();
-                                                            updateEdit(cur => ({ ...cur, cuts: [...cur.cuts, {
-                                                                startMs: Math.round(prev.end + Math.min(500, prevGap / 2)),
-                                                                endMs: word.start,
-                                                                reason: 'pause',
-                                                            }] }));
-                                                        }
-                                                    }}
-                                                >
-                                                    {gapCut
-                                                        // A cut silence between words is a hesitation ('gap', or 'filler' in
-                                                        // edits marked before hesitations had their own kind), never a word.
-                                                        ? (gapCuts.some(c => c.reason === 'filler' || c.reason === 'gap')
-                                                            ? `hesitation ${(prevGap / 1000).toFixed(1)}s`
-                                                            : `pause ${(prevGap / 1000).toFixed(1)}s → ${((prevGap - (gapCuts[0]?.endMs ?? 0) + (gapCuts[0]?.startMs ?? 0)) / 1000).toFixed(1)}s`)
-                                                        : `pause ${(prevGap / 1000).toFixed(1)}s`}
-                                                </span>
-                                            )}
-                                            <span
-                                                ref={el => { if (index < words.length) wordRefs.current[index] = el; }}
-                                                className={`cursor-pointer select-none ${
-                                                    cut
-                                                        ? isManual
-                                                            ? 'line-through text-gray-400'
-                                                            : 'line-through decoration-amber-400 text-amber-200/70'
-                                                        : isSelected
-                                                            ? 'bg-amber-500/30 rounded'
-                                                            : 'text-gray-200'
-                                                } ${isSelected ? 'ring-1 ring-amber-400/50' : ''} ${
-                                                    isCurrent && !cut ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''
-                                                } ${isMatch && !cut ? 'bg-amber-400/10' : ''} ${
-                                                    isReview ? ' ring-2 ring-amber-400' : ''
-                                                }`}
-                                                title={cut ? 'Double-click to bring back' : undefined}
-                                                onClick={(e) => onWordClick(index, e)}
-                                                onDoubleClick={() => onWordDoubleClick(index)}
-                                                onMouseDown={e => onWordMouseDown(index, e)}
-                                                onMouseEnter={() => onWordMouseEnter(index)}
-                                            >
-                                                {word.text}
-                                            </span>
-                                            {' '}
-                                        </span>
-                                    );
-                                })}
-                            </p>
-                        </div>
-                    ))}
-                </div>
+                {transcript}
             </div>
-
-            {/* workspace: the timeline under the editor. */}
-            {workspace && (
-                <Timeline
-                    words={words}
-                    cuts={edit.cuts}
-                    overlays={edit.overlays ?? []}
-                    totalMs={totalMs}
-                    video={videoRef}
-                    editedMs={editedMs}
-                    onSeek={ms => seekToTime(ms / 1000)}
-                    split={{
-                        splits: edit.splits ?? [],
-                        onSplit: addSplit,
-                        onRemoveSplit: ms => updateEdit(prev => ({ ...prev, splits: (prev.splits ?? []).filter(s => s !== ms) })),
-                        onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
-                        onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
-                    }}
-                />
-            )}
-
-            {/* workspace: the On screen panel (Part I) under the timeline. */}
-            {workspace && (
-                <OnScreenPanel
-                    words={words}
-                    edit={edit}
-                    video={videoRef}
-                    studio={studio}
-                    onOverlays={overlays => updateEdit(prev => ({ ...prev, overlays }))}
-                    onCaptions={captions => updateEdit(prev => ({ ...prev, captions }))}
-                    onSeek={ms => seekToTime(ms / 1000)}
-                />
-            )}
         </div>
     );
 }

@@ -5,11 +5,11 @@
 import { getToken } from 'firebase/app-check';
 import { appCheck, auth } from '@/lib/firebase/config';
 
-export async function studioFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function signedFetch(path: string, init: RequestInit): Promise<Response> {
     const user = auth.currentUser;
     if (!user) throw new Error('Not signed in');
     const check = appCheck ? await getToken(appCheck).then(t => t.token, () => '') : '';
-    const res = await fetch(path, {
+    return fetch(path, {
         ...init,
         headers: {
             ...init.headers,
@@ -19,7 +19,21 @@ export async function studioFetch<T>(path: string, init: RequestInit = {}): Prom
             ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         },
     });
+}
+
+export async function studioFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const res = await signedFetch(path, init);
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error || `Request failed (${res.status})`);
     return body as T;
+}
+
+// The same for a route that answers with bytes, such as the timeline's waveform peaks.
+export async function studioFetchBytes(path: string, init: RequestInit = {}): Promise<ArrayBuffer> {
+    const res = await signedFetch(path, init);
+    if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Request failed (${res.status})`);
+    }
+    return res.arrayBuffer();
 }

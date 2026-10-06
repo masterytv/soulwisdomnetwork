@@ -372,6 +372,9 @@ export interface Episode {
         proxyPath?: string;               // 720p H.264
         audioPath?: string;               // mono AAC
         durationSeconds?: number;
+        silencesPath?: string;            // analysis/silences.json: the audio's silences (lib/edit.ts SilencesFile; spec 019 item 1.1)
+        peaksPath?: string;               // analysis/peaks.bin: the Studio editor's waveform (lib/peaks.ts; spec 020 item E2)
+        thumbsPath?: string;              // analysis/thumbs.json: its thumbnail sheets (lib/thumbs.ts; spec 020 item E2)
     };
     transcription?: {
         provider: 'assemblyai';

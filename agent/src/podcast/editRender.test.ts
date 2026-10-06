@@ -8,7 +8,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { keepRanges, editedDuration, editedTime, type Cut, type EpisodeEdit } from '../../../lib/edit';
-import { renderEdit } from './editRender';
+import { playOrder, sequenceLength } from '../../../lib/sequence';
+import { chainPieces, FPS, frameAt, framesOf, renderEdit } from './editRender';
+import { spawnSync } from 'child_process';
 
 function run(cmd: string, args: string[]): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -208,13 +210,11 @@ test('block rendering for long episodes', async () => {
         cuts.push({ startMs: i * 6000, endMs: i * 6000 + 2000, reason: 'filler' });
     }
     const edit: EpisodeEdit = { cuts, version: 1 };
-    const ranges = keepRanges(180_000, cuts);
 
-    // Expected seconds: sum over keepRanges of Math.ceil(lengthMs * 30 / 1000) / 30.
-    const expectedSec = ranges.reduce((sum, r) => {
-        const frames = Math.ceil((r.endMs - r.startMs) * 30 / 1000);
-        return sum + frames / 30;
-    }, 0);
+    // Expected: the edited length the Studio works out (its play order), to the nearest frame. Each
+    // stretch was once rounded up to a whole frame on its own, which made the video 20 ms longer
+    // per cut than the edit said: here 0.6 s, on a long episode with many cuts many seconds.
+    const expectedSec = frameAt(sequenceLength(playOrder(edit, 180_000))) / FPS;
 
     const out = path.join(dir, 'output.mp4');
     await renderEdit({
@@ -225,10 +225,10 @@ test('block rendering for long episodes', async () => {
         blockMinutes: 1,
     });
 
-    // Check output length within 200 ms of expected.
+    // Check output length within 2 frames of expected.
     const probe = await probeStreams(out);
     const diff = Math.abs(probe.duration - expectedSec);
-    assert.ok(diff < 0.200, `output duration ${probe.duration}s differs from expected ${expectedSec}s by ${diff}s`);
+    assert.ok(diff < 2 / FPS, `output duration ${probe.duration}s differs from expected ${expectedSec}s by ${diff}s`);
 
     // Exactly one video stream and one audio stream.
     assert.equal(probe.video, 1, 'exactly one video stream');
@@ -271,4 +271,126 @@ test('single-range seek: cut removes the first colour, second colour shows', asy
     // Frame at 1 s should be blue (blue channel greater than red channel).
     const colour = await frameColour(out, 1);
     assert.ok(colour[2] > colour[0], `frame at 1s is blue (b=${colour[2]} > r=${colour[0]})`);
+});
+
+test('each stretch fills the frames between its start and end in the edited episode', () => {
+    // Three stretches of 780 ms (23.4 frames each): 23, 24 and 23 frames, so the edit's times at
+    // their ends (780, 1560, 2340 ms) land within half a frame of the video's (767, 1567, 2333 ms).
+    const clips = [{ startMs: 0, endMs: 780, atMs: 0 }, { startMs: 1000, endMs: 1780, atMs: 780 }, { startMs: 2000, endMs: 2780, atMs: 1560 }];
+    assert.deepEqual(clips.map(framesOf), [23, 24, 23]);
+    let frames = 0;
+    for (const c of clips) {
+        frames += framesOf(c);
+        assert.ok(Math.abs(frames * 1000 / FPS - (c.atMs + c.endMs - c.startMs)) <= 500 / FPS);
+    }
+    assert.equal(framesOf({ startMs: 0, endMs: 5, atMs: 0 }), 1);       // never less than a frame
+});
+
+// Spec 020 item E4: transitions.
+
+// When a white flash first shows, and when a beep first sounds, in a file (seconds).
+function flashTimes(file: string): number[] {
+    const r = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-vf', 'signalstats,metadata=print:key=lavfi.signalstats.YMAX', '-an', '-f', 'null', '-'], { encoding: 'utf8' });
+    const out: number[] = [];
+    let t = 0;
+    for (const line of r.stderr.split('\n')) {
+        const m = /pts_time:([\d.]+)/.exec(line);
+        if (m) t = Number(m[1]);
+        const y = /YMAX=([\d.]+)/.exec(line);
+        if (y && Number(y[1]) > 230 && (!out.length || t - out[out.length - 1] > 0.3)) out.push(t);
+    }
+    return out;
+}
+function beepTimes(file: string): number[] {
+    const r = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-vn', '-af', 'highpass=f=800,silencedetect=noise=-30dB:d=0.05', '-f', 'null', '-'], { encoding: 'utf8' });
+    return [...r.stderr.matchAll(/silence_end: ([\d.]+)/g)].map(m => Number(m[1]));
+}
+
+test('joining pieces: a cut is a concat, a transition overlaps them, never by more than either has', () => {
+    const plain = chainPieces([{ v: 'a', a: 'aa', frames: 90, join: null }], { v: 'ov', a: 'oa' }, 't');
+    assert.deepEqual([plain.starts, plain.frames], [[0], 90]);
+    assert.match(plain.filter, /\[a\]null\[ov\];\[aa\]anull\[oa\];/);
+    const chain = chainPieces([
+        { v: 'a', a: 'aa', frames: 90, join: null },
+        { v: 'b', a: 'ba', frames: 60, join: { xfade: 'fade', frames: 15 } },
+        { v: 'c', a: 'ca', frames: 30, join: null },
+        { v: 'd', a: 'da', frames: 30, join: { xfade: 'fadeblack', frames: 60 } },   // longer than either side: as long as the shorter
+    ], { v: 'ov', a: 'oa' }, 't');
+    assert.deepEqual(chain.starts, [0, 75, 135, 135]);
+    assert.equal(chain.frames, 90 + 60 - 15 + 30 + 30 - 30);
+    assert.match(chain.filter, /xfade=transition=fade:duration=0\.500000:offset=2\.500000/);
+    assert.match(chain.filter, /acrossfade=d=0\.500000:c1=tri:c2=tri/);
+    assert.match(chain.filter, /concat=n=2:v=1:a=0\[tv2\]/);
+    assert.match(chain.filter, /xfade=transition=fadeblack:duration=1\.000000:offset=4\.500000\[ov\]/);
+});
+
+test('a dissolve at a split overlaps the parts: shorter by its length, blended, and in sync after', async () => {
+    const dir = path.join(process.env.TMPDIR || '/tmp', 'edit-render-dissolve-test');
+    fs.mkdirSync(dir, { recursive: true });
+    // 10 s: red then blue at 5 s, with a white flash and a beep together at 2.5 s and 7.5 s.
+    const video = path.join(dir, 'clip.mp4');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', "color=c=red:s=640x360:r=30:d=10,drawbox=c=blue:t=fill:enable='gte(t,5)',drawbox=x=0:y=0:w=640:h=60:c=white:t=fill:enable='between(mod(t,5),2.5,2.53)'",
+        '-f', 'lavfi', '-i', "aevalsrc='0.5*sin(2*PI*1000*t)*between(mod(t,5),2.5,2.56)':s=48000:d=10",
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', video]);
+    const edit: EpisodeEdit = { cuts: [], version: 1, splits: [5000], joins: [{ at: { atSplit: 5000 }, transition: 'dissolve', durationMs: 1000 }] };
+    const out = path.join(dir, 'output.mp4');
+    const report = await renderEdit({ video, edit, out, clean: 'off', words: [{ text: 'late', start: 7500, end: 7900 }] });
+    const probe = await probeStreams(out);
+    assert.ok(Math.abs(probe.duration - 9) < 1.5 / FPS, `length ${probe.duration}, not 9 s`);
+    const lengths = await probeStreamDurations(out);
+    assert.ok(Math.abs(lengths.videoDur - lengths.audioDur) < 0.05, `video ${lengths.videoDur} s, audio ${lengths.audioDur} s`);
+    assert.deepEqual(report.warnings, []);
+    const [red, mid, blue] = [await frameColour(out, 2), await frameColour(out, 4.5), await frameColour(out, 6)];
+    assert.ok(red[0] > 200 && red[2] < 60, `red at 2 s: ${red}`);
+    assert.ok(mid[0] > 70 && mid[2] > 70, `half red, half blue at 4.5 s: ${mid}`);
+    assert.ok(isBlue(blue), `blue at 6 s: ${blue}`);
+    // The flash and beep after the dissolve land 1 s early, together.
+    const flashes = flashTimes(out), beeps = beepTimes(out);
+    assert.equal(flashes.length, 2, `flashes ${flashes}`);
+    assert.ok(Math.abs(flashes[1] - 6.5) < 1.5 / FPS, `second flash at ${flashes[1]}`);
+    assert.ok(flashes.every(f => beeps.some(b => Math.abs(b - f) < 1.5 / FPS)), `beeps ${beeps} against flashes ${flashes}`);
+    // So do the words.
+    const words = JSON.parse(fs.readFileSync(path.join(dir, 'output.words.json'), 'utf8'));
+    assert.deepEqual(words, [{ text: 'late', start: 6500, end: 6900 }]);
+});
+
+test('transitions between the intro, the episode and the outro, and fades at the start and end', async () => {
+    const dir = path.join(process.env.TMPDIR || '/tmp', 'edit-render-sections-test');
+    fs.mkdirSync(dir, { recursive: true });
+    const intro = path.join(dir, 'intro.mp4');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=green:s=640x360:r=30:d=2',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', intro]);
+    const video = path.join(dir, 'clip.mp4');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=640x360:r=30:d=3',
+        '-f', 'lavfi', '-i', 'sine=frequency=660:duration=3', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', video]);
+    const cut = { transition: 'cut' as const, durationMs: 500 };
+    const out = path.join(dir, 'output.mp4');
+    const report = await renderEdit({
+        video, edit: { cuts: [], version: 1 }, out, clean: 'off', intro, outro: intro,
+        sections: {
+            start: { transition: 'fade', durationMs: 500 }, betweenTeasers: cut, afterTeasers: cut,
+            afterIntro: { transition: 'dissolve', durationMs: 500 }, beforeOutro: { transition: 'fade', durationMs: 500 },
+            end: { transition: 'fade', durationMs: 500 },
+        },
+        words: [{ text: 'one', start: 1000, end: 1300 }],
+    });
+    // 2 + 3 + 2 s, less two half-second transitions.
+    const probe = await probeStreams(out);
+    assert.ok(Math.abs(probe.duration - 6) < 1.5 / FPS, `length ${probe.duration}, not 6 s`);
+    assert.ok(Math.abs((report.qc.durationSeconds ?? 0) - (report.qc.expectedSeconds ?? -1)) < 0.1, `quality report: ${report.qc.durationSeconds} against ${report.qc.expectedSeconds}`);
+    const [first, green, red] = [await frameColour(out, 0), await frameColour(out, 1), await frameColour(out, 3)];
+    assert.ok(first.every(c => c < 40), `black at the start: ${first}`);
+    assert.ok(green[1] > 100 && green[0] < 60, `green intro at 1 s: ${green}`);
+    assert.ok(red[0] > 200 && red[1] < 60, `red episode at 3 s: ${red}`);
+    // The episode starts 0.5 s before the intro ends, so its words come 1.5 s in, then 1 s more.
+    const words = JSON.parse(fs.readFileSync(path.join(dir, 'output.words.json'), 'utf8'));
+    assert.deepEqual(words, [{ text: 'one', start: 2500, end: 2800 }]);
+    // A transition longer than the clip it joins plays as a straight cut, and says so.
+    const short = await renderEdit({
+        video, edit: { cuts: [], version: 1 }, out: path.join(dir, 'short.mp4'), clean: 'off', intro,
+        sections: { start: cut, betweenTeasers: cut, afterTeasers: cut, afterIntro: { transition: 'dissolve', durationMs: 2500 }, beforeOutro: cut, end: cut },
+    });
+    assert.ok(Math.abs(short.outputSeconds - 5) < 1.5 / FPS, `length ${short.outputSeconds}, not 5 s`);
+    assert.equal(short.warnings.length, 1);
 });

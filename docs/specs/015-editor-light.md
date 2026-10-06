@@ -18,8 +18,10 @@ A light editor for the parts of Descript the pipeline uses:
 **Where it is.** On an episode's show notes page, the **Edit package** stage has
 **Edit here instead (preview)**. It is shown only when `NEXT_PUBLIC_EDITOR_LIGHT=1` is set at
 build time (`apphosting.yaml`), or when the Studio settings make Editor Light the final cut.
-**Open the full-page editor** there goes to `/admin/podcast/[episodeId]/edit`: a larger video, the
-transcript beside it, a timeline underneath, and saving and rendering pinned in a bar at the top.
+**Open the Studio editor** there goes to `/admin/podcast/[episodeId]/studio-editor` (spec 020; the old
+`/edit` address redirects there): the full-page editor, laid out like Descript, with the script on the
+left, the preview in the middle, the On screen and Render panels on the right, the timeline along the
+bottom, and saving, Undo, Redo, the shortcut sheet (**?**) and **Render ▸** in a bar at the top.
 
 **Editing:**
 - The transcript is shown by speaker, with the video beside it.
@@ -32,25 +34,51 @@ transcript beside it, a timeline underneath, and saving and rendering pinned in 
 
 **Suggestions.** **Mark filler words and long pauses** suggests cuts; **Mark hesitations** adds
 the guessed ones (below), and only shows when the transcript has no "um"s written out (episodes
-transcribed before `disfluencies` was on). Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
+transcribed before `disfluencies` was on) and the audio's silences are not measured yet. Each count shows the time that kind saves. Marking again replaces that kind's earlier suggestions. The counts
 (Fillers, Repeats, Pauses, Hesitations, Retakes) filter the review, and **Clear these** removes
 one kind. The producer goes through them with Prev and Next, and can **Keep** one or **Hear it**
 before deciding.
 
-**Splits** (full-page editor): **✂ Split** on the timeline, or the S key, splits at the playhead,
-as in Descript. The section under the playhead is shaded, and **Cut this section** or **Bring this
-section back** acts on all of it. Click a split's handle on the ruler to remove it. Splits are
-saved with the edit (`edit.splits`) but the render does not use them; only the cuts matter.
+**Splits** (Studio editor): **✂ Split** on the timeline, or the S key, splits at the playhead, as in
+Descript; the **Blade** tool (B) splits where the timeline is clicked. The sections between splits
+show as clips on the timeline: click one to select it, then **Cut section**, **Bring back**, or Delete
+to cut it whole; drag the bracket at either end of a section to trim it (as the producer's own cuts).
+Click a split's handle on the ruler to remove it. Splits are saved with the edit (`edit.splits`).
+
+**Transitions** (Studio editor, spec 020 item E4): the **Transitions** panel sets the transition at
+each split (also reached from the ⧓ marker on the split) and at the start and end, between the
+teasers, after the teasers and intro, and before the outro, where the Studio settings choose for
+every episode until the episode picks its own. Cut is the default; Dissolve and Fade come first, then
+19 more of ffmpeg's kinds, 0.2–3 s. A transition overlaps the two sides it joins, so the video is
+shorter by its length, and every time after it moves earlier; one with no room plays as a straight
+cut, and says so. The preview plays the ones at splits (a second video, drawn with CSS); the render
+plays them all. The quick edit shows a line when the edit has splits, transitions or on-screen items,
+and the final cut step links to the Studio editor (**Touch up in the Studio editor →**).
 
 **Playing:**
 - **Edited** skips the cuts as the video plays; **Original** plays everything.
 - **Speed** plays at 0.75× to 2×.
 - It shows the edited length and the time saved. **?** opens the editing help and shortcuts.
 
-**Timeline** (full-page editor only, `components/studio/timeline.tsx`, `lib/timeline.ts`):
-- a ruler, each speaker's turns in their own colour, and the cuts;
-- a playhead that follows the video, and click anywhere to jump there;
-- zoom from 1× to 32×; zoomed in, it scrolls to keep the playhead in view.
+**Timeline** (Studio editor only, `components/studio/timeline.tsx`, `lib/timeline.ts`; spec 020 item E2):
+- tracks with headers: **V2 On screen** (the on-screen items; the eye hides them in the preview),
+  **V1 Episode** (a picture every 5 s, with each speaker's turns in their colour under it; the lock
+  stops the timeline changing cuts) and **A1 Voice** (the waveform; the speaker icon mutes the preview);
+- the cuts over the pictures and the waveform, hatched: amber for suggestions, grey for the producer's
+  own. On the waveform, what the edit takes out is red;
+- zoom from the whole recording to 2 ms a pixel (−, +, the slider, **Fit**, the + and − keys, or
+  Ctrl/⌘ with the scroll wheel); the scroll wheel moves along it, and while playing the view follows
+  the playhead;
+- click the ruler or a lane to jump there; drag on the ruler to scrub; ← and → step a frame (Shift: a
+  second);
+- **drag a cut's edge** to trim it (spec 019 item 2.2). It snaps to the playhead, word edges, cuts and
+  splits within 8 px (or to 10 ms steps), and stops at the edge of a word that is heard; Alt turns
+  both off. A trimmed suggestion becomes the producer's own cut;
+- **drag on the waveform** to select a stretch of time, such as a cough or a door the transcript has no
+  words for; Delete (or **✂ Cut**) cuts it as the producer's own. Click a cut to select it: **▶ Hear**
+  plays it in context, **Bring back** (or a double-click) removes it;
+- the waveform's peaks and the pictures are made at ingest (`agent/src/podcast/timelineMedia.ts`). An
+  episode without them yet says so in the lanes; the next Podcast Ingest run fills them in.
 
 **Saving.** The edit saves itself as the producer works (`useAutosave`). If someone else saved
 in between, the save is refused and has to be reloaded.
@@ -73,7 +101,9 @@ changed since that render. A failed render shows its reason, and can be tried ag
   (a breath between two close cuts; spec 019 item 1.5).
 
 **Other functions:**
-- `editedTime` and `editedDuration` map original times onto the edit.
+- `editedTime` and `editedDuration` map original times onto the edit, following each range's place
+  in the edited episode when it has one (`atMs`, from the play order in `lib/sequence.ts`, where a
+  transition at a split overlaps two parts).
 - `applyToChapters`, `applyToQuotes` and `editedWords` move chapters, quotes and the transcript
   onto the edited timeline.
 - `CutsSchema` checks what may be saved.
@@ -84,8 +114,12 @@ changed since that render. A failed render shows its reason, and can be tried ag
   the transcript. Quote matching (`locate`) and re-timing onto the final cut (`timeMap`) skip them;
 - immediate repeats, keeping the last, when they are a stammer: the same speaker, inside one
   sentence, the second word within 300 ms of the first;
-- pauses over 1.2 s, shortened to 0.5 s;
-- only with **Mark hesitations** (`gaps: true`): gaps of 0.5 to 1.2 s after a word that ends no
+- pauses over 1.2 s, shortened to 0.5 s. Since spec 019 item 1.1 they are the silences measured in
+  the audio at ingest (`media.silencesPath`), when the episode has them; otherwise the gaps between words;
+- with the audio's silences (spec 019 item 1.2): stretches of 0.3 to 1.5 s between two words of one
+  speaker's clause that no word covers and that are not silent, as `filler`: speech the transcript
+  missed. Every such stretch, at any length, shows as `…` in the transcript; a click cuts it;
+- only with **Mark hesitations** (`gaps: true`), and only without silences: gaps of 0.5 to 1.2 s after a word that ends no
   sentence or clause (no . ? ! , ; : or dash), cut to 150 ms, as `gap`. Episodes transcribed before
   `disfluencies` was on have no fillers in the transcript, and AssemblyAI still misses some, so a
   gap is often where one was, but often only a breath. Until
@@ -123,12 +157,21 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - the reviewed transcript.
 2. **Clean the voice**, once, over the whole sound track: highpass at 80 Hz, `afftdn`, and a gentle
    `acompressor`.
-3. **Cut, in blocks.** The kept ranges go into blocks of up to 15 minutes or 20 ranges. Each
-   block seeks into the source once per range, with a 15 ms fade at every join, and is encoded
-   on its own. The blocks are then joined.
+3. **Cut, in blocks.** The kept ranges, in their play order (`lib/sequence.ts`), go into blocks of up
+   to 15 minutes or 20 ranges. Each block seeks into the source once per range, with a 15 ms fade at
+   every join, and is encoded on its own. The blocks are then joined. Each range becomes a whole
+   number of frames, counted from where it starts and ends in the edited episode (`framesOf`), so the
+   video keeps to the edit's times within half a frame however many cuts there are. Until 5 October
+   2026 each range was rounded up to a whole frame on its own, which made the video about 20 ms longer
+   per cut than the edit: on a 49-minute episode with 1,000 cuts, captions, chapters and quotes near
+   the end would have been about 20 s late.
 4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
    placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
-   normalized to −14 LUFS.
+   normalized to −14 LUFS. Each part of the episode (between transitions at splits) is its own file;
+   the parts, and the teasers, intro, episode and outro, are joined with `xfade` and `acrossfade`
+   where there is a transition and a concat where there is not, every piece cut to whole frames so
+   each offset is exact (`chainPieces`). A transition at the very start or end is a fade from or to
+   black.
 5. **Check** the finished file (`renderQc.ts`, spec 019 item 0.2): loudness, true peak, length
    against the plan, dead air, black picture, sound against picture, and on-screen items. The
    numbers and warnings go in `editRender.qc` and show under the render; they never fail it.
@@ -211,7 +254,10 @@ Fixed when this came into the main repo:
 - **Dead code.** The unreachable single-pass render branch was removed.
 
 Checked with a one-minute flash-and-beep clip and 40 cuts. Every beep that survives the cuts is
-within two frames of its flash, with and without the voice cleanup.
+within two frames of its flash, with and without the voice cleanup. Checked again on 5 October 2026
+after the frame counting above, with 30 cuts at uneven places: every beep within one frame of its
+flash (0–29 ms, not growing), and the video exactly as long as the edit (46.800 s for 46.8 s, where
+it had been 48.003 s).
 
 ## Next
 

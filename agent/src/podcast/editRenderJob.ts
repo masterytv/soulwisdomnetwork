@@ -10,6 +10,8 @@
 // final cut in place of Descript's, which the thumbnails, Shorts and YouTube steps then use.
 // With the default settings and a built edit package, it renders exactly as before.
 // Part I: captions (the edit's own choice or the Studio's), text overlays and image overlays go to the renderer.
+// Spec 020 item E4: so do the transitions between the video's sections (the edit's own, or the Studio's);
+// the ones at splits come with the edit.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -17,6 +19,7 @@ import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle, type ImageOverlay, type TextOverlay } from '../../../lib/onScreen';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
+import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
 
@@ -50,6 +53,7 @@ export interface EditRenderPlan {
     wordsPath: string | null;            // reviewed transcript, Storage path
     chapters: { title: string; startMs: number }[];
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
+    sections: SectionJoins;              // the transitions between the video's sections
     warnings: string[];
 }
 
@@ -103,6 +107,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         chapters: notes?.chapters ?? [],
         quotes: (notes?.quotes ?? []).filter(q => q.endMs > q.startMs)
             .map(q => ({ text: q.text, speaker: q.speaker, startMs: q.startMs, endMs: q.endMs })),
+        sections: sectionJoins(edit.joins, settings.joins),
         warnings,
     };
 }
@@ -167,6 +172,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         broll: broll.length ? broll : undefined,
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
+        sections: plan.sections,
     });
 
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
@@ -199,7 +205,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
-        warnings: plan.warnings,
+        warnings: [...plan.warnings, ...(report.warnings ?? [])],
         qc: report.qc,
     };
     await deps.update({

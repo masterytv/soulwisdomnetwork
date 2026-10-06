@@ -1,8 +1,8 @@
 # Spec 020: Studio editor — a full editing page beside the simple pipeline
 
 **Date:** 5 October 2026
-**Status:** Planned; parts already built (#123 the full-page editor, #130 splits and on-screen
-text and images). Reconciled on 5 October 2026: the model below grows the existing
+**Status:** Being built: E1 built (#143), E2 built (#144), E3 built (#145), E4 built (#147); parts already built before the plan (#123 the full-page editor,
+#130 splits and on-screen text and images). Reconciled on 5 October 2026: the model below grows the existing
 `EpisodeEdit` (see `docs/PLANNING.md`, "Overlaps"). Decisions U1–U5 answered by Tom on
 5 October 2026 (see the end), with N1–N3 in `docs/PLANNING.md`.
 Part of `docs/specs/019-editor-light-v2.md`, whose status table tracks these items (E1–E9). Read
@@ -419,6 +419,177 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | High | E5 |
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
+
+### E1 — Built (#143)
+
+- **Route:** `/admin/podcast/[episodeId]/studio-editor`. `/edit` is now a server redirect to it, so old
+  links and bookmarks still work. The notes page's link reads **Open the Studio editor →** (in the Edit
+  package preview and in the Editor Light Edit step).
+- **Layout:** `components/studio/workspace.tsx` (`Workspace`), filled by `Editor` when `workspace` is
+  set. Nothing in the editor was rebuilt: its JSX was split into named pieces (suggestion tools, search,
+  review row, video, play controls, transcript), and the quick edit puts the same pieces back in its old
+  order.
+  - **Bar:** ← Episode · title · length · edited length and time saved · save state · Undo · Redo ·
+    **? Shortcuts** · **Render ▸** (with a few words on where the render stands).
+  - **Script** (left): Mark, Clear, Claude's tighter edit, the counts per kind, search, the review row
+    and the transcript.
+  - **Preview** (middle): the video with the on-screen text and images, scaled to fit at 16:9, and
+    the Edited / Original and speed buttons.
+  - **Panel and rail** (right): **On screen** and **Render** (the render's links, player, warnings
+    and quality report). Panels stay mounted, so a half-filled form survives switching. Media,
+    Elements, Transitions, Captions, Properties and AI join the rail as E5–E8 build them.
+  - **Timeline** along the bottom (`timeline.tsx`, unchanged).
+- **Resizing:** the script, panel and timeline have dividers: drag, arrow keys (Shift: faster), or
+  double-click for the default. Sizes are kept per browser (`localStorage`, `studio-editor-panes`).
+  `lib/workspace.ts` (`clampPanes`, `fitPanes`, tested in `lib/workspace.test.ts`) keeps them within
+  limits and lets the script, then the panel, give way so the preview keeps at least 360 px.
+- **Shortcut sheet:** **?** (the key or the button) opens it, Esc closes it.
+- **Desktop only (U3):** under 1280 px a note at the top points to the quick edit.
+- **Not yet:** step 4's **Touch up in the Studio editor**, and the one-line summary of Studio-only
+  changes in the quick edit, come with the first Studio-only changes (E4). Built in E4.
+- **Checked:** in Chromium at 1440×900 and 1280×720 with a test video: the layout fills the window
+  with no page scroll, a dragged size survives a reload, the sheet opens and closes, the rail switches
+  panels, and the quick edit is laid out as before. Not yet on the real 48-minute episode (Tom, on
+  staging).
+
+### E2 — Built (#144)
+
+- **Ingest makes the timeline's media** (`agent/src/podcast/timelineMedia.ts`, beside the silences):
+  - **Peaks** (019 item 2.1): `audio.m4a` decoded to 8 kHz mono; the lowest and highest sample of every
+    10 ms as two bytes (`lib/peaks.ts`), saved as `analysis/peaks.bin` (`media.peaksPath`), about 720 KB
+    an hour and a few seconds to make. The bytes are **µ-law**, not linear, so quiet sounds keep their
+    detail: a breath fills about a quarter of the lane instead of one pixel.
+  - **Thumbnails:** one frame every 5 s from the proxy, 160×90, a hundred to a 1600×900 JPEG
+    (`analysis/thumbs_N.jpg`), listed in `analysis/thumbs.json` (`lib/thumbs.ts`, `media.thumbsPath`).
+    Decoding the proxy takes about a minute and a half for a 49-minute episode.
+  - Neither fails an episode. Each ingest run fills in older episodes: peaks with the silences (20 a
+    run), thumbnails 5 a run. **After promoting, run Podcast Ingest once by hand**, as for the silences.
+- **The editor reads them** through `GET /api/studio/episodes/[id]/timeline` (6-hour links to the sheets,
+  and whether peaks exist) and `GET /api/studio/episodes/[id]/peaks` (the bytes, passed through the
+  server because the bucket's CORS would refuse the browser's fetch). Both call `requireRole`.
+- **The timeline** (`components/studio/timeline.tsx`; the pure parts in `lib/timeline.ts`):
+  - **Tracks**, with headers: **V2 On screen** (markers; the eye hides them in the preview only),
+    **V1 Episode** (thumbnails, with the speakers' colours in a band under them; the lock stops the
+    timeline changing cuts) and **A1 Voice** (the waveform; the speaker icon mutes the preview).
+  - **Virtual drawing:** one canvas the width of the view, drawn only for what is in view, cuts
+    included: no element per cut. A scroller as wide as the recording gives the native scrollbar and
+    trackpad scrolling.
+  - **Zoom** from the whole recording to 2 ms a pixel (500 px a second): −, +, a slider, **Fit**, the
+    + and − keys, and Ctrl or ⌘ with the scroll wheel (at the pointer). The buttons, slider and keys
+    zoom around the playhead when it is in view. The plain wheel scrolls along.
+  - **The playhead** redraws by itself every frame while playing. When the video moves it out of view,
+    the view follows (a third of the way in), except for 3 s after the producer scrolls by hand.
+  - **Snapping** within 8 px to the playhead, word edges, cut edges and splits, otherwise to 10 ms
+    steps. The **Snap** box turns it off; Alt turns it off for one drag.
+  - **Cut edges** (019 item 2.2): drag either edge of a cut that is at least 8 px wide on screen (or
+    the selected one). The edge stops at the nearest word that is heard and never lands inside one
+    (`edgeLimits`, `clampToWords`); Alt frees it. The cut becomes the producer's own (`manual`), so
+    marking again or **Clear these** leaves it alone. A whole drag is one undo step: the timeline keeps
+    a draft while dragging and saves once.
+  - **Time-range cut:** drag on the waveform to select a stretch; Delete, or **✂ Cut**, cuts it as
+    `manual`; **▶ Play** plays it. Its edges snap and keep out of words as above.
+  - **A cut:** click it to select it; the tool row shows its times, length and kind, **▶ Hear** (2 s
+    either side) and **Bring back** (or double-click the cut).
+  - **Keys** (also in the shortcut sheet): ← → a frame (Shift: a second), + and −, Esc clears the
+    selection. The tool row stays on one line, so the lanes never move under the pointer.
+  - The section controls of #130 (Split, the section under the playhead, Cut section, Bring section
+    back) stay in the tool row until E3 grows them.
+- **Checked:** unit tests (`lib/peaks.test.ts`, `lib/thumbs.test.ts`, `lib/timeline.test.ts`,
+  `agent/src/podcast/timelineMedia.test.ts`). In Chromium with a 3-minute test video and the peaks and
+  thumbnails ingest made from it, at 1440×900 and 1280×720: dragging an edge (one undo step), selecting
+  a stretch and pressing Delete, double-clicking a cut back, scrubbing the ruler, the wheel, zooming to
+  2 ms a pixel, the view following playback, the arrows, lock, mute and hide, with no page errors and
+  no page scroll. With an edit the size of the 49-minute episode (5,265 words, 1,317 cuts, full-length
+  peaks), each scroll or zoom step drew within two frames in the development build. **Not yet on the
+  real episode:** its peaks and thumbnails need an ingest run from `main`.
+- **Not in E2:** the Blade tool and trimming a section's edge (E3); dragging on-screen items (E5).
+
+### E3 — Built (#145)
+
+- **`lib/sequence.ts`:** `playOrder(edit, durationMs, words)` gives the kept stretches in play order
+  (`keepRanges`), each with `atMs`, its place in the edited episode. `timelineTime`, `sourceTime` and
+  `sequenceLength` map through it. A kept range may now carry `atMs` (`KeptRange` in `lib/edit.ts`), and
+  `editedTime` and `editedDuration` follow it, so `applyToChapters`, `applyToQuotes`, `editedWords`,
+  `placeOverlays` and the render's on-screen checks all follow a stretch that starts early. Without
+  transitions nothing changes: each stretch starts where the one before ends. Tested against
+  `keepRanges` and `editedTime`, and with an overlapped pair such as E4's transitions will make.
+- **The render** (`editRender.ts`) maps every time through `playOrder`: b-roll, on-screen items,
+  captions, the final cut's words, chapters, quotes and its length. E4 only has to make `playOrder`
+  overlap the stretches at a transition, and join them in the render.
+- **Splits on the timeline:** the sections between splits show as clips on V1, with a gap at each split
+  and a bracket at each end of what is kept of them.
+  - **Blade** (B, or the tool button): click V1 or A1 to split there. It snaps as drags do and lands
+    between words unless Alt is held. **Select** (V) goes back. **✂ Split** (S) still splits at the
+    playhead.
+  - **Trim:** drag a bracket on V1. Moving a section's end in cuts from where its kept part ended, as
+    the producer's own cut; moving it out brings that stretch back (`trimSection` and `keptBounds` in
+    `lib/edit.ts`). It snaps, stops between words unless Alt is held, and keeps at least 100 ms. At a
+    split, the section on the pointer's side is trimmed. A whole drag is one undo step.
+  - **Select a section:** click it on V1, once there are splits. The tool row shows its times, length
+    and how much of it is cut, with **Cut section**, **Bring back**, and Delete to cut it whole. This
+    replaces #130's "section under the playhead".
+  - With the episode locked (V1's lock), the Blade, trims and the split handles are off.
+- **Checked:** unit tests (`lib/sequence.test.ts`; trimming, kept bounds and sections in
+  `lib/edit.test.ts`); the render tests pass unchanged. In Chromium with a test video: a Blade click at
+  10 s split at 10.05 s (a word's start); dragging that section's bracket cut from the split to 10.60 s
+  (the next word's start); selecting a section and pressing Delete cut it whole, and undo brought it
+  back; locked, the Blade did nothing.
+
+### E4 — Built (#147)
+
+- **Model** (`lib/transitions.ts`): `edit.joins`, one transition a place. `at` is a section join
+  (`start`, `betweenTeasers`, `afterTeasers`, `afterIntro`, `beforeOutro`, `end`) or `{ atSplit }`;
+  `transition` is one of 21 kinds (Cut, Dissolve, Fade, Fade through white, Grain dissolve, wipes,
+  slides, soft wipes, circles, Zoom in, Blur), with ffmpeg's `xfade` names in `XFADE`; `durationMs`
+  is 0.2–3 s. The edit route checks them (`JoinsSchema`, up to 500) and drops one whose split is gone;
+  removing a split in the editor removes its transition. `JoinAt` gained `betweenTeasers`, which "Where
+  they go" lists but the sketched type left out.
+- **Studio settings** (`joins`, spec 018): a transition for each section join, for every episode, all
+  straight cuts by default. The episode's own wins (`sectionJoins`).
+- **Time** (`sequenceOf` in `lib/sequence.ts`): at a split with a transition, the part after it starts
+  that much before the part before it ends, so the episode is shorter by its length and every time
+  after it moves earlier (chapters, quotes, captions, the final cut's words, on-screen items, b-roll).
+  A transition longer than either part, or than what a part has left after the transition at its
+  other end, plays as a straight cut, and the panel and the render's warnings say why. A split within
+  100 ms of a kept stretch's edge leaves no sliver. Before the episode, the teasers' and intro's
+  transitions move its start (the words', chapters' and quotes' offset) earlier; the outro's
+  shortens the end.
+- **Render** (`editRender.ts`): blocks never cross a transition's split, and each part's blocks become
+  one file. The parts are joined with `xfade` and `acrossfade` (triangular), or a concat for a
+  straight cut (`chainPieces`); so are the teasers, intro, episode and outro, each first cut to whole
+  frames, so every offset is exact. At the very start and end any transition is a fade from or to
+  black (`fade` and `afade`; white for Fade through white). It builds on #146, which made every kept
+  stretch whole frames from the edit's own times.
+- **Studio editor:**
+  - **Transitions** panel on the rail: each split's transition (click its time to jump there), and the
+    section joins, showing the Studio's choice until the episode picks its own. Dissolve and Fade come
+    first. One with no room says why.
+  - **Timeline:** a ⧓ marker on each split, amber with a transition (dim when it has no room); click it
+    to open the panel at that split. The stretches a transition overlaps are shaded.
+  - **Preview** (`TransitionPreview`): a second video plays the start of the next part over the end of
+    the one before, drawn for the kind with CSS (opacity, a black or white veil, `clip-path`, a mask or
+    a slide), with the sound crossfading; the main video then carries on from the end of the
+    transition (`previewRanges`). Only transitions at splits are previewed: the preview has no teasers,
+    intro or outro.
+  - The bar's edited length counts transitions.
+- **Pipeline** (deferred from E1): the quick edit shows a line when the edit has Studio-only changes
+  ("Also in this edit, from the Studio editor: 2 splits, 1 transition, 3 on-screen items";
+  `studioOnlySummary`), and the final cut step has **Touch up in the Studio editor →** when Editor
+  Light makes the final cut.
+- **Checked:**
+  - Unit tests (`lib/transitions`, `lib/sequence`, `lib/studioSettings`, the render job's plan).
+  - ffmpeg render tests: a 1 s dissolve at a split between red and blue turns 10 s into 9 s, is an
+    even blend at its middle, keeps the flash and beep after it together, and moves the words 1 s
+    earlier; an intro → episode dissolve, an episode → outro fade and fades at both ends turn
+    2 + 3 + 2 s into 6 s with black at the start, and move the words to 2.5 s; a transition longer
+    than the clip it joins plays as a cut, with a warning.
+  - Chromium, with a test video: the split's marker opened the panel; a 1 s Dissolve shortened the
+    edited length from 2:56 to 2:55 and lit the marker; After the intro showed "Studio setting:
+    Dissolve, 0.5 s" until Fade was chosen; playing across the split faded the second video in and
+    carried on 1 s later; removing the split removed its transition; the quick edit showed its line.
+  - **Not yet on a real episode, or in a render from `main`.**
+- **Not built:** previewing the teasers', intro's and outro's transitions. The quality report's black
+  picture check may flag a long Fade (through black) at a split, since its middle is black.
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

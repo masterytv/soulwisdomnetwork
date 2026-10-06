@@ -86,24 +86,24 @@ for this work".
 | 0.1 | Checks on every pull request | ours | S | Medium | — | Done (#134) |
 | 0.2 | Quality report on every render | ffmpeg | M | High | — | Built (#135); real numbers wait on a render from `main` |
 | **1** | **Better cut suggestions** | | | | | |
-| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Not started |
-| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Not started |
+| 1.1 | Pauses measured from the audio | auto-editor, ffmpeg | M | High | — | Built (#141); the count on the real episode waits on promotion |
+| 1.2 | Speech the transcript missed | Rescript (idea only) | M | High | 1.1 | Built (#142); "most markers are real" waits on a real episode |
 | 1.3 | Claude "Tighten": widen retakes | CutScript (MIT) | S | High | — | Built (#138); the share kept waits on a real episode |
 | 1.4 | Accept or restore a whole kind of cut | Rescript (idea only) | S | — | — | Done (#130: Clear these) |
 | 1.5 | Drop kept slivers with no words | Rescript (MIT) | S | Medium | — | Done (#139) |
 | 1.6 | Fewer, better suggestions (2,970 on a 49-minute episode before #130) | ours | S | Medium | — | Done (#130, #136); the count on the real episode waits on Tom |
 | **2** | **Editing precision** | | | | | |
-| 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 |
-| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 |
+| 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
+| 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Not started |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
-| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Partly done (#123: the full-page editor) |
-| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Not started |
-| E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Partly done (#130: splits) |
-| E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Not started |
+| E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
+| E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Built (#144; spec 020, "E2 — Built"); the waveform on a real episode waits on an ingest run from `main` |
+| E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Built (#145; spec 020, "E3 — Built") |
+| E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Built (#147; spec 020, "E4 — Built"); a render with transitions waits on `main` |
 | E5 | Media bin, uploads, image and video overlays | ours, react-rnd, dnd-kit | L | Extra | E3 | Partly done (#130: image overlays) |
 | E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Partly done (#130: text, Name titles) |
 | E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Not started |
@@ -237,6 +237,27 @@ a long word can hide a silence. The audio shows where the sound really stops.
 **Done when:** on the real episode, the pause suggestions line up with what you hear. Compare the
 count before and after.
 
+**Built (#141):**
+- `agent/src/podcast/silences.ts` (`measureSilences`): ffmpeg `silencedetect` at −35 dB for
+  300 ms, read with renderQc's parser. The `ametadata` print in the command above is not needed:
+  silencedetect's own log lines carry the times. `SilencesFile` and its schema are in `lib/edit.ts`.
+  Measured here: 30 minutes of AAC in 6 s, every one of its 180 two-second silences found.
+- **Ingest** measures them right after the audio is made, saves
+  `episodes/{id}/analysis/silences.json` and sets `media.silencesPath`. It never fails the episode:
+  without them the editor uses word gaps.
+- **Backfill:** every ingest run (except a dry run) measures up to 20 episodes that have audio but
+  no `silencesPath`. Running **Podcast Ingest** by hand once from the Actions tab, after promotion
+  to `main`, fills in the older episodes. There is no separate workflow.
+- **`suggestCuts(words, { silences })`:** a silence over 1.2 s becomes a pause cut that keeps
+  0.25 s on each side (0.5 s in all). With silences, word gaps are not used for pauses at all, so
+  a gap that is not silent is never suggested. With none (not measured, or none found on a noisy
+  recording) the word gaps are used, as before. Hesitations (`gaps: true`) are unchanged.
+- **Editor:** the edit route's GET returns `silences` (read on the server, so no signed URL or
+  Storage CORS is needed), and both the notes page and `/edit` use it. The button's tooltip says
+  whether pauses come from the audio.
+- Tests: `lib/edit.test.ts` (both rules and the fallback), `agent/src/podcast/silences.test.ts`
+  (ffmpeg on a tone, 2 s of silence, a tone).
+
 ### 1.2 Speech the transcript missed (M, idea only)
 
 **Why:** even with `disfluencies` on, AssemblyAI drops some "um"s and false starts. Today they
@@ -250,6 +271,22 @@ are only guessed from gaps (`suggestCuts`' 350–1,200 ms rule).
 - Pure function `unspokenSpans(words, silences, durationMs)` in `lib/edit.ts`, with tests.
 
 **Done when:** on the real episode, most markers are a real hesitation or breath.
+
+**Built (#142):**
+- `unspokenSpans(words, silences)` in `lib/edit.ts` (no `durationMs`: only stretches **between**
+  words count, since before the first word and after the last there is nothing to compare with).
+  A word still running from an overlapping speaker covers the gap.
+- **Transcript:** each stretch shows as a small grey `…` chip in its gap; a click cuts it as a
+  `filler`. A cut one shows as the existing "hesitation 0.4s" chip (now its cut length, not the
+  whole gap), and double-click brings it back.
+- **Suggestions:** with silences, **Mark filler words and long pauses** also offers a stretch as a
+  `filler` when it is at most 1.5 s (`UNSPOKEN_SUGGEST_MAX_MS`; longer is more likely laughter,
+  music or crosstalk), between two words of one speaker, after a word that ends no sentence or
+  clause, and not beside a written-out filler. Every stretch still shows as `…`. These limits
+  keep the count down, as 1.6 asked; check them against the real episode.
+- With silences, the gap guess (`gaps: true`) is not used, and **Mark hesitations** is hidden.
+  Episodes without silences keep both.
+- Tests in `lib/edit.test.ts`.
 
 ### 1.3 Claude "Tighten": widen retakes (S, prompt ideas from CutScript, MIT)
 
@@ -355,7 +392,8 @@ labelled "um". Nobody reviews that many one at a time.
 
 ### 2.1 Waveform on the timeline (M, drawing idea from Rescript's MIT tree)
 
-**Built as part of spec 020 item E2.** The detail below is what E2 needs for the waveform.
+**Built as part of spec 020 item E2 (#144)**; what was built, and how it differs from the plan below
+(µ-law bytes, peaks served through the server), is in spec 020's "E2 — Built".
 
 **Build:**
 - **At ingest**, and in the backfill from 1.1, compute peaks from `audio.m4a`:
@@ -373,7 +411,7 @@ labelled "um". Nobody reviews that many one at a time.
 
 ### 2.2 Drag cut edges, and cut a stretch of time (M, idea from Rescript's MIT tree)
 
-**Built as part of spec 020 item E2.**
+**Built as part of spec 020 item E2 (#144)**; see spec 020's "E2 — Built".
 
 **Build:**
 - **Cut handles:** each cut on the timeline gets start and end handles.

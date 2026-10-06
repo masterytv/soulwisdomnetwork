@@ -32,14 +32,15 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/youtube.ts — spec 005 step 13 (YouTube upload via podcast/youtubeApi.ts), GitHub Actions only
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
-              podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts,
+              podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
               teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions, then a quality report
               (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
-              Actions only. The editor is components/studio/editor.tsx (full page: /admin/podcast/[episodeId]/edit,
-              with components/studio/timeline.tsx); its render sits beside Descript's final cut,
+              Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:
+              /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
+              components/studio/timeline.tsx; the old /edit address redirects there); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
-              final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
+              transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
@@ -101,7 +102,10 @@ The podcast ingest job (`podcast_ingest.yml`) uses its own service account
 (`podcast-pipeline@`, roles: Cloud Datastore User + Storage Object Admin, Editor on the
 `SWC Podcast Pipeline` Drive folder), not the Firebase admin key. One video file dropped
 into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 Processed`
-when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive), and a "ready for speaker review" email with the readable transcript goes
+when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive). Ingest also measures the audio's
+silences for the editor's pause suggestions (`agent/src/podcast/silences.ts`, `analysis/silences.json`), and makes the Studio editor
+timeline's waveform peaks and thumbnail sheets (`agent/src/podcast/timelineMedia.ts`, `analysis/peaks.bin`, `analysis/thumbs_N.jpg`;
+spec 020 item E2); each run fills these in for older episodes (20 a run, thumbnails 5). A "ready for speaker review" email with the readable transcript goes
 to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.yml`
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
 (`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The same workflow with

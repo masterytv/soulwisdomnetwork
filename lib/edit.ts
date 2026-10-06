@@ -4,6 +4,7 @@
 import { z } from 'zod';
 import type { SpokenWord } from './showNotes';
 import type { CaptionChoice, Overlay } from './onScreen';
+import type { Join } from './transitions';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -20,10 +21,13 @@ export interface EpisodeEdit {
     // Part I: text and image overlays, and this video's own captions choice (null or missing: the Studio's).
     overlays?: Overlay[];
     captions?: CaptionChoice | null;
-    // Split points (ms in the original recording), set at the playhead in the full-page editor.
-    // They only divide the episode into sections that can be cut or brought back whole; the
-    // render does not use them.
+    // Split points (ms in the original recording), set at the playhead or with the Blade in the
+    // Studio editor. They divide the episode into sections that can be cut, brought back or
+    // trimmed whole, and where a transition can go.
     splits?: number[];
+    // Transitions (spec 020 item E4, lib/transitions.ts): at splits, and this episode's own at the
+    // start, between its teasers, intro and outro, and at the end (missing: the Studio's).
+    joins?: Join[];
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode
@@ -44,6 +48,10 @@ export const SplitsSchema = z.array(ms).max(MAX_SPLITS).transform(s => [...new S
 export interface KeptRange {
     startMs: number;
     endMs: number;
+    // Where the range starts in the edited episode, when that is not straight after the range
+    // before it (a transition overlaps two ranges; set by playOrder in lib/sequence.ts). Missing,
+    // the ranges play back to back.
+    atMs?: number;
 }
 
 // A kept piece shorter than this is dropped — it would be a flash of audio between cuts.
@@ -104,19 +112,21 @@ export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40, words?: 
 
 // Where a moment of the original lands in the edited episode, or null if it was cut.
 // If `roundToNextKept` is true and the moment is in a cut, returns the start of the
-// next kept range instead of null.
+// next kept range instead of null. Ranges from playOrder (lib/sequence.ts) carry their own
+// place in the edited episode, so transitions that overlap two ranges move everything after them.
 export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextKept = false): number | null {
     let offset = 0;
     for (const r of ranges) {
+        const at = r.atMs ?? offset;
         if (originalMs < r.startMs) {
             // It's in the gap before this range — it was cut.
-            return roundToNextKept ? offset : null;
+            return roundToNextKept ? at : null;
         }
         if (originalMs <= r.endMs) {
             // It's inside this kept range.
-            return offset + (originalMs - r.startMs);
+            return at + (originalMs - r.startMs);
         }
-        offset += r.endMs - r.startMs;
+        offset = at + (r.endMs - r.startMs);
     }
     // Past the last kept range — either cut or past the end.
     return roundToNextKept ? offset : null;
@@ -124,14 +134,35 @@ export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextK
 
 // Total duration of the edited episode from the kept ranges.
 export function editedDuration(ranges: KeptRange[]): number {
-    return ranges.reduce((sum, r) => sum + (r.endMs - r.startMs), 0);
+    let offset = 0, end = 0;
+    for (const r of ranges) {
+        offset = (r.atMs ?? offset) + (r.endMs - r.startMs);
+        end = Math.max(end, offset);
+    }
+    return end;
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 
+// Silences measured in the episode's audio at ingest (spec 019 item 1.1): stretches quieter than
+// `noiseDb` for at least `minMs`, saved as episodes/{id}/analysis/silences.json.
+export interface Silence { startMs: number; endMs: number }
+export interface SilencesFile { noiseDb: number; minMs: number; silences: Silence[] }
+
+export const SilencesFileSchema = z.object({
+    noiseDb: z.number(),
+    minMs: z.number(),
+    silences: z.array(z.object({ startMs: z.number(), endMs: z.number() })).max(100_000),
+});
+
 export interface SuggestOptions {
     maxPauseMs?: number;
     keepPauseMs?: number;
+    // The audio's measured silences. With them, pauses come from the audio instead of the gaps
+    // between words: a silence inside a word's time span counts, and a gap the audio says is not
+    // silent (laughter, a breath, music) does not. Without them (or with none found, as on a noisy
+    // recording) the word gaps are used.
+    silences?: Silence[] | null;
     // Also suggest hesitations (reason 'gap'). Off by default: they are guesses, and in long
     // conversations they far outnumber the real fillers.
     gaps?: boolean;
@@ -144,6 +175,37 @@ export const HESITATION_REASONS: Cut['reason'][] = ['gap'];
 // Suggests cuts for filler words, repeated words, and long pauses.
 const REPEAT_GAP_MS = 300;
 const endsSentence = (s: string) => /[.?!]["\u201d\u2019)]*$/.test(s.trim());
+const endsClause = (s: string) => /[.?!,;:\u2014\u2013-]["\u201d\u2019)]*$/.test(s.trim());
+
+// Speech the transcript missed (spec 019 item 1.2): a stretch between words, at least
+// UNSPOKEN_MIN_MS long, that no word covers and the audio says is not silent. Often an "um" or a
+// false start AssemblyAI left out, sometimes a breath or a laugh. `before` is the index of the
+// word it comes before. Only stretches between words count: before the first word and after the
+// last there is nothing to compare with.
+export const UNSPOKEN_MIN_MS = 300;
+// Longer than this it is more likely laughter, music or crosstalk than a hesitation: shown, not suggested.
+export const UNSPOKEN_SUGGEST_MAX_MS = 1500;
+export interface UnspokenSpan { startMs: number; endMs: number; before: number }
+
+export function unspokenSpans(words: { start: number; end: number }[], silences: Silence[], minMs = UNSPOKEN_MIN_MS): UnspokenSpan[] {
+    const quiet = [...silences].sort((a, b) => a.startMs - b.startMs);
+    const out: UnspokenSpan[] = [];
+    let reach = words.length ? words[0].end : 0;      // the latest any word so far ends (speakers can overlap)
+    let k = 0;
+    for (let i = 1; i < words.length; i++) {
+        const from = reach, to = words[i].start;
+        reach = Math.max(reach, words[i].end);
+        if (to - from < minMs) continue;
+        while (k < quiet.length && quiet[k].endMs <= from) k++;
+        let cursor = from;
+        for (let j = k; j < quiet.length && quiet[j].startMs < to; j++) {
+            if (quiet[j].startMs - cursor >= minMs) out.push({ startMs: Math.round(cursor), endMs: Math.round(quiet[j].startMs), before: i });
+            cursor = Math.max(cursor, quiet[j].endMs);
+        }
+        if (to - cursor >= minMs) out.push({ startMs: Math.round(cursor), endMs: Math.round(to), before: i });
+    }
+    return out;
+}
 
 export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[] {
     const maxPauseMs = options?.maxPauseMs ?? 1200;
@@ -170,8 +232,30 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
         }
     }
 
-    // Pauses: a gap between consecutive words longer than maxPauseMs, shortened to keepPauseMs.
-    for (let i = 1; i < words.length; i++) {
+    // Speech the transcript missed, offered as fillers: short, inside one speaker's clause (a breath
+    // after a comma or a full stop is how people talk), and not next to a filler already cut.
+    if (options?.silences?.length) {
+        for (const s of unspokenSpans(words, options.silences)) {
+            const prev = words[s.before - 1], next = words[s.before];
+            if (s.endMs - s.startMs > UNSPOKEN_SUGGEST_MAX_MS || prev.speaker !== next.speaker || endsClause(prev.text)
+                || isFiller(normalize(prev.text)) || isFiller(normalize(next.text))) continue;
+            cuts.push({ startMs: s.startMs, endMs: s.endMs, reason: 'filler' });
+        }
+    }
+
+    // Pauses measured in the audio: a silence longer than maxPauseMs is shortened to keepPauseMs,
+    // half of it kept after the sound stops and half before it starts again.
+    const silences = options?.silences;
+    if (silences?.length) {
+        for (const s of silences) {
+            if (s.endMs - s.startMs <= maxPauseMs) continue;
+            const half = Math.round(keepPauseMs / 2);
+            cuts.push({ startMs: Math.round(s.startMs) + half, endMs: Math.round(s.endMs) - half, reason: 'pause' });
+        }
+    }
+
+    // Pauses from the transcript: a gap between consecutive words longer than maxPauseMs, shortened to keepPauseMs.
+    for (let i = 1; i < words.length && !silences?.length; i++) {
         const gap = words[i].start - words[i - 1].end;
         if (gap > maxPauseMs) {
             // Cut from the end of the pause to keepPauseMs before the next word.
@@ -187,12 +271,12 @@ export function suggestCuts(words: SpokenWord[], options?: SuggestOptions): Cut[
     // have no "um" or "uh", and AssemblyAI still misses some, so one often shows up as a silence
     // between two words of a sentence. A gap of 500–1200 ms after a word
     // that ends no sentence or clause (no . ? ! , ; : or dash) becomes a 'gap' cut leaving 150 ms
-    // of air. Shorter gaps, and the breath after a comma, are how people talk.
-    if (options?.gaps) {
+    // of air. Shorter gaps, and the breath after a comma, are how people talk. With measured
+    // silences the missed speech above is found instead, so this guess is not used.
+    if (options?.gaps && !options.silences?.length) {
         const GAP_MIN = 500;
         const GAP_MAX = maxPauseMs;
         const GAP_KEEP_MS = 150;
-        const endsClause = (s: string) => /[.?!,;:\u2014\u2013-]["\u201d\u2019)]*$/.test(s.trim());
         for (let i = 1; i < words.length; i++) {
             const prev = words[i - 1];
             const gap = words[i].start - prev.end;
@@ -257,6 +341,49 @@ export function restoreSection(cuts: Cut[], section: Section): Cut[] {
         if (c.startMs < section.startMs) out.push({ ...c, endMs: section.startMs });
         if (c.endMs > section.endMs) out.push({ ...c, startMs: section.endMs });
     }
+    return out;
+}
+
+// Where a section's kept part starts and ends once the cuts are taken out (spec 020 item E3): the
+// first and last moments inside it that no cut covers; null when it is cut whole.
+export function keptBounds(cuts: Cut[], section: Section): Section | null {
+    const inside = cuts.filter(c => c.endMs > section.startMs && c.startMs < section.endMs);
+    let head = section.startMs;
+    for (const c of [...inside].sort((a, b) => a.startMs - b.startMs)) if (c.startMs <= head) head = Math.max(head, c.endMs);
+    if (head >= section.endMs) return null;
+    let tail = section.endMs;
+    for (const c of [...inside].sort((a, b) => b.endMs - a.endMs)) if (c.endMs >= tail) tail = Math.min(tail, c.startMs);
+    return { startMs: head, endMs: Math.max(head, tail) };
+}
+
+// A trimmed section keeps at least this much.
+export const MIN_PART_MS = 100;
+
+// Trims a section's start or end to `toMs` (spec 020 item E3), with the producer's own cuts: moving
+// the edge in cuts from where the kept part began (or ended) to the new edge; moving it out brings
+// that stretch back. The edge stays inside the section, and MIN_PART_MS short of the other edge.
+export function trimSection(cuts: Cut[], section: Section, edge: 'start' | 'end', toMs: number): Cut[] {
+    const kept = keptBounds(cuts, section);
+    const v = Math.round(Math.min(section.endMs, Math.max(section.startMs, toMs)));
+    if (edge === 'start') {
+        const head = kept ? kept.startMs : section.endMs;
+        const t = kept ? Math.min(v, kept.endMs - MIN_PART_MS) : v;
+        if (t > head) return [...cuts, { startMs: head, endMs: t, reason: 'manual' }];
+        if (t < head) return restoreSection(cuts, { startMs: t, endMs: head });
+        return cuts;
+    }
+    const tail = kept ? kept.endMs : section.startMs;
+    const t = kept ? Math.max(v, kept.startMs + MIN_PART_MS) : v;
+    if (t < tail) return [...cuts, { startMs: t, endMs: tail, reason: 'manual' }];
+    if (t > tail) return restoreSection(cuts, { startMs: tail, endMs: t });
+    return cuts;
+}
+
+// The sections the splits make, in order.
+export function sectionsOf(splits: number[], totalMs: number): Section[] {
+    const edges = [0, ...[...splits].sort((a, b) => a - b).filter(s => s > 0 && s < totalMs), totalMs];
+    const out: Section[] = [];
+    for (let i = 0; i + 1 < edges.length; i++) if (edges[i + 1] > edges[i]) out.push({ startMs: edges[i], endMs: edges[i + 1] });
     return out;
 }
 

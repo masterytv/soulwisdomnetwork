@@ -11,6 +11,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import type { Episode } from '../../../types/episode';
 import { renderEdit } from './editRender';
+import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
 import { probeDuration } from './media';
 
@@ -101,6 +102,16 @@ test('plan: b-roll in idea order, quotes without an end dropped, notes warning',
     const draft = planEditRender(episode({ notes: { status: 'ready' } as never }));
     assert.deepEqual(draft.chapters, []);
     assert.match(draft.warnings.join(' '), /show notes/);
+});
+
+test('plan: transitions between sections are the edit\'s own, else the Studio\'s', () => {
+    const studio = { ...DEFAULT_SETTINGS, joins: { ...DEFAULT_SETTINGS.joins, afterIntro: { transition: 'dissolve' as const, durationMs: 800 } } };
+    const base = episode();
+    const plain = planEditRender(base, studio);
+    assert.deepEqual(plain.sections.afterIntro, { transition: 'dissolve', durationMs: 800 });
+    assert.deepEqual(plain.sections.end, DEFAULT_SETTINGS.joins.end);
+    const own = planEditRender(episode({ edit: { ...base.edit!, joins: [{ at: 'afterIntro', transition: 'fade', durationMs: 1500 }] } }), studio);
+    assert.deepEqual(own.sections.afterIntro, { transition: 'fade', durationMs: 1500 });
 });
 
 test('job: renders on stand-in data and saves everything', { timeout: 600_000 }, async () => {

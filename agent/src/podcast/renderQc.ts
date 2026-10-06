@@ -133,10 +133,11 @@ export function assCheck(ass: string | null, expected: number): string[] {
 
 // ─── measuring ──────────────────────────────────────────────────────────────
 
-// ffmpeg prints thousands of lines on a long file; only the ones the parsers read are kept.
+// ffmpeg prints thousands of lines on a long file; only the ones the parsers read are kept. Also
+// used by silences.ts.
 const KEEP = /silence_(start|end)|black_start|Summary:|Integrated loudness|^\s+I:|True peak|^\s+Peak:/;
 
-function runFiltered(cmd: string, args: string[]): Promise<{ stdout: string; kept: string }> {
+export function runFiltered(cmd: string, args: string[]): Promise<{ stdout: string; kept: string }> {
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
