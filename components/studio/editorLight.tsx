@@ -6,6 +6,8 @@
 // Part I: it also loads the Studio's captions setting and the overlay image links for the full-page
 // editor, and gives the editor Claude's suggestions for a tighter edit (retakes and more, spec 019 item 1.3)
 // as a toolbar tool. The Studio editor also loads its timeline's waveform and thumbnails (item E2).
+// Words retyped in the editor (spec 019 item 2.3) are saved through the words route, which publishes
+// them to the accepted transcript; the editor's words are swapped for the corrected ones.
 
 "use client";
 
@@ -23,7 +25,8 @@ import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
-import type { RetakesView } from '@/types/studio';
+import type { RetakesView, WordFixResult } from '@/types/studio';
+import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { QualityReport } from '@/components/studio/qualityReport';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
@@ -76,9 +79,32 @@ function TightenTool({ episodeId, edit, onAdd, onNotes }: {
     );
 }
 
-export function EditorLightStage({ episodeId, words, videoUrl, workspace = false, heading }: {
+export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspace = false, heading }: {
     episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean; heading?: React.ReactNode;
 }) {
+    // The accepted transcript's words, with the corrections made here since the page loaded.
+    const [words, setWords] = useState(accepted);
+    const [fixBusy, setFixBusy] = useState(false);
+    const [fixNote, setFixNote] = useState('');
+    const fixWords = useCallback(async (ops: FixOp[]): Promise<FixOp[] | null> => {
+        setFixBusy(true);
+        setFixNote('');
+        try {
+            const res = await studioFetch<WordFixResult>(`/api/studio/episodes/${episodeId}/words`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ops }),
+            });
+            setWords(w => spliceWords(w, res.spans));
+            setFixNote(res.docError ? `Corrected; the transcript Doc was not updated: ${res.docError}` : 'Corrected; render again to put it in the captions.');
+            return res.undo;
+        } catch (e) {
+            setFixNote(`⚠️ Not corrected: ${(e as Error).message}`);
+            return null;
+        } finally {
+            setFixBusy(false);
+        }
+    }, [episodeId]);
     const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
     const [loaded, setLoaded] = useState(false);
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
@@ -176,6 +202,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
         <p className={`${small} ${workspace ? '' : 'mb-2'} ${saveState === 'error' ? 'text-red-300 font-bold' : saveState === 'saved' ? 'text-green-300' : 'text-gray-400'}`}>
             {{ saved: '✓ Saved', unsaved: 'Unsaved changes…', saving: 'Saving…', error: 'Not saved' }[saveState]}
             {saveState === 'error' && `: ${saveError}`}
+            {fixNote && <span className={`ml-2 ${fixNote.startsWith('⚠️') ? 'text-red-300' : 'text-sky-300'}`}>{fixNote}</span>}
         </p>
     );
 
@@ -201,7 +228,7 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
                     <a href={render.driveUrl ?? render.videoUrl ?? undefined} target="_blank" rel="noreferrer" className="text-amber-300 underline">
                         {render.driveUrl ? 'open in Drive' : 'watch or download'}
                     </a>
-                    {render.stale && ' · the edit has changed since; render again to include the changes'}
+                    {render.stale && ' · the edit or its words have changed since; render again to include the changes'}
                 </span>
             )}
             {render?.status === 'failed' && <span className="text-sm text-red-300">Render failed: {render.error}</span>}
@@ -267,6 +294,8 @@ export function EditorLightStage({ episodeId, words, videoUrl, workspace = false
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
             timelineMedia={timelineMedia}
             studioJoins={studioJoins}
+            onFixWords={fixWords}
+            fixBusy={fixBusy}
         />
     );
 

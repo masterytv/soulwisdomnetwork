@@ -1,9 +1,11 @@
 // Speaker review (docs/specs/006-podcast-studio.md, page 2). AssemblyAI's transcript is
 // never changed; a person's fixes are stored as a layer of corrections over it, and the
 // lines shown on the review page are rebuilt from both. Shared by the page and the API
-// routes, so the transcript that gets accepted is exactly the one on screen.
+// routes, so the transcript that gets accepted is exactly the one on screen. Misheard words retyped
+// (spec 019 item 2.3) are corrections too, applied here (lib/wordFixes.ts).
 
 import type { DetectedSpeaker, TranscriptCorrections } from '@/types/episode';
+import { applyFixes, parseRef, parseWordFixes, type FixedWord } from '@/lib/wordFixes';
 
 export interface ReviewWord { text: string; start: number; end: number }
 
@@ -13,8 +15,8 @@ export interface ReviewUtterance { label: string; words: ReviewWord[] }
 export interface Line {
     id: string;              // `${utterance}:${first word}`; stable when a line is split
     utterance: number;
-    wordStart: number;       // offset of the first word within the utterance
-    words: ReviewWord[];
+    wordStart: number;       // offset of the first word heard within the utterance
+    words: FixedWord[];      // with word corrections applied; each knows the word heard it came from
     start: number;           // ms
     end: number;
     text: string;
@@ -31,8 +33,11 @@ export interface Flag {
 }
 
 export const emptyCorrections = (): TranscriptCorrections => ({
-    speakers: {}, mergedInto: {}, splits: {}, reassign: {}, dismissed: [],
+    speakers: {}, mergedInto: {}, splits: {}, reassign: {}, dismissed: [], words: {},
 });
+
+// The index in its utterance of the word heard a line's word stands for.
+export const heardIndex = (w: FixedWord) => parseRef(w.ref)?.word ?? 0;
 
 // The voice a label ends up as after merges.
 export function rootLabel(c: TranscriptCorrections, label: string) {
@@ -69,9 +74,11 @@ export function allLabels(voices: DetectedSpeaker[], c: TranscriptCorrections) {
 export function buildLines(utterances: ReviewUtterance[], voices: DetectedSpeaker[], c: TranscriptCorrections): Line[] {
     const lines: Line[] = [];
     utterances.forEach((u, ui) => {
+        // Split points are words heard; a split inside a corrected stretch falls after it.
+        const all = applyFixes(u.words, ui, c.words);
         const cuts = [0, ...(c.splits[ui] ?? []).filter(w => w > 0 && w < u.words.length), u.words.length];
         for (let i = 0; i < cuts.length - 1; i++) {
-            const words = u.words.slice(cuts[i], cuts[i + 1]);
+            const words = all.filter(w => heardIndex(w) >= cuts[i] && heardIndex(w) < cuts[i + 1]);
             if (!words.length) continue;
             const id = `${ui}:${cuts[i]}`;
             const chosen = c.reassign[id] ?? u.label;
@@ -160,8 +167,10 @@ export function reviewedText(
     ].join('\n') + '\n';
 }
 
-// Server-side check of corrections sent by the browser: known shape, sane sizes.
-export function parseCorrections(input: unknown, utteranceCount: number): TranscriptCorrections {
+// Server-side check of corrections sent by the browser: known shape, sane sizes. wordCounts: each
+// utterance's number of words heard.
+export function parseCorrections(input: unknown, wordCounts: number[]): TranscriptCorrections {
+    const utteranceCount = wordCounts.length;
     const bad = (why: string): never => { throw new Error(`Invalid corrections: ${why}`); };
     const obj = (v: unknown, what: string) =>
         (v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : bad(what));
@@ -190,5 +199,6 @@ export function parseCorrections(input: unknown, utteranceCount: number): Transc
     }
     if (!Array.isArray(raw.dismissed ?? [])) bad('dismissed');
     c.dismissed = [...new Set(((raw.dismissed ?? []) as unknown[]).map(v => lineId(String(v))))];
+    c.words = parseWordFixes(raw.words, wordCounts);
     return c;
 }

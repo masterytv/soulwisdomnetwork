@@ -189,7 +189,9 @@ disables their Firebase Auth account). Community routes use `requireMember()`
 Speaker review (`/admin/podcast/[episodeId]`) never edits `raw.json`: fixes are saved on the
 episode as `corrections` (`types/episode.ts`), and `lib/transcript.ts` rebuilds the lines
 from both. The page and the Accept route share that file, so what is accepted is what was
-on screen.
+on screen. Misheard words retyped there or in the editor are corrections too (`corrections.words`,
+`lib/wordFixes.ts`, spec 019 item 2.3); the editor's go through `/api/studio/episodes/[id]/words`, which
+publishes the accepted transcript straight away and refuses while review changes wait for Accept.
 
 Server routes run as the App Hosting service account
 (`firebase-app-hosting-compute@`), not a key file. It has Cloud Datastore User, Storage
@@ -233,3 +235,13 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 
 - `firebase-admin` is on v14, which removed the namespaced API (`admin.firestore()`,
   `admin.credential`). Import from `firebase-admin/app` and `firebase-admin/firestore`.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

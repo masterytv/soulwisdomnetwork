@@ -53,6 +53,9 @@ export interface TranscriptCorrections {
     splits: Record<string, number[]>;     // utterance index -> word indices that start a new line
     reassign: Record<string, string>;     // line id -> label
     dismissed: string[];                  // flagged line ids a person said are fine
+    // Misheard words retyped (spec 019 item 2.3): by "utterance:word" of the first word heard, the
+    // number of words heard replaced and the text typed (lib/wordFixes.ts).
+    words?: Record<string, { count: number; text: string }>;
 }
 
 // Show notes (docs/specs/007-show-notes.md). `generated` is what Claude wrote and is kept
@@ -212,6 +215,7 @@ export interface EpisodeEditRender {
     finishedAt?: unknown;
     error?: string | null;
     editVersion?: number;                 // the saved edit it was rendered from
+    transcriptVersion?: number;           // the accepted transcript's corrections version its captions came from
     videoPath?: string;                   // Cloud Storage
     wordsPath?: string | null;            // the words on the rendered video's times
     captionsPath?: string | null;         // .srt

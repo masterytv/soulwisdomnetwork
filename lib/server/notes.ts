@@ -72,9 +72,13 @@ async function acceptedWords(episode: Episode): Promise<SpokenWord[]> {
     if (cached) return cached;
     const [raw] = await adminBucket().file(path).download();
     const lines = (JSON.parse(raw.toString('utf8')) as {
-        lines: { name: string; clip: boolean; words: { text: string; start: number; end: number }[] }[];
+        lines: { name: string; clip: boolean; words: { text: string; start: number; end: number; ref?: string; heard?: string; count?: number }[] }[];
     }).lines;
-    const words = lines.flatMap(l => l.words.map(w => ({ text: w.text, start: w.start, end: w.end, speaker: l.name, clip: l.clip })));
+    // A word's ref (and, corrected, what was heard) lets the editor correct words (spec 019 item 2.3).
+    const words = lines.flatMap(l => l.words.map(w => ({
+        text: w.text, start: w.start, end: w.end, speaker: l.name, clip: l.clip,
+        ...(w.ref ? { ref: w.ref } : {}), ...(w.heard !== undefined ? { heard: w.heard, count: w.count } : {}),
+    })));
     if (wordCache.size >= 5) wordCache.delete(wordCache.keys().next().value!);
     wordCache.set(key, words);
     return words;

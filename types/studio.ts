@@ -6,6 +6,7 @@ import type { TimedWord } from '@/lib/retime';
 import type { ShortSuggestion } from '@/lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '@/lib/shorts';
 import type { ReviewUtterance } from '@/lib/transcript';
+import type { FixOp } from '@/lib/wordFixes';
 import type { ThumbKind } from '@/lib/thumbnail';
 import type { YoutubeMetadata } from '@/lib/youtube';
 import type { Extras } from '@/lib/extras';
@@ -67,6 +68,15 @@ export interface Pipeline {
 }
 
 // GET /api/studio/episodes/[id]: everything the speaker review page needs.
+// Words corrected in the editor (spec 019 item 2.3): the stretches whose words changed, with their new
+// words, and the changes that undo it.
+export interface WordFixResult {
+    version: number;
+    undo: FixOp[];
+    spans: { ref: string; count: number; words: SpokenWord[] }[];
+    docError: string | null;
+}
+
 export interface EpisodeReview {
     id: string;
     title: string;

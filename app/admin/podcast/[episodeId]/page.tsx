@@ -1,7 +1,8 @@
 "use client";
 
 // Speaker review (docs/specs/006-podcast-studio.md, page 2): check who said what against
-// the video, fix it, and accept the transcript. Every fix is saved as you go.
+// the video, fix it, and accept the transcript. Every fix is saved as you go. Misheard words
+// can be retyped too, one by one or with Find and replace (spec 019 item 2.3).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -9,12 +10,14 @@ import { useParams } from "next/navigation";
 import AuthGuard from "@/components/auth/AuthGuard";
 import LineRow, { type LineActions, type Voice } from "@/components/studio/review/LineRow";
 import SpeakersPanel, { type VoiceRow } from "@/components/studio/review/SpeakersPanel";
+import { FindReplace } from "@/components/studio/review/FindReplace";
 import * as edit from "@/components/studio/review/corrections";
 import { ErrorNote } from "@/components/studio/ErrorNote";
 import { ago, minutes } from "@/components/studio/format";
 import { useAuth } from "@/context/AuthContext";
 import { studioFetch } from "@/lib/studioClient";
 import { allLabels, buildLines, findFlags, isNamed, rootLabel, speakerName } from "@/lib/transcript";
+import { applyOps, fixOp, putBackOp, type FixOp } from "@/lib/wordFixes";
 import type { TranscriptCorrections } from "@/types/episode";
 import type { EpisodeReview } from "@/types/studio";
 import { Journey } from "@/components/studio/Journey";
@@ -42,6 +45,7 @@ export default function SpeakerReviewPage() {
     const [accepting, setAccepting] = useState(false);
     const [currentMs, setCurrentMs] = useState(0);
     const [splitting, setSplitting] = useState<string | null>(null);
+    const [correcting, setCorrecting] = useState<string | null>(null);
     const [onlyFlagged, setOnlyFlagged] = useState(false);
     const [follow, setFollow] = useState(false);
     const [savedVersion, setSavedVersion] = useState(0);   // corrections version on the server
@@ -216,14 +220,33 @@ export default function SpeakerReviewPage() {
         v.play().catch(() => {});
     }, []);
 
+    // Word corrections (spec 019 item 2.3) as ops on the corrections; returns the ops that undo them.
+    const utterances = review?.utterances;
+    const fixWords = useCallback((ops: FixOp[]): FixOp[] | null => {
+        if (!utterances || !current.current || !ops.length) return null;
+        const { undo } = applyOps(current.current.words ?? {}, ops, utterances);
+        update(c => ({ ...c, words: applyOps(c.words ?? {}, ops, utterances).fixes }));
+        return undo;
+    }, [utterances, update]);
+
     const actions: LineActions = useMemo(() => ({
         seek,
         reassign: (line, label) => update(c => edit.reassign(c, line, label)),
         split: (line, word) => { update(c => edit.split(c, line, word)); setSplitting(null); },
         join: line => update(c => edit.join(c, line)),
         dismiss: line => update(c => edit.dismiss(c, line)),
-        toggleSplit: setSplitting,
-    }), [seek, update]);
+        toggleSplit: id => { setSplitting(id); setCorrecting(null); },
+        correct: (line, from, to, text) => {
+            const op = fixOp(line.words, from, to, text);
+            if (op) fixWords([op]);
+        },
+        putBack: (line, index) => {
+            const op = putBackOp(line.words, index);
+            if (op) fixWords([op]);
+        },
+        toggleCorrect: id => { setCorrecting(id); setSplitting(null); },
+    }), [seek, update, fixWords]);
+    const allWords = useMemo(() => lines.flatMap(l => l.words), [lines]);
 
     function nextFlag() {
         const ids = lines.filter(l => flags.has(l.id)).map(l => l.id);
@@ -355,6 +378,7 @@ export default function SpeakerReviewPage() {
                                         <input type="checkbox" checked={follow} onChange={e => setFollow(e.target.checked)} />
                                         Follow the video
                                     </label>
+                                    <span className="ml-auto"><FindReplace words={allWords} onReplace={fixWords} /></span>
                                 </div>
                                 {!shown.length && <p className="text-sm text-gray-500 italic">Nothing to show.</p>}
                                 {shown.map(line => {
@@ -365,6 +389,7 @@ export default function SpeakerReviewPage() {
                                             line={line}
                                             active={line.id === activeId}
                                             splitting={splitting === line.id}
+                                            correcting={correcting === line.id}
                                             flag={flag}
                                             flagTo={flag ? speakerName(review.voices, corrections, flag.toLabel) : undefined}
                                             voices={voices}
@@ -395,7 +420,7 @@ export default function SpeakerReviewPage() {
                                             ? `Accepted by ${review.accepted!.by}. The official transcript (Cloud Storage) and the Google Doc match this page.`
                                             : review.accepted
                                                 ? "Accept the changes to update the official transcript (Cloud Storage) and the Google Doc."
-                                                : "Accept when every line has the right speaker, to save the official transcript (Cloud Storage) and update the Google Doc."}
+                                                : "Accept when every line has the right speaker and words, to save the official transcript (Cloud Storage) and update the Google Doc."}
                                 </span>
                             )}
                             <button

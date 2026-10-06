@@ -193,7 +193,12 @@ export function parseShowNotes(input: unknown): ShowNotes {
 }
 
 // One spoken word of the accepted transcript, with who said it.
-export interface SpokenWord { text: string; start: number; end: number; speaker: string; clip: boolean }
+// `ref`, `heard` and `count` come from the accepted transcript (spec 019 item 2.3, lib/wordFixes.ts):
+// the word heard a word stands for, and for a corrected one what was heard and how many words.
+export interface SpokenWord {
+    text: string; start: number; end: number; speaker: string; clip: boolean;
+    ref?: string; heard?: string; count?: number;
+}
 
 const token = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');
 const tokens = (s: string) => s.replace(/(\.\.\.|…)\s*$/, '').split(/\s+/).map(token).filter(t => t && !isFiller(t));

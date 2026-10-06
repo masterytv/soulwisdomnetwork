@@ -16,7 +16,7 @@ export interface EditRenderView {
     status: EpisodeEditRender['status'] | null;
     error: string | null;
     canStart: boolean;
-    stale: boolean;                   // the edit changed after this render was made
+    stale: boolean;                   // the edit, or the accepted transcript's words (spec 019 item 2.3), changed after this render was made
     driveUrl: string | null;
     videoUrl: string | null;          // a short-lived link to watch or download the render
     durationSeconds: number | null;
@@ -75,7 +75,8 @@ export async function getEditRender(id: string): Promise<EditRenderView> {
         status: lost ? 'failed' : r?.status ?? null,
         error: r?.error ?? (lost ? 'The render did not finish. Check the Podcast Edit Render run in GitHub Actions, then try again.' : null),
         canStart: !!episode.edit && !!episode.media?.sourcePath && !busy(r),
-        stale: ready && r.editVersion !== episode.edit?.version,
+        stale: ready && (r.editVersion !== episode.edit?.version
+            || (r.transcriptVersion !== undefined && r.transcriptVersion !== (episode.review?.acceptedVersion ?? 0))),
         driveUrl: ready ? r.driveUrl ?? null : null,
         videoUrl: ready && r.videoPath
             ? await adminBucket().file(r.videoPath).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 }).then(([u]) => u).catch(() => null)
