@@ -35,6 +35,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
+              its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
               teasers, intro, outro, b-roll, voice cleanup (standard, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
               spec 019 item 3.2), on-screen text, images and captions, then a quality report, and files that open its cuts in
               Resolve, Premiere or Final Cut (podcast/editExport.ts with the pinned auto-editor binary, item 4.1)

@@ -353,3 +353,31 @@ test('the files for other editors are saved with the render; when they cannot be
     assert.equal(failed.result.videoPath, `episodes/${ID}/editRender/v4-5/episode.mp4`);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('finished windows are kept under the run\'s work folder for a re-run, and removed once the render is saved (spec 019 item 4.2)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-work-'));
+    const stored = new Set([`episodes/${ID}/editRender/work/77/window-0-abc.mkv`]);
+    const uploads: string[] = [], downloads: string[] = [], removed: string[] = [];
+    let found: boolean[] = [];
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async (_l, p) => { uploads.push(p); },
+        exists: async p => stored.has(p),
+        removeFolder: async p => { removed.push(p); },
+        saveToDrive: async () => null,
+        update: async () => {},
+        render: async opts => {
+            found = [await opts.store!.get('window-0-abc.mkv', path.join(dir, 'a.mkv')), await opts.store!.get('window-1-def.mkv', path.join(dir, 'b.mkv'))];
+            await opts.store!.put(path.join(dir, 'b.mkv'), 'window-1-def.mkv');
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+    }, path.join(dir, 'work'), '77');
+    assert.deepEqual(found, [true, false]);
+    assert.ok(downloads.includes(`episodes/${ID}/editRender/work/77/window-0-abc.mkv`));
+    assert.ok(uploads.includes(`episodes/${ID}/editRender/work/77/window-1-def.mkv`));
+    assert.ok(removed.includes(`episodes/${ID}/editRender/work`));
+    fs.rmSync(dir, { recursive: true, force: true });
+});

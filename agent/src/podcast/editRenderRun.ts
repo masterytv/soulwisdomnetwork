@@ -74,6 +74,7 @@ async function main() {
         },
         update: async fields => { await ref.update(fields); },
         removeFolder: async prefix => { await bucket.deleteFiles({ prefix: `${prefix}/` }); },
+        exists: async storagePath => (await bucket.file(storagePath).exists())[0],
         render: renderEdit,
         // The files for Resolve, Premiere and Final Cut (spec 019 item 4.1), with the auto-editor the workflow downloads.
         ...(process.env.AUTO_EDITOR_BIN ? { exportEdit: o => makeEditExports({ ...o, bin: process.env.AUTO_EDITOR_BIN! }) } : {}),

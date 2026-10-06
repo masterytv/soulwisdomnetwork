@@ -115,7 +115,7 @@ for this work".
 | 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
 | **4** | **Render and hand-off** | | | | | |
 | 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
-| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Not started |
+| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
 | 4.3 | Smoother preview | ours | M | High | — | Not started |
 | **5** | **The rest of the pipeline** | | | | | |
 | 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Not started |
@@ -761,6 +761,36 @@ every run. Descript cannot import these files, so this is the replacement path.
   blocks that are already there.
 - **Parallel:** encode two blocks at a time on the runner's 4 cores.
 - **Measure:** time per hour of episode, before and after. 0.2 must stay clean on both.
+
+**Built (#166):** `agent/src/podcast/renderWindows.ts` (plan, tests in `renderWindows.test.ts`) and
+`editRender.ts`.
+- **One encode, in windows of the finished video** rather than blocks of the episode. Each window is cut at a
+  straight cut (never inside a transition between parts, or between the episode and the intro or outro, and
+  never in the first or last second or fade), up to 15 minutes or 20 kept ranges, since each range is a seeked
+  input of its own. It is built with everything that shows in it: a piece or part on either side of a
+  transition in the window is taken whole on that side, so the transition is drawn as in the whole programme,
+  then the window is cut to its frames. The b-roll, layers, captions and text go over the episode in its own
+  time, as before.
+- **The sound is made once**, without the picture: the kept ranges read straight from the cleaned voice as
+  PCM (1,600 samples a frame), the 15 ms fades and the transitions' crossfades done in code
+  (`PcmAssembler`), then one ffmpeg pass for music, effects and ducking, the sections, the edge fades and
+  the two-pass loudness. The plan's "normalize in each block's graph" would have measured loudness per block;
+  measuring the whole programme's sound once keeps one gain for the episode, as before.
+- **Exact:** every window's frames are counted after encoding and must match the plan. That check found an
+  old bug: after an overlay (b-roll, captions), the `fps` before a transition dropped the stream's last frame,
+  so the old render came out a frame short. The episode is now held a frame and cut to its length.
+- **Resume:** each finished window goes to `episodes/{id}/editRender/work/{GitHub run}/`, named by a hash of
+  what made it; GitHub's "Re-run" keeps the run's ID, so a re-run downloads the windows it finds and makes the
+  rest. A DeepFilterNet or Auphonic clean-up is kept there too (FLAC), so a retry does not spend the minutes or
+  the Auphonic hours again. The work folder is removed when a render is saved.
+- **Parallel:** two windows at a time.
+- **Measured** on a 12-minute 1080p episode with 50 cuts, a dissolve at a split, two teasers, intro and outro
+  with transitions and edge fades, two b-roll stills, captions, a lower third and a ducked music bed, on a
+  4-core machine like the runner: **1,417 s before, 756 s after (47% less; 2.2× and 1.2× the video's
+  length)**. The quality report was clean on both (−13.9 LUFS, linear, no warnings); the new one is the
+  planned 644.500 s exactly, the old one 644.47 s (the lost frame). The two videos match frame for frame
+  (same frame numbers at 3 s to 640 s) and their sound is in step (0 ms). A real hour-long episode's time
+  waits on a render from `main`.
 
 ### 4.3 Smoother preview (M)
 

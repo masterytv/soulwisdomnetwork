@@ -42,6 +42,9 @@ export interface EditRenderDeps {
     update: (fields: Record<string, unknown>) => Promise<void>;
     // Deletes every file under a Storage folder: the previous render, once this one is saved.
     removeFolder?: (prefix: string) => Promise<void>;
+    // Whether a file is in Storage: with it, finished windows are kept under the run's work folder, so a re-run of
+    // the same GitHub run skips them (spec 019 item 4.2).
+    exists?: (storagePath: string) => Promise<boolean>;
     render: typeof renderEdit;
     now: () => unknown;                  // a server timestamp in production
     settings?: StudioSettings;           // the defaults when left out
@@ -213,6 +216,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
 
     await deps.update({ 'editRender.status': 'rendering' });
+    // This run's finished windows; GitHub's "Re-run" keeps the run's ID, so it finds them here.
+    const work = `episodes/${episodeId}/editRender/work/${runId.replace(/[^\w-]/g, '')}`;
     const out = path.join(workDir, 'episode.mp4');
     const report = await deps.render({
         video, edit: plan.edit, out,
@@ -223,6 +228,15 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
         ...(sounds.length ? { sounds } : {}),
+        ...(deps.exists ? { store: {
+            get: async (name: string, local: string) => {
+                const at = `${work}/${name}`;
+                if (!(await deps.exists!(at))) return false;
+                await deps.download(at, local);
+                return true;
+            },
+            put: (local: string, name: string) => deps.upload(local, `${work}/${name}`, name.endsWith('.flac') ? 'audio/flac' : 'video/x-matroska'),
+        } } : {}),
         clean: CLEAN_FOR[plan.voice],
         voice: {
             deepFilter: deps.voice?.deepFilter,
@@ -297,6 +311,10 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         updatedAt: deps.now(),
         ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps, usedLibrary) : {}),
     });
+    // The kept windows are no longer needed, nor any an earlier failed run left.
+    if (deps.exists && deps.removeFolder) {
+        await deps.removeFolder(`episodes/${episodeId}/editRender/work`).catch(error => console.warn(`⚠️ Could not remove the kept windows: ${(error as Error).message}`));
+    }
     // Every use of a library file is noted on its entry, so a Content ID claim can be traced to its licence.
     if (usedLibrary.length && deps.logUses) {
         await deps.logUses(usedLibrary, { episodeId, kind: 'episode', ref: videoPath, at: new Date().toISOString() })
