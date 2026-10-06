@@ -381,3 +381,42 @@ test('finished windows are kept under the run\'s work folder for a re-run, and r
     assert.ok(removed.includes(`episodes/${ID}/editRender/work`));
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('speaker tracks: downloaded and given to the renderer, unless the edit turns them off; the render says how many (spec 019 item 3.3)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-tracks-'));
+    const speakerTracks = [
+        { path: `episodes/${ID}/source/tracks/1-audioTom.m4a`, name: 'Tom', fileName: 'audioTom.m4a' },
+        { path: `episodes/${ID}/source/tracks/2-audioAna.m4a`, name: 'Ana', fileName: 'audioAna.m4a' },
+    ];
+    const run = async (use: boolean | undefined) => {
+        const downloads: string[] = [], updates: Record<string, unknown>[] = [];
+        let given: string[] | undefined;
+        await runEditRender(ID, {
+            getEpisode: async () => {
+                const e = episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], speakerTracks: use } });
+                return { ...e, media: { ...e.media, speakerTracks } };
+            },
+            download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async f => { updates.push(f); },
+            render: async opts => {
+                given = opts.tracks;
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+        }, path.join(dir, 'work'), '1');
+        return { given, downloads, tracks: updates.find(u => u['editRender.status'] === 'ready')!['editRender.tracks'] };
+    };
+    const on = await run(undefined);
+    assert.equal(on.given?.length, 2);
+    assert.ok(on.given!.every(f => /track-\d\.m4a$/.test(f)));
+    assert.ok(speakerTracks.every(t => on.downloads.includes(t.path)));
+    assert.equal(on.tracks, 2);
+    const off = await run(false);
+    assert.equal(off.given, undefined);
+    assert.equal(off.tracks, 0);
+    assert.ok(!off.downloads.some(p => p.includes('/tracks/')));
+    fs.rmSync(dir, { recursive: true, force: true });
+});

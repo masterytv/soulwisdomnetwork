@@ -50,6 +50,7 @@ function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
 import { QualityReport } from '@/components/studio/qualityReport';
 import { VoiceChoice } from '@/components/studio/voice';
 import { EditFiles } from '@/components/studio/editFiles';
+import { SpeakerTracks } from '@/components/studio/speakerTracks';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
 // suggested cuts to review (kind Retakes in the counts). `onNotes` gets each suggestion's kind and why,
@@ -313,6 +314,12 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             onChange={voice => { const e = { ...edit, voice }; setEdit(e); change(e); }} />
     );
 
+    // Speaker tracks (spec 019 item 3.3), whether the render uses them saved with the edit.
+    const speakerTracks = (
+        <SpeakerTracks episodeId={episodeId} use={edit.speakerTracks !== false} rendered={render?.tracks ?? null}
+            onUse={use => { const e = { ...edit, speakerTracks: use }; setEdit(e); change(e); }} />
+    );
+
     // The Studio editor's bar: the Render button and a few words on where the render stands; the
     // rest is in the Render panel.
     const renderBar = (
@@ -349,6 +356,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             <h2 className="text-sm font-semibold text-gray-200">Render</h2>
             <p className={small}>GitHub Actions makes the finished video from the saved edit{render?.status === 'ready' ? '' : ': press Render ▸ in the bar'}.</p>
             {voiceChoice}
+            {speakerTracks}
             {renderControls}
             {renderResult}
         </div>
@@ -388,7 +396,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             {saveStatus}
             {draftBanner}
             {editor}
-            <div className="mt-4">{voiceChoice}</div>
+            <div className="mt-4 flex flex-col gap-3">{voiceChoice}{speakerTracks}</div>
             {renderControls}
             {renderResult}
         </>

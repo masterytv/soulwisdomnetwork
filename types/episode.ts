@@ -6,6 +6,7 @@ import type { RedraftScope } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
 import type { EpisodeEdit } from '../lib/edit';
 import type { VoiceCleanup } from '../lib/voice';
+import type { SpeakerTrack } from '../lib/speakerTracks';
 import type { Extras } from '../lib/extras';
 import type { Retake } from '../lib/retakes';
 
@@ -234,6 +235,7 @@ export interface EpisodeEditRender {
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
     voice?: VoiceCleanup;                 // the voice clean-up it used (spec 019 item 3.2)
+    tracks?: number;                      // the speaker tracks its voice was made from (spec 019 item 3.3); 0 or missing: the recording's sound
     // Files that open the edit's cuts in another editor (spec 019 item 4.1), in the render's folder: kind is
     // resolve, premiere, finalcut, captions (.srt on their timeline) or constantRate (the recording's copy they name).
     exports?: { kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate'; name: string; path: string; driveUrl: string | null }[];
@@ -388,6 +390,7 @@ export interface Episode {
         silencesPath?: string;            // analysis/silences.json: the audio's silences (lib/edit.ts SilencesFile; spec 019 item 1.1)
         peaksPath?: string;               // analysis/peaks.bin: the Studio editor's waveform (lib/peaks.ts; spec 020 item E2)
         thumbsPath?: string;              // analysis/thumbs.json: its thumbnail sheets (lib/thumbs.ts; spec 020 item E2)
+        speakerTracks?: SpeakerTrack[];   // one audio file per speaker, when Zoom made them (lib/speakerTracks.ts; spec 019 item 3.3)
     };
     transcription?: {
         provider: 'assemblyai';

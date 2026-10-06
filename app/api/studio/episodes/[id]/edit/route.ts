@@ -67,7 +67,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -119,6 +119,12 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const r = z.enum(VOICE_CLEANUPS).nullable().safeParse(body.edit.voice);
         if (!r.success) throw new HttpError(400, 'Voice clean-up: not one of the choices');
         voice = r.data;
+    }
+    // Whether the render uses the speaker tracks (spec 019 item 3.3). Left out of the request, it stays as saved.
+    let speakerTracks: boolean | null | undefined;
+    if (body.edit.speakerTracks !== undefined) {
+        if (body.edit.speakerTracks !== null && typeof body.edit.speakerTracks !== 'boolean') throw new HttpError(400, 'Speaker tracks: true, false or null');
+        speakerTracks = body.edit.speakerTracks;
     }
 
     // A picture is checked once, when it first appears on the edit: an overlay upload must be a real PNG
@@ -182,6 +188,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 ...((layers ?? current?.layers) ? { layers: layers ?? current?.layers } : {}),
                 captions: captions !== undefined ? captions : current?.captions ?? null,
                 voice: voice !== undefined ? voice : current?.voice ?? null,
+                speakerTracks: speakerTracks !== undefined ? speakerTracks : current?.speakerTracks ?? null,
                 splits: keptSplits,
                 joins: keptJoins,
                 ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),
