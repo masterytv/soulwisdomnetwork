@@ -265,6 +265,12 @@ after the frame counting above, with 30 cuts at uneven places: every beep within
 flash (0–29 ms, not growing), and the video exactly as long as the edit (46.800 s for 46.8 s, where
 it had been 48.003 s).
 
+## Voice clean-up choice (spec 019 item 3.1)
+
+**Not chosen yet.** Run **Podcast Clean-up Comparison** from the Actions tab (on `main`) on a real
+episode, listen to A–E without the key, then write here which one was chosen, by whom, and why, with
+the run's loudness and time numbers. Item 3.2 makes the winner a Studio setting.
+
 ## Next
 
 - **Run a real episode end to end** and compare its sound with Descript's (Tom). Write here: the

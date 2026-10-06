@@ -23,6 +23,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/notes.ts — spec 005 step 5 (show notes with Claude), GitHub Actions only;
               the prompt and call are in podcast/notesDraft.ts, shared with podcast/compareNotes.ts
               (podcast_notes_compare.yml: side-by-side models/efforts, read-only, run by hand)
+              podcast/cleanupCompare.ts — the voice clean-up bake-off (spec 019 item 3.1; podcast_cleanup_compare.yml,
+              run by hand, read-only): one stretch as recorded, today's chain, DeepFilterNet, Auphonic and Descript, heard blind
               podcast/broll.ts — spec 005 step 7 (b-roll images), GitHub Actions only
               podcast/package.ts — spec 005 step 8 part 1 (edit package for Descript), GitHub Actions only
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
@@ -127,7 +129,7 @@ approves the episode there (Checkpoint D). "Upload to YouTube" then starts `podc
 `docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest moments), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
 (the shorts approved at Checkpoint E, scheduled one a day, with the same YouTube secrets). The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
-`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`. Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
+`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and optionally `AUPHONIC_API_KEY` (the clean-up comparison). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
 `DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
 
 ### Firestore
@@ -236,13 +238,3 @@ Merging to `main` deploys to production. Keep PRs to one concern.
 
 - `firebase-admin` is on v14, which removed the namespaced API (`admin.firestore()`,
   `admin.credential`). Import from `firebase-admin/app` and `firebase-admin/firestore`.
-
-<!-- BEGIN:nextjs-agent-rules -->
-
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
-
-This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
-
-<!-- END:nextjs-agent-rules -->
