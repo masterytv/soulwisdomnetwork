@@ -95,7 +95,7 @@ for this work".
 | **2** | **Editing precision** | | | | | |
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
-| 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#PR); a corrected word in YouTube's captions waits on a render and upload from `main` |
+| 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
@@ -450,7 +450,7 @@ correction is stale: record which captions file each translation came from, and 
 **Done when:** a corrected word shows in the editor, in the Editor Light `.srt` and in the
 YouTube captions of a test upload.
 
-**Built (#PR):**
+**Built (#149):**
 - **Store:** `corrections.words` (`types/episode.ts`), as planned, keyed `"utterance:word"` like the
   line ids, because speaker review's splits are per utterance. A fix never spans two utterances.
 - **`lib/wordFixes.ts`** holds the pure parts, with tests: the timing (`timeWords`, Rescript's
