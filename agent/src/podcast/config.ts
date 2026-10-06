@@ -9,6 +9,8 @@ export const HOSTS = ['Daniel Endy', 'Tom Wood'];
 // AssemblyAI: $0.21 transcription + $0.02 diarization + $0.02 speaker ID per audio hour
 // (docs/research, Sept 2026). Used for the cost cap only; confirm against the invoice.
 export const ASSEMBLYAI_USD_PER_HOUR = 0.25;
+// Added when names and terms are sent (keyterms prompting, spec 019 item 2.4).
+export const KEYTERMS_USD_PER_HOUR = 0.05;
 
 // A transient failure is retried on the next scheduled run; after this many it is
 // treated as permanent and alerted.

@@ -32,7 +32,7 @@ import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from
 import { TransitionsPanel } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
 import { FindReplace } from '@/components/studio/review/FindReplace';
-import { fixGroup, fixOp, putBackOp, type FixOp } from '@/lib/wordFixes';
+import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 
 // No splits yet: one array, so the timeline does not redraw on every render.
 const NO_SPLITS: number[] = [];
@@ -1027,8 +1027,10 @@ export function Editor({
                                                 isCurrent && !cut ? 'underline decoration-amber-400 decoration-2 underline-offset-2' : ''
                                             } ${isMatch && !cut ? 'bg-amber-400/10' : ''} ${
                                                 isReview ? ' ring-2 ring-amber-400' : ''
-                                            } ${word.heard !== undefined ? 'underline decoration-dotted decoration-sky-400 underline-offset-2' : ''}`}
-                                            title={cut ? 'Double-click to bring back' : word.heard !== undefined ? `Corrected; heard as "${word.heard}". Double-click to change it` : undefined}
+                                            } ${word.heard !== undefined ? 'underline decoration-dotted decoration-sky-400 underline-offset-2'
+                                                : !cut && !isCurrent && isUnsure(word) ? 'underline decoration-dotted decoration-amber-400 underline-offset-2' : ''}`}
+                                            title={cut ? 'Double-click to bring back' : word.heard !== undefined ? `Corrected; heard as "${word.heard}". Double-click to change it`
+                                                : isUnsure(word) ? `${unsureTitle(word)}. Double-click to correct it` : undefined}
                                             onClick={(e) => onWordClick(index, e)}
                                             onDoubleClick={() => onWordDoubleClick(index)}
                                             onMouseDown={e => onWordMouseDown(index, e)}

@@ -15,7 +15,7 @@ import { LookFields } from "@/components/studio/onScreen";
 import { LANGUAGES, LANGUAGES_MAX } from "@/lib/translate";
 import type { CaptionStyle } from "@/lib/onScreen";
 import { useAuth } from "@/context/AuthContext";
-import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, type StudioSettings } from "@/lib/studioSettings";
+import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type StudioSettings } from "@/lib/studioSettings";
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
 import type { SettingsView } from "@/lib/server/studioSettings";
@@ -61,6 +61,7 @@ export default function StudioSettingsPage() {
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [introUrl, setIntroUrl] = useState<string | null>(null);
     const [hostsText, setHostsText] = useState("");
+    const [namesText, setNamesText] = useState("");
     const [error, setError] = useState("");
     const [notice, setNotice] = useState("");
     const [saving, setSaving] = useState(false);
@@ -69,7 +70,7 @@ export default function StudioSettingsPage() {
     useEffect(() => {
         if (loading || !allowed) return;
         studioFetch<SettingsView>("/api/studio/settings")
-            .then(v => { setS(v.settings); setLogoUrl(v.logoUrl); setIntroUrl(v.introUrl); setHostsText(v.settings.hosts.join("\n")); })
+            .then(v => { setS(v.settings); setLogoUrl(v.logoUrl); setIntroUrl(v.introUrl); setHostsText(v.settings.hosts.join("\n")); setNamesText(v.settings.recurringNames.join("\n")); })
             .catch(e => setError((e as Error).message));
     }, [loading, allowed]);
 
@@ -94,12 +95,14 @@ export default function StudioSettingsPage() {
         setNotice("");
         try {
             const hosts = hostsText.split(/\n|,/).map(h => h.trim()).filter(Boolean);
+            const recurringNames = namesText.split(/\n|,/).map(h => h.trim()).filter(Boolean);
             const saved = await studioFetch<{ settings: StudioSettings }>("/api/studio/settings", {
                 method: "PUT",
-                body: JSON.stringify({ settings: { ...s, hosts } }),
+                body: JSON.stringify({ settings: { ...s, hosts, recurringNames } }),
             });
             setS(saved.settings);
             setHostsText(saved.settings.hosts.join("\n"));
+            setNamesText(saved.settings.recurringNames.join("\n"));
             const v = await studioFetch<SettingsView>("/api/studio/settings");
             setLogoUrl(v.logoUrl);
             setIntroUrl(v.introUrl);
@@ -166,6 +169,11 @@ export default function StudioSettingsPage() {
 
                             <Section title="Speakers" intro="Names that are always offered when the transcript is made, and on the speaker review page. One per line. Others are named during speaker review.">
                                 <textarea className={`${field} min-h-24`} value={hostsText} onChange={e => { setHostsText(e.target.value); setNotice(""); setDirty(true); }} disabled={off} aria-label="Speaker names" />
+                                <Field label="Names and terms to spell right"
+                                    help={`Guests, places and terms the transcriber often gets wrong, one per line (up to ${KEYTERM_WORDS_MAX} words each). They are sent with the show's name and the speakers when a recording is transcribed (about $0.05 more an hour). Add only words it misspells: a long list of common words can make it hear them where they were not said.`}>
+                                    <textarea className={`${field} min-h-24`} value={namesText} onChange={e => { setNamesText(e.target.value); setNotice(""); setDirty(true); }} disabled={off}
+                                        aria-label="Names and terms to spell right" placeholder={"Raymond Moody\nnear-death experience"} />
+                                </Field>
                             </Section>
 
                             <Section title="Kind of recording and writing" intro="Shapes how Claude writes the show notes, chapters, YouTube description, Shorts and thumbnail text.">
@@ -293,7 +301,7 @@ export default function StudioSettingsPage() {
                             {isAdmin && (
                                 <div className="sticky bottom-0 z-10 -mx-4 sm:mx-0 flex flex-wrap items-center gap-3 border-t border-white/10 bg-[#130b29]/95 backdrop-blur px-4 py-3 sm:rounded-xl">
                                     <button onClick={() => void save()} disabled={saving} className={primary}>{saving ? "Saving…" : "Save settings"}</button>
-                                    <button onClick={() => { setS({ ...DEFAULT_SETTINGS }); setHostsText(DEFAULT_SETTINGS.hosts.join("\n")); setNotice("Back to the original settings. Press Save to keep them."); setDirty(true); }}
+                                    <button onClick={() => { setS({ ...DEFAULT_SETTINGS }); setHostsText(DEFAULT_SETTINGS.hosts.join("\n")); setNamesText(DEFAULT_SETTINGS.recurringNames.join("\n")); setNotice("Back to the original settings. Press Save to keep them."); setDirty(true); }}
                                         className="text-xs text-gray-400 hover:text-white">Reset to the original settings</button>
                                     {notice
                                         ? <span className="text-sm text-green-300">{notice}</span>

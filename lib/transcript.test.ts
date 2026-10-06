@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildCues, toSrt } from './captions';
 import { buildLines, emptyCorrections, heardIndex, parseCorrections, type ReviewUtterance } from './transcript';
+import { isUnsure, UNSURE_BELOW, unsureTitle } from './wordFixes';
 
 const u = (label: string, text: string, from: number): ReviewUtterance => ({
     label, words: text.split(' ').map((t, i) => ({ text: t, start: from + i * 300, end: from + i * 300 + 250 })),
@@ -44,4 +45,19 @@ test('the accepted transcript\'s words carry the correction into the captions', 
     const srt = toSrt(buildCues(lines.flatMap(l => l.words)));
     assert.match(srt, /JoAnn McKenzie/);
     assert.doesNotMatch(srt, /anne/);
+});
+
+test('each word keeps the transcriber\'s confidence; a corrected one has none, so it is never marked unsure', () => {
+    const sure = [0.99, 0.95, 0.41, 0.52, 0.58, 0.9, 0.3];
+    const heard = [{ ...utterances[0], words: utterances[0].words.map((w, i) => ({ ...w, confidence: sure[i] })) }, utterances[1]];
+    const [a] = buildLines(heard, [], emptyCorrections());
+    assert.deepEqual(a.words.filter(isUnsure).map(w => w.text), ['jo', 'anne', 'kenzie', 'boulder']);
+    const [fixed] = buildLines(heard, [], { ...emptyCorrections(), words: { '0:2': { count: 3, text: 'JoAnn McKenzie' } } });
+    assert.deepEqual(fixed.words.filter(isUnsure).map(w => w.text), ['boulder']);
+    assert.equal('confidence' in fixed.words[2], false);
+    assert.equal(fixed.words[0].confidence, 0.99);
+    // At the threshold is sure enough; no confidence (transcripts accepted before) is never unsure.
+    assert.equal(isUnsure({ confidence: UNSURE_BELOW }), false);
+    assert.equal(isUnsure({}), false);
+    assert.match(unsureTitle({ confidence: 0.41 }), /41% sure/);
 });

@@ -2,7 +2,14 @@
 
 import { memo, useState } from "react";
 import { heardIndex, timestamp, type Flag, type Line } from "@/lib/transcript";
-import { fixGroup } from "@/lib/wordFixes";
+import { fixGroup, isUnsure, unsureTitle } from "@/lib/wordFixes";
+
+// Dotted underlines: blue for a corrected word, amber for one the transcriber was unsure of (spec 019 2.5).
+const FIXED = "underline decoration-dotted decoration-sky-400 underline-offset-2";
+const UNSURE = "underline decoration-dotted decoration-amber-400 underline-offset-2";
+const marked = (w: Line["words"][number]) => (w.heard !== undefined ? FIXED : isUnsure(w) ? UNSURE : "");
+const markTitle = (w: Line["words"][number]) =>
+    w.heard !== undefined ? `Corrected; heard as "${w.heard}"` : isUnsure(w) ? unsureTitle(w) : undefined;
 
 export interface Voice {
     label: string;
@@ -39,6 +46,7 @@ interface Props {
 // the line that becomes active should.
 function LineRow({ line, active, splitting, correcting, flag, flagTo, voices, color, actions }: Props) {
     const fixed = line.words.some(w => w.heard !== undefined);
+    const anyMarked = line.words.some(w => marked(w));
     return (
         <div
             id={`line-${line.id}`}
@@ -101,11 +109,9 @@ function LineRow({ line, active, splitting, correcting, flag, flagTo, voices, co
                 <WordFixer line={line} actions={actions} />
             ) : (
                 <p className={`mt-1 leading-relaxed ${line.clip ? "italic text-gray-400" : "text-gray-100"}`}>
-                    {fixed ? line.words.map((w, i) => (
+                    {anyMarked ? line.words.map((w, i) => (
                         <span key={i}>
-                            {w.heard !== undefined
-                                ? <span className="underline decoration-dotted decoration-sky-400 underline-offset-2" title={`Corrected; heard as "${w.heard}"`}>{w.text}</span>
-                                : w.text}
+                            {marked(w) ? <span className={marked(w)} title={markTitle(w)}>{w.text}</span> : w.text}
                             {" "}
                         </span>
                     )) : line.text}
@@ -145,8 +151,8 @@ function WordFixer({ line, actions }: { line: Line; actions: LineActions }) {
             <p className="leading-relaxed">
                 {line.words.map((w, i) => (
                     <button key={i} onClick={e => pick(i, e.shiftKey)}
-                        className={`rounded px-0.5 hover:bg-amber-500/30 ${sel && i >= sel.from && i <= sel.to ? "bg-amber-500/30" : ""} ${w.heard !== undefined ? "underline decoration-dotted decoration-sky-400 underline-offset-2" : ""}`}
-                        title={w.heard !== undefined ? `Corrected; heard as "${w.heard}"` : undefined}>
+                        className={`rounded px-0.5 hover:bg-amber-500/30 ${sel && i >= sel.from && i <= sel.to ? "bg-amber-500/30" : ""} ${marked(w)}`}
+                        title={markTitle(w)}>
                         {w.text}{" "}
                     </button>
                 ))}

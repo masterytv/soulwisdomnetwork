@@ -96,8 +96,8 @@ for this work".
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
-| 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
-| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
+| 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#151); a test episode's spelling waits on an ingest run from `main` |
+| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#152); in the editor once a transcript is accepted again |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
@@ -502,6 +502,23 @@ YouTube captions of a test upload.
 
 **Done when:** a test episode spells the show name and the hosts right without corrections.
 
+**Built (#151):**
+- **What AssemblyAI takes** (its docs, 6 October 2026): `keyterms_prompt` works with the Universal
+  models we use. Universal-3 takes up to 1,000 words or phrases; **universal-2, our fallback, takes
+  200**, and ignores terms under 5 or over 50 characters. A term is at most 6 words. It costs **$0.05
+  an hour more** on pre-recorded audio. AssemblyAI warns that long lists of common words cause
+  overcorrection, so the list is for words it gets wrong.
+- **Studio settings:** a **Names and terms to spell right** list (`recurringNames`, up to 150, each up
+  to 50 characters) under Speakers. Empty by default.
+- **`transcriptionKeyterms`** (`lib/studioSettings.ts`, with tests): the show's name, the hosts and the
+  list, once each (ignoring case), dropping terms over 6 words or 50 characters, at most 200.
+- **Ingest** sends them as `keyterms_prompt` (`submitTranscription`), records them on the episode
+  (`transcription.keyterms`), and adds $0.05 an hour to its cost estimate when there are any. The
+  uploaded-recording reserve in `lib/server/spending.ts` is now $0.90 (3 hours at $0.30).
+  `speaker_identification` is unchanged.
+- **Not sent** to the final cut's transcript (`transcribeWords` in `final.ts`): that one only lines
+  the cut up with the original.
+
 ### 2.5 Highlight words the transcriber was unsure of (S)
 
 **Build:**
@@ -510,6 +527,19 @@ YouTube captions of a test upload.
 - Underline words under 0.6 in a dotted amber line, so the producer checks names and numbers
   first.
 - Neither Rescript nor CutScript does this.
+
+**Built (#152):**
+- **Carried through:** speaker review reads each word's `confidence` from `raw.json` (rounded to two
+  places), `buildLines` keeps it, and the accepted transcript (`reviewed.json`) and the editor's words
+  have it. A corrected word (item 2.3) has none: a person typed it.
+- **`isUnsure`** (`lib/wordFixes.ts`): under `UNSURE_BELOW` (0.6), with tests.
+- **Speaker review:** unsure words are underlined in dotted amber (corrected ones stay dotted blue),
+  with "The transcriber was unsure of this word (41% sure)" as the tooltip. The bar above the lines
+  counts them (**N unsure words**) and **Next unsure** jumps line by line.
+- **The editor:** the same underline on kept words, except the one playing; the tooltip says to
+  double-click to correct it.
+- **Older episodes:** speaker review shows them straight away (it reads `raw.json`); the editor once the
+  transcript is accepted again, since `reviewed.json` written before this has no confidence.
 
 ### 2.6 Autosave that survives a closed tab (S, idea from Rescript's MIT tree)
 

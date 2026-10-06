@@ -31,6 +31,8 @@ export const StudioSettingsSchema = z.object({
     about: z.string().trim().max(300),            // finishes "The show …"
     audience: z.string().trim().max(200),         // finishes "… for …"
     hosts: z.array(z.string().trim().min(1).max(60)).max(10),
+    // Names and terms the transcriber should spell right (spec 019 item 2.4): guests, places, terms.
+    recurringNames: z.array(z.string().trim().min(1).max(50)).max(150),
     format: z.enum(FORMATS),
     extraInstructions: z.string().trim().max(3000),
     descriptionChoices: z.number().int().min(1).max(5),  // YouTube descriptions Claude writes to choose from
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     about: 'explores near-death experiences, consciousness and the meaning of life with warmth and curiosity',
     audience: 'listeners who are spiritually open but not dogmatic',
     hosts: ['Daniel Endy', 'Tom Wood'],
+    recurringNames: [],
     format: 'podcast',
     extraInstructions: '',
     descriptionChoices: 1,
@@ -109,6 +112,30 @@ export function withDefaults(saved: unknown): StudioSettings {
         }
     }
     return out as StudioSettings;
+}
+
+// ─── Spelling in the transcript (spec 019 item 2.4) ─────────────────────────
+
+// AssemblyAI's keyterms prompt: up to 200 terms with universal-2 (our fallback model; the Universal-3
+// models take more), each at most 6 words. Universal-2 ignores terms under 5 or over 50 characters.
+export const KEYTERMS_MAX = 200;
+export const KEYTERM_WORDS_MAX = 6;
+export const KEYTERM_CHARS_MAX = 50;
+
+// What the transcriber is asked to spell right: the show's name, the hosts and the recurring names,
+// once each (ignoring case), each short enough to send.
+export function transcriptionKeyterms(s: Pick<StudioSettings, 'showName' | 'hosts' | 'recurringNames'>): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const raw of [s.showName, ...s.hosts, ...s.recurringNames]) {
+        const term = raw.trim().replace(/\s+/g, ' ');
+        const key = term.toLowerCase();
+        if (!term || seen.has(key) || term.length > KEYTERM_CHARS_MAX || term.split(' ').length > KEYTERM_WORDS_MAX) continue;
+        seen.add(key);
+        out.push(term);
+        if (out.length === KEYTERMS_MAX) break;
+    }
+    return out;
 }
 
 // ─── Words that change with the kind of recording ───────────────────────────

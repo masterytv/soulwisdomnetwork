@@ -67,7 +67,8 @@ The 720p preview video beside the transcript.
 - AssemblyAI's output (`episodes/{id}/transcripts/raw.json`) is never changed.
 - Corrections are stored on the episode as a layer over it: speaker names, merges, clip
   flags, per-line reassignments and splits, and misheard words retyped (`corrections.words`,
-  spec 019 item 2.3: **Correct words** on a line, and **Find and replace**).
+  spec 019 item 2.3: **Correct words** on a line, and **Find and replace**). Words the transcriber
+  was unsure of (under 60%) are underlined in dotted amber, with **Next unsure** (item 2.5).
 - Accepting writes `transcripts/reviewed.json` (raw with corrections applied) and sets
   `status: 'speakers_confirmed'`, `review.acceptedBy`, `review.acceptedAt`.
 
