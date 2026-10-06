@@ -53,7 +53,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
               editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
               components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,
-              spec 019 item 4.3)
+              spec 019 item 4.3); sections can play in another order, and an episode can have its own intro and outro, in the
+              Parts panel (edit.order, components/studio/partsPanel.tsx, item E9)
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)

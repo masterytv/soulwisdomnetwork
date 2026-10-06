@@ -4,14 +4,15 @@
 // b-roll, the render's length) is mapped through a play order. A transition at a split overlaps the
 // parts on either side (item E4), so everything after it lands that much earlier.
 
-import { editedDuration, editedTime, keepRanges, type Cut, type KeptRange } from './edit';
+import { editedDuration, editedTime, isReordered, keepRanges, validOrder, type Cut, type KeptRange } from './edit';
 import { joinKey, splitTransitions, type Join, type TransitionKind } from './transitions';
 
 // A kept stretch of the recording, where it starts in the edited episode, and which part it is in
 // (the parts are what the transitions at splits divide the episode into).
 export interface Clip extends KeptRange { atMs: number; part?: number }
 
-export interface SequenceEdit { cuts: Cut[]; splits?: number[]; joins?: Join[] }
+// `order` (spec 020 item E9): the sections between splits in play order; missing, the recording's.
+export interface SequenceEdit { cuts: Cut[]; splits?: number[]; joins?: Join[]; order?: number[] | null }
 
 // A transition between two parts, as it plays: the later part (`part`) starts at atMs in the edited
 // episode, durationMs before the earlier one ends. In the recording, the earlier part's overlap runs
@@ -33,7 +34,8 @@ export interface Sequence {
 const SPLIT_SLACK_MS = 100;
 
 // The kept stretches in play order (keepRanges: the cuts, kept off the words, slivers dropped),
-// each with its place in the edited episode. Parts stay in source order (decision U4). Where a
+// each with its place in the edited episode. Parts keep the recording's order unless the edit moved them (`order`,
+// spec 020 item E9; decision U4 kept them in order until then). Where a
 // split has a transition, the part after it starts that much before the part before it ends; a
 // transition longer than either part, or than what the part has left after the transition at its
 // other end, plays as a straight cut instead (`skipped`).
@@ -41,19 +43,33 @@ export function sequenceOf(edit: SequenceEdit, durationMs: number, words?: { sta
     const ranges = keepRanges(durationMs, edit.cuts, padMs, words);
     const trans = splitTransitions(edit.joins, edit.splits);
     const skipped: Record<string, string> = {};
+    // Moved sections (spec 020 item E9): the parts are then every section between splits, in the edit's order, and
+    // the transition into a part is the one at the split it starts at. Otherwise the parts are what the transitions'
+    // splits divide, in the recording's order, as before.
+    const splits = [...(edit.splits ?? [])].sort((a, b) => a - b);
+    const moved = isReordered(edit.order) && validOrder(edit.order, splits.length + 1);
+    const bounds = moved ? splits : trans.map(t => t.atMs);
 
-    // The stretches, divided at the transitions' splits; part = how many of those splits come before.
-    const clips: Clip[] = [];
+    // The stretches, divided at the bounds; part = how many of them come before.
+    let clips: Clip[] = [];
     let k = 0;
     for (const r of ranges) {
         let start = r.startMs;
-        while (k < trans.length && trans[k].atMs <= start + SPLIT_SLACK_MS) k++;
-        for (; k < trans.length && trans[k].atMs < r.endMs - SPLIT_SLACK_MS; k++) {
-            clips.push({ startMs: start, endMs: trans[k].atMs, atMs: 0, part: k });
-            start = trans[k].atMs;
+        while (k < bounds.length && bounds[k] <= start + SPLIT_SLACK_MS) k++;
+        for (; k < bounds.length && bounds[k] < r.endMs - SPLIT_SLACK_MS; k++) {
+            clips.push({ startMs: start, endMs: bounds[k], atMs: 0, part: k });
+            start = bounds[k];
         }
         clips.push({ startMs: start, endMs: r.endMs, atMs: 0, part: k });
     }
+    if (moved) {
+        const place = new Map(edit.order!.map((section, i) => [section, i]));
+        clips = clips.map((c, i) => ({ c, i })).sort((a, b) => place.get(a.c.part!)! - place.get(b.c.part!)! || a.i - b.i).map(x => x.c);
+    }
+    // The transition into a part, when the part before it is `prev`.
+    const into = (p: { part: number }, prev: { part: number }) => moved
+        ? (p.part > 0 ? trans.find(t => t.atMs === splits[p.part - 1]) : undefined)
+        : trans[prev.part];
 
     // The parts that have something in them, in order, with their lengths.
     const parts: { part: number; first: number; last: number; lengthMs: number }[] = [];
@@ -69,8 +85,8 @@ export function sequenceOf(edit: SequenceEdit, durationMs: number, words?: { sta
     parts.forEach((p, i) => {
         if (i > 0) {
             const prev = parts[i - 1];
-            // The transition at the first split after the earlier part.
-            const t = trans[prev.part];
+            // The transition at the first split after the earlier part (or, moved, the split this part starts at).
+            const t = into(p, prev);
             const room = Math.min(prev.lengthMs - usedHead, p.lengthMs);
             if (t && t.durationMs > room) {
                 skipped[joinKey({ atSplit: t.atMs })] = 'Longer than the section before or after it, so it plays as a straight cut.';
@@ -96,7 +112,10 @@ export function sequenceOf(edit: SequenceEdit, durationMs: number, words?: { sta
     // Transitions whose splits fall where nothing is kept between them never play.
     for (const t of trans) {
         const key = joinKey({ atSplit: t.atMs });
-        if (!skipped[key] && !joins.some(j => j.splitMs === t.atMs)) skipped[key] = 'Nothing is kept on one side of it, so it does not play.';
+        if (skipped[key] || joins.some(j => j.splitMs === t.atMs)) continue;
+        skipped[key] = moved && parts[0]?.part === splits.indexOf(t.atMs) + 1
+            ? 'The section after it now plays first, so nothing comes before it to join.'
+            : 'Nothing is kept on one side of it, so it does not play.';
     }
     return { clips, joins, skipped };
 }
@@ -159,4 +178,27 @@ export function sourceTime(clips: Clip[], atMs: number): number | null {
 // How long the edited episode is.
 export function sequenceLength(clips: Clip[]): number {
     return editedDuration(clips);
+}
+
+// How long after a stretch's end the video can be and still have just played past it (rather than been moved).
+const PASSED_MS = 500;
+
+// The preview's step through the edit with one video (spec 020 item E9): `ranges` in play order, the video at `t`,
+// and the stretch it was playing (`current`, -1 at first). It stays; or, having just played past the end of its
+// stretch, goes to the start of the next one in play order, wherever that is in the recording; or, moved by hand,
+// takes the stretch it is now in, or the next kept moment of the recording. In the recording's order this is the
+// skip over each cut the editor always made.
+export function playStep(ranges: KeptRange[], t: number, current: number): { index: number; seekTo: number | null } {
+    const r = ranges[current];
+    if (r && t >= r.startMs - 1 && t < r.endMs) return { index: current, seekTo: null };
+    if (r && t >= r.endMs && t < r.endMs + PASSED_MS) {
+        const next = ranges[current + 1];
+        if (!next) return { index: current, seekTo: null };
+        return { index: current + 1, seekTo: t >= next.startMs && t < next.endMs ? null : next.startMs };
+    }
+    const inside = ranges.findIndex(x => t >= x.startMs && t < x.endMs);
+    if (inside >= 0) return { index: inside, seekTo: null };
+    let after = -1;
+    ranges.forEach((x, i) => { if (x.startMs > t && (after < 0 || x.startMs < ranges[after].startMs)) after = i; });
+    return after < 0 ? { index: current, seekTo: null } : { index: after, seekTo: ranges[after].startMs };
 }

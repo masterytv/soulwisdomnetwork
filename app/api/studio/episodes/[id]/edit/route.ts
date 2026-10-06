@@ -14,7 +14,7 @@ import { z } from 'zod';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
-import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
+import { CutsSchema, isReordered, MAX_SPLITS, SilencesFileSchema, SplitsSchema, validOrder, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
 import { layersOf, LayersSchema, SITE_LOGO, SITE_LOGO_URL, type BinItem, type Layer } from '@/lib/layers';
@@ -23,6 +23,10 @@ import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
 import { SoundsSchema, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
+
+// The episode's own intro or outro (spec 020 item E9): a video from its media bin.
+const SectionFileSchema = z.object({ path: z.string().min(1).max(300), name: z.string().max(200) }).strict();
+type SectionFile = z.infer<typeof SectionFileSchema>;
 import type { Episode } from '@/types/episode';
 
 export const dynamic = 'force-dynamic';
@@ -67,7 +71,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown; order?: unknown; intro?: unknown; outro?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -119,6 +123,32 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const r = z.enum(VOICE_CLEANUPS).nullable().safeParse(body.edit.voice);
         if (!r.success) throw new HttpError(400, 'Voice clean-up: not one of the choices');
         voice = r.data;
+    }
+    // Moved sections and the episode's own intro and outro (spec 020 item E9). Left out of the request, they stay as
+    // saved; an order that no longer fits the splits is dropped in the transaction below (the recording's order).
+    let order: number[] | null | undefined;
+    if (body.edit.order !== undefined) {
+        if (body.edit.order !== null && !(Array.isArray(body.edit.order) && body.edit.order.length <= MAX_SPLITS + 1 && body.edit.order.every(n => Number.isInteger(n)))) {
+            throw new HttpError(400, 'Order: a list of section numbers');
+        }
+        order = body.edit.order as number[] | null;
+    }
+    const ends: { intro?: SectionFile | null; outro?: SectionFile | null } = {};
+    for (const key of ['intro', 'outro'] as const) {
+        const v = body.edit[key];
+        if (v === undefined) continue;
+        if (v === null) { ends[key] = null; continue; }
+        const r = SectionFileSchema.safeParse(v);
+        if (!r.success) throw new HttpError(400, `${key === 'intro' ? 'Intro' : 'Outro'}: not valid`);
+        ends[key] = r.data;
+    }
+    if (ends.intro || ends.outro) {
+        const episode = (await ref.get()).data() as Episode | undefined;
+        if (!episode) throw new HttpError(404, 'Episode not found');
+        const bin = await binItems(ref.id, episode, await getSettings());
+        for (const f of [ends.intro, ends.outro]) {
+            if (f && !bin.some(i => i.kind === 'video' && i.path === f.path)) throw new HttpError(400, 'The intro or outro must be a video in this episode\'s media');
+        }
     }
     // Whether the render uses the speaker tracks (spec 019 item 3.3). Left out of the request, it stays as saved.
     let speakerTracks: boolean | null | undefined;
@@ -189,6 +219,12 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 captions: captions !== undefined ? captions : current?.captions ?? null,
                 voice: voice !== undefined ? voice : current?.voice ?? null,
                 speakerTracks: speakerTracks !== undefined ? speakerTracks : current?.speakerTracks ?? null,
+                order: (() => {
+                    const o = order !== undefined ? order : current?.order ?? null;
+                    return o && validOrder(o, keptSplits.length + 1) && isReordered(o) ? o : null;
+                })(),
+                intro: ends.intro !== undefined ? ends.intro : current?.intro ?? null,
+                outro: ends.outro !== undefined ? ends.outro : current?.outro ?? null,
                 splits: keptSplits,
                 joins: keptJoins,
                 ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),

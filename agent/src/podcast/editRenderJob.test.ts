@@ -420,3 +420,29 @@ test('speaker tracks: downloaded and given to the renderer, unless the edit turn
     assert.ok(!off.downloads.some(p => p.includes('/tracks/')));
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the episode\'s own intro and outro, from its media, replace the Studio\'s (spec 020 item E9)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-ends-'));
+    const run = async (edit: Partial<Episode['edit']>) => {
+        let given: { intro?: string; outro?: string } = {};
+        await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], ...edit } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async () => {},
+            render: async opts => {
+                given = { intro: opts.intro && path.basename(opts.intro), outro: opts.outro && path.basename(opts.outro) };
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, intro: 'custom', introPath: 'settings/intro-1.mp4' },
+        }, path.join(dir, 'work'), '1');
+        return given;
+    };
+    assert.deepEqual(await run({}), { intro: 'intro.mp4', outro: 'intro.mp4' });
+    assert.deepEqual(await run({ intro: { path: `episodes/${ID}/media/mv1.mp4`, name: 'New intro' } }), { intro: 'own-intro.mp4', outro: 'intro.mp4' });
+    assert.deepEqual(await run({ outro: { path: `episodes/${ID}/media/mv2.mp4`, name: 'Goodbye' } }), { intro: 'intro.mp4', outro: 'own-outro.mp4' });
+    fs.rmSync(dir, { recursive: true, force: true });
+});

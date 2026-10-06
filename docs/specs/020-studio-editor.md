@@ -846,6 +846,41 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 - a render of it checked by 019 item 0.2;
 - `lib/` tests for any new pure function.
 
+### E9 — Built (#170)
+
+Tom gave the go-ahead (6 October 2026: "finish all the rest of the features"). Moving parts, in a panel rather than by
+dragging on the timeline, and the episode's own intro and outro.
+- **The model:** `edit.order`, the sections between splits (numbered in the recording's order) in play order; null or
+  missing is the recording's order, so every edit made before plays exactly as it did. `lib/edit.ts` has
+  `validOrder`, `isReordered`, `moveSection`, and `orderAfterSplit` / `orderAfterUnsplit`, which keep the order
+  right when a split is added (the section becomes two, side by side) or removed (the section after it joins the one
+  before). The edit route drops an order that no longer fits the splits.
+- **The play order** (`lib/sequence.ts` `sequenceOf`): with a moved section, the episode is divided at every split and
+  the sections laid out in `order`; the transition into a part is the one at the split it starts at (so a dissolve
+  "at 10:00" always leads into the section that starts at 10:00, wherever it plays), and one into the section that
+  now plays first says it cannot play. Unmoved, nothing changed.
+- **Every time follows it:** `editedTime` maps a moment to wherever its section plays (a cut moment rounds to where
+  the next kept moment of the recording plays); `editedWords` returns words in the order they are heard (captions,
+  the .srt, the final cut's words); chapters are re-sorted by their new times before YouTube's rules are applied
+  (`tidyChapters`); layers and sounds anchored to words move with their section; the render's windows and sound
+  (4.2) take the clips in play order.
+- **The preview** steps through the play order (`playStep`): at the end of a stretch it goes to the start of the
+  next one in play order, wherever that is in the recording; a seek by hand takes the stretch it lands in. In the
+  recording's order this is the skip over each cut it always made. The second video at cuts (4.3) follows it too.
+- **The Parts panel** (`components/studio/partsPanel.tsx`): the sections in play order, each with its times, how
+  much is kept and its first words (click to go there), ↑ and ↓ to move it, and "Back to the recording's order". The
+  timeline keeps showing the recording in its own order; the panel says so.
+- **The episode's own intro and outro:** chosen in the same panel from the episode's media bin videos
+  (`edit.intro`, `edit.outro`; the route checks the file is in the bin). The render job uses them instead of the
+  Studio's; without them the outro is the Studio's intro, as always.
+- **Checked:** the play order, times, words, the transition into a moved part and the order helpers
+  (`lib/sequence.test.ts`); a real render of three coloured sections with their own tones, played third, first,
+  second, has the picture, the sound and the words in that order (`editRender.test.ts`); the job picks the own
+  intro and outro (`editRenderJob.test.ts`); in Chromium, moving a part, playing past its end into the start of the
+  recording, and going back to the recording's order.
+- **Not built:** dragging parts on the timeline itself (the timeline would have to show the edited order rather than
+  the recording), and dropping a video onto the timeline's ends for the intro or outro (the panel's choice does it).
+
 ## Not in this spec
 
 - **Phones and tablets.** The Studio editor is desktop only; the quick edit stays as the

@@ -14,6 +14,7 @@
 // the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
 // Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
+// Item E9 (spec 020): the edit's own play order of sections goes with it; its own intro and outro replace the Studio's.
 // Item 3.3: when the episode has speaker tracks (lib/speakerTracks.ts), the voice is made from them unless its edit says not.
 // Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
 // they cannot be made, the render is still kept, with a warning.
@@ -71,6 +72,9 @@ export interface EditRenderPlan {
     teaserClips: { startMs: number; endMs: number }[];   // to cut from the recording when there is no package
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
+    // The episode's own intro and outro (spec 020 item E9), from its media bin: they replace the Studio's.
+    ownIntro: string | null;
+    ownOutro: string | null;
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
     // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
@@ -127,6 +131,8 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         teaserClips,
         intro,
         showIntro,
+        ownIntro: edit.intro?.path ?? null,
+        ownOutro: edit.outro?.path ?? null,
         // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
         // first opened the edit), so the notes plan's is drawn only for an edit without.
         broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
@@ -184,8 +190,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             teasers.push(out);
         }
     }
-    const intro = plan.intro ? await get(plan.intro, 'intro')
+    const studioIntro = plan.intro ? await get(plan.intro, 'intro')
         : plan.showIntro && deps.showIntro && fs.existsSync(deps.showIntro) ? deps.showIntro : undefined;
+    // The episode's own intro or outro replaces the Studio's; the outro is otherwise the Studio's intro, as always.
+    const intro = plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro;
+    const outro = plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro;
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
@@ -229,7 +238,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const report = await deps.render({
         video, edit: plan.edit, out,
         teasers: teasers.length ? teasers : undefined,
-        intro, outro: intro,
+        intro, outro,
         broll: broll.length ? broll : undefined,
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
@@ -380,7 +389,9 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
     const timed = fs.existsSync(moved)
         ? JSON.parse(fs.readFileSync(moved, 'utf8')) as { chapters: { startMs: number }[]; quotes: { startMs: number; endMs: number }[] }
         : { chapters: [], quotes: [] };
-    const tidy = tidyChapters(plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs })));
+    // In the order they are heard: moved sections (spec 020 item E9) can bring a later chapter earlier.
+    const tidy = tidyChapters(plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs }))
+        .sort((a, b) => a.startMs - b.startMs));
     return {
         final: {
             status: 'ready',
