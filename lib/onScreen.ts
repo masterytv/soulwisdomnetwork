@@ -4,8 +4,6 @@
 // turns them into one ASS subtitle file plus ffmpeg overlay filters, all on the edited timeline.
 
 import { z } from 'zod';
-import type { Cue } from './captions';
-import { editedTime, type KeptRange } from './edit';
 
 // The render's frame; every size and margin below is in its pixels.
 export const FRAME = { width: 1920, height: 1080 } as const;
@@ -129,20 +127,6 @@ export function nameTitles(words: { speaker: string; start: number }[], existing
     }));
 }
 
-export interface Placed<T> { overlay: T; startMs: number; endMs: number }
-
-// Moves overlays onto the edited timeline: each starts where its moment lands (the next kept moment
-// when it was cut) and stays `seconds`, ending with the video at the latest. Ones that start after the end are left out.
-export function placeOverlays<T extends { atMs: number; seconds: number }>(overlays: T[], ranges: KeptRange[], editedMs: number): Placed<T>[] {
-    const out: Placed<T>[] = [];
-    for (const overlay of overlays) {
-        const startMs = editedTime(overlay.atMs, ranges, true);
-        if (startMs === null || startMs >= editedMs) continue;
-        out.push({ overlay, startMs, endMs: Math.min(editedMs, startMs + Math.round(overlay.seconds * 1000)) });
-    }
-    return out;
-}
-
 // ─── ASS subtitles (captions and text overlays) ─────────────────────────────
 
 // An ASS colour, &HAABBGGRR, where alpha 0 is solid and 255 is clear.
@@ -160,7 +144,7 @@ export function assTime(ms: number): string {
 }
 
 // ASS alignment numbers (numpad layout: 1 bottom left … 9 top right).
-const ALIGN: Record<Position, number> = {
+export const ALIGN: Record<Position, number> = {
     'bottom-left': 1, bottom: 2, 'bottom-right': 3, 'middle-left': 4, middle: 5, 'middle-right': 6, 'top-left': 7, top: 8, 'top-right': 9,
 };
 
@@ -170,7 +154,7 @@ export function assText(text: string): string {
 }
 
 // One ASS style line for a look: font, height, colour, the background, and where it sits.
-function styleLine(name: string, look: { font: FontName; size: TextSize; color: string; background: Background }, position: Position, marginV: number): string {
+export function styleLine(name: string, look: { font: FontName; size: TextSize; color: string; background: Background }, position: Position, marginV: number): string {
     const size = TEXT_SIZES[look.size];
     const bold = FONTS.find(f => f.name === look.font)?.bold ? -1 : 0;
     const box = look.background === 'box';
@@ -180,52 +164,4 @@ function styleLine(name: string, look: { font: FontName; size: TextSize; color: 
     const outlineColour = box ? assRgba('#000000', 0x50) : assRgba('#000000');
     return `Style: ${name},${look.font},${size},${assRgba(look.color)},${assRgba(look.color)},${outlineColour},${assRgba('#000000', 0x60)},` +
         `${bold},0,0,0,100,100,0,0,${box ? 3 : 1},${outline},${shadow},${ALIGN[position]},90,90,${marginV},1`;
-}
-
-// The whole ASS file: captions (when a look is given) and every placed text overlay, timed on the
-// edited video. Null when there is nothing to show.
-export function buildAss(cues: Cue[], captions: CaptionStyle | null, texts: Placed<TextOverlay>[]): string | null {
-    const showCaptions = !!captions && cues.length > 0;
-    if (!showCaptions && texts.length === 0) return null;
-    const styles: string[] = [];
-    const events: string[] = [];
-    if (showCaptions) {
-        styles.push(styleLine('Captions', captions, captions.position, 70));
-        for (const c of cues) events.push(`Dialogue: 0,${assTime(c.startMs)},${assTime(c.endMs)},Captions,,0,0,0,,${c.lines.map(assText).join('\\N')}`);
-    }
-    texts.forEach((t, i) => {
-        const o = t.overlay;
-        styles.push(styleLine(`Text${i + 1}`, o, o.position, 80));
-        const second = o.subtext ? `\\N{\\fs${Math.round(TEXT_SIZES[o.size] * 0.6)}}${assText(o.subtext)}` : '';
-        events.push(`Dialogue: 1,${assTime(t.startMs)},${assTime(t.endMs)},Text${i + 1},,0,0,0,,{\\fad(250,250)}${assText(o.text)}${second}`);
-    });
-    return [
-        '[Script Info]', 'ScriptType: v4.00+', `PlayResX: ${FRAME.width}`, `PlayResY: ${FRAME.height}`, 'WrapStyle: 0', 'ScaledBorderAndShadow: yes', '',
-        '[V4+ Styles]',
-        'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-        ...styles, '',
-        '[Events]',
-        'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-        ...events, '',
-    ].join('\n');
-}
-
-// ─── Image overlays (ffmpeg) ────────────────────────────────────────────────
-
-// Where an image sits: its width in pixels (even, for the encoder) and ffmpeg overlay x and y
-// expressions (W, H the frame; w, h the image), 60 pixels in from the edges unless it fills the width.
-export function imagePlacement(position: Position, widthPct: number): { width: number; x: string; y: string } {
-    const width = Math.max(2, Math.round(FRAME.width * widthPct / 100 / 2) * 2);
-    const m = widthPct >= 100 ? 0 : 60;
-    const x = position.endsWith('left') ? `${m}` : position.endsWith('right') ? `W-w-${m}` : '(W-w)/2';
-    const y = position.startsWith('top') ? `${m}` : position.startsWith('bottom') ? `H-h-${m}` : '(H-h)/2';
-    return { width, x, y };
-}
-
-// The filter text that lays one image (ffmpeg input `inputIdx`) over `inLabel` while it is up, giving `outLabel`.
-export function imageOverlayFilter(inputIdx: number, inLabel: string, outLabel: string, placed: Placed<ImageOverlay>): string {
-    const { width, x, y } = imagePlacement(placed.overlay.position, placed.overlay.widthPct);
-    const s = (placed.startMs / 1000).toFixed(3), e = (placed.endMs / 1000).toFixed(3);
-    return `[${inputIdx}:v]scale=${width}:-2,format=rgba[${outLabel}_img];` +
-        `[${inLabel}][${outLabel}_img]overlay=x=${x}:y=${y}:enable='between(t,${s},${e})',format=yuv420p[${outLabel}];`;
 }

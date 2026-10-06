@@ -7,7 +7,8 @@
 // The parsers and the rules are pure, so the tests run on canned ffmpeg output.
 
 import { spawn } from 'child_process';
-import { editedTime, type KeptRange } from '../../../lib/edit';
+import type { KeptRange } from '../../../lib/edit';
+import { anchorCut, layerSpan, type Anchor } from '../../../lib/layers';
 import type { RenderQc } from '../../../types/episode';
 import { LOUDNESS } from './media';
 
@@ -114,13 +115,13 @@ export function qcWarnings(m: Measured, expect: QcExpect = {}): string[] {
 // On-screen text and images against the edit: one that starts in a cut shows at the next kept
 // moment, one past the end is never shown, and one running past the end is cut short. `label`
 // names it for the producer.
-export function onScreenChecks(items: { atMs: number; seconds: number; label: string }[], ranges: KeptRange[], editedMs: number): string[] {
+export function onScreenChecks(items: { anchor: Anchor; durationMs: number; label: string }[], ranges: KeptRange[], editedMs: number): string[] {
     const w: string[] = [];
     for (const it of items) {
-        const start = editedTime(it.atMs, ranges, true);
-        if (start === null || start >= editedMs) { w.push(`On screen: "${it.label}" comes after the end of the edit, so it is not shown.`); continue; }
-        if (editedTime(it.atMs, ranges) === null) w.push(`On screen: "${it.label}" starts in a cut part, so it shows at the next kept moment (${secs(start / 1000)} in the episode).`);
-        if (start + it.seconds * 1000 > editedMs + 1) w.push(`On screen: "${it.label}" runs past the end of the edit and is cut short.`);
+        const span = layerSpan(it, ranges, editedMs);
+        if (!span) { w.push(`On screen: "${it.label}" comes after the end of the edit, so it is not shown.`); continue; }
+        if (anchorCut(it, ranges)) w.push(`On screen: "${it.label}" starts in a cut part, so it shows at the next kept moment (${secs(span.startMs / 1000)} in the episode).`);
+        if (span.startMs + it.durationMs > editedMs + 1) w.push(`On screen: "${it.label}" runs past the end of the edit and is cut short.`);
     }
     return w;
 }

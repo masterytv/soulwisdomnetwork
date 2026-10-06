@@ -3,26 +3,28 @@
 // Uploads from the Studio (lib/server/uploads.ts): asks the server for a one-time upload link,
 // sends the file straight to Cloud Storage with a progress bar, and, for a recording, turns it
 // into an episode. Used on the Studio page (recordings), the Settings page (logo, intro) and the
-// editor (overlay images, Part I).
+// editor (overlay images, Part I; the media bin's pictures, video and sounds, spec 020 item E5).
 
 import { useRef, useState } from "react";
 import { studioFetch } from "@/lib/studioClient";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
 
-type Kind = "episode" | "logo" | "intro" | "overlay";
+type Kind = "episode" | "logo" | "intro" | "overlay" | "media";
 
 // Some browsers leave the type empty for video files; the extension says what it is.
 const BY_EXTENSION: Record<string, string> = {
     mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska",
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+    mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav",
 };
-const typeOf = (file: File) => file.type || BY_EXTENSION[file.name.split(".").pop()?.toLowerCase() ?? ""] || "";
+export const typeOf = (file: File) => file.type || BY_EXTENSION[file.name.split(".").pop()?.toLowerCase() ?? ""] || "";
 
-// Sends one file; resolves with its Storage path (and the new episode's ID for a recording).
-export async function uploadFile(kind: Kind, file: File, onProgress: (share: number) => void) {
+// Sends one file; resolves with its Storage path (and the new episode's ID for a recording). A media
+// bin file names the episode it is for.
+export async function uploadFile(kind: Kind, file: File, onProgress: (share: number) => void, episodeId?: string) {
     const start = await studioFetch<{ uploadUrl: string; path: string; episodeId: string | null }>("/api/studio/uploads", {
         method: "POST",
-        body: JSON.stringify({ action: "start", kind, fileName: file.name, contentType: typeOf(file), size: file.size }),
+        body: JSON.stringify({ action: "start", kind, fileName: file.name, contentType: typeOf(file), size: file.size, episodeId }),
     });
     await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest();

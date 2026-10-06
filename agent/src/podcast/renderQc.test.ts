@@ -77,14 +77,16 @@ test('length, dead air, black inside the episode only, and sync', () => {
 test('on screen: a cut start, past the end, and cut short', () => {
     const ranges = keepRanges(60_000, [{ startMs: 10_000, endMs: 20_000, reason: 'manual' }]);   // 50 s kept
     const w = onScreenChecks([
-        { atMs: 5_000, seconds: 3, label: 'Fine' },
-        { atMs: 12_000, seconds: 3, label: 'In a cut' },
-        { atMs: 58_000, seconds: 5, label: 'Too long' },
+        { anchor: { srcMs: 5_000 }, durationMs: 3000, label: 'Fine' },
+        { anchor: { srcMs: 12_000 }, durationMs: 3000, label: 'In a cut' },
+        { anchor: { srcMs: 58_000 }, durationMs: 5000, label: 'Too long' },
+        // Pinned to the edited timeline, a layer is never "in a cut".
+        { anchor: { atMs: 12_000 }, durationMs: 3000, label: 'Pinned' },
     ], ranges, 50_000);
     assert.equal(w.length, 2, w.join('\n'));
     assert.match(w[0], /"In a cut" starts in a cut part/);
     assert.match(w[1], /"Too long" runs past the end/);
-    assert.match(onScreenChecks([{ atMs: 59_990, seconds: 1, label: 'Gone' }], keepRanges(60_000, [{ startMs: 50_000, endMs: 60_000, reason: 'manual' }]), 50_000)[0], /after the end/);
+    assert.match(onScreenChecks([{ anchor: { srcMs: 59_990 }, durationMs: 1000, label: 'Gone' }], keepRanges(60_000, [{ startMs: 50_000, endMs: 60_000, reason: 'manual' }]), 50_000)[0], /after the end/);
 });
 
 test('the subtitle file must hold every caption and text', () => {

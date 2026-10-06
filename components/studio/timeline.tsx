@@ -11,6 +11,9 @@
 // on V1, whose ends can be dragged to trim them (as the producer's own cuts); a click selects one.
 // Item E4: each split has a ⧓ marker for its transition (click it to choose one), and the stretches a
 // transition overlaps are shaded.
+// Item E5: the layers (lib/layers.ts) on V3 (text) and V2 (pictures and video): click one to select it,
+// drag it to move it, drag an end to trim it (snapping as cuts do; Alt turns it off), one undo step a
+// drag; and a file dragged from the Media panel lands where it is dropped.
 
 "use client";
 
@@ -18,7 +21,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
-import type { Overlay } from '@/lib/onScreen';
+import { LAYER_MIN_MS, layerSpan, type Layer } from '@/lib/layers';
+import { sourceTime, timelineTime, type Clip } from '@/lib/sequence';
+import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
 import { thumbAt, type ThumbSheets } from '@/lib/thumbs';
 import {
@@ -56,8 +61,9 @@ export interface SplitControls {
 
 // The lanes, top to bottom, in pixels. The voice lane takes the height that is left.
 const RULER_H = 22;
-const V2_TOP = RULER_H, V2_H = 20;
-const V1_TOP = V2_TOP + V2_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
+const LANE_H = 20;
+const V3_TOP = RULER_H, V2_TOP = V3_TOP + LANE_H;
+const V1_TOP = V2_TOP + LANE_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
 const A1_TOP = V1_TOP + V1_H + 2, MIN_A1_H = 40;
 const HEADER_W = 112;
 // How close to a cut's edge the pointer grabs it; a cut narrower than GRAB_PX on screen is grabbed
@@ -131,7 +137,9 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
 
     // Lane backgrounds.
     ctx.fillStyle = '#0f0922';
-    ctx.fillRect(0, V2_TOP, width, V2_H);
+    ctx.fillRect(0, V3_TOP, width, LANE_H * 2);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(0, V2_TOP, width, 1);
     ctx.fillStyle = '#0b0619';
     ctx.fillRect(0, V1_TOP, width, V1_H);
     ctx.fillRect(0, A1_TOP, width, a1H);
@@ -341,6 +349,19 @@ type Drag =
 
 const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10 aria-pressed:text-amber-300';
 
+// A layer being dragged on V2 or V3: its whole body moves it, an end trims it.
+interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Layer; draft: Layer; moved: boolean; guide: number | null }
+
+// Where a layer is on the timeline, which is drawn in the recording's time: from where it starts in the
+// edited episode to where it ends, mapped back to the recording (null when it starts after the end).
+function layerBounds(l: Layer, clips: Clip[], editedMs: number) {
+    const span = layerSpan(l, clips, editedMs);
+    if (!span) return null;
+    const from = sourceTime(clips, span.startMs) ?? ('srcMs' in l.anchor ? l.anchor.srcMs : 0);
+    const to = sourceTime(clips, Math.max(span.startMs, span.endMs - 1)) ?? from + (span.endMs - span.startMs);
+    return { span, fromMs: from, toMs: Math.max(from, to) };
+}
+
 // Where the video is, in ms.
 const timeOf = (video: React.RefObject<HTMLVideoElement | null>) => (video.current?.currentTime ?? 0) * 1000;
 
@@ -354,13 +375,20 @@ function toggleMuted(video: HTMLVideoElement | null) {
 export interface SplitTransition { splitMs: number; label: string | null; playing: boolean }
 
 export function Timeline({
-    words, cuts, ranges, overlays = [], totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
+    words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
+    totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin,
 }: {
     words: SpokenWord[];
     cuts: Cut[];
     ranges: KeptRange[];                    // what the edit keeps (keepRanges), for the waveform's red
-    overlays?: Overlay[];
+    layers?: Layer[];                       // item E5, with the play order and edited length to place them
+    clips?: Clip[];
+    editedMs?: number;
+    selectedLayer?: string | null;
+    onSelectLayer?: (id: string | null) => void;
+    onLayers?: (layers: Layer[]) => void;   // a whole drag, as one change; missing: layers cannot be changed
+    onDropMedia?: (itemId: string, srcMs: number) => void;
     totalMs: number;
     video: React.RefObject<HTMLVideoElement | null>;
     onSeek: (ms: number) => void;
@@ -388,6 +416,10 @@ export function Timeline({
     const dragRef = useRef<Drag | null>(null);
     const [drag, setDragState] = useState<Drag | null>(null);
     const setDrag = (d: Drag | null) => { dragRef.current = d; setDragState(d); };
+    // A layer being moved or trimmed (item E5): kept apart from the cut drags, in a ref and state as they are.
+    const layerDragRef = useRef<LayerDrag | null>(null);
+    const [layerDrag, setLayerDragState] = useState<LayerDrag | null>(null);
+    const setLayerDrag = (d: LayerDrag | null) => { layerDragRef.current = d; setLayerDragState(d); };
     const [snapOn, setSnapOn] = useState(true);
     const [locked, setLocked] = useState(false);
     const [muted, setMuted] = useState(false);
@@ -577,6 +609,60 @@ export function Timeline({
     };
     const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < A1_TOP ? 'v1' : 'a1';
 
+    // ── Layers (item E5) ──
+    const layerTargets = () => [[timeOf(video)], edgesOfWords, splits];
+    // Moves or trims the dragged layer to `ms` of the recording, snapped unless Alt (or Snap is off).
+    const dragLayerTo = (d: LayerDrag, rawMs: number, alt: boolean): LayerDrag => {
+        const s = !alt && snapOn ? snapMs(rawMs, layerTargets(), SNAP_PX / pxPerMs) : { ms: roundToStep(rawMs), to: null };
+        const ms = Math.max(0, Math.min(totalMs, s.ms));
+        const b = d.base;
+        const bounds = layerBounds(b, clips, editedMs);
+        if (!bounds) return d;
+        const editedAt = timelineTime(clips, ms, true) ?? editedMs;
+        const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
+        let draft: Layer;
+        if (d.mode === 'move') draft = { ...b, anchor: anchorAt(ms, editedAt) };
+        else if (d.mode === 'end') draft = { ...b, durationMs: Math.max(LAYER_MIN_MS, Math.round(editedAt - bounds.span.startMs)) };
+        else {
+            const start = Math.min(editedAt, bounds.span.endMs - LAYER_MIN_MS);
+            draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: Math.max(LAYER_MIN_MS, Math.round(bounds.span.endMs - start)) };
+        }
+        return { ...d, draft, guide: s.to !== null && ms === s.ms ? s.to : null };
+    };
+    const onLayerDown = (e: React.PointerEvent<HTMLElement>, l: Layer, mode: LayerDrag['mode']) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        onSelectLayer?.(l.id);
+        if (!onLayers) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setLayerDrag({ id: l.id, mode, x0: e.clientX, base: l, draft: l, moved: false, guide: null });
+    };
+    const onLayerMove = (e: React.PointerEvent<HTMLElement>) => {
+        const d = layerDragRef.current;
+        if (!d) return;
+        const moved = d.moved || Math.abs(e.clientX - d.x0) >= CLICK_PX;
+        if (!moved) return;
+        const bounds = layerBounds(d.base, clips, editedMs);
+        if (!bounds) return;
+        const delta = (e.clientX - d.x0) / pxPerMs;
+        const from = d.mode === 'end' ? bounds.toMs : bounds.fromMs;
+        setLayerDrag({ ...dragLayerTo(d, from + delta, e.altKey), moved: true });
+    };
+    const onLayerUp = () => {
+        const d = layerDragRef.current;
+        if (!d) return;
+        if (d.moved && onLayers) onLayers(layers.map(l => (l.id === d.id ? d.draft : l)));
+        else if (!d.moved) {
+            const b = layerBounds(d.base, clips, editedMs);
+            if (b) onSeek(b.fromMs);
+        }
+        setLayerDrag(null);
+    };
+    const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft : l));
+    const selectedLayerShown = shownLayers.find(l => l.id === selectedLayer) ?? null;
+    const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
+    const layerName = (l: Layer) => (l.kind === 'text' ? l.text : l.media.name);
+
     // Where a dragged edge lands: snapped (unless Alt, or Snap is off) or on a 10 ms step, then kept
     // within its limits and out of heard words (unless Alt).
     const place = (raw: number, alt: boolean, kept: SpokenWord[], limits: [number, number], free: [number, number], targets: number[][]) => {
@@ -591,7 +677,7 @@ export function Timeline({
         const lane = laneAt(py);
         e.currentTarget.setPointerCapture(e.pointerId);
         if (lane === 'ruler') { onSeek(ms); setDrag({ kind: 'scrub' }); return; }
-        if (lane === 'v2') { onSeek(ms); return; }
+        if (lane === 'v2') { onSelectLayer?.(null); onSeek(ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
         // The Blade splits where it is clicked, between words unless Alt is held.
         if (tool === 'blade') {
@@ -706,7 +792,7 @@ export function Timeline({
     const range = drag?.kind === 'range' && drag.moved ? rangeOf(drag.anchor, drag.ms, totalMs)
         : selection?.kind === 'range' ? selection : null;
     const shownCut = drag?.kind === 'edge' ? drag.draft[drag.base.indexOf(drag.cut)] : selectedCut;
-    const guide = drag && drag.kind !== 'scrub' ? drag.guide : null;
+    const guide = drag && drag.kind !== 'scrub' ? drag.guide : layerDrag?.moved ? layerDrag.guide : null;
 
     // The zoom slider runs from the whole recording to the closest, evenly in ratio.
     const span = Math.log(MAX_PX_PER_MS / fit);
@@ -774,6 +860,19 @@ export function Timeline({
                         </span>
                     );
                 })()}
+                {selectedLayerShown && selectedBounds && (
+                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                        <span className="text-amber-200 truncate min-w-0" title={layerName(selectedLayerShown)}>
+                            {selectedLayerShown.kind === 'text' ? 'Text' : selectedLayerShown.kind === 'video' ? 'Video' : 'Picture'} “{layerName(selectedLayerShown)}”
+                            {' '}{preciseTime(selectedBounds.span.startMs)}–{preciseTime(selectedBounds.span.endMs)} in the edit ({((selectedBounds.span.endMs - selectedBounds.span.startMs) / 1000).toFixed(1)} s)
+                        </span>
+                        {onLayers && !layerDrag && (
+                            <button onClick={() => { onLayers(layers.filter(l => l.id !== selectedLayerShown.id)); onSelectLayer?.(null); }}
+                                title="Remove this layer (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
+                        )}
+                        <button onClick={() => onSelectLayer?.(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
+                    </span>
+                )}
                 <span className="grow" />
                 {split && <SplitButton split={split} video={video} totalMs={totalMs} disabled={locked} />}
             </div>
@@ -782,8 +881,11 @@ export function Timeline({
                 {/* Track headers. */}
                 <div style={{ width: HEADER_W }} className="shrink-0 text-[11px] text-gray-300">
                     <div style={{ height: RULER_H }} />
-                    <div style={{ height: V2_H }} className="flex items-center gap-1 pr-2">
-                        <span className="grow truncate" title="Text and images over the picture (the On screen panel)">V2 On screen</span>
+                    <div style={{ height: LANE_H }} className="flex items-center gap-1 pr-2">
+                        <span className="grow truncate" title="Text over the picture (the On screen panel)">V3 Text</span>
+                    </div>
+                    <div style={{ height: LANE_H }} className="flex items-center gap-1 pr-2">
+                        <span className="grow truncate" title="Pictures and video over the episode (the Media and On screen panels)">V2 Pictures</span>
                         <button type="button" aria-pressed={overlaysHidden} onClick={() => onOverlaysHidden?.(!overlaysHidden)}
                             aria-label={overlaysHidden ? 'Show the on-screen items in the preview' : 'Hide the on-screen items in the preview'}
                             title={overlaysHidden ? 'Hidden in the preview (the render still has them)' : 'Hide in the preview'} className={iconButton}>
@@ -841,6 +943,13 @@ export function Timeline({
                                 onPointerUp={onPointerUp}
                                 onPointerCancel={() => setDrag(null)}
                                 onDoubleClick={onDoubleClick}
+                                onDragOver={e => { if (onDropMedia && e.dataTransfer.types.includes(BIN_DRAG_TYPE)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+                                onDrop={e => {
+                                    const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
+                                    if (!id || !onDropMedia) return;
+                                    e.preventDefault();
+                                    onDropMedia(id, pointAt(e).ms);
+                                }}
                             >
                                 {/* What the transitions overlap: the end of one part and the start of the next. */}
                                 {overlaps.filter(o => o.toMs >= startMs && o.fromMs <= endMs).map(o => (
@@ -870,19 +979,35 @@ export function Timeline({
                                         style={{ left: x(selectedSection.startMs), width: (selectedSection.endMs - selectedSection.startMs) * pxPerMs, top: V1_TOP, bottom: 1 }} />
                                 )}
 
-                                {/* V2: the on-screen items; click one to jump to it. */}
-                                {overlays.filter(o => o.atMs + o.seconds * 1000 >= startMs && o.atMs <= endMs).map(o => (
-                                    <button
-                                        key={o.id}
-                                        type="button"
-                                        onPointerDown={e => e.stopPropagation()}
-                                        onClick={() => onSeek(o.atMs)}
-                                        aria-label={`${o.type === 'text' ? o.text : o.name} at ${tickLabel(o.atMs)}`}
-                                        title={`${o.type === 'text' ? o.text : o.name} ${tickLabel(o.atMs)}`}
-                                        className={`absolute rounded-sm ${o.type === 'text' ? 'bg-violet-400' : 'bg-sky-400'} ${overlaysHidden ? 'opacity-30' : 'opacity-90'}`}
-                                        style={{ left: x(o.atMs), width: Math.max(3, o.seconds * 1000 * pxPerMs), top: V2_TOP + 4, height: V2_H - 8 }}
-                                    />
-                                ))}
+                                {/* V3 and V2: the layers. Click to select; drag to move; drag an end to trim. */}
+                                {shownLayers.map(l => {
+                                    const b = layerBounds(l, clips, editedMs);
+                                    if (!b || b.toMs < startMs || b.fromMs > endMs) return null;
+                                    const top = l.kind === 'text' ? V3_TOP : V2_TOP;
+                                    const isSel = l.id === selectedLayer;
+                                    const color = l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
+                                    const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
+                                    return (
+                                        <div
+                                            key={l.id}
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label={`${l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture'}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
+                                            title={`${layerName(l)}: drag to move, drag an end to trim`}
+                                            onPointerDown={e => onLayerDown(e, l, 'move')}
+                                            {...handles}
+                                            className={`absolute rounded-sm ${color} ${overlaysHidden ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onLayers ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
+                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top: top + 3, height: LANE_H - 6 }}
+                                        >
+                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{layerName(l)}</span>
+                                            {onLayers && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
+                                                <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, l, edge)} {...handles}
+                                                    className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
+                                                    style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
+                                            ))}
+                                        </div>
+                                    );
+                                })}
 
                                 {/* Splits: a handle on the ruler removes one (not while locked). */}
                                 {!locked && splits.filter(s => s >= startMs && s <= endMs).map(s => (
