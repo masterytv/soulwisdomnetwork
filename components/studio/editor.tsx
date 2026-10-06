@@ -23,7 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
 import type { Cut, EpisodeEdit, Silence } from '@/lib/edit';
 import {
-    keepRanges, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
+    keepRanges, orderAfterSplit, orderAfterUnsplit, suggestCuts, replaceSuggestions, cutSection, restoreSection, savedByReason, unspokenSpans, SUGGESTED_REASONS, HESITATION_REASONS,
     keptBounds,
     type UnspokenSpan,
 } from '@/lib/edit';
@@ -46,14 +46,17 @@ import { newSound, uploadKind, type Sound } from '@/lib/audio';
 import { layerFromBin, layersOf, type BinItem, type Brand, type Layer } from '@/lib/layers';
 import { DEFAULT_BRAND } from '@/lib/studioSettings';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
-import { previewRanges, sequenceLength, sequenceOf, timelineTime } from '@/lib/sequence';
+import { playStep, previewRanges, sequenceLength, sequenceOf, timelineTime } from '@/lib/sequence';
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
 import { TransitionsPanel } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
 import { CutBridge } from '@/components/studio/cutBridge';
+import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 
+// No media videos: one array, so the Parts panel does not redraw on every render.
+const NO_VIDEOS: BinItem[] = [];
 // No splits yet: one array, so the timeline does not redraw on every render.
 const NO_SPLITS: number[] = [];
 const NO_SOUNDS: Sound[] = [];
@@ -238,10 +241,10 @@ export function Editor({
     // overlap, so the edited length is shorter, and the preview plays the start of each later part
     // on a second video over the end of the one before (TransitionPreview), so one video skips it.
     const sequence = useMemo(() => sequenceOf(
-        { cuts: edit.cuts, splits: edit.splits, joins: edit.joins },
+        { cuts: edit.cuts, splits: edit.splits, joins: edit.joins, order: edit.order },
         videoDuration || (words.length > 0 ? words[words.length - 1].end : 0),
         words,
-    ), [videoDuration, words, edit.cuts, edit.splits, edit.joins]);
+    ), [videoDuration, words, edit.cuts, edit.splits, edit.joins, edit.order]);
     const kept = sequence.clips;
     const ranges = useMemo(() => workspace ? previewRanges(sequence)
         : keepRanges(videoDuration || (words.length > 0 ? words[words.length - 1].end : 0), edit.cuts, 40, words),
@@ -397,7 +400,7 @@ export function Editor({
     // Splits (full-page editor): set at the playhead; each one once, in order.
     const addSplit = useCallback((ms: number) => {
         updateEdit(prev => (prev.splits ?? []).includes(ms) ? prev
-            : { ...prev, splits: [...(prev.splits ?? []), ms].sort((a, b) => a - b) });
+            : { ...prev, splits: [...(prev.splits ?? []), ms].sort((a, b) => a - b), order: orderAfterSplit(prev.order, prev.splits ?? [], ms) });
     }, [updateEdit]);
 
     // Keyboard: Delete/Backspace to cut, Ctrl/Cmd+Z for undo/redo, Space to play/pause.
@@ -513,18 +516,19 @@ export function Editor({
     }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers, sounds, setSounds,
         reverse]);
 
-    // Video time mapping: skip cut ranges during playback — jump only when
-    // the time is outside every kept range (in a cut), to the next kept range.
+    // Video time mapping: skip cut ranges during playback, in play order (lib/sequence.ts playStep: with moved
+    // sections, spec 020 item E9, the next stretch can be anywhere in the recording). `playIdx`: the stretch playing.
+    const playIdx = useRef(-1);
     // Also track the word being spoken for the amber underline.
     useEffect(() => {
         const video = videoRef.current;
         if (!video) return;
         const onTimeUpdate = () => {
             const t = video.currentTime * 1000;
-            const inKept = ranges.some(r => t >= r.startMs && t < r.endMs);
-            if (!inKept && playMode === 'edited' && !previewRef.current) {
-                const next = ranges.find(r => r.startMs > t);
-                if (next) video.currentTime = next.startMs / 1000;
+            if (playMode === 'edited' && !previewRef.current) {
+                const step = playStep(ranges, t, playIdx.current);
+                playIdx.current = step.index;
+                if (step.seekTo !== null) video.currentTime = step.seekTo / 1000;
             }
             // Find the word being spoken — the last word whose [start, end) contains t.
             let cw = -1;
@@ -549,10 +553,10 @@ export function Editor({
                     video.pause();
                     previewRef.current = null;
                 }
-                const inKept = ranges.some(r => t >= r.startMs && t < r.endMs);
-                if (!inKept && playMode === 'edited' && !previewRef.current) {
-                    const next = ranges.find(r => r.startMs > t);
-                    if (next) video.currentTime = next.startMs / 1000;
+                if (playMode === 'edited' && !previewRef.current) {
+                    const step = playStep(ranges, t, playIdx.current);
+                    playIdx.current = step.index;
+                    if (step.seekTo !== null) video.currentTime = step.seekTo / 1000;
                 }
             }
             rafRef.current = requestAnimationFrame(tick);
@@ -1299,6 +1303,16 @@ export function Editor({
                             ),
                         },
                         {
+                            id: 'parts',
+                            label: 'Parts',
+                            node: (
+                                <PartsPanel edit={edit} totalMs={totalMs} clips={kept} words={words}
+                                    videos={media?.items?.filter(i => i.kind === 'video') ?? NO_VIDEOS}
+                                    onChange={patch => updateEdit(prev => ({ ...prev, ...patch }))}
+                                    onSeek={ms => seekToTime(ms / 1000)} />
+                            ),
+                        },
+                        {
                             id: 'transitions',
                             label: 'Transitions',
                             node: (
@@ -1364,6 +1378,7 @@ export function Editor({
                                 onRemoveSplit: ms => updateEdit(prev => ({
                                     ...prev,
                                     splits: (prev.splits ?? []).filter(s => s !== ms),
+                                    order: orderAfterUnsplit(prev.order, prev.splits ?? [], ms),
                                     joins: (prev.joins ?? []).filter(j => joinKey(j.at) !== joinKey({ atSplit: ms })),
                                 })),
                                 onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),

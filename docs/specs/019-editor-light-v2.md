@@ -108,7 +108,7 @@ for this work".
 | E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Built (#159; spec 020, "E6 — Built"); a render with elements waits on `main` |
 | E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Built (#160; spec 020, "E7 — Built"); a render with sounds waits on `main` |
 | E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Built (#162; spec 020, "E8 — Built"); the fix for a word at a transition reaches renders from `main` |
-| E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
+| E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Built (#170; spec 020, "E9 — Built"): in a Parts panel; dragging on the timeline itself is not built |
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
