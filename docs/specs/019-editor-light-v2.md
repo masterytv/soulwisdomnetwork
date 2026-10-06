@@ -96,7 +96,7 @@ for this work".
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
-| 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
+| 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#PR); a test episode's spelling waits on an ingest run from `main` |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
@@ -501,6 +501,23 @@ YouTube captions of a test upload.
 - Keep `speaker_identification` as is.
 
 **Done when:** a test episode spells the show name and the hosts right without corrections.
+
+**Built (#PR):**
+- **What AssemblyAI takes** (its docs, 6 October 2026): `keyterms_prompt` works with the Universal
+  models we use. Universal-3 takes up to 1,000 words or phrases; **universal-2, our fallback, takes
+  200**, and ignores terms under 5 or over 50 characters. A term is at most 6 words. It costs **$0.05
+  an hour more** on pre-recorded audio. AssemblyAI warns that long lists of common words cause
+  overcorrection, so the list is for words it gets wrong.
+- **Studio settings:** a **Names and terms to spell right** list (`recurringNames`, up to 150, each up
+  to 50 characters) under Speakers. Empty by default.
+- **`transcriptionKeyterms`** (`lib/studioSettings.ts`, with tests): the show's name, the hosts and the
+  list, once each (ignoring case), dropping terms over 6 words or 50 characters, at most 200.
+- **Ingest** sends them as `keyterms_prompt` (`submitTranscription`), records them on the episode
+  (`transcription.keyterms`), and adds $0.05 an hour to its cost estimate when there are any. The
+  uploaded-recording reserve in `lib/server/spending.ts` is now $0.90 (3 hours at $0.30).
+  `speaker_identification` is unchanged.
+- **Not sent** to the final cut's transcript (`transcribeWords` in `final.ts`): that one only lines
+  the cut up with the original.
 
 ### 2.5 Highlight words the transcriber was unsure of (S)
 

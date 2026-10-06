@@ -21,7 +21,7 @@ export const ESTIMATE_USD = {
     shortsTitles: 0.05,   // Claude's headlines and titles
     shortsPick: 0.4,      // Claude reads the whole final cut and picks moments for Shorts (same model as the notes)
     finalPerHour: 0.21,   // transcribing the final cut (WORDS_USD_PER_HOUR in agent/src/podcast/final.ts)
-    upload: 0.75,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR
+    upload: 0.90,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR + KEYTERMS_USD_PER_HOUR
     extras: 0.1,          // Claude's social posts and follow-up email
     translation: 0.4,     // Claude translates one language's captions, title and description (Part I)
     retakes: 0.5,         // Claude reads the accepted transcript for a tighter edit (Part I; spec 019 item 1.3 widened it)

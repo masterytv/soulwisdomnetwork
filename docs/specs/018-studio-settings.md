@@ -23,6 +23,7 @@ and defaults are in `lib/studioSettings.ts`. Every reader goes through `withDefa
 |---|---|
 | Show name, about, audience | The show notes, Shorts and thumbnail prompts |
 | Hosts | Names offered to AssemblyAI and speaker review |
+| Names and terms to spell right (spec 019 item 2.4) | Sent to AssemblyAI with the show name and hosts (`keyterms_prompt`), so new transcripts spell them right |
 | Kind of recording, extra instructions | How Claude writes notes, descriptions, Shorts and thumbnails |
 | Website, link text, subscribe line | The YouTube description's added lines |
 | Colours, logo, image style | Shorts, thumbnails and b-roll images |

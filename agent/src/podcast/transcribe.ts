@@ -10,13 +10,15 @@ type Client = ReturnType<typeof createAssemblyAI>;
 
 // Uploads the audio and starts a job; returns immediately. The id is saved to Firestore
 // before we wait, so a crashed run resumes polling instead of paying for a second job.
-export async function submitTranscription(client: Client, audioFile: string, speechModels: string[], candidates: string[]) {
+// `keyterms`: names and terms to spell right (spec 019 item 2.4, transcriptionKeyterms in lib/studioSettings.ts).
+export async function submitTranscription(client: Client, audioFile: string, speechModels: string[], candidates: string[], keyterms: string[] = []) {
     const uploadUrl = await withRetry('AssemblyAI upload', () => client.files.upload(audioFile));
     const transcript = await withRetry('AssemblyAI submit', () => client.transcripts.submit({
         audio: uploadUrl,
         speech_models: speechModels,
         // Writes out "um" and "uh", so the editor can find and cut them (docs/specs/015-editor-light.md).
         disfluencies: true,
+        ...(keyterms.length ? { keyterms_prompt: keyterms } : {}),
         speaker_labels: true,
         speech_understanding: {
             request: {
