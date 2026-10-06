@@ -416,7 +416,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | Extra | E3 |
 | E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | Extra | E3 |
 | E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. Built (#159). | M | High | E5 |
-| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | High | E5 |
+| E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). Built (#160). | M | High | E5 |
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 
@@ -709,6 +709,89 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
     the episode"; clicking the b-roll under the logo strip on the timeline opened the b-roll; a row in On screen opened
     Properties; Remove, then Ctrl+Z, brought the logo bug back.
   - **Not yet on a real episode, or in a render from `main`.**
+
+### E7 — Built (#160)
+
+- **Model** (`lib/audio.ts`, tested in `lib/audio.test.ts`): `edit.audio`, at most 200 sounds, ids unique. A sound is a file
+  on **A2 Music** or **A3 Effects** with the layers' `anchor` and `durationMs` (so `layerSpan`, `startAt` and the timeline's
+  drag code serve both), and `inMs` (where in the file it starts), `loop`, `gainDb`, `fadeInMs`, `fadeOutMs` and `duck`.
+  `library` names its show library entry. As sketched, except `inMs` and `durationMs` in place of `inMs` and `outMs`.
+  - **Music** (`newSound`): a bed pinned (`atMs`) at the playhead to the end of the episode, looped, 18 dB down, fading
+    in over 2 s and out over 3 s, ducked.
+  - **An effect or stinger:** anchored to its moment of the recording (`srcMs`), its own length, at full level, with
+    10 ms fades against clicks, not ducked.
+  - An episode upload of 30 s or more counts as music.
+- **The show library** (`lib/server/library.ts`, `GET/POST /api/studio/library`, the page `/admin/podcast/library`,
+  linked from the Studio as **Music and effects**). Entries are in `studio/media/items` (Admin SDK only), files under
+  `library/` in Storage (upload kinds `library`, sounds up to 200 MB, and `licence`, the licence page as a PDF, PNG or
+  JPEG up to 10 MB, both checked by first bytes; admins only).
+  - **Each entry records** the licence (`LicenceSchema`): where it came from, author, licence name and page, download
+    date, the snapshot, any code, the credit text. It also records `checked` (by whom, and on what day) and `uses`.
+  - **Refused when added or changed** (`licenceProblem`): NC and ND licences, by name ("CC BY-NC", "NonCommercial",
+    "NoDerivatives") or Creative Commons address, and YouTube Audio Library tracks.
+  - **"I checked the licence"** needs the source, licence name and page, date and snapshot (`licenceMissing`). Any change
+    to the licence takes the check away, and an admin can take it back too.
+  - **A file a render used cannot be removed:** its record is that episode's proof.
+- **"Licence not checked" gate:**
+  - **Media panel:** library files are listed under **Show library: music** and **Show library: effects**. One that is
+    not checked says so and cannot be added or dragged.
+  - **Edit route:** refuses a newly placed library sound that is not checked.
+  - **Render job:** leaves out a library sound whose check was taken back after it was placed, with a warning.
+- **An episode's own sounds** (the E5 media bin's audio uploads): the uploader confirms the sound is theirs to use (they
+  made it or own its rights). It is recorded as `rights` (who, when), and the edit route refuses one without it. Music
+  from other sites goes through the library. An upload that a saved sound uses cannot be removed.
+- **Studio editor:**
+  - **Timeline:** **A2 Music** and **A3 Effects** lanes under A1. Click, drag to move, drag an end to trim (one undo
+    step), as on V2 and V3. Each lane has a speaker to mute it in the preview; a ducked sound is marked ↓.
+  - **Media panel:** **+ At playhead** or drag a sound onto the timeline.
+  - **Properties panel** for a sound:
+    - where it comes from (the licence and its credit, or who declared the rights);
+    - track, start, length or "To the end of the episode", and anchor;
+    - where in the file it starts, and loop;
+    - level (dB), fades, and ducking.
+  - **Delete** removes the selected sound; Ctrl+Z brings it back.
+  - **Preview** (`components/studio/sounds.tsx`): an `<audio>` per sound kept in step with the video. It plays from its
+    place in the file (round again when it loops), at its level with its fades, 12 dB lower while a word is spoken when it
+    ducks, and silent when its track is muted. HTML volume stops at 0 dB, so a boost is heard only in the render.
+  - The quick edit's line of Studio-only changes counts sounds.
+- **Render** (`editRender.ts`):
+  - Each sound is an input (`-stream_loop -1` when it loops), filtered by `soundFilter`: `atrim` from `inMs`, `volume`,
+    `afade` in and out, then `adelay` to its start on the edited episode.
+  - `soundsMix`, from Part H's `musicMix` by Jo Ann H (`bc5b006`, credited in `lib/audio.ts`), mixes the ducked sounds
+    into one bed. `sidechaincompress` (threshold 0.02, ratio 6, attack 20 ms, release 500 ms), keyed by the voice, lowers
+    the bed while anyone speaks: 15 dB under a voice at about −15 dBFS. `amix` (normalize off, as long as the voice) then
+    adds the voice, the ducked bed, the other sounds and video layers' own sound.
+  - All before the loudness pass. Sounds play under the episode only, not the teasers, intro or outro.
+- **Credits and the log:**
+  - The render job writes the credit lines of the library files it played, in the order they start, as
+    `editRender.credits`. When the render is the final cut, they also go to `final.credits`, and the entries to
+    `final.library`.
+  - `youtubeMetadata` adds **Music and sound** with those lines to the YouTube description, before the hashtags.
+    `shortMetadata` adds the same to every Short made from that final cut.
+  - Each use is logged on its library entry: the render (`kind: 'episode'`), and each Short rendered from a final cut
+    with library sounds (`kind: 'short'`).
+  - The show notes page's description preview does not show the credits; they are added at upload.
+- **Checked:**
+  - Unit tests:
+    - `lib/audio.test.ts`: the licence rules (NC, ND and YouTube refused; Pixabay, CC0, CC BY and an "Inc" author not),
+      what a check needs, the defaults, the preview's level and file time, the filter and mix strings, credits;
+    - the description and Short credits;
+    - `studioOnlySummary`.
+  - ffmpeg (`soundsRender.test.ts`): a 3 s bed loops to the end of a 10 s episode, is 15 dB lower under a −15 dBFS
+    voice than in the quiet after it, and leaves the voice's level alone. An effect at 7 s of the recording plays at 6 s
+    after a 1 s cut, and not before.
+  - Render job: an unchecked library sound is left out with a warning and never downloaded. The checked one's credit is
+    on the render and on the final cut, and its use is logged.
+  - Chromium, with a test video, bin and stand-in API:
+    - **Editor:** "Not checked yet" showed "Licence not checked" with no button and could not be dragged. **+ At
+      playhead** put the bed on A2, pinned at 0:05, looped, −18 dB, ducked. Properties showed its licence and credit,
+      and set −12 dB and no ducking. A whoosh dropped on A3 took its moment and moved when dragged. Playing from 0:06,
+      the bed played at volume 0.251 (−12 dB) 2 s into its file, and stopped when A2 was muted. An uploaded jingle with
+      rights went on A3; Delete and Ctrl+Z.
+    - **Library page:** an NC licence was refused before adding. A file and its snapshot were sent and added with their
+      licence. "I checked the licence" waited for the snapshot. Remove was off for a file a render had used, which listed
+      the use.
+  - **Not yet on a real episode, or in a render from `main`.** The library starts empty: an admin adds the first files.
 
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;

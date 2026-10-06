@@ -57,7 +57,8 @@ export function youtubeMetadata(episode: Episode, links?: DescriptionLinks): You
     const chapters = (final.chapters ?? []).map(c => ({ title: c.title, startMs: c.startMs })) as ShowNotes['chapters'];
     return {
         title: clean(notes.titles[notes.chosenTitle] ?? episode.title).trim().slice(0, TITLE_MAX),
-        description: fitBytes(clean(youtubeDescription({ ...notes, chapters }, links)), DESCRIPTION_MAX_BYTES),
+        // The credits the Editor Light render's library sounds ask for (spec 020 item E7), when it is the final cut.
+        description: fitBytes(clean(youtubeDescription({ ...notes, chapters }, links, final.credits ?? [])), DESCRIPTION_MAX_BYTES),
         tags: fitTags(notes.tags),
         categoryId: YOUTUBE_CATEGORY,
         privacyStatus: YOUTUBE_PRIVACY,

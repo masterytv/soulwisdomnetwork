@@ -27,7 +27,7 @@ const num = `${field} !w-20 !py-1 !px-2 text-xs tabular-nums`;
 const GRID: Position[] = ["top-left", "top", "top-right", "middle-left", "middle", "middle-right", "bottom-left", "bottom", "bottom-right"];
 const POINT_OF: Record<number, Position> = Object.fromEntries(POSITIONS.map(p => [ALIGN[p], p]));
 
-function EdgeFields({ label, edge, onChange }: { label: string; edge: Edge; onChange: (e: Edge) => void }) {
+export function EdgeFields({ label, edge, onChange }: { label: string; edge: Edge; onChange: (e: Edge) => void }) {
     return (
         <label className="flex items-center gap-1">
             <span className="w-8">{label}</span>
@@ -45,7 +45,7 @@ function EdgeFields({ label, edge, onChange }: { label: string; edge: Edge; onCh
 }
 
 // A number box that keeps what is typed until it is a number in range.
-function NumberField({ label, value, min, max, step = 1, onChange, title }: {
+export function NumberField({ label, value, min, max, step = 1, onChange, title }: {
     label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void; title?: string;
 }) {
     return (
@@ -54,7 +54,7 @@ function NumberField({ label, value, min, max, step = 1, onChange, title }: {
     );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
         <div className="flex flex-col gap-2">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</h3>

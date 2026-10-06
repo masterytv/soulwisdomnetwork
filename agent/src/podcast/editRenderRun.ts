@@ -9,6 +9,7 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { mmss } from '../../../lib/showNotes';
 import type { Episode } from '../../../types/episode';
+import { EMPTY_LICENCE, type LibraryEntry } from '../../../lib/audio';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
 import { renderEdit } from './editRender';
@@ -61,6 +62,19 @@ async function main() {
         settings: await loadSettings(getFirestore()),
         showIntro: path.resolve('assets/podcast/intro.mp4'),
         siteLogo: path.resolve('public/logo.png'),
+        // The show library (spec 020 item E7): its entries' licence state, and the log of every use.
+        library: async ids => {
+            const items = getFirestore().collection('studio').doc('media').collection('items');
+            const snaps = await getFirestore().getAll(...ids.map(id => items.doc(id)));
+            return new Map(snaps.filter(s => s.exists).map(s => {
+                const d = s.data() as Pick<LibraryEntry, 'path' | 'checked' | 'licence'>;
+                return [s.id, { path: d.path, checked: d.checked ?? null, licence: { ...EMPTY_LICENCE, ...d.licence } }];
+            }));
+        },
+        logUses: async (ids, use) => {
+            const items = getFirestore().collection('studio').doc('media').collection('items');
+            await Promise.all(ids.map(id => items.doc(id).update({ uses: FieldValue.arrayUnion(use) })));
+        },
         cutClip: async (input, output, start, seconds) => { await cutClip(input, output, start, seconds, true); },
     }, workDir, process.env.GITHUB_RUN_ID || undefined);
     const episode = (await ref.get()).data() as Episode;

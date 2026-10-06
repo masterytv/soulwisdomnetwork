@@ -289,7 +289,8 @@ export function chapterList(notes: ShowNotes) {
 // The whole description as pasted into YouTube. The site link sits straight after the text,
 // as high as it can go, and is always there whatever the text says. `links` comes from the
 // Studio settings (lib/studioSettings.ts); without it, the Soul Wisdom Collective lines.
-export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks) {
+// `credits`: what the show library's music and effects ask to be credited (spec 020 item E7), before the hashtags.
+export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks, credits: string[] = []) {
     const siteLine = links ? (links.siteUrl ? `${links.siteLinkText} ${links.siteUrl}`.trim() : '')
         : `🌐 Full episodes, transcripts and the Soul Wisdom community: ${SITE_URL}`;
     return [
@@ -297,6 +298,7 @@ export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks) {
         siteLine,
         notes.chapters.length ? `Chapters\n${chapterList(notes)}` : '',
         links ? links.subscribeLine : DESCRIPTION_FOOTER,
+        credits.length ? `Music and sound\n${credits.join('\n')}` : '',
         notes.hashtags.join(' '),
     ].filter(Boolean).join('\n\n');
 }

@@ -75,4 +75,5 @@ test('the quick edit\'s line about what only the Studio editor shows', () => {
     }), '2 splits, 2 transitions, 3 on-screen items');
     // Layers (spec 020 item E5) count instead of the overlays once the edit has them.
     assert.equal(studioOnlySummary({ overlays: [], layers: [{}, {}] }), '2 on-screen items');
+    assert.equal(studioOnlySummary({ audio: [{}, {}, {}] }), '3 sounds');
 });

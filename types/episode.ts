@@ -198,6 +198,8 @@ export interface EpisodeFinal {
     loudness?: { beforeLufs: number; afterLufs: number; truePeak: number };
     qc?: RenderQc;                        // the quality report on the saved file
     wordsPath?: string;                   // the final cut's words and times, Cloud Storage
+    credits?: string[];                   // credit lines the YouTube description must carry (an Editor Light render's sounds)
+    library?: string[];                   // the show library entries it plays, for logging the Shorts made from it
     coverage?: number;                    // share of the original's words found in the final cut
     chapters?: { title: string; originalMs: number; startMs: number }[];
     quotes?: { text: string; speaker: string; originalMs: number; startMs: number; endMs: number }[];
@@ -229,6 +231,7 @@ export interface EpisodeEditRender {
     renderSeconds?: number;
     warnings?: string[];
     qc?: RenderQc;                        // the quality report on the rendered file
+    credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
 }
 
 // Thumbnail options (spec 005 step 12; docs/specs/011-thumbnails.md). The job makes the raw

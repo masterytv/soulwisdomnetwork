@@ -15,15 +15,18 @@ import { HttpError } from './staff';
 import { ESTIMATE_USD, withinDailyLimit } from './spending';
 import { getSettings } from './studioSettings';
 
-export type UploadKind = 'episode' | 'logo' | 'intro' | 'overlay' | 'media';
+// 'library' and 'licence' are the show library's sounds and the snapshots of their licence pages (spec 020 item E7, admins only).
+export type UploadKind = 'episode' | 'logo' | 'intro' | 'overlay' | 'media' | 'library' | 'licence';
 
-const MAX_BYTES: Record<UploadKind, number> = { episode: 20e9, logo: 5e6, intro: 2e9, overlay: 2e7, media: 2e9 };
+const MAX_BYTES: Record<UploadKind, number> = { episode: 20e9, logo: 5e6, intro: 2e9, overlay: 2e7, media: 2e9, library: 2e8, licence: 1e7 };
 const TYPES: Record<UploadKind, RegExp> = {
     episode: /^video\//,
     logo: /^image\/(png|jpeg)$/,
     intro: /^video\/(mp4|quicktime)$/,
     overlay: /^image\/(png|jpeg)$/,
     media: /^(image\/(png|jpeg|webp)|video\/(mp4|quicktime)|audio\/(mpeg|mp4|x-m4a|wav|x-wav|wave))$/,
+    library: /^audio\/(mpeg|mp4|x-m4a|wav|x-wav|wave)$/,
+    licence: /^(application\/pdf|image\/(png|jpeg))$/,
 };
 // The media bin's limits by what the file is (spec 020, "Uploads").
 export function mediaKindOf(contentType: string): 'image' | 'video' | 'audio' | null {
@@ -40,6 +43,8 @@ const isJpeg = (h: Buffer) => h.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0
 const isWebp = (h: Buffer) => h.subarray(0, 4).toString('latin1') === 'RIFF' && h.subarray(8, 12).toString('latin1') === 'WEBP';
 const isIsoMedia = (h: Buffer) => h.subarray(4, 8).toString('latin1') === 'ftyp';     // MP4, MOV, M4A
 const isMp3 = (h: Buffer) => h.subarray(0, 3).toString('latin1') === 'ID3' || (h[0] === 0xff && (h[1] & 0xe0) === 0xe0);
+const isPdf = (h: Buffer) => h.subarray(0, 4).toString('latin1') === '%PDF';
+const isAudio = (h: Buffer, type: string) => (type === 'audio/mpeg' ? isMp3(h) : /wav|wave/.test(type) ? isWav(h) : isIsoMedia(h));
 const isWav = (h: Buffer) => h.subarray(0, 4).toString('latin1') === 'RIFF' && h.subarray(8, 12).toString('latin1') === 'WAVE';
 // What the file must start with: the browser names its own content type, so the bytes are checked.
 const MAGIC: Partial<Record<UploadKind, (head: Buffer, contentType: string) => boolean>> = {
@@ -47,11 +52,13 @@ const MAGIC: Partial<Record<UploadKind, (head: Buffer, contentType: string) => b
     intro: h => isIsoMedia(h),
     overlay: h => isPng(h) || isJpeg(h),
     media: (h, type) => type === 'image/png' ? isPng(h) : type === 'image/jpeg' ? isJpeg(h) : type === 'image/webp' ? isWebp(h)
-        : type === 'audio/mpeg' ? isMp3(h) : /wav|wave/.test(type) ? isWav(h) : isIsoMedia(h),
+        : type.startsWith('audio/') ? isAudio(h, type) : isIsoMedia(h),
+    library: (h, type) => isAudio(h, type),
+    licence: (h, type) => (type === 'application/pdf' ? isPdf(h) : type === 'image/png' ? isPng(h) : isJpeg(h)),
 };
 const EXT: Record<string, string> = {
     'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov',
-    'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav',
+    'application/pdf': 'pdf', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/x-m4a': 'm4a', 'audio/wav': 'wav', 'audio/x-wav': 'wav', 'audio/wave': 'wav',
 };
 
 // Keeps a file name safe as part of a Storage path.
@@ -69,6 +76,7 @@ export async function startUpload(body: { kind?: string; fileName?: string; cont
     const size = Number(body.size ?? 0);
     if (!fileName || !TYPES[kind].test(contentType)) {
         throw new HttpError(400, kind === 'logo' || kind === 'overlay' ? 'The image must be a PNG or JPEG' : kind === 'intro' ? 'The intro must be an MP4 or MOV video'
+            : kind === 'library' ? 'Choose an MP3, M4A or WAV sound' : kind === 'licence' ? 'Save the licence page as a PDF, PNG or JPEG'
             : kind === 'media' ? 'Choose a PNG, JPEG or WebP picture, an MP4 or MOV video, or an MP3, M4A or WAV sound' : 'Choose a video recording (an MP4 from Zoom works)');
     }
     const limit = limitOf(kind, contentType);
@@ -85,6 +93,9 @@ export async function startUpload(body: { kind?: string; fileName?: string; cont
         const owner = String(body.episodeId ?? '');
         if (!/^[\w-]{10,}$/.test(owner) || !(await adminDb().collection('episodes').doc(owner).get()).exists) throw new HttpError(404, 'Episode not found');
         path = `episodes/${owner}/media/m${Date.now().toString(36)}${randomBytes(3).toString('hex')}.${EXT[contentType] ?? 'bin'}`;
+    } else if (kind === 'library' || kind === 'licence') {
+        // The show library (spec 020 item E7): one name per file; the route that starts it checks for an admin.
+        path = `library/${kind === 'licence' ? 'proof-' : 's'}${Date.now().toString(36)}${randomBytes(3).toString('hex')}.${EXT[contentType] ?? 'bin'}`;
     } else if (kind === 'overlay') {
         // Images laid over videos live apart from the settings, one name per upload.
         path = `overlays/${Date.now().toString(36)}${randomBytes(3).toString('hex')}.${EXT[contentType] ?? 'bin'}`;
@@ -121,6 +132,8 @@ export async function checkUploaded(kind: UploadKind, path: string) {
             : kind === 'intro' ? 'That file is not an MP4 or MOV video under 2 GB'
             : kind === 'overlay' ? 'That file is not a PNG or JPEG image under 20 MB'
             : kind === 'media' ? 'That file is not a picture under 20 MB, a video under 2 GB or a sound under 200 MB of the kinds the Studio takes'
+            : kind === 'library' ? 'That file is not an MP3, M4A or WAV sound under 200 MB'
+            : kind === 'licence' ? 'That file is not a PDF, PNG or JPEG under 10 MB'
             : 'That file is not a video under 20 GB');
     }
     return meta;

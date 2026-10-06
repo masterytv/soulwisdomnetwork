@@ -33,10 +33,13 @@ import { LayersPreview } from '@/components/studio/layers';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
 import { PropertiesPanel } from '@/components/studio/properties';
+import { SoundProperties, SoundsPreview } from '@/components/studio/sounds';
+import { soundBlocked } from '@/components/studio/mediaBin';
+import { newSound, uploadKind, type Sound } from '@/lib/audio';
 import { layerFromBin, layersOf, type BinItem, type Brand, type Layer } from '@/lib/layers';
 import { DEFAULT_BRAND } from '@/lib/studioSettings';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
-import { previewRanges, sequenceLength, sequenceOf } from '@/lib/sequence';
+import { previewRanges, sequenceLength, sequenceOf, timelineTime } from '@/lib/sequence';
 import { joinKey, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
 import { TransitionsPanel } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
@@ -45,6 +48,7 @@ import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@
 
 // No splits yet: one array, so the timeline does not redraw on every render.
 const NO_SPLITS: number[] = [];
+const NO_SOUNDS: Sound[] = [];
 
 interface SpeakerPara {
     speaker: string;
@@ -290,10 +294,11 @@ export function Editor({
     // Removed from a panel: the editor keeps the keys, so Ctrl+Z brings it back (the button that was pressed
     // goes away with it).
     const removeLayer = useCallback((id: string) => {
-        setLayers(layers.filter(l => l.id !== id));
+        if (layers.some(l => l.id === id)) setLayers(layers.filter(l => l.id !== id));
+        else updateEdit(prev => ({ ...prev, audio: (prev.audio ?? []).filter(s => s.id !== id) }));
         setSelectedLayer(s => (s === id ? null : s));
         containerRef.current?.focus({ preventScroll: true });
-    }, [layers, setLayers]);
+    }, [layers, setLayers, updateEdit]);
     // Elements (item E6): added, and the first opened in Properties so its text can be typed straight away.
     const addLayers = useCallback((made: Layer[]) => {
         if (!layersEditable || !made.length) return;
@@ -301,14 +306,31 @@ export function Editor({
         setSelectedLayer(made[0].id);
         setPanelId('properties');
     }, [layers, layersEditable, setLayers]);
-    // A bin item as a layer: at a moment of the recording, or at the playhead.
+    // Music and effects (item E7): the edit's sounds, on A2 and A3.
+    const sounds = edit.audio ?? NO_SOUNDS;
+    const setSounds = useCallback((next: Sound[]) => updateEdit(prev => ({ ...prev, audio: next })), [updateEdit]);
+    // A bin item as a layer or a sound: at a moment of the recording, or at the playhead. A sound whose
+    // licence is not checked, or whose rights nobody declared, cannot be placed.
     const addFromBin = useCallback((itemId: string, srcMs: number | null) => {
         const item = media?.items?.find(i => i.id === itemId);
-        const layer = item && layerFromBin(item, srcMs ?? (videoRef.current?.currentTime ?? 0) * 1000);
+        if (!item) return;
+        const at = srcMs ?? (videoRef.current?.currentTime ?? 0) * 1000;
+        if (item.kind === 'audio') {
+            if (soundBlocked(item)) return;
+            const kind = item.sound?.kind ?? uploadKind(item.durationMs);
+            const sound = newSound({ path: item.path, name: item.name, durationMs: item.durationMs, ...(item.source === 'library' ? { library: item.id.replace(/^lib-/, '') } : {}) },
+                kind, { srcMs: at, atMs: timelineTime(kept, at, true) ?? 0 });
+            setSounds([...sounds, sound]);
+            pickLayer(sound.id);
+            return;
+        }
+        const layer = layerFromBin(item, at);
         if (!layer || !layersEditable) return;
         setLayers([...layers, layer]);
         pickLayer(layer.id);
-    }, [media?.items, layers, layersEditable, setLayers, pickLayer]);
+    }, [media?.items, layers, layersEditable, setLayers, pickLayer, sounds, setSounds, kept]);
+    // The sound tracks muted in the preview (the timeline's A2 and A3 speakers).
+    const [mutedTracks, setMutedTracks] = useState<number[]>([]);
 
     const undo = useCallback(() => {
         if (historyIdx.current > 0) {
@@ -416,7 +438,8 @@ export function Editor({
             // A layer chosen on the preview, the timeline or the panel: Delete removes it.
             if (workspace && selectedLayer && !selectedRange && !timelineSel && (e.key === 'Delete' || e.key === 'Backspace')) {
                 e.preventDefault();
-                setLayers(layers.filter(l => l.id !== selectedLayer));
+                if (sounds.some(s => s.id === selectedLayer)) setSounds(sounds.filter(s => s.id !== selectedLayer));
+                else setLayers(layers.filter(l => l.id !== selectedLayer));
                 setSelectedLayer(null);
                 containerRef.current?.focus({ preventScroll: true });
                 return;
@@ -462,7 +485,7 @@ export function Editor({
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers]);
+    }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers, sounds, setSounds]);
 
     // Video time mapping: skip cut ranges during playback — jump only when
     // the time is outside every kept range (in a cut), to the next kept range.
@@ -943,6 +966,9 @@ export function Editor({
                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
             {workspace && !overlaysHidden && <OnScreenPreview words={words} edit={edit} video={videoRef} studio={studio} />}
+            {workspace && sounds.length > 0 && (
+                <SoundsPreview sounds={sounds} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls} words={words} mutedTracks={mutedTracks} />
+            )}
         </div>
     );
 
@@ -1191,7 +1217,18 @@ export function Editor({
                         {
                             id: 'properties',
                             label: 'Properties',
-                            node: (
+                            node: sounds.some(s => s.id === selectedLayer) ? (
+                                <SoundProperties
+                                    sound={sounds.find(s => s.id === selectedLayer)!}
+                                    clips={kept}
+                                    editedMs={editedMs}
+                                    video={videoRef}
+                                    bin={media?.items ?? null}
+                                    onChange={snd => setSounds(sounds.map(x => (x.id === snd.id ? snd : x)))}
+                                    onRemove={removeLayer}
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                />
+                            ) : (
                                 <PropertiesPanel
                                     layer={layers.find(l => l.id === selectedLayer) ?? null}
                                     clips={kept}
@@ -1236,6 +1273,10 @@ export function Editor({
                             onSelectLayer={id => { openLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); } }}
                             onLayers={layersEditable ? setLayers : undefined}
                             onDropMedia={addFromBin}
+                            sounds={sounds}
+                            onSounds={setSounds}
+                            mutedTracks={mutedTracks}
+                            onMutedTracks={setMutedTracks}
                             totalMs={totalMs}
                             video={videoRef}
                             onSeek={ms => seekToTime(ms / 1000)}

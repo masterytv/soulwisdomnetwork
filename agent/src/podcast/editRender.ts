@@ -19,6 +19,7 @@ import { mmss } from '../../../lib/showNotes';
 import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
 import type { CaptionStyle } from '../../../lib/onScreen';
 import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { soundFilter, soundsMix, soundSpan, type Sound } from '../../../lib/audio';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
 
@@ -126,6 +127,7 @@ interface RenderReport {
     renderSeconds: number;
     qc: RenderQc;                 // the quality report on the finished file (renderQc.ts)
     warnings: string[];           // transitions that played as straight cuts, and why
+    soundsPlayed: string[];       // the sounds (item E7) the episode plays, by id in the order they start, for credits and the log
 }
 
 // ─── the render ─────────────────────────────────────────────────────────────
@@ -152,6 +154,9 @@ export async function renderEdit(opts: {
     quotes?: { text: string; speaker: string; startMs: number; endMs: number }[];
     // The transitions between the video's sections (the edit's own or the Studio's); straight cuts when left out.
     sections?: SectionJoins;
+    // Music and effects (spec 020 item E7, lib/audio.ts), each with its local file: mixed under the voice
+    // on the edited episode, the ducked ones lowered while anyone speaks.
+    sounds?: { sound: Sound; file: string }[];
 }): Promise<RenderReport> {
     const start = Date.now();
     const clean = opts.clean ?? 'light';
@@ -338,6 +343,9 @@ export async function renderEdit(opts: {
         const brollIdxs = brollFiles.map(bf => bf ? add(bf) : -1);
         // Picture layers: one input each; a still is looped for as long as it is up.
         const pictureIdxs = pictures.map(p => add(p.file, p.clip ? [] : ['-loop', '1', '-t', ((p.span.endMs - p.span.startMs) / 1000 + 0.5).toFixed(3)]));
+        // Sounds: one input each, a looping one read round and round.
+        const sounds = (opts.sounds ?? []).flatMap(s => { const span = soundSpan(s.sound, ranges, editedMs); return span ? [{ ...s, span }] : []; });
+        const soundIdxs = sounds.map(s => add(s.file, s.sound.loop ? ['-stream_loop', '-1'] : []));
         // Every section's length in whole frames.
         const framesOfFile = async (f: string) => Math.max(1, frameAt(Math.round((await probeDuration(f)) * 1000)));
         const teaserFrames = await Promise.all((opts.teasers ?? []).map(framesOfFile));
@@ -397,18 +405,23 @@ export async function renderEdit(opts: {
             bi++;
         }
 
-        // On screen: picture layers over the b-roll (V2 first), each video's own sound mixed under the
-        // voice, then captions and text over everything.
+        // On screen: picture layers over the b-roll (V2 first), then captions and text over everything.
+        // The sound: each video layer's own and every music or effect under the voice, the ducked ones
+        // lowered while anyone speaks (lib/audio.ts soundsMix, from Part H's musicMix).
         let epA = 'epa';
-        const sounds: string[] = [];
+        const ducked: string[] = [], others: string[] = [];
         pictures.forEach((p, i) => {
             filter += pictureFilter(pictureIdxs[i], epV, `ly${i}`, p.layer, p.span);
             epV = `ly${i}`;
             const sound = p.sound && p.layer.kind === 'video' ? layerAudioFilter(pictureIdxs[i], `lya${i}`, p.layer, p.span) : null;
-            if (sound) { filter += sound; sounds.push(`[lya${i}]`); }
+            if (sound) { filter += sound; others.push(`lya${i}`); }
         });
-        if (sounds.length) {
-            filter += `[epa]${sounds.join('')}amix=inputs=${sounds.length + 1}:normalize=0:duration=first:dropout_transition=0[epam];`;
+        sounds.forEach((s, i) => {
+            filter += soundFilter(soundIdxs[i], `snd${i}`, s.sound, s.span);
+            (s.sound.duck ? ducked : others).push(`snd${i}`);
+        });
+        if (ducked.length || others.length) {
+            filter += soundsMix('epa', ducked, others, 'epam');
             epA = 'epam';
         }
         if (opts.onScreen) {
@@ -507,6 +520,7 @@ export async function renderEdit(opts: {
             renderSeconds: (Date.now() - start) / 1000,
             qc,
             warnings,
+            soundsPlayed: [...sounds].sort((a, b) => a.span.startMs - b.span.startMs).map(s => s.sound.id),
         };
         const base = opts.out.replace(/\.\w+$/, '');
         if (opts.words?.length || opts.chapters?.length || opts.quotes?.length) {
