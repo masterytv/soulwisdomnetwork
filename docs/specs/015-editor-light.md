@@ -32,6 +32,7 @@ bottom, and saving, Undo, Redo, the shortcut sheet (**?**) and **Render ▸** in
 - Double-click a kept word to retype a misheard one; **Replace** beside the search box corrects a
   name everywhere (spec 019 item 2.3). They are saved with speaker review's corrections, not in the
   edit's undo, and reach the captions at the next render.
+- Words the transcriber was unsure of (under 60%) are underlined in dotted amber (spec 019 item 2.5).
 - Ctrl/Cmd+Z undoes, and Shift+Ctrl/Cmd+Z redoes.
 - Search finds words.
 

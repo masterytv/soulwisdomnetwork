@@ -198,6 +198,7 @@ export function parseShowNotes(input: unknown): ShowNotes {
 export interface SpokenWord {
     text: string; start: number; end: number; speaker: string; clip: boolean;
     ref?: string; heard?: string; count?: number;
+    confidence?: number;      // AssemblyAI's, for words heard (spec 019 item 2.5)
 }
 
 const token = (s: string) => s.toLowerCase().replace(/[^a-z0-9']+/g, '');

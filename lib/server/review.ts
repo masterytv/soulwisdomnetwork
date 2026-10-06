@@ -47,7 +47,8 @@ async function loadUtterances(path: string): Promise<ReviewUtterance[]> {
     const { labelOf } = labelResolver(transcript);
     const utterances = (transcript.utterances ?? []).map(u => ({
         label: labelOf(u.speaker),
-        words: (u.words ?? []).map(w => ({ text: w.text, start: w.start, end: w.end })),
+        // Rounded to two places: enough to underline the unsure ones (spec 019 item 2.5).
+        words: (u.words ?? []).map(w => ({ text: w.text, start: w.start, end: w.end, confidence: Math.round(w.confidence * 100) / 100 })),
     })).filter(u => u.words.length);
     if (utteranceCache.size >= 5) utteranceCache.delete(utteranceCache.keys().next().value!);
     utteranceCache.set(path, utterances);

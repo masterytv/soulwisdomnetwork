@@ -97,7 +97,7 @@ for this work".
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#151); a test episode's spelling waits on an ingest run from `main` |
-| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
+| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#152); in the editor once a transcript is accepted again |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
@@ -527,6 +527,19 @@ YouTube captions of a test upload.
 - Underline words under 0.6 in a dotted amber line, so the producer checks names and numbers
   first.
 - Neither Rescript nor CutScript does this.
+
+**Built (#152):**
+- **Carried through:** speaker review reads each word's `confidence` from `raw.json` (rounded to two
+  places), `buildLines` keeps it, and the accepted transcript (`reviewed.json`) and the editor's words
+  have it. A corrected word (item 2.3) has none: a person typed it.
+- **`isUnsure`** (`lib/wordFixes.ts`): under `UNSURE_BELOW` (0.6), with tests.
+- **Speaker review:** unsure words are underlined in dotted amber (corrected ones stay dotted blue),
+  with "The transcriber was unsure of this word (41% sure)" as the tooltip. The bar above the lines
+  counts them (**N unsure words**) and **Next unsure** jumps line by line.
+- **The editor:** the same underline on kept words, except the one playing; the tooltip says to
+  double-click to correct it.
+- **Older episodes:** speaker review shows them straight away (it reads `raw.json`); the editor once the
+  transcript is accepted again, since `reviewed.json` written before this has no confidence.
 
 ### 2.6 Autosave that survives a closed tab (S, idea from Rescript's MIT tree)
 
