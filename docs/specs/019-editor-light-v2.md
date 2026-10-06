@@ -110,7 +110,7 @@ for this work".
 | E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Not started |
 | E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
 | **3** | **Sound** | | | | | |
-| 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Not started |
+| 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Not started |
 | 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
 | **4** | **Render and hand-off** | | | | | |
@@ -587,6 +587,38 @@ should choose by ear, on our own recordings.
   time and cost it took.
 
 **Done when:** Tom and the producer have listened and chosen. Write the choice and why in spec 015.
+
+**Built (#155):** the **Podcast Clean-up Comparison** workflow (`podcast_cleanup_compare.yml`, run by hand
+from the Actions tab once it is on `main`) runs `agent/src/podcast/cleanupCompare.ts`, with its parts in
+`cleanupVersions.ts` (tests in `cleanupVersions.test.ts`).
+- **Inputs:** the episode ID; where the stretch starts (empty: a third of the way in, past the
+  introductions); 1–15 minutes (10 by default); which versions (empty: all).
+- **The stretch** is cut from the original recording in Cloud Storage (`media.sourcePath`), read over a
+  signed link without downloading it all, as 48 kHz stereo. Ingest's `audio.m4a` is mono at 96 kb/s, too
+  poor to judge by.
+- **Five versions**, each brought to −14 LUFS with the render's two-pass `normalizeLoudness`:
+  1. **as recorded**, loudness only, for reference (not in the plan; it shows what each clean-up adds);
+  2. **today's chain**, exactly the render's (`cleanupFilter('light')`, now exported from `editRender.ts`);
+  3. **DeepFilterNet** in that chain instead of `afftdn`. Its LADSPA plugin v0.5.6 is downloaded by the
+     workflow and checked against its SHA-256. The voice is mixed to mono first and spread back after,
+     which halves the time; here a minute took 33 s on one core, so 10 minutes take about 5–6;
+  4. **Auphonic**, with `denoise`, `leveler`, `normloudness` and `loudnesstarget: -14` (and `hipfilter`
+     when listed). The names are checked against `GET /api/info/algorithms.json` at the start of each
+     run, since auphonic.com was blocked from the sandbox; a missing one fails that version with what
+     Auphonic offers instead. It needs a new **`AUPHONIC_API_KEY` repo secret**; without it the version
+     is skipped and the rest are made. 10 minutes use 10 of the free 2 hours a month (D1);
+  5. **Descript's Studio Sound:** the same stretch of the Descript final cut, found through the words
+     (`timeMap`, as `final.ts` re-times chapters), so it is shorter wherever the edit cut something.
+     Skipped when the final cut is the Studio's own render or the words match under 50%.
+- **Heard blind:** the files are named A–E in an order shuffled per run; the key is in its own file
+  ("Which is which.txt", attached to the email and beside the files), with each version's clean-up
+  time and cost, since those would give it away. The email and the run summary list letters with
+  loudness and true peak only; the run log names versions but never their letters.
+- **Where:** Cloud Storage (`episodes/{id}/cleanup-compare/{run}/`) with 7-day links in the email, and,
+  when the Studio uses Drive, a **"Clean-up comparison"** folder beside "04 Final". Nothing on the episode
+  changes.
+- **For 3.2:** DeepFilterNet's delay against the picture was not measured here (the comparison is audio
+  only); measure it before putting it in the render.
 
 ### 3.2 The winner as a Studio setting (M)
 

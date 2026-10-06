@@ -1,0 +1,75 @@
+# The voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1; agent/src/podcast/cleanupCompare.ts):
+# one stretch of an episode as recorded, with today's clean-up, with DeepFilterNet, through Auphonic and
+# from Descript's final cut, all at −14 LUFS, named A, B, C… to hear blind. Emails the links and saves
+# them in Drive ("Clean-up comparison"). Nothing on the episode changes. Run by hand from the Actions tab.
+
+name: Podcast Clean-up Comparison
+run-name: "Podcast Clean-up Comparison · ${{ inputs.episode_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      episode_id:
+        description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
+        required: true
+      start:
+        description: 'Where the stretch starts, e.g. 12:30 (empty: a third of the way in)'
+        required: false
+        default: ''
+      minutes:
+        description: 'How long it is, 1 to 15 minutes'
+        required: false
+        default: '10'
+      versions:
+        description: 'Comma-separated: recorded, today, deepfilter, auphonic, descript (empty: all)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  # DeepFilterNet's LADSPA plugin, pinned to v0.5.6 (its last release) and checked against this checksum.
+  DEEPFILTER_URL: https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/libdeep_filter_ladspa-0.5.6-x86_64-unknown-linux-gnu.so
+  DEEPFILTER_SHA256: 2ca3205c2911d389604a826a240e745597d50252b5cab81c8248252b335e2236
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Install ffmpeg
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+    - name: Download DeepFilterNet
+      run: |
+        curl -sSL --fail -o "$RUNNER_TEMP/deep_filter.so" "$DEEPFILTER_URL"
+        echo "$DEEPFILTER_SHA256  $RUNNER_TEMP/deep_filter.so" | sha256sum -c -
+
+    - name: Compare clean-ups
+      env:
+        EPISODE_ID: ${{ inputs.episode_id }}
+        CLEANUP_START: ${{ inputs.start }}
+        CLEANUP_MINUTES: ${{ inputs.minutes }}
+        CLEANUP_VERSIONS: ${{ inputs.versions }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        AUPHONIC_API_KEY: ${{ secrets.AUPHONIC_API_KEY }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
+      run: DEEPFILTER_LADSPA="$RUNNER_TEMP/deep_filter.so" npx tsx agent/src/podcast/cleanupCompare.ts
