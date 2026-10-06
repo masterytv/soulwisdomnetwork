@@ -6,6 +6,8 @@
 // Transitions (spec 020 item E4) are checked too, and one at a split that is no longer there is dropped.
 // Layers (spec 020 item E5, lib/layers.ts) replace the overlays once saved: each picture's file must be in the
 // episode's media bin (lib/server/mediaBin.ts) or be an overlay upload, and GET links every file they use.
+// Sounds (spec 020 item E7, lib/audio.ts): a show library file must have its licence checked, and an
+// episode's own sound its uploader's word on the rights; GET links them too.
 import { FieldValue } from 'firebase-admin/firestore';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
@@ -13,8 +15,11 @@ import { checkUploaded } from '@/lib/server/uploads';
 import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
-import { layersOf, LayersSchema, type Layer } from '@/lib/layers';
-import { binPaths } from '@/lib/server/mediaBin';
+import { layersOf, LayersSchema, SITE_LOGO, SITE_LOGO_URL, type BinItem, type Layer } from '@/lib/layers';
+import { binItems, binPaths } from '@/lib/server/mediaBin';
+import { libraryEntries } from '@/lib/server/library';
+import { getSettings } from '@/lib/server/studioSettings';
+import { SoundsSchema, type Sound } from '@/lib/audio';
 import type { Episode } from '@/types/episode';
 
 export const dynamic = 'force-dynamic';
@@ -36,8 +41,15 @@ export const GET = handle<Context>(async (request, { params }) => {
     const overlayUrls: Record<string, string> = {};
     for (const l of layersOf(edit)) {
         if (l.kind === 'text' || overlayUrls[l.media.path]) continue;
+        if (l.media.path === SITE_LOGO) { overlayUrls[l.media.path] = SITE_LOGO_URL; continue; }
         const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[l.media.path] = url;
+    }
+    // And to every sound (item E7), so the preview can play them.
+    for (const snd of edit.audio ?? []) {
+        if (overlayUrls[snd.media.path]) continue;
+        const url = await adminBucket().file(snd.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
+        if (url) overlayUrls[snd.media.path] = url;
     }
     // The silences measured at ingest; null for an episode not measured yet, so the editor uses word gaps.
     let silences: Silence[] | null = null;
@@ -52,7 +64,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -85,6 +97,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         if (!r.success) throw new HttpError(400, `Layers: ${r.error.issues[0]?.message ?? 'not valid'}`);
         layers = r.data;
     }
+    // Music and effects (Studio editor, item E7). Left out of the request, they stay as saved.
+    let audio: Sound[] | undefined;
+    if (body.edit.audio !== undefined) {
+        const r = SoundsSchema.safeParse(body.edit.audio);
+        if (!r.success) throw new HttpError(400, `Sounds: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        audio = r.data;
+    }
     let captions: CaptionChoice | null | undefined;
     if (body.edit.captions !== undefined) {
         const r = CaptionChoiceSchema.nullable().safeParse(body.edit.captions);
@@ -110,6 +129,29 @@ export const PUT = handle<Context>(async (request, { params }) => {
         }
     }
 
+    // A sound is checked when it first appears on the edit: a show library file must be there with its
+    // licence checked, and an episode's own sound must be in its bin with its uploader's word on the rights.
+    if (audio?.length) {
+        const episode = (await ref.get()).data() as Episode | undefined;
+        if (!episode) throw new HttpError(404, 'Episode not found');
+        const saved = new Set((episode.edit?.audio ?? []).map(s => `${s.library ?? ''}|${s.media.path}`));
+        const fresh = audio.filter(s => !saved.has(`${s.library ?? ''}|${s.media.path}`));
+        const library = await libraryEntries(fresh.flatMap(s => (s.library ? [s.library] : [])));
+        let bin: BinItem[] | null = null;
+        for (const s of fresh) {
+            if (s.library) {
+                const entry = library.get(s.library);
+                if (!entry || entry.path !== s.media.path) throw new HttpError(400, `"${s.media.name}" is not in the show library`);
+                if (!entry.checked) throw new HttpError(400, `"${s.media.name}": licence not checked, so it cannot be placed yet`);
+                continue;
+            }
+            bin ??= await binItems(ref.id, episode, await getSettings());
+            const item = bin.find(i => i.source === 'upload' && i.kind === 'audio' && i.path === s.media.path);
+            if (!item) throw new HttpError(400, `"${s.media.name}" is not in this episode's media`);
+            if (!item.rights) throw new HttpError(400, `"${s.media.name}": nobody has said it is theirs to use`);
+        }
+    }
+
     // In a transaction, so two saves at the same moment cannot both pass the version check.
     const newVersion = await adminDb().runTransaction(async tx => {
         const snap = await tx.get(ref);
@@ -131,6 +173,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 captions: captions !== undefined ? captions : current?.captions ?? null,
                 splits: keptSplits,
                 joins: keptJoins,
+                ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),
             },
             updatedAt: FieldValue.serverTimestamp(),
         });

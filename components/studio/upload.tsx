@@ -9,12 +9,12 @@ import { useRef, useState } from "react";
 import { studioFetch } from "@/lib/studioClient";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
 
-type Kind = "episode" | "logo" | "intro" | "overlay" | "media";
+type Kind = "episode" | "logo" | "intro" | "overlay" | "media" | "library" | "licence";
 
 // Some browsers leave the type empty for video files; the extension says what it is.
 const BY_EXTENSION: Record<string, string> = {
     mp4: "video/mp4", m4v: "video/mp4", mov: "video/quicktime", webm: "video/webm", mkv: "video/x-matroska",
-    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp",
+    png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", pdf: "application/pdf",
     mp3: "audio/mpeg", m4a: "audio/mp4", wav: "audio/wav",
 };
 export const typeOf = (file: File) => file.type || BY_EXTENSION[file.name.split(".").pop()?.toLowerCase() ?? ""] || "";

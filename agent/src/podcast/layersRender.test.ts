@@ -1,6 +1,7 @@
 // Spec 020 item E5: layers in a real render (ffmpeg). A video layer slides in from the right with its own
 // sound mixed under the episode's, a still with a slow zoom fills the frame, and a half see-through picture
-// lets the episode show through, each where and when the edit says, after a cut.
+// lets the episode show through, each where and when the edit says, after a cut. Item E6: a lower third's
+// band in the brand's colour, and the logo bug over full-frame b-roll for the whole episode.
 // Run: npx tsx --test agent/src/podcast/layersRender.test.ts
 
 import { test } from 'node:test';
@@ -9,7 +10,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { ImageLayer, VideoLayer } from '../../../lib/layers';
+import { brollLayer, logoBug, lowerThird, type ImageLayer, type VideoLayer } from '../../../lib/layers';
 import { renderEdit } from './editRender';
 
 const ffmpeg = (args: string[]) => execFileSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args]);
@@ -75,5 +76,34 @@ test('layers in a render: a video sliding in with its sound, a moving still, a s
     assert.ok(bb > 200 && br < 60 && bg < 60, `blue fills the frame ${[br, bg, bb]}`);
     const [cr, , cb] = patch(out, 6.8, 20, 20);
     assert.ok(cb > 200 && cr < 60, `to the corners ${[cr, cb]}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('elements in a render: a lower third on a brand band, the logo bug over full-frame b-roll', { timeout: 300_000 }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'elements-'));
+    const video = path.join(dir, 'episode.mp4'), blue = path.join(dir, 'blue.png'), red = path.join(dir, 'red.png'), out = path.join(dir, 'out.mp4');
+    ffmpeg(['-f', 'lavfi', '-i', 'color=c=0x808080:s=640x360:r=30:d=6', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', '6',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', video]);
+    ffmpeg(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=640x360', '-frames:v', '1', blue]);
+    ffmpeg(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=512x512', '-frames:v', '1', red]);
+    const brand = { font: 'Outfit Black' as const, colors: { background: '#140a2e', accent: '#f7c65b' }, hosts: [] };
+    const third = { ...lowerThird(500, 'Ana Example', 'Author', brand), in: { transition: 'none' as const, durationMs: 0 } };
+    // B-roll over the whole frame at 3-6 s, still; the logo bug listed first, drawn above it all the same.
+    const broll = { ...brollLayer({ index: 0, startMs: 3000, durationSeconds: 3, path: 'x' }), motion: 'none' as const };
+    const bug = logoBug({ path: 'x', name: 'logo' });
+    await renderEdit({
+        video, out, clean: 'off', edit: { version: 1, cuts: [] },
+        onScreen: { captions: null, texts: [third], pictures: [{ layer: bug, file: red }, { layer: broll, file: blue }] },
+    });
+    // The band behind the lower third, in its left padding (90 px in, 120 up): the brand's dark purple over grey.
+    const [r, g, b] = patch(out, 2, 82, 925);
+    assert.ok(r < 70 && g < 60 && b > g + 10, `brand band ${[r, g, b]}`);
+    // The logo bug, 8% wide in the top right, 60 px in, four-fifths solid: red over grey, then over the blue b-roll.
+    const [lr, , lb] = patch(out, 2, 1780, 130);
+    assert.ok(lr > 180 && lb < 80, `logo over the episode ${[lr, lb]}`);
+    const [br, , bb] = patch(out, 4.5, 1780, 130);
+    assert.ok(br > 170 && bb > 30 && bb < 90, `logo over the b-roll ${[br, bb]}`);
+    const [cr, , cb] = patch(out, 4.5, 960, 540);
+    assert.ok(cb > 200 && cr < 60, `the b-roll under it ${[cr, cb]}`);
     fs.rmSync(dir, { recursive: true, force: true });
 });

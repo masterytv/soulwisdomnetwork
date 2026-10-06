@@ -9,6 +9,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import { keepRanges } from '../../../lib/edit';
+import { WHOLE_EPISODE_MS } from '../../../lib/layers';
 import { assCheck, measureRender, onScreenChecks, parseBlack, parseLoudness, parseSilences, qcWarnings, type Measured } from './renderQc';
 
 // What ffmpeg 6.1 printed for a 6 s file: 2 s black, a 1.5 s tone, then silence to the end.
@@ -86,6 +87,8 @@ test('on screen: a cut start, past the end, and cut short', () => {
     assert.equal(w.length, 2, w.join('\n'));
     assert.match(w[0], /"In a cut" starts in a cut part/);
     assert.match(w[1], /"Too long" runs past the end/);
+    // A logo bug, to the end of the episode, is not "cut short".
+    assert.deepEqual(onScreenChecks([{ anchor: { atMs: 0 }, durationMs: WHOLE_EPISODE_MS, label: 'Logo' }], keepRanges(60_000, []), 60_000), []);
     assert.match(onScreenChecks([{ anchor: { srcMs: 59_990 }, durationMs: 1000, label: 'Gone' }], keepRanges(60_000, [{ startMs: 50_000, endMs: 60_000, reason: 'manual' }]), 50_000)[0], /after the end/);
 });
 

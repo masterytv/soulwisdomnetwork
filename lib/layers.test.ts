@@ -1,4 +1,4 @@
-// Spec 020 item E5: layers, grown from Part I's overlays.
+// Spec 020 items E5 and E6: layers, grown from Part I's overlays, and the elements (titles, lower thirds, the logo bug).
 // Run: npx tsx --test lib/layers.test.ts
 
 import { test } from 'node:test';
@@ -6,6 +6,8 @@ import assert from 'node:assert/strict';
 import {
     alignFractions, anchorCut, brollLayer, layerFromBin, LayerSchema, layersAss, LayersSchema, layerSpan, layersOf, lookAt,
     overlayXY, pictureFilter, layerAudioFilter, placeOf, startAt, textEvents, toLayer, type ImageLayer, type TextLayer, type VideoLayer,
+    isWhole, layerKind, layerName, logoBug, lowerThird, lowerThirds, marginsOf, positionOf, SITE_LOGO, titleCard, TRACK, WHOLE_EPISODE_MS,
+    type Brand,
 } from './layers';
 import type { ImageOverlay, TextOverlay } from './onScreen';
 
@@ -143,4 +145,66 @@ test('the bin: a picture, the logo, b-roll and video each get a sensible layer; 
     assert.equal(layerFromBin({ id: 'a', kind: 'audio', source: 'upload', path: 'episodes/abcdefghij/media/a.mp3', name: 'Bed' }, 0), null);
     for (const l of [img, lg, br, v]) assert.ok(LayerSchema.safeParse(l).success, l.id);
     assert.deepEqual(placeOf('middle', 90, 80), { x: 0.5, y: 0.5, align: 5 });
+});
+
+const brand: Brand = { font: 'Outfit Black', colors: { background: '#140a2e', accent: '#f7c65b' }, hosts: ['Daniel Endy'] };
+
+test('elements: a title card and a lower third in the brand, at the nine positions', () => {
+    const card = titleCard(3000, brand);
+    assert.equal(LayerSchema.safeParse(card).success, true);
+    assert.deepEqual([card.place, card.color, card.band, card.subColor, card.size, card.font, card.element],
+        [{ x: 0.5, y: 0.5, align: 5 }, '#f7c65b', '#140a2e', '#ffffff', 'huge', 'Outfit Black', 'title']);
+    assert.equal(positionOf(card), 'middle');
+    const third = lowerThird(1000, 'Ana', 'Author', brand);
+    assert.equal(LayerSchema.safeParse(third).success, true);
+    // 120 px up, clear of the captions, so it reads as the lower left, not "where you dragged it".
+    assert.deepEqual(marginsOf(third), [90, 120]);
+    assert.equal(positionOf(third), 'bottom-left');
+    assert.deepEqual([third.color, third.subColor, third.band, third.in.transition], ['#ffffff', '#f7c65b', '#140a2e', 'slideRight']);
+    assert.deepEqual([layerKind(third), layerName(third)], ['Lower third', 'Ana · Author']);
+    assert.equal(positionOf({ ...third, place: { ...third.place, x: 0.3 } }), 'custom');
+    // An old layer without the new fields still reads.
+    const plain = toLayer(title);
+    assert.equal(LayerSchema.safeParse(plain).success, true);
+    assert.equal(layerKind(plain), 'Text');
+});
+
+test('elements: a lower third for every speaker where each first talks, hosts marked, never twice', () => {
+    const words = [{ speaker: 'Daniel Endy', start: 400 }, { speaker: 'Ana', start: 900 }, { speaker: 'Daniel Endy', start: 3000 }, { speaker: '', start: 5000 }];
+    const made = lowerThirds(words, [], brand);
+    assert.deepEqual(made.map(l => [l.text, l.subtext, l.anchor]), [['Daniel Endy', 'Host', { srcMs: 400 }], ['Ana', '', { srcMs: 900 }]]);
+    assert.equal(new Set(made.map(l => l.id)).size, 2);
+    assert.equal(LayersSchema.safeParse(made).success, true);
+    // Speakers with a text layer of their name already (any case) are left out.
+    assert.deepEqual(lowerThirds(words, [{ ...made[0], text: 'daniel endy' }], brand).map(l => l.text), ['Ana']);
+    assert.deepEqual(lowerThirds(words, made, brand), []);
+});
+
+test('elements: the logo bug lasts the whole episode, pinned, above full-frame b-roll', () => {
+    const bug = logoBug({ path: SITE_LOGO, name: 'Logo' });
+    assert.equal(LayerSchema.safeParse(bug).success, true);
+    assert.deepEqual([bug.anchor, bug.track, bug.element, isWhole(bug), positionOf(bug)], [{ atMs: 0 }, TRACK.logo, 'logo', true, 'top-right']);
+    assert.ok(bug.track > brollLayer({ index: 0, startMs: 0, durationSeconds: 5, path: 'episodes/abcdefghij/broll/0.png' }).track);
+    // However long the edit: from the start to the end, whatever cuts there are.
+    const cut = [{ startMs: 0, endMs: 5000 }, { startMs: 9000, endMs: 20_000 }];
+    assert.deepEqual(layerSpan(bug, cut, 16_000), { startMs: 0, endMs: 16_000 });
+    assert.equal(bug.durationMs, WHOLE_EPISODE_MS);
+    assert.equal(layerKind(bug), 'Logo bug');
+    // Only the site's own logo, not any file in the site.
+    assert.equal(LayerSchema.safeParse({ ...bug, media: { path: 'site/other.png', name: 'x' } }).success, false);
+});
+
+test('the render: a brand band and an accent second line in the ASS file', () => {
+    const third = { ...lowerThird(1000, 'Ana', 'Author', brand), in: { transition: 'none' as const, durationMs: 0 } };
+    const span = { startMs: 1000, endMs: 6000 };
+    const [line] = textEvents(third, span, 'Text1');
+    // The role in the accent colour (&HBBGGRR: 5b c6 f7), at 0.6 of the name's height.
+    assert.match(line, /\\N\{\\fs36\\c&H005BC6F7&\}Author$/);
+    const ass = layersAss([], null, [{ layer: third, span }])!;
+    // The band in the brand's background (&HAABBGGRR: 2e 0a 14), nearly solid, as a box (BorderStyle 3).
+    assert.match(ass, /Style: Text1,Outfit Black,60,&H00FFFFFF,&H00FFFFFF,&H1E2E0A14,&H60000000,0,0,0,0,100,100,0,0,3,/);
+    // No band colour: the dark see-through band as before; the same colour twice: no override.
+    const plain = layersAss([], null, [{ layer: { ...third, band: undefined, subColor: '#FFFFFF' }, span }])!;
+    assert.match(plain, /&H50000000/);
+    assert.ok(!plain.includes('\\c&H'));
 });

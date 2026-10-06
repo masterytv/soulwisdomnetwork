@@ -21,7 +21,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
-import { LAYER_MIN_MS, layerSpan, type Layer } from '@/lib/layers';
+import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type Layer } from '@/lib/layers';
+import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
@@ -349,12 +350,16 @@ type Drag =
 
 const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10 aria-pressed:text-amber-300';
 
-// A layer being dragged on V2 or V3: its whole body moves it, an end trims it.
-interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Layer; draft: Layer; moved: boolean; guide: number | null }
+// A layer being dragged on V2 or V3, or a sound on A2 or A3 (item E7): its whole body moves it, an end trims it.
+type Placed = Layer | Sound;
+interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null }
+// The sound lanes along the bottom, under A1.
+const SOUND_LANES = [SOUND_TRACK.music, SOUND_TRACK.effects];
+const soundsH = SOUND_LANES.length * LANE_H;
 
 // Where a layer is on the timeline, which is drawn in the recording's time: from where it starts in the
 // edited episode to where it ends, mapped back to the recording (null when it starts after the end).
-function layerBounds(l: Layer, clips: Clip[], editedMs: number) {
+function layerBounds(l: { anchor: Anchor; durationMs: number }, clips: Clip[], editedMs: number) {
     const span = layerSpan(l, clips, editedMs);
     if (!span) return null;
     const from = sourceTime(clips, span.startMs) ?? ('srcMs' in l.anchor ? l.anchor.srcMs : 0);
@@ -376,6 +381,7 @@ export interface SplitTransition { splitMs: number; label: string | null; playin
 
 export function Timeline({
     words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
+    sounds = [], onSounds, mutedTracks = [], onMutedTracks,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin,
 }: {
@@ -389,6 +395,10 @@ export function Timeline({
     onSelectLayer?: (id: string | null) => void;
     onLayers?: (layers: Layer[]) => void;   // a whole drag, as one change; missing: layers cannot be changed
     onDropMedia?: (itemId: string, srcMs: number) => void;
+    sounds?: Sound[];                       // item E7: music on A2, effects on A3
+    onSounds?: (sounds: Sound[]) => void;
+    mutedTracks?: number[];                 // sound tracks muted in the preview
+    onMutedTracks?: (tracks: number[]) => void;
     totalMs: number;
     video: React.RefObject<HTMLVideoElement | null>;
     onSeek: (ms: number) => void;
@@ -457,7 +467,8 @@ export function Timeline({
     const scrollPx = clampScroll(view.scrollPx, totalMs, pxPerMs, size.w);
     const startMs = scrollPx / pxPerMs;
     const endMs = startMs + size.w / pxPerMs;
-    const a1H = Math.max(MIN_A1_H, size.h - A1_TOP);
+    const a1H = Math.max(MIN_A1_H, size.h - A1_TOP - soundsH);
+    const soundTop = (track: number) => A1_TOP + a1H + SOUND_LANES.indexOf(track as typeof SOUND_LANES[number]) * LANE_H;
     const x = (ms: number) => (ms - startMs) * pxPerMs;
 
     // The view's scroll position is kept in state and put on the scroller after each change.
@@ -607,7 +618,7 @@ export function Timeline({
         const px = e.clientX - r.left, py = e.clientY - r.top;
         return { px, py, ms: Math.max(0, Math.min(totalMs, startMs + px / pxPerMs)) };
     };
-    const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < A1_TOP ? 'v1' : 'a1';
+    const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < A1_TOP ? 'v1' : py < A1_TOP + a1H ? 'a1' : 'sounds';
 
     // ── Layers (item E5) ──
     const layerTargets = () => [[timeOf(video)], edgesOfWords, splits];
@@ -620,7 +631,7 @@ export function Timeline({
         if (!bounds) return d;
         const editedAt = timelineTime(clips, ms, true) ?? editedMs;
         const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
-        let draft: Layer;
+        let draft: Placed;
         if (d.mode === 'move') draft = { ...b, anchor: anchorAt(ms, editedAt) };
         else if (d.mode === 'end') draft = { ...b, durationMs: Math.max(LAYER_MIN_MS, Math.round(editedAt - bounds.span.startMs)) };
         else {
@@ -629,11 +640,13 @@ export function Timeline({
         }
         return { ...d, draft, guide: s.to !== null && ms === s.ms ? s.to : null };
     };
-    const onLayerDown = (e: React.PointerEvent<HTMLElement>, l: Layer, mode: LayerDrag['mode']) => {
+    const isSound = (l: Placed): l is Sound => 'gainDb' in l;
+    const placedName = (l: Placed) => (isSound(l) ? l.media.name : layerName(l));
+    const onLayerDown = (e: React.PointerEvent<HTMLElement>, l: Placed, mode: LayerDrag['mode']) => {
         if (e.button !== 0) return;
         e.stopPropagation();
         onSelectLayer?.(l.id);
-        if (!onLayers) return;
+        if (!(isSound(l) ? onSounds : onLayers)) return;
         e.currentTarget.setPointerCapture(e.pointerId);
         setLayerDrag({ id: l.id, mode, x0: e.clientX, base: l, draft: l, moved: false, guide: null });
     };
@@ -651,17 +664,18 @@ export function Timeline({
     const onLayerUp = () => {
         const d = layerDragRef.current;
         if (!d) return;
-        if (d.moved && onLayers) onLayers(layers.map(l => (l.id === d.id ? d.draft : l)));
+        if (d.moved && isSound(d.draft)) onSounds?.(sounds.map(s => (s.id === d.id ? d.draft as Sound : s)));
+        else if (d.moved) onLayers?.(layers.map(l => (l.id === d.id ? d.draft as Layer : l)));
         else if (!d.moved) {
             const b = layerBounds(d.base, clips, editedMs);
             if (b) onSeek(b.fromMs);
         }
         setLayerDrag(null);
     };
-    const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft : l));
-    const selectedLayerShown = shownLayers.find(l => l.id === selectedLayer) ?? null;
+    const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft as Layer : l));
+    const shownSounds = sounds.map(s => (layerDrag?.id === s.id ? layerDrag.draft as Sound : s));
+    const selectedLayerShown: Placed | null = shownLayers.find(l => l.id === selectedLayer) ?? shownSounds.find(s => s.id === selectedLayer) ?? null;
     const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
-    const layerName = (l: Layer) => (l.kind === 'text' ? l.text : l.media.name);
 
     // Where a dragged edge lands: snapped (unless Alt, or Snap is off) or on a 10 ms step, then kept
     // within its limits and out of heard words (unless Alt).
@@ -677,7 +691,7 @@ export function Timeline({
         const lane = laneAt(py);
         e.currentTarget.setPointerCapture(e.pointerId);
         if (lane === 'ruler') { onSeek(ms); setDrag({ kind: 'scrub' }); return; }
-        if (lane === 'v2') { onSelectLayer?.(null); onSeek(ms); return; }
+        if (lane === 'v2' || lane === 'sounds') { onSelectLayer?.(null); onSeek(ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
         // The Blade splits where it is clicked, between words unless Alt is held.
         if (tool === 'blade') {
@@ -862,13 +876,17 @@ export function Timeline({
                 })()}
                 {selectedLayerShown && selectedBounds && (
                     <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
-                        <span className="text-amber-200 truncate min-w-0" title={layerName(selectedLayerShown)}>
-                            {selectedLayerShown.kind === 'text' ? 'Text' : selectedLayerShown.kind === 'video' ? 'Video' : 'Picture'} “{layerName(selectedLayerShown)}”
+                        <span className="text-amber-200 truncate min-w-0" title={placedName(selectedLayerShown)}>
+                            {isSound(selectedLayerShown) ? (selectedLayerShown.track === SOUND_TRACK.music ? 'Music' : 'Effect') : layerKind(selectedLayerShown)} “{placedName(selectedLayerShown)}”
                             {' '}{preciseTime(selectedBounds.span.startMs)}–{preciseTime(selectedBounds.span.endMs)} in the edit ({((selectedBounds.span.endMs - selectedBounds.span.startMs) / 1000).toFixed(1)} s)
                         </span>
-                        {onLayers && !layerDrag && (
-                            <button onClick={() => { onLayers(layers.filter(l => l.id !== selectedLayerShown.id)); onSelectLayer?.(null); }}
-                                title="Remove this layer (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
+                        {(isSound(selectedLayerShown) ? onSounds : onLayers) && !layerDrag && (
+                            <button onClick={() => {
+                                if (isSound(selectedLayerShown)) onSounds?.(sounds.filter(s => s.id !== selectedLayerShown.id));
+                                else onLayers?.(layers.filter(l => l.id !== selectedLayerShown.id));
+                                onSelectLayer?.(null);
+                            }}
+                                title="Remove it (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
                         )}
                         <button onClick={() => onSelectLayer?.(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
                     </span>
@@ -915,6 +933,21 @@ export function Timeline({
                             {muted ? <VolumeX size={13} /> : <Volume2 size={13} />}
                         </button>
                     </div>
+                    {SOUND_LANES.map(track => {
+                        const off = mutedTracks.includes(track);
+                        const label = SOUND_TRACK_LABELS[track];
+                        return (
+                            <div key={track} style={{ height: LANE_H }} className="flex items-center gap-1 pr-2">
+                                <span className="grow truncate" title={track === SOUND_TRACK.music ? 'Music beds (the Media panel)' : 'Effects and stingers (the Media panel)'}>{label}</span>
+                                <button type="button" aria-pressed={off}
+                                    onClick={() => onMutedTracks?.(off ? mutedTracks.filter(t => t !== track) : [...mutedTracks, track])}
+                                    aria-label={off ? `Unmute ${label} in the preview` : `Mute ${label} in the preview`}
+                                    title={off ? 'Muted in the preview (the render still has it)' : 'Mute in the preview'} className={iconButton}>
+                                    {off ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                                </button>
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* The lanes: a scroller as wide as the recording, with what is in view drawn at its left edge. */}
@@ -930,8 +963,8 @@ export function Timeline({
                         setView(v => ({ ...v, scrollPx: left }));
                     }}
                 >
-                    <div style={{ width: contentW, height: A1_TOP + a1H }} className="relative">
-                        <div className="sticky left-0 top-0" style={{ width: size.w, height: A1_TOP + a1H }}>
+                    <div style={{ width: contentW, height: A1_TOP + a1H + soundsH }} className="relative">
+                        <div className="sticky left-0 top-0" style={{ width: size.w, height: A1_TOP + a1H + soundsH }}>
                             <canvas ref={canvasRef} className="absolute inset-0" style={{ width: size.w, height: A1_TOP + a1H }} />
                             <div
                                 ref={lanesRef}
@@ -983,7 +1016,10 @@ export function Timeline({
                                 {shownLayers.map(l => {
                                     const b = layerBounds(l, clips, editedMs);
                                     if (!b || b.toMs < startMs || b.fromMs > endMs) return null;
-                                    const top = l.kind === 'text' ? V3_TOP : V2_TOP;
+                                    // A picture on a higher track (the logo bug, item E6) is a thin strip along the top of V2, so a
+                                    // whole-episode logo never covers the b-roll under it.
+                                    const thin = l.kind !== 'text' && l.track >= TRACK.logo;
+                                    const [top, height] = l.kind === 'text' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
                                     const isSel = l.id === selectedLayer;
                                     const color = l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
                                     const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
@@ -992,16 +1028,49 @@ export function Timeline({
                                             key={l.id}
                                             role="button"
                                             tabIndex={-1}
-                                            aria-label={`${l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture'}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
+                                            aria-label={`${layerKind(l)}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
                                             title={`${layerName(l)}: drag to move, drag an end to trim`}
                                             onPointerDown={e => onLayerDown(e, l, 'move')}
                                             {...handles}
                                             className={`absolute rounded-sm ${color} ${overlaysHidden ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onLayers ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
-                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top: top + 3, height: LANE_H - 6 }}
+                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top, height }}
                                         >
-                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{layerName(l)}</span>
+                                            {!thin && <span className="pointer-events-none px-1 text-[9px] leading-[12px] text-black/80 whitespace-nowrap">{layerName(l)}</span>}
                                             {onLayers && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, l, edge)} {...handles}
+                                                    className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
+                                                    style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* A2 and A3: music and effects (item E7). Click to select; drag to move; drag an end to trim. */}
+                                {SOUND_LANES.map((track, i) => (
+                                    <div key={track} aria-hidden className={`absolute left-0 right-0 pointer-events-none ${i % 2 ? 'bg-white/[0.02]' : 'bg-white/[0.04]'} border-t border-white/5`}
+                                        style={{ top: soundTop(track), height: LANE_H }} />
+                                ))}
+                                {shownSounds.map(s => {
+                                    const b = layerBounds(s, clips, editedMs);
+                                    if (!b || b.toMs < startMs || b.fromMs > endMs) return null;
+                                    const isSel = s.id === selectedLayer;
+                                    const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
+                                    const muted = mutedTracks.includes(s.track);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label={`${s.track === SOUND_TRACK.music ? 'Music' : 'Effect'}: ${s.media.name} at ${tickLabel(b.fromMs)}`}
+                                            title={`${s.media.name}${s.duck ? ' (ducked under the voice)' : ''}: drag to move, drag an end to trim`}
+                                            onPointerDown={e => onLayerDown(e, s, 'move')}
+                                            {...handles}
+                                            className={`absolute rounded-sm ${s.track === SOUND_TRACK.music ? 'bg-rose-400/80' : 'bg-orange-300/80'} ${muted ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onSounds ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
+                                            style={{ left: x(b.fromMs), width: Math.max(4, (b.toMs - b.fromMs) * pxPerMs), top: soundTop(s.track) + 3, height: LANE_H - 6 }}
+                                        >
+                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
+                                            {onSounds && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
+                                                <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, s, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
                                                     style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
                                             ))}

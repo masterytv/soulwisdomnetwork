@@ -14,6 +14,8 @@ import { renderEdit } from './editRender';
 import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
 import { probeDuration } from './media';
+import { logoBug, SITE_LOGO } from '../../../lib/layers';
+import { EMPTY_LICENCE, newSound, type LicenceCheck } from '../../../lib/audio';
 
 const ID = 'testEpisode123';
 
@@ -207,5 +209,70 @@ test('job: a failed render never reports ready', async () => {
     };
     await assert.rejects(runEditRender(ID, deps, dir), /ffmpeg exited 1/);
     assert.ok(!updates.some(u => u['editRender.status'] === 'ready'));
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('job: the site\'s logo (no Studio logo) comes from the repository, never from Storage', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-logo-'));
+    const downloads: string[] = [];
+    let pictures: { layer: { id: string }; file: string }[] = [];
+    const bug = logoBug({ path: SITE_LOGO, name: 'Logo' });
+    const upload = { ...bug, id: 'up', element: undefined, media: { path: `episodes/${ID}/media/mabcdef1.png`, name: 'pic' } };
+    const siteLogo = path.join(dir, 'logo.png');
+    fs.writeFileSync(siteLogo, 'png');
+    const deps: EditRenderDeps = {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [], layers: [bug, upload] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async () => { throw new Error('should not upload'); },
+        saveToDrive: async () => { throw new Error('should not save'); },
+        update: async () => {},
+        render: async opts => { pictures = opts.onScreen?.pictures ?? []; throw new Error('stop here'); },
+        now: () => 'NOW',
+        siteLogo,
+    };
+    await assert.rejects(runEditRender(ID, deps, path.join(dir, 'work')), /stop here/);
+    assert.deepEqual(pictures.map(p => [p.layer.id, p.file === siteLogo]), [[bug.id, true], ['up', false]]);
+    assert.deepEqual(downloads.filter(p => p.includes('media') || p.startsWith('site')), [`episodes/${ID}/media/mabcdef1.png`]);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('job: library sounds play only while checked; their credits and uses are recorded', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-sounds-'));
+    const downloads: string[] = [];
+    const updates: Record<string, unknown>[] = [];
+    const logged: { ids: string[]; kind: string; ref: string }[] = [];
+    let given: string[] = [];
+    const bed = { ...newSound({ path: 'library/sbed.mp3', name: 'Calm', library: 'ok' }, 'music', { srcMs: 0, atMs: 0 }), id: 'bed' };
+    const hit = { ...newSound({ path: 'library/shit.wav', name: 'Hit', library: 'unchecked' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'hit' };
+    const own = { ...newSound({ path: `episodes/${ID}/media/mown123.wav`, name: 'Ours' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'own' };
+    const check: LicenceCheck | null = { by: 'u1', name: 'Tom', on: '2026-10-06' };
+    const deps: EditRenderDeps = {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 3, cuts: [], audio: [bed, hit, own] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async fields => { updates.push(fields); },
+        render: async opts => {
+            given = (opts.sounds ?? []).map(s => s.sound.id);
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: ['own', 'bed'] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, finalSource: 'editorLight' },
+        library: async ids => new Map(ids.flatMap((id): [string, { path: string; checked: LicenceCheck | null; licence: typeof EMPTY_LICENCE }][] => id === 'ok'
+            ? [[id, { path: 'library/sbed.mp3', checked: check, licence: { ...EMPTY_LICENCE, credit: 'Music: Calm by A' } }]]
+            : id === 'unchecked' ? [[id, { path: 'library/shit.wav', checked: null, licence: EMPTY_LICENCE }]] : [])),
+        logUses: async (ids, use) => { logged.push({ ids, kind: use.kind, ref: use.ref }); },
+    };
+    const result = await runEditRender(ID, deps, path.join(dir, 'work'), '9');
+    // The unchecked one is left out, with a warning; it is never downloaded.
+    assert.deepEqual(given, ['bed', 'own']);
+    assert.ok(!downloads.includes('library/shit.wav'));
+    assert.ok(result.warnings.some(w => /"Hit": its licence is not checked/.test(w)), result.warnings.join(' | '));
+    // The credit, on the render and on the final cut it became; the use, on the library entry.
+    assert.deepEqual(result.credits, ['Music: Calm by A']);
+    const last = updates[updates.length - 1] as { final?: { credits: string[]; library: string[] } };
+    assert.deepEqual([last.final?.credits, last.final?.library], [['Music: Calm by A'], ['ok']]);
+    assert.deepEqual(logged, [{ ids: ['ok'], kind: 'episode', ref: `episodes/${ID}/editRender/v3-9/episode.mp4` }]);
     fs.rmSync(dir, { recursive: true, force: true });
 });

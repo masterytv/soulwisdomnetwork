@@ -8,7 +8,7 @@
 
 import { spawn } from 'child_process';
 import type { KeptRange } from '../../../lib/edit';
-import { anchorCut, layerSpan, type Anchor } from '../../../lib/layers';
+import { anchorCut, isWhole, layerSpan, type Anchor } from '../../../lib/layers';
 import type { RenderQc } from '../../../types/episode';
 import { LOUDNESS } from './media';
 
@@ -121,7 +121,8 @@ export function onScreenChecks(items: { anchor: Anchor; durationMs: number; labe
         const span = layerSpan(it, ranges, editedMs);
         if (!span) { w.push(`On screen: "${it.label}" comes after the end of the edit, so it is not shown.`); continue; }
         if (anchorCut(it, ranges)) w.push(`On screen: "${it.label}" starts in a cut part, so it shows at the next kept moment (${secs(span.startMs / 1000)} in the episode).`);
-        if (span.startMs + it.durationMs > editedMs + 1) w.push(`On screen: "${it.label}" runs past the end of the edit and is cut short.`);
+        // A layer set to last to the end (the logo bug) is meant to end with the episode.
+        if (!isWhole(it) && span.startMs + it.durationMs > editedMs + 1) w.push(`On screen: "${it.label}" runs past the end of the edit and is cut short.`);
     }
     return w;
 }

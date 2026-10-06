@@ -233,6 +233,15 @@ async function render(episode: Episode, words: TimedWord[]) {
         const previous = item.render?.path;
         await updateItem(item.id, i => ({ ...i, render: { ...inputs, path: dest, renderedAt, durationMs }, approved: null }));
         if (previous) await bucket.file(previous).delete().catch(() => {});
+        // A short cut from a final cut with show library sounds may carry them: noted on each entry (spec 020
+        // item E7), so a Content ID claim on the short can be traced to its licence.
+        const library = episode.final?.library ?? [];
+        if (library.length) {
+            const items = db.collection('studio').doc('media').collection('items');
+            const use = { episodeId, kind: 'short', ref: dest, at: new Date().toISOString() };
+            await Promise.all(library.map(id => items.doc(id).update({ uses: FieldValue.arrayUnion(use) })))
+                .catch(error => console.warn(`⚠️ Could not log the library's uses: ${(error as Error).message}`));
+        }
         done++;
         console.log(`  ✅ ${item.title} (${Math.round(durationMs / 1000)}s)`);
     }
@@ -270,7 +279,7 @@ async function upload(episode: Episode, words: TimedWord[]) {
             continue;
         }
         const spoken = wordsBetween(words, item.startMs, item.endMs).map(w => w.text).join(' ');
-        const meta = shortMetadata(item, spoken, { ...link, hashtags: notes.hashtags, tags: notes.tags });
+        const meta = shortMetadata(item, spoken, { ...link, hashtags: notes.hashtags, tags: notes.tags, credits: episode.final?.credits ?? [] });
         const local = path.join(workDir, `${item.id}.mp4`);
         await withRetry('Storage download', () => bucket.file(item.render!.path).download({ destination: local }));
         const publishAt = new Date(item.publishAt!).toISOString();

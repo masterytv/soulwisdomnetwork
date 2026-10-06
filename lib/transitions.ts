@@ -97,11 +97,13 @@ export function splitTransitions(joins: Join[] | undefined, splits: number[] | u
 
 // What an edit has that only the Studio editor shows, in a line for the quick edit: "2 splits, 1
 // transition, 3 on-screen items". Empty when it has none.
-export function studioOnlySummary(edit: { splits?: number[]; joins?: Join[]; overlays?: unknown[]; layers?: unknown[] }): string {
+export function studioOnlySummary(edit: { splits?: number[]; joins?: Join[]; overlays?: unknown[]; layers?: unknown[]; audio?: unknown[] }): string {
     const splits = edit.splits?.length ?? 0;
     const transitions = (edit.joins ?? []).filter(j => j.transition !== 'cut' && (typeof j.at === 'string' || (edit.splits ?? []).includes(j.at.atSplit))).length;
     // Layers (spec 020 item E5) replace the overlays once saved.
     const overlays = (edit.layers ?? edit.overlays)?.length ?? 0;
     const n = (count: number, one: string, many: string) => count ? [`${count} ${count === 1 ? one : many}`] : [];
-    return [...n(splits, 'split', 'splits'), ...n(transitions, 'transition', 'transitions'), ...n(overlays, 'on-screen item', 'on-screen items')].join(', ');
+    // And music and effects (item E7).
+    return [...n(splits, 'split', 'splits'), ...n(transitions, 'transition', 'transitions'), ...n(overlays, 'on-screen item', 'on-screen items'),
+        ...n(edit.audio?.length ?? 0, 'sound', 'sounds')].join(', ');
 }

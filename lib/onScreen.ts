@@ -115,18 +115,6 @@ export function newText(overlayId: string, atMs: number, look: CaptionStyle = DE
     };
 }
 
-// A name title for each speaker where they first speak: name in the lower left on a dark band, five seconds.
-// Speakers that already have a title (same text) are left out, so pressing it twice adds nothing.
-export function nameTitles(words: { speaker: string; start: number }[], existing: Overlay[], look: CaptionStyle = DEFAULT_CAPTION_STYLE): TextOverlay[] {
-    const have = new Set(existing.filter((o): o is TextOverlay => o.type === 'text').map(o => o.text));
-    const first = new Map<string, number>();
-    for (const w of words) if (w.speaker && !first.has(w.speaker)) first.set(w.speaker, w.start);
-    return [...first].filter(([speaker]) => !have.has(speaker)).map(([speaker, start], i) => ({
-        id: `title-${Math.round(start)}-${i}`, type: 'text', atMs: Math.max(0, Math.round(start)), seconds: 5,
-        text: speaker, subtext: '', font: look.font, size: 'medium', color: '#ffffff', background: 'box', position: 'bottom-left',
-    }));
-}
-
 // ─── ASS subtitles (captions and text overlays) ─────────────────────────────
 
 // An ASS colour, &HAABBGGRR, where alpha 0 is solid and 255 is clear.
@@ -143,6 +131,9 @@ export function assTime(ms: number): string {
     return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(cs % 100).padStart(2, '0')}`;
 }
 
+// A brand-coloured band's see-through, as ASS alpha (0 solid … 255 clear): about 88% solid.
+export const BAND_ALPHA = 0x1e;
+
 // ASS alignment numbers (numpad layout: 1 bottom left … 9 top right).
 export const ALIGN: Record<Position, number> = {
     'bottom-left': 1, bottom: 2, 'bottom-right': 3, 'middle-left': 4, middle: 5, 'middle-right': 6, 'top-left': 7, top: 8, 'top-right': 9,
@@ -153,15 +144,16 @@ export function assText(text: string): string {
     return text.replace(/\\/g, '/').replace(/[{}]/g, m => (m === '{' ? '(' : ')')).replace(/\r?\n/g, '\\N');
 }
 
-// One ASS style line for a look: font, height, colour, the background, and where it sits.
-export function styleLine(name: string, look: { font: FontName; size: TextSize; color: string; background: Background }, position: Position, marginV: number): string {
+// One ASS style line for a look: font, height, colour, the background, and where it sits. A box is a dark
+// band, a little see-through, unless the look names the band's colour (`band`, a brand colour: nearly solid).
+export function styleLine(name: string, look: { font: FontName; size: TextSize; color: string; background: Background; band?: string }, position: Position, marginV: number): string {
     const size = TEXT_SIZES[look.size];
     const bold = FONTS.find(f => f.name === look.font)?.bold ? -1 : 0;
     const box = look.background === 'box';
     const outline = box ? Math.round(size * 0.15) : look.background === 'outline' ? Math.max(2, Math.round(size * 0.07)) : 0;
     const shadow = look.background === 'shadow' ? Math.max(2, Math.round(size * 0.06)) : 0;
-    // A box is drawn in the outline colour, a little see-through; an outline is solid black.
-    const outlineColour = box ? assRgba('#000000', 0x50) : assRgba('#000000');
+    // A box is drawn in the outline colour; an outline is solid black.
+    const outlineColour = box ? (look.band ? assRgba(look.band, BAND_ALPHA) : assRgba('#000000', 0x50)) : assRgba('#000000');
     return `Style: ${name},${look.font},${size},${assRgba(look.color)},${assRgba(look.color)},${outlineColour},${assRgba('#000000', 0x60)},` +
         `${bold},0,0,0,100,100,0,0,${box ? 3 : 1},${outline},${shadow},${ALIGN[position]},90,90,${marginV},1`;
 }

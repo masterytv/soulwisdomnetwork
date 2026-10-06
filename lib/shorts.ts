@@ -163,15 +163,18 @@ export function captionChunks(words: TimedWord[]): CaptionChunk[] {
 
 const TITLE_CLEAN = (s: string) => s.replace(/[<>]/g, '').replace(/\s+/g, ' ').trim();
 
-// What goes to YouTube for one short: the spoken words, a link to the full episode, hashtags.
+// What goes to YouTube for one short: the spoken words, a link to the full episode, the credits for the
+// show library's sounds in the final cut it comes from (spec 020 item E7), hashtags.
 export function shortMetadata(item: { title: string; speaker: string; synthetic: boolean }, spoken: string,
-    episode: { url: string; linkText: string; hashtags: string[]; tags: string[] }) {
+    episode: { url: string; linkText: string; hashtags: string[]; tags: string[]; credits?: string[] }) {
     const quote = spoken.length > 600 ? `${spoken.slice(0, 600).replace(/\s+\S*$/, '')}…` : spoken;
     const hashtags = [...episode.hashtags.map(h => (h.startsWith('#') ? h : `#${h}`)).slice(0, 2), '#shorts'];
     return {
         title: TITLE_CLEAN(item.title).slice(0, SHORT_TITLE_MAX),
         // No link line when there is nowhere to send people (no video yet, no playlist, no website).
-        description: TITLE_CLEAN(`“${quote}” — ${item.speaker}`) + (episode.url ? `\n\n${episode.linkText}: ${episode.url}` : '') + `\n\n${hashtags.join(' ')}`,
+        description: TITLE_CLEAN(`“${quote}” — ${item.speaker}`) + (episode.url ? `\n\n${episode.linkText}: ${episode.url}` : '')
+            + (episode.credits?.length ? `\n\nMusic and sound\n${episode.credits.map(c => c.replace(/[<>]/g, '')).join('\n')}` : '')
+            + `\n\n${hashtags.join(' ')}`,
         tags: episode.tags.slice(0, 15),
         containsSyntheticMedia: item.synthetic,
     };

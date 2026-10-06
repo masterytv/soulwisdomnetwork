@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { timelineTime, type Clip } from '@/lib/sequence';
-import { alignFractions, layerSpan, lookAt, type Layer, type PictureLayer, type Span, type TextLayer } from '@/lib/layers';
+import { alignFractions, layerSpan, lookAt, SUBTEXT_SCALE, type Layer, type PictureLayer, type Span, type TextLayer } from '@/lib/layers';
 import { textStyle } from '@/components/studio/onScreen';
 
 // The video's time, every frame while it plays and at each seek otherwise, and whether it is playing;
@@ -161,7 +161,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
                             className={`${clickable ? 'pointer-events-auto cursor-move' : ''} ${ring}`}
                             style={{ ...style, ...textStyle(l as TextLayer), textAlign: fx === 0 ? 'left' : fx === 1 ? 'right' : 'center', width: 'max-content', maxWidth: '90%' }}>
                             {l.text}
-                            {l.subtext && <div style={{ fontSize: '0.6em' }}>{l.subtext}</div>}
+                            {l.subtext && <div style={{ fontSize: `${SUBTEXT_SCALE}em`, ...(l.subColor ? { color: l.subColor } : {}) }}>{l.subtext}</div>}
                         </div>
                     );
                 }
