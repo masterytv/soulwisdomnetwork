@@ -190,7 +190,7 @@ test('render with cuts, teasers, intro, outro, b-roll, and --clean light', async
     assert.ok(!reportData.qc.warnings.some((w: string) => w.startsWith('The video is')), 'no length warning');
 });
 
-test('block rendering for long episodes', async () => {
+test('windows for long episodes (spec 019 item 4.2), and a retry that finds the windows kept', async () => {
     const dir = path.join(process.env.TMPDIR || '/tmp', 'edit-render-block-test');
     fs.mkdirSync(dir, { recursive: true });
 
@@ -216,6 +216,19 @@ test('block rendering for long episodes', async () => {
     // per cut than the edit said: here 0.6 s, on a long episode with many cuts many seconds.
     const expectedSec = frameAt(sequenceLength(playOrder(edit, 180_000))) / FPS;
 
+    // A stand-in for the job's Storage: what the render keeps, by name.
+    const keptDir = fs.mkdtempSync(path.join(dir, 'kept-'));
+    const log: string[] = [];
+    const store = {
+        get: async (name: string, local: string) => {
+            const f = path.join(keptDir, name);
+            if (!fs.existsSync(f)) return false;
+            fs.copyFileSync(f, local);
+            log.push(`get ${name}`);
+            return true;
+        },
+        put: async (local: string, name: string) => { fs.copyFileSync(local, path.join(keptDir, name)); log.push(`put ${name}`); },
+    };
     const out = path.join(dir, 'output.mp4');
     await renderEdit({
         video,
@@ -223,7 +236,17 @@ test('block rendering for long episodes', async () => {
         out,
         clean: 'off',
         blockMinutes: 1,
+        store,
     });
+    // More than one window, each kept as it was made.
+    const made = log.filter(l => l.startsWith('put window-'));
+    assert.ok(made.length >= 2, log.join(', '));
+    // A retry: every window is found, none is made again, and the video is the same length.
+    log.length = 0;
+    const again = path.join(dir, 'again.mp4');
+    await renderEdit({ video, edit, out: again, clean: 'off', blockMinutes: 1, store });
+    assert.deepEqual([...log].sort(), made.map(l => l.replace('put', 'get')).sort());
+    assert.equal((await probeStreams(again)).duration, (await probeStreams(out)).duration);
 
     // Check output length within 2 frames of expected.
     const probe = await probeStreams(out);
