@@ -41,7 +41,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
               components/studio/timeline.tsx; the old /edit address redirects there); its render sits beside Descript's final cut,
               or replaces it when the Studio settings say so. Pictures, video and text over the episode are layers (lib/layers.ts,
-              spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media)
+              spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
+              lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels)
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)

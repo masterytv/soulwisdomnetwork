@@ -14,7 +14,7 @@ import { buildCues } from '../../../lib/captions';
 import { keepRanges } from '../../../lib/edit';
 import {
     assRgba, assText, assTime, captionLook, DEFAULT_CAPTION_STYLE, FONT_NAMES,
-    nameTitles, newText, onScreenProblem, OVERLAYS_MAX, type ImageOverlay, type TextOverlay,
+    newText, onScreenProblem, OVERLAYS_MAX, type ImageOverlay, type TextOverlay,
 } from '../../../lib/onScreen';
 import { brollLayer, layersAss, layerSpan, toLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import { addRetakes, findWords, retakesUserMessage, timeRetakes } from '../../../lib/retakes';
@@ -70,14 +70,6 @@ test('overlays: checked before saving; captions follow the edit, else the Studio
     const own = { ...DEFAULT_CAPTION_STYLE, color: '#ffff00' };
     assert.deepEqual(captionLook({ captions: { on: true, style: own } }, { ...studio, burnCaptions: false }), own);
     assert.equal(captionLook({ captions: null }, { ...studio, burnCaptions: false }), null);
-});
-
-test('name titles: one per speaker where they first speak, never twice', () => {
-    const words = [{ speaker: 'Ana', start: 400 }, { speaker: 'Ana', start: 900 }, { speaker: 'Ben', start: 3000 }];
-    const titles = nameTitles(words, []);
-    assert.deepEqual(titles.map(t => [t.text, t.atMs, t.seconds, t.position, t.background]), [['Ana', 400, 5, 'bottom-left', 'box'], ['Ben', 3000, 5, 'bottom-left', 'box']]);
-    assert.equal(new Set(titles.map(t => t.id)).size, 2);
-    assert.deepEqual(nameTitles(words, titles.slice(0, 1)).map(t => t.text), ['Ben']);
 });
 
 test('placing: overlays move with the cuts and end with the video', () => {

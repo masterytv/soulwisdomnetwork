@@ -105,7 +105,7 @@ for this work".
 | E3 | Split and trim (no moving yet, U4), on `edit.splits` | ours | S | Extra | E2 | Built (#145; spec 020, "E3 — Built") |
 | E4 | Transitions: Cut, Dissolve, Fade, and more | ffmpeg `xfade` | M | Extra | E3 | Built (#147; spec 020, "E4 — Built"); a render with transitions waits on `main` |
 | E5 | Media bin, uploads, image and video overlays | ours (no react-rnd or dnd-kit; see 020 "E5 — Built") | L | Extra | E3 | Built (#157; spec 020, "E5 — Built"); a render with layers waits on `main` |
-| E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Partly done (#130: text, Name titles) |
+| E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Built (#159; spec 020, "E6 — Built"); a render with elements waits on `main` |
 | E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Not started |
 | E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Not started |
 | E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |

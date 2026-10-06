@@ -30,11 +30,11 @@ import type { TimelineMedia } from '@/components/studio/timeline';
 import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
-import type { StudioSettings } from '@/lib/studioSettings';
+import { brandOf, type StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
-import { brollLayer, layersOf, type BinItem } from '@/lib/layers';
+import { brollLayer, layersOf, type BinItem, type Brand } from '@/lib/layers';
 
 // An edit as the Studio editor works on it: with layers, the notes plan's b-roll among them.
 function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
@@ -132,6 +132,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [studioCaptions, setStudioCaptions] = useState<CaptionChoice | undefined>(undefined);
     // The Studio's transitions between sections (spec 020 item E4), for the Transitions panel.
     const [studioJoins, setStudioJoins] = useState<SectionJoins | null>(null);
+    // The Studio's colours, font and hosts, for titles, lower thirds and the logo bug (spec 020 item E6).
+    const [brand, setBrand] = useState<Brand | undefined>(undefined);
     // The audio's silences measured at ingest (null before then), for the pause suggestions.
     const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
@@ -202,7 +204,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     useEffect(() => {
         if (!workspace) return;
         studioFetch<{ settings: StudioSettings }>('/api/studio/settings')
-            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); })
+            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); setBrand(brandOf(v.settings)); })
             .catch(() => {});
     }, [workspace]);
 
@@ -361,6 +363,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
             timelineMedia={timelineMedia}
             studioJoins={studioJoins}
+            brand={brand}
             onFixWords={fixWords}
             media={workspace ? { episodeId, items: bin, error: binError, onItems: setBin } : undefined}
             layersEditable={!workspace || !!bin}

@@ -13,7 +13,7 @@ import { checkUploaded } from '@/lib/server/uploads';
 import { CutsSchema, SilencesFileSchema, SplitsSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
-import { layersOf, LayersSchema, type Layer } from '@/lib/layers';
+import { layersOf, LayersSchema, SITE_LOGO, SITE_LOGO_URL, type Layer } from '@/lib/layers';
 import { binPaths } from '@/lib/server/mediaBin';
 import type { Episode } from '@/types/episode';
 
@@ -36,6 +36,7 @@ export const GET = handle<Context>(async (request, { params }) => {
     const overlayUrls: Record<string, string> = {};
     for (const l of layersOf(edit)) {
         if (l.kind === 'text' || overlayUrls[l.media.path]) continue;
+        if (l.media.path === SITE_LOGO) { overlayUrls[l.media.path] = SITE_LOGO_URL; continue; }
         const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[l.media.path] = url;
     }

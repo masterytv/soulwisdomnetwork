@@ -415,7 +415,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E3 | **Split and trim.** Split, cut a section and bring it back are built (#130, `edit.splits`). Left: the blade tool, dragging a section's edge to trim (as cuts), `lib/sequence.ts` with `playOrder` and `timelineTime` everywhere times are mapped, and splits drawn on the new timeline. | S | Extra | E2 |
 | E4 | **Transitions.** Joins with Cut, Dissolve and Fade first, then the rest of the table. Section defaults in Studio settings. Preview with CSS; `xfade` and `acrossfade` in the render; times shifted by the overlap. | M | Extra | E3 |
 | E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | Extra | E3 |
-| E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. | M | High | E5 |
+| E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. Built (#159). | M | High | E5 |
 | E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). | M | High | E5 |
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
@@ -599,8 +599,8 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
     points is pinned to (`align`, 1 bottom left … 9 top right, as ASS and the nine positions number them), and for
     pictures `w`, the width as a share of the frame. A picture's height follows its own shape, and text has no box, so
     neither needs an `h`. Today's nine positions are exactly such places (`placeOf`), so nothing moves.
-  - **Kinds:** `image`, `video` and `text`. Lower thirds, logos and title cards come with E6 (they are text and images
-    with a style).
+  - **Kinds:** `image`, `video` and `text`. Lower thirds, logos and title cards came with E6, as text and images
+    with a style (see "E6 — Built").
   - Each has an `anchor` (`{ srcMs }` moves with its words, the default; `{ atMs }` stays at a time in the edited
     video), `durationMs` (at least 0.5 s), `opacity`, `in` and `out` (`fade`, `none`, or a slide left, right, up or
     down, 0–3 s), a still's `motion` (none, slow zoom in or out, slow pan: the b-roll's Ken Burns, which fills a 16:9
@@ -657,6 +657,57 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
     60 render pixels in from the top right at 20% width; dragging it snapped to the centre line; its corner resized it
     (20% → 34%); on the timeline it moved and trimmed; a b-roll still dropped onto the timeline became a full-frame layer
     with a slow zoom; **Slide left** was set in the panel; Delete removed a layer and Ctrl+Z brought it back.
+  - **Not yet on a real episode, or in a render from `main`.**
+
+### E6 — Built (#159)
+
+- **Elements** (`lib/layers.ts`, tested in `lib/layers.test.ts`) are layers with a style, not a new kind, so the render,
+  preview, timeline and quality report needed nothing new to place and time them. A layer records what it was added as
+  (`element`: `title`, `lowerThird` or `logo`), for its name in the panels and on the timeline. In the Studio's look
+  (`Brand`, `brandOf` in `lib/studioSettings.ts`): the captions' font, the brand's background and accent colours, and
+  the hosts.
+  - **Title card** (`titleCard`): centred, huge, in the accent colour on a band of the brand's background, a white
+    second line, 4 s, half-second fades.
+  - **Lower third** (`lowerThird`): a name in white and a role in the accent colour on a band of the brand's background,
+    in the lower left 120 px up (clear of the captions), sliding in and fading out, 5 s. **For every speaker**
+    (`lowerThirds`) adds one where each speaker first talks, from the transcript's names; hosts in Studio settings get
+    the role "Host", others none; a speaker with a text layer of their name already is left out, so pressing it twice
+    adds nothing. Part I's **Name titles** button became this.
+  - **Logo bug** (`logoBug`): the Studio's logo, or the site's (`public/logo.png`, as Shorts and thumbnails use) when
+    none is uploaded; 8% wide in the top right, 80% solid, pinned at the start for the whole episode (`WHOLE_EPISODE_MS`,
+    which `layerSpan` cuts at the episode's end, however long the edit becomes). It is on track 4 (`TRACK.logo`), so it
+    is drawn over full-frame b-roll; on the timeline it is a thin strip along the top of V2, so it never covers the
+    b-roll under it. The site's logo is `SITE_LOGO` (`site/logo.png`): the media bin lists it when Studio settings have
+    no logo, the editor shows `/logo.png`, and the render job takes the repository's file (`siteLogo`), never Storage.
+  - **Text**, as before, in the Studio's font.
+  - Two optional fields on text layers carry the brand: `band` (the band's colour, nearly solid, `BAND_ALPHA`; absent:
+    the dark see-through band as before) and `subColor` (the second line's colour). The ASS file gives each text layer a
+    style with its band as the box colour, and the second line a `\c` colour of its own. Old layers read unchanged.
+- **Studio editor:**
+  - **Elements** panel (`components/studio/elements.tsx`): a small sample and a button for each, added at the playhead
+    (the logo at the start); once the logo bug is on, its button opens it instead. What is added opens in Properties.
+  - **Properties** panel (`components/studio/properties.tsx`): the selected layer's text, font, size, colour, band and
+    second-line colours (with an **Accent** button); its start (jump there, **Start at** the playhead), length or **To
+    the end of the episode**, and anchor; its place as the nine positions (a 3 × 3 grid) or numbers, X and Y in render
+    pixels for the point it is pinned by (`positionOf`, `marginsOf`); width (pictures); opacity; In and Out; a still's
+    motion; a video's start and sound. Choosing a layer on the preview, the timeline or the On screen list opens it here.
+  - **On screen** panel: the captions choice as before, and a compact list of every layer in time order (its kind,
+    name, start, length, ×). The fields moved to Properties; the add buttons to Elements and Media.
+  - Removing a layer from a panel keeps the keys with the editor, so Ctrl+Z brings it back.
+- **Checked:**
+  - Unit tests: titles, lower thirds and the logo bug against the schema, their places and colours; one lower third per
+    speaker, hosts marked, never twice; the logo bug's span through cuts; the ASS band and second-line colours; old
+    layers without the new fields.
+  - ffmpeg (`layersRender.test.ts`): a lower third's band comes out in the brand's dark purple; the logo bug is red over
+    the grey episode and stays on top of a full-frame blue b-roll still, listed first or not.
+  - Render job: a logo bug of the site's logo uses the repository's file and downloads nothing for it. The quality
+    report does not call a layer that lasts to the end "cut short" (`renderQc.onScreenChecks`).
+  - Chromium, with a test video and bin: **For every speaker** added "Daniel Endy, Host" and "Ben Guest" where each
+    first spoke, then greyed out; the lower third showed on the preview in the brand's band; Properties changed its role,
+    moved it to the top right on the grid and to X 1500 by number ("Where you dragged or typed it"); a title card took
+    "Chapter one" in gold on the band; the logo bug was the site's logo, on track 4, to the end, checked "To the end of
+    the episode"; clicking the b-roll under the logo strip on the timeline opened the b-roll; a row in On screen opened
+    Properties; Remove, then Ctrl+Z, brought the logo bug back.
   - **Not yet on a real episode, or in a render from `main`.**
 
 **Each row is one PR.** Each ends with:

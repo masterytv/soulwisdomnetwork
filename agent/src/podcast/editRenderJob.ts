@@ -18,7 +18,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
-import { layersOf, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { layersOf, SITE_LOGO, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -38,6 +38,7 @@ export interface EditRenderDeps {
     now: () => unknown;                  // a server timestamp in production
     settings?: StudioSettings;           // the defaults when left out
     showIntro?: string;                  // the show's intro in the repository, when there is no edit package
+    siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
     // Cuts a plain teaser clip from the recording, when there is no edit package to take clips from.
     cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number) => Promise<void>;
 }
@@ -159,7 +160,13 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
     const pictures: { layer: PictureLayer; file: string }[] = [];
-    for (const [i, l] of plan.onScreen.pictures.entries()) pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
+    for (const [i, l] of plan.onScreen.pictures.entries()) {
+        if (l.media.path === SITE_LOGO) {
+            if (deps.siteLogo && fs.existsSync(deps.siteLogo)) pictures.push({ layer: l, file: deps.siteLogo });
+            continue;
+        }
+        pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
+    }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
     let words: TimedWord[] | undefined;

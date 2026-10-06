@@ -14,6 +14,7 @@ import { renderEdit } from './editRender';
 import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
 import { probeDuration } from './media';
+import { logoBug, SITE_LOGO } from '../../../lib/layers';
 
 const ID = 'testEpisode123';
 
@@ -207,5 +208,29 @@ test('job: a failed render never reports ready', async () => {
     };
     await assert.rejects(runEditRender(ID, deps, dir), /ffmpeg exited 1/);
     assert.ok(!updates.some(u => u['editRender.status'] === 'ready'));
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('job: the site\'s logo (no Studio logo) comes from the repository, never from Storage', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-logo-'));
+    const downloads: string[] = [];
+    let pictures: { layer: { id: string }; file: string }[] = [];
+    const bug = logoBug({ path: SITE_LOGO, name: 'Logo' });
+    const upload = { ...bug, id: 'up', element: undefined, media: { path: `episodes/${ID}/media/mabcdef1.png`, name: 'pic' } };
+    const siteLogo = path.join(dir, 'logo.png');
+    fs.writeFileSync(siteLogo, 'png');
+    const deps: EditRenderDeps = {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [], layers: [bug, upload] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async () => { throw new Error('should not upload'); },
+        saveToDrive: async () => { throw new Error('should not save'); },
+        update: async () => {},
+        render: async opts => { pictures = opts.onScreen?.pictures ?? []; throw new Error('stop here'); },
+        now: () => 'NOW',
+        siteLogo,
+    };
+    await assert.rejects(runEditRender(ID, deps, path.join(dir, 'work')), /stop here/);
+    assert.deepEqual(pictures.map(p => [p.layer.id, p.file === siteLogo]), [[bug.id, true], ['up', false]]);
+    assert.deepEqual(downloads.filter(p => p.includes('media') || p.startsWith('site')), [`episodes/${ID}/media/mabcdef1.png`]);
     fs.rmSync(dir, { recursive: true, force: true });
 });
