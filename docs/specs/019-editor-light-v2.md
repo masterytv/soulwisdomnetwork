@@ -95,7 +95,7 @@ for this work".
 | **2** | **Editing precision** | | | | | |
 | 2.1 | Waveform on the timeline | Rescript (MIT) | M | (E2) | — | Built in E2 (#144) |
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
-| 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Not started |
+| 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#PR); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Not started |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Not started |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
@@ -449,6 +449,47 @@ correction is stale: record which captions file each translation came from, and 
 
 **Done when:** a corrected word shows in the editor, in the Editor Light `.srt` and in the
 YouTube captions of a test upload.
+
+**Built (#PR):**
+- **Store:** `corrections.words` (`types/episode.ts`), as planned, keyed `"utterance:word"` like the
+  line ids, because speaker review's splits are per utterance. A fix never spans two utterances.
+- **`lib/wordFixes.ts`** holds the pure parts, with tests: the timing (`timeWords`, Rescript's
+  `correctWords`, credited in its header and `docs/licences/rescript.md`), applying fixes to an
+  utterance, ops that set or put back a fix (`applyOps`, which also returns the ops that undo it),
+  find and replace, and the server's checks (a fix replaces 1–20 words heard with 1–20 words, up to
+  200 characters; at most 5,000 on an episode).
+- **`buildLines`** applies them. Each word now carries `ref`, the word heard it stands for; a
+  corrected one also has `heard` and `count`. Speaker review's splits still fall on words heard; a
+  split inside a correction falls after it. `reviewed.json` keeps `ref`, `heard` and `count`, so the
+  editor knows what each word was.
+- **Speaker review:** **Correct words** on each line. Click a word to retype it; shift-click another
+  to take in the words between, to merge them. A corrected word is underlined in dotted blue, with
+  what was heard in its tooltip and **Put it back**. **Find and replace** sits above the lines: one
+  correction per place, ignoring case and the punctuation around each word, keeping the punctuation
+  around the match ("Kenzie," → "McKenzie,"), with one **Undo replace**. They are saved like every
+  other fix, and reach the official transcript on **Accept**.
+- **The editor (Editor Light and the Studio editor):** double-click a kept word to retype it (Enter
+  saves, Esc cancels, **Put back** when corrected); **Replace** beside the search box opens find and
+  replace. They save through `POST /api/studio/episodes/[id]/words` (`fixWords` in
+  `lib/server/review.ts`). It adds the fix to the corrections and publishes the accepted transcript
+  straight away (`reviewed.json`, `.txt` and the Google Doc), so the notes, the editor and the next
+  render see it. It refuses while speaker review has saved changes not accepted yet, which it would
+  publish too. A transcript accepted before this has no refs: the editor says to accept it again in
+  speaker review.
+- **The render:** the Editor Light `.srt` and the YouTube captions come from `reviewed.json`, so they
+  take the correction at the next render. The render records which accepted transcript it used
+  (`editRender.transcriptVersion`), and shows as out of date once a word is corrected after it.
+- **Translations** (the rule in PLANNING): they already record the final cut they came from
+  (`translations.finalAt`), and a new render is a new final cut, so a correction reaches them as
+  **"The final cut changed since these were made; translate again"**. Nothing new was needed.
+- **Fixed on the way:** selecting a word in the editor showed **✂ Cut selected**, which moved the
+  transcript down, so the second click of a double-click landed elsewhere. The button is now always
+  there, greyed out until words are selected.
+
+**Limits:**
+- **The Descript path:** its captions come from transcribing Descript's cut (`final.ts`), so a
+  correction made here must also be made in Descript.
+- **No re-alignment** against the audio: the new words share the old span by their length.
 
 ### 2.4 Names spelled right from the start (S)
 

@@ -157,6 +157,7 @@ const SHORTCUTS: [string, string][] = [
     ['Shift + click', 'Extend the selection'],
     ['Delete or Backspace', 'Cut the selection'],
     ['Double-click a cut word or pause', 'Bring it back'],
+    ['Double-click a kept word', 'Retype a misheard word (Enter saves, Esc cancels)'],
     ['Click a pause or …', 'Shorten the pause, or cut the sound the transcript missed'],
     ['S', 'Split at the playhead'],
     ['V, B', 'Select tool; Blade tool (click the timeline to split there)'],
