@@ -14,7 +14,7 @@ import { spawn } from 'child_process';
 import { editedWords, applyToChapters, applyToQuotes, type EpisodeEdit } from '../../../lib/edit';
 import { sequenceLength, sequenceOf, timelineTime, type Clip } from '../../../lib/sequence';
 import { DEFAULT_SECTION_JOINS, SECTION_JOIN_LABELS, XFADE, type SectionJoin, type SectionJoins, type Transition } from '../../../lib/transitions';
-import { buildCues, toSrt } from '../../../lib/captions';
+import { buildCues, editCues, toSrt } from '../../../lib/captions';
 import { mmss } from '../../../lib/showNotes';
 import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
 import type { CaptionStyle } from '../../../lib/onScreen';
@@ -425,7 +425,7 @@ export async function renderEdit(opts: {
             epA = 'epam';
         }
         if (opts.onScreen) {
-            const cues = opts.onScreen.captions && opts.words?.length ? buildCues(editedWords(opts.words, ranges)) : [];
+            const cues = opts.onScreen.captions && opts.words?.length ? editCues(opts.words, ranges) : [];
             const texts = opts.onScreen.texts.flatMap(layer => { const span = layerSpan(layer, ranges, editedMs); return span ? [{ layer, span }] : []; });
             const ass = layersAss(cues, opts.onScreen.captions, texts);
             // For the quality report: what the plan asked for against the edit and the subtitle file.

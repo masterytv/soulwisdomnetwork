@@ -44,7 +44,10 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin;
+              the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
+              editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
+              components/studio/editorKeys.tsx
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)

@@ -14,15 +14,18 @@
 // Item E5: the layers (lib/layers.ts) on V3 (text) and V2 (pictures and video): click one to select it,
 // drag it to move it, drag an end to trim it (snapping as cuts do; Alt turns it off), one undo step a
 // drag; and a file dragged from the Media panel lands where it is dropped.
+// Item E8: the CC lane under V1 shows the YouTube caption track (each caption where it is heard, amber when
+// too fast to read); a click goes to the caption, and its header turns CC on the preview on and off.
 
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
+import { Captions, CaptionsOff, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
 import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type Layer } from '@/lib/layers';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
+import { cueTooFast, type Cue } from '@/lib/captions';
 import { sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
@@ -65,7 +68,8 @@ const RULER_H = 22;
 const LANE_H = 20;
 const V3_TOP = RULER_H, V2_TOP = V3_TOP + LANE_H;
 const V1_TOP = V2_TOP + LANE_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
-const A1_TOP = V1_TOP + V1_H + 2, MIN_A1_H = 40;
+const CC_TOP = V1_TOP + V1_H + 2, CC_H = 16;
+const A1_TOP = CC_TOP + CC_H + 2, MIN_A1_H = 24;
 const HEADER_W = 112;
 // How close to a cut's edge the pointer grabs it; a cut narrower than GRAB_PX on screen is grabbed
 // only once selected, and one narrower than PICK_PX is not picked by a click (zoom in for those).
@@ -106,7 +110,11 @@ interface DrawInput {
     width: number; a1H: number; startMs: number; pxPerMs: number; totalMs: number;
     levels: Int8Array[] | null; thumbs: ThumbSheets | null; images: Map<string, HTMLImageElement>;
     cuts: Cut[]; removed: KeptRange[]; blocks: SpeakerBlock[]; colors: Record<string, string>; splits: number[]; parts: Part[];
+    captions: CaptionMark[];
 }
+
+// A caption of the YouTube track (item E8), where it is heard in the recording; `fast`: too fast to read.
+interface CaptionMark { fromMs: number; toMs: number; text: string; fast: boolean }
 
 // Draws the ruler, the episode's pictures and speakers, the waveform, the cuts and the splits for
 // the part in view.
@@ -144,6 +152,27 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
     ctx.fillStyle = '#0b0619';
     ctx.fillRect(0, V1_TOP, width, V1_H);
     ctx.fillRect(0, A1_TOP, width, a1H);
+    ctx.fillStyle = '#0f0922';
+    ctx.fillRect(0, CC_TOP, width, CC_H);
+
+    // CC: the caption track, a block per caption, with its words once there is room for them.
+    ctx.font = '9px ui-sans-serif, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    for (const c of d.captions) {
+        if (c.toMs < startMs || c.fromMs > endMs) continue;
+        const X = x(c.fromMs), w = Math.max(1, (c.toMs - c.fromMs) * pxPerMs - 1);
+        ctx.fillStyle = c.fast ? 'rgba(245,158,11,0.75)' : 'rgba(226,232,240,0.55)';
+        ctx.fillRect(X, CC_TOP + 2, w, CC_H - 4);
+        if (w > 30) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(X + 2, CC_TOP, w - 4, CC_H);
+            ctx.clip();
+            ctx.fillStyle = '#0b0619';
+            ctx.fillText(c.text, X + 3, CC_TOP + CC_H / 2 + 0.5);
+            ctx.restore();
+        }
+    }
 
     // V1: a thumbnail every tile's width, each the frame nearest the tile's middle. Tiles sit at fixed
     // places on the recording, so they stay put as the view scrolls.
@@ -353,6 +382,16 @@ const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/
 // A layer being dragged on V2 or V3, or a sound on A2 or A3 (item E7): its whole body moves it, an end trims it.
 type Placed = Layer | Sound;
 interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null }
+const NO_CUES: Cue[] = [];
+
+// The caption track on the CC lane: each caption where it is heard in the recording.
+function captionMarks(cues: Cue[], clips: Clip[]): CaptionMark[] {
+    return cues.map(c => {
+        const fromMs = sourceTime(clips, c.startMs) ?? 0;
+        const toMs = sourceTime(clips, Math.max(c.startMs, c.endMs - 1)) ?? fromMs;
+        return { fromMs, toMs: Math.max(fromMs, toMs), text: c.lines.join(' '), fast: cueTooFast(c) };
+    });
+}
 // The sound lanes along the bottom, under A1.
 const SOUND_LANES = [SOUND_TRACK.music, SOUND_TRACK.effects];
 const soundsH = SOUND_LANES.length * LANE_H;
@@ -381,7 +420,7 @@ export interface SplitTransition { splitMs: number; label: string | null; playin
 
 export function Timeline({
     words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
-    sounds = [], onSounds, mutedTracks = [], onMutedTracks,
+    sounds = [], onSounds, mutedTracks = [], onMutedTracks, captions: cues = NO_CUES, captionsShown = false, onCaptionsShown,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin,
 }: {
@@ -399,6 +438,9 @@ export function Timeline({
     onSounds?: (sounds: Sound[]) => void;
     mutedTracks?: number[];                 // sound tracks muted in the preview
     onMutedTracks?: (tracks: number[]) => void;
+    captions?: Cue[];                       // item E8: the YouTube caption track, on the edited timeline
+    captionsShown?: boolean;                // CC on the preview
+    onCaptionsShown?: (shown: boolean) => void;
     totalMs: number;
     video: React.RefObject<HTMLVideoElement | null>;
     onSeek: (ms: number) => void;
@@ -532,6 +574,7 @@ export function Timeline({
     }, [pxPerMs, size.w, totalMs]);
 
     const blocks = useMemo(() => speakerBlocks(words), [words]);
+    const captions = useMemo(() => captionMarks(cues, clips), [cues, clips]);
     const colors = useMemo(() => speakerColors(blocks), [blocks]);
     const peaks = media?.peaks ?? null, thumbs = media?.thumbs ?? null;
     const levels = useMemo(() => peaks ? peakLevels(peaks) : null, [peaks]);
@@ -580,9 +623,9 @@ export function Timeline({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         drawTimeline(ctx, {
             width: size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, images: images.current,
-            cuts: shownCuts, removed, blocks, colors, splits, parts,
+            cuts: shownCuts, removed, blocks, colors, splits, parts, captions,
         });
-    }, [size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, shownCuts, removed, blocks, colors, splits, parts, loadedSheets]);
+    }, [size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, shownCuts, removed, blocks, colors, splits, parts, captions, loadedSheets]);
 
     if (totalMs <= 0) return null;
 
@@ -618,7 +661,9 @@ export function Timeline({
         const px = e.clientX - r.left, py = e.clientY - r.top;
         return { px, py, ms: Math.max(0, Math.min(totalMs, startMs + px / pxPerMs)) };
     };
-    const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < A1_TOP ? 'v1' : py < A1_TOP + a1H ? 'a1' : 'sounds';
+    const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < CC_TOP ? 'v1' : py < A1_TOP ? 'cc' : py < A1_TOP + a1H ? 'a1' : 'sounds';
+    // The caption heard at `ms` of the recording, on the CC lane.
+    const captionAt = (ms: number) => captions.find(c => ms >= c.fromMs && ms <= c.toMs);
 
     // ── Layers (item E5) ──
     const layerTargets = () => [[timeOf(video)], edgesOfWords, splits];
@@ -692,6 +737,7 @@ export function Timeline({
         e.currentTarget.setPointerCapture(e.pointerId);
         if (lane === 'ruler') { onSeek(ms); setDrag({ kind: 'scrub' }); return; }
         if (lane === 'v2' || lane === 'sounds') { onSelectLayer?.(null); onSeek(ms); return; }
+        if (lane === 'cc') { onSelectLayer?.(null); onSelect(null); onSeek(captionAt(ms)?.fromMs ?? ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
         // The Blade splits where it is clicked, between words unless Alt is held.
         if (tool === 'blade') {
@@ -757,6 +803,7 @@ export function Timeline({
                 else if (!cutAt(pickable, ms) && lane === 'a1' && !locked) cursor = 'text';
             } else if (tool === 'blade') setBladeAt(null);
             e.currentTarget.style.cursor = cursor;
+            e.currentTarget.title = lane === 'cc' ? captionAt(ms)?.text ?? '' : '';
             return;
         }
         if (drag.kind === 'scrub') onSeek(ms);
@@ -816,7 +863,7 @@ export function Timeline({
     };
 
     return (
-        <section aria-label="Timeline" className="h-full min-h-[190px] flex flex-col gap-1.5 rounded-lg bg-[#130b29] border border-white/5 p-2 select-none">
+        <section aria-label="Timeline" className="h-full min-h-[210px] flex flex-col gap-1.5 rounded-lg bg-[#130b29] border border-white/5 p-2 select-none">
             {/* Tools: the tool, zoom, snapping, what is selected, and Split, on one line so the lanes
                 never move under the pointer. */}
             <div className="flex items-center gap-2 text-xs whitespace-nowrap overflow-hidden">
@@ -925,7 +972,15 @@ export function Timeline({
                             ))}
                         </div>
                     </div>
-                    <div style={{ height: a1H, marginTop: A1_TOP - V1_TOP - V1_H }} className="flex items-start gap-1 pr-2 pt-1">
+                    <div style={{ height: CC_H, marginTop: CC_TOP - V1_TOP - V1_H }} className="flex items-center gap-1 pr-2">
+                        <span className="grow truncate" title="The YouTube caption track (the Captions panel): not burned in">CC Captions</span>
+                        <button type="button" aria-pressed={captionsShown} onClick={() => onCaptionsShown?.(!captionsShown)}
+                            aria-label={captionsShown ? 'Hide the captions on the preview' : 'Show the captions on the preview'}
+                            title={captionsShown ? 'Shown on the preview (CC)' : 'Show on the preview (CC)'} className={iconButton}>
+                            {captionsShown ? <Captions size={13} /> : <CaptionsOff size={13} />}
+                        </button>
+                    </div>
+                    <div style={{ height: a1H, marginTop: A1_TOP - CC_TOP - CC_H }} className="flex items-start gap-1 pr-2 pt-1">
                         <span className="grow truncate">A1 Voice</span>
                         <button type="button" aria-pressed={muted}
                             onClick={() => toggleMuted(video.current)}

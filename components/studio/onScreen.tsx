@@ -1,21 +1,21 @@
 "use client";
 
 // Why: Part I in the full-page editor, grown into layers (spec 020 items E5 and E6, lib/layers.ts). The
-// "On screen" panel sets the captions and lists every layer (text, titles, lower thirds, pictures, video,
-// the logo bug) in time order; choosing one opens it in the Properties panel (components/studio/properties.tsx).
-// The preview shows the caption being spoken (components/studio/layers.tsx draws the layers). The caption
-// look fields are shared with the Settings page and the Properties panel.
+// "On screen" panel lists every layer (text, titles, lower thirds, pictures, video, the logo bug) in time
+// order; choosing one opens it in the Properties panel (components/studio/properties.tsx). The preview shows
+// the burned-in caption being spoken, when that option is on (components/studio/layers.tsx draws the layers;
+// the option itself is in the Captions panel since item E8, components/studio/captions.tsx). The caption
+// look fields are shared with the Settings page, the Captions panel and the Properties panel.
 
 import { useEffect, useMemo, useRef } from "react";
-import { buildCues } from "@/lib/captions";
+import { cueAt, type Cue } from "@/lib/captions";
 import {
-    BACKGROUNDS, BAND_ALPHA, CAPTION_POSITIONS, captionLook, DEFAULT_CAPTION_STYLE, FONTS, POSITION_LABELS, POSITIONS,
+    BACKGROUNDS, BAND_ALPHA, CAPTION_POSITIONS, captionLook, FONTS, POSITION_LABELS, POSITIONS,
     SIZE_NAMES, TEXT_SIZES, type Background, type CaptionChoice, type CaptionStyle, type FontName, type Position, type TextSize,
 } from "@/lib/onScreen";
 import { anchorCut, isWhole, layerKind, layerName, layerSpan, type Layer } from "@/lib/layers";
 import type { EpisodeEdit } from "@/lib/edit";
-import { sourceTime, type Clip } from "@/lib/sequence";
-import type { SpokenWord } from "@/lib/showNotes";
+import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
 import { field, hint, secondary } from "@/components/studio/ui";
 import { useVideoTime } from "@/components/studio/useVideoTime";
 
@@ -92,15 +92,16 @@ function placeStyle(position: Position | typeof CAPTION_POSITIONS[number], margi
     return s;
 }
 
-// Over the video: the caption being spoken. The preview and the panel follow the video themselves
-// (useVideoTime), so playing redraws only them.
-export function OnScreenPreview({ words, edit, video, studio }: {
-    words: SpokenWord[]; edit: EpisodeEdit; video: React.RefObject<HTMLVideoElement | null>; studio: CaptionChoice;
+// Over the video: the burned-in caption being spoken, from the edit's caption track (`cues`, on the edited
+// timeline, as the render burns them in). The preview follows the video itself (useVideoTime), so playing
+// redraws only it.
+export function OnScreenPreview({ cues, clips, edit, video, studio }: {
+    cues: Cue[]; clips: Clip[]; edit: EpisodeEdit; video: React.RefObject<HTMLVideoElement | null>; studio: CaptionChoice;
 }) {
     const currentMs = useVideoTime(video);
-    const cues = useMemo(() => buildCues(words), [words]);
     const look = captionLook(edit, { burnCaptions: studio.on, captionStyle: studio.style });
-    const cue = look ? cues.find(c => currentMs >= c.startMs && currentMs < c.endMs) : undefined;
+    const at = look ? timelineTime(clips, currentMs) : null;
+    const cue = at === null ? undefined : cues[cueAt(cues, at)];
     if (!cue || !look) return null;
     return (
         <div aria-label="Caption preview" className="pointer-events-none absolute inset-0 overflow-hidden">
@@ -116,17 +117,14 @@ const KIND_CLASS: Record<Layer["kind"], string> = {
 };
 export const kindClass = (l: Layer) => KIND_CLASS[l.kind];
 
-// The "On screen" panel: captions for this video, then every layer, in time order. Choosing one selects it
+// The "On screen" panel: every layer, in time order. Choosing one selects it
 // and opens it in the Properties panel; the selected one is marked and kept in view.
-export function OnScreenPanel({ edit, layers, clips, editedMs, studio, selected, canEdit, onOpen, onRemove, onCaptions, onSeek }: {
-    edit: EpisodeEdit; layers: Layer[]; clips: Clip[]; editedMs: number;
-    studio: CaptionChoice; selected: string | null; canEdit: boolean;
-    onOpen: (id: string) => void; onRemove: (id: string) => void; onCaptions: (captions: CaptionChoice | null) => void; onSeek: (ms: number) => void;
+export function OnScreenPanel({ layers, clips, editedMs, selected, canEdit, onOpen, onRemove, onSeek }: {
+    layers: Layer[]; clips: Clip[]; editedMs: number; selected: string | null; canEdit: boolean;
+    onOpen: (id: string) => void; onRemove: (id: string) => void; onSeek: (ms: number) => void;
 }) {
     const sorted = useMemo(() => layers.map(l => ({ l, span: layerSpan(l, clips, editedMs) }))
         .sort((a, b) => (a.span?.startMs ?? Infinity) - (b.span?.startMs ?? Infinity)), [layers, clips, editedMs]);
-    const studioLook = studio.style ?? DEFAULT_CAPTION_STYLE;
-    const mode = edit.captions ? (edit.captions.on ? "own" : "off") : "studio";
     const list = useRef<HTMLUListElement>(null);
     useEffect(() => {
         if (selected) list.current?.querySelector(`[data-layer="${CSS.escape(selected)}"]`)?.scrollIntoView({ block: "nearest" });
@@ -136,31 +134,9 @@ export function OnScreenPanel({ edit, layers, clips, editedMs, studio, selected,
         <section aria-label="On screen" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-gray-200">On screen</span>
-                <span className={hint}>Burned into the render. Add titles, lower thirds, text and the logo from Elements, pictures and video from Media; choose one to change it in Properties.</span>
+                <span className={hint}>Burned into the render. Add titles, lower thirds, text and the logo from Elements, pictures and video from Media; choose one to change it in Properties. Captions are in the Captions panel.</span>
             </div>
             {!canEdit && <p className="text-sm text-amber-300">The media bin did not load, so layers cannot be changed now (the b-roll would be lost). Reload the page.</p>}
-
-            {/* Captions on this video: the Studio's choice, a look of its own, or none. */}
-            <div className="flex flex-col gap-2">
-                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-200">
-                    <span className="font-medium">Captions</span>
-                    {([
-                        ["studio", `Studio setting (${studio.on ? "on" : "off"})`],
-                        ["own", "On, with this look"],
-                        ["off", "Off for this video"],
-                    ] as const).map(([value, label]) => (
-                        <label key={value} className="flex items-center gap-1">
-                            <input type="radio" name="captions" checked={mode === value}
-                                onChange={() => onCaptions(value === "studio" ? null : { on: value === "own", style: edit.captions?.style ?? studioLook })} />
-                            {label}
-                        </label>
-                    ))}
-                </div>
-                {mode === "own" && edit.captions && (
-                    <LookFields look={edit.captions.style}
-                        onChange={c => onCaptions({ on: true, style: { ...edit.captions!.style, ...c } as CaptionStyle })} />
-                )}
-            </div>
 
             {sorted.length === 0 && <p className={hint}>Nothing yet. Elements adds a lower third for each speaker the first time they speak.</p>}
             <ul ref={list} aria-label="Layers" className="flex flex-col gap-1">
