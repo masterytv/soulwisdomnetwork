@@ -25,7 +25,7 @@ interface Timed { text: string; start: number; end: number }
 // A word as speaker review and the accepted transcript have it: `ref` is the first word heard it
 // stands for; a corrected one also has what was heard and how many words heard it replaces. The
 // words of one fix share a ref.
-export interface FixedWord extends Timed { ref: string; heard?: string; count?: number }
+export interface FixedWord extends Timed { ref: string; heard?: string; count?: number; confidence?: number }
 
 export const MIN_WORD_MS = 20;
 export const MAX_FIX_WORDS = 20;        // words heard one fix replaces, and words typed
@@ -34,6 +34,15 @@ export const MAX_FIXES = 5000;          // on one episode
 export const MAX_OPS = 500;             // in one request (a find and replace)
 
 export const fixKey = (utterance: number, word: number) => `${utterance}:${word}`;
+
+// Spec 019 item 2.5: a word the transcriber gave less confidence than this is underlined in dotted
+// amber, so the producer checks names and numbers first. A corrected word has no confidence: a
+// person typed it.
+export const UNSURE_BELOW = 0.6;
+export const isUnsure = (w: { confidence?: number; heard?: string }) =>
+    w.heard === undefined && typeof w.confidence === 'number' && w.confidence < UNSURE_BELOW;
+export const unsureTitle = (w: { confidence?: number }) =>
+    `The transcriber was unsure of this word (${Math.round((w.confidence ?? 0) * 100)}% sure)`;
 
 export function parseRef(ref: string): { utterance: number; word: number } | null {
     const m = /^(\d{1,6}):(\d{1,6})$/.exec(ref);
@@ -75,7 +84,9 @@ export function applyFixes<W extends Timed>(words: W[], utterance: number, fixes
         const heard = words.slice(i, i + count);
         const heardText = heard.map(w => w.text).join(' ');
         for (const w of timeWords({ start: heard[0].start, end: heard[count - 1].end }, typed)) {
-            out.push({ ...heard[0], ...w, ref, heard: heardText, count });
+            const word: W & FixedWord = { ...heard[0], ...w, ref, heard: heardText, count };
+            delete word.confidence;
+            out.push(word);
         }
         i += count;
     }

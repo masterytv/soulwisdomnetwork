@@ -7,7 +7,8 @@
 import type { DetectedSpeaker, TranscriptCorrections } from '@/types/episode';
 import { applyFixes, parseRef, parseWordFixes, type FixedWord } from '@/lib/wordFixes';
 
-export interface ReviewWord { text: string; start: number; end: number }
+// `confidence`: AssemblyAI's, 0 to 1 (spec 019 item 2.5); a word under UNSURE_BELOW is underlined.
+export interface ReviewWord { text: string; start: number; end: number; confidence?: number }
 
 // One diarized utterance from raw.json, slimmed down for the browser.
 export interface ReviewUtterance { label: string; words: ReviewWord[] }

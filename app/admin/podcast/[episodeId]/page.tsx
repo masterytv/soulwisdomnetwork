@@ -17,7 +17,7 @@ import { ago, minutes } from "@/components/studio/format";
 import { useAuth } from "@/context/AuthContext";
 import { studioFetch } from "@/lib/studioClient";
 import { allLabels, buildLines, findFlags, isNamed, rootLabel, speakerName } from "@/lib/transcript";
-import { applyOps, fixOp, putBackOp, type FixOp } from "@/lib/wordFixes";
+import { applyOps, fixOp, isUnsure, putBackOp, type FixOp } from "@/lib/wordFixes";
 import type { TranscriptCorrections } from "@/types/episode";
 import type { EpisodeReview } from "@/types/studio";
 import { Journey } from "@/components/studio/Journey";
@@ -57,6 +57,7 @@ export default function SpeakerReviewPage() {
     const inflight = useRef<Promise<void> | null>(null);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const flagCursor = useRef(-1);
+    const unsureCursor = useRef(-1);
     const saveError = useRef("");
 
     const load = useCallback(async () => {
@@ -248,6 +249,15 @@ export default function SpeakerReviewPage() {
     }), [seek, update, fixWords]);
     const allWords = useMemo(() => lines.flatMap(l => l.words), [lines]);
 
+    // Lines with a word the transcriber was unsure of (spec 019 item 2.5): names and numbers to check first.
+    const unsureLines = useMemo(() => lines.filter(l => l.words.some(isUnsure)), [lines]);
+    const unsureCount = useMemo(() => unsureLines.reduce((n, l) => n + l.words.filter(isUnsure).length, 0), [unsureLines]);
+    function nextUnsure() {
+        if (!unsureLines.length) return;
+        unsureCursor.current = (unsureCursor.current + 1) % unsureLines.length;
+        document.getElementById(`line-${unsureLines[unsureCursor.current].id}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+
     function nextFlag() {
         const ids = lines.filter(l => flags.has(l.id)).map(l => l.id);
         if (!ids.length) return;
@@ -370,6 +380,10 @@ export default function SpeakerReviewPage() {
                                         {flags.size} flagged
                                     </span>
                                     {flags.size > 0 && <button onClick={nextFlag} className={secondary}>Next flagged</button>}
+                                    {unsureCount > 0 && (
+                                        <span className="text-amber-300" title="Underlined in dotted amber: check names and numbers first">{unsureCount} unsure words</span>
+                                    )}
+                                    {unsureCount > 0 && !onlyFlagged && <button onClick={nextUnsure} className={secondary}>Next unsure</button>}
                                     <label className="flex items-center gap-1.5">
                                         <input type="checkbox" checked={onlyFlagged} onChange={e => setOnlyFlagged(e.target.checked)} />
                                         Only flagged
