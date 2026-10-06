@@ -97,7 +97,7 @@ for this work".
 | 2.2 | Drag cut edges; cut a stretch of time | Rescript (MIT) | M | (E2) | 2.1 | Built in E2 (#144) |
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#151); a test episode's spelling waits on an ingest run from `main` |
-| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#PR); in the editor once a transcript is accepted again |
+| 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#152); in the editor once a transcript is accepted again |
 | 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
@@ -528,7 +528,7 @@ YouTube captions of a test upload.
   first.
 - Neither Rescript nor CutScript does this.
 
-**Built (#PR):**
+**Built (#152):**
 - **Carried through:** speaker review reads each word's `confidence` from `raw.json` (rounded to two
   places), `buildLines` keeps it, and the accepted transcript (`reviewed.json`) and the editor's words
   have it. A corrected word (item 2.3) has none: a person typed it.
