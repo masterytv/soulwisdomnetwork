@@ -12,7 +12,7 @@ export type VoiceCleanup = typeof VOICE_CLEANUPS[number];
 
 export const VOICE_LABELS: Record<VoiceCleanup, string> = {
     standard: 'Standard (ffmpeg: high-pass, noise reduction, compressor)',
-    deepfilter: 'DeepFilterNet (free, stronger noise removal; adds about a quarter of the episode\'s length to the render)',
+    deepfilter: 'DeepFilterNet (free, stronger noise removal; adds about 8 minutes an hour to the render)',
     auphonic: 'Auphonic (free plan: 2 hours of audio a month)',
 };
 

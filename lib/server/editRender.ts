@@ -32,6 +32,8 @@ export interface EditRenderView {
     voice: { studio: VoiceCleanup; next: VoiceCleanup; rendered: VoiceCleanup | null };
     // Auphonic's free hours this month, and what the saved edit would use (null: not known).
     auphonic: { usedSeconds: number; freeSeconds: number; needSeconds: number | null };
+    // Files that open the render's cuts in another editor (spec 019 item 4.1), each with an hour-long download link.
+    exports: { kind: NonNullable<EpisodeEditRender['exports']>[number]['kind']; name: string; url: string | null; driveUrl: string | null }[];
 }
 
 function episodeRef(id: string) {
@@ -119,5 +121,11 @@ export async function getEditRender(id: string): Promise<EditRenderView> {
         qc: ready ? r.qc ?? null : null,
         voice: { studio: settings.voiceCleanup, next: voiceFor(episode.edit, settings.voiceCleanup), rendered: ready ? r.voice ?? null : null },
         auphonic: { ...hours, needSeconds: auphonicSeconds(episode) },
+        exports: ready ? await Promise.all((r.exports ?? []).map(async e => ({
+            kind: e.kind, name: e.name, driveUrl: e.driveUrl,
+            url: await adminBucket().file(e.path).getSignedUrl({
+                action: 'read', expires: Date.now() + 60 * 60_000, responseDisposition: `attachment; filename*=UTF-8''${encodeURIComponent(e.name)}`,
+            }).then(([u]) => u).catch(() => null),
+        }))) : [],
     };
 }

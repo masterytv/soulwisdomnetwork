@@ -234,6 +234,9 @@ export interface EpisodeEditRender {
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
     voice?: VoiceCleanup;                 // the voice clean-up it used (spec 019 item 3.2)
+    // Files that open the edit's cuts in another editor (spec 019 item 4.1), in the render's folder: kind is
+    // resolve, premiere, finalcut, captions (.srt on their timeline) or constantRate (the recording's copy they name).
+    exports?: { kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate'; name: string; path: string; driveUrl: string | null }[];
     auphonicHold?: string | null;         // its hold on Auphonic's free hours (lib/server/spending.ts), given back if it fails before sending
 }
 

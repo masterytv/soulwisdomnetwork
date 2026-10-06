@@ -14,6 +14,8 @@
 // the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
 // Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
+// Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
+// they cannot be made, the render is still kept, with a warning.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -27,13 +29,16 @@ import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
 import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
+import type { ExportResult } from './editExport';
+import { sequenceOf, type Clip } from '../../../lib/sequence';
 
 export interface EditRenderDeps {
     getEpisode: () => Promise<Episode | undefined>;
     download: (storagePath: string, dest: string) => Promise<void>;
     upload: (local: string, storagePath: string, contentType: string) => Promise<void>;
     // null when no Drive folder is set up; the video is then only in Cloud Storage.
-    saveToDrive: (local: string, name: string) => Promise<{ fileId: string; folderId: string } | null>;
+    // `subfolder`, when given, is a folder of that name inside the final folder.
+    saveToDrive: (local: string, name: string, contentType?: string, subfolder?: string) => Promise<{ fileId: string; folderId: string } | null>;
     update: (fields: Record<string, unknown>) => Promise<void>;
     // Deletes every file under a Storage folder: the previous render, once this one is saved.
     removeFolder?: (prefix: string) => Promise<void>;
@@ -50,6 +55,8 @@ export interface EditRenderDeps {
     // The voice clean-ups' tools (spec 019 item 3.2): the deep-filter program, the Auphonic key, and a call made
     // just before the audio goes to Auphonic.
     voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
+    // The files that open the edit in Resolve, Premiere or Final Cut (spec 019 item 4.1, editExport.ts); left out, none are made.
+    exportEdit?: (o: { video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string }) => Promise<ExportResult>;
 }
 
 export interface EditRenderPlan {
@@ -248,6 +255,26 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         extras[key] = `${prefix}/${name}`;
     }
     const drive = await deps.saveToDrive(out, `${safeName(episode.title)} (Editor Light).mp4`);
+    // The files for other editors (item 4.1), in the render's folder and beside it in Drive.
+    const exports: NonNullable<EpisodeEditRender['exports']> = [];
+    const exportWarnings: string[] = [];
+    if (deps.exportEdit) {
+        try {
+            const clips = sequenceOf(plan.edit, Math.round(report.inputSeconds * 1000), words).clips;
+            const made = await deps.exportEdit({
+                video, name: episode.drive?.fileName || path.basename(plan.video), title: safeName(episode.title), clips, words, workDir,
+            });
+            exportWarnings.push(...made.warnings);
+            for (const f of made.files) {
+                const storagePath = `${prefix}/edit-files/${f.kind}${path.extname(f.name)}`;
+                await deps.upload(f.local, storagePath, f.contentType);
+                const saved = await deps.saveToDrive(f.local, f.name, f.contentType, `${safeName(episode.title)} (for other editors)`);
+                exports.push({ kind: f.kind, name: f.name, path: storagePath, driveUrl: saved ? `https://drive.google.com/file/d/${saved.fileId}/view` : null });
+            }
+        } catch (error) {
+            exportWarnings.push(`The files for Resolve, Premiere and Final Cut were not made: ${(error as Error).message}`);
+        }
+    }
     const result: EditRenderResult = {
         videoPath, ...extras as Pick<EditRenderResult, 'wordsPath' | 'captionsPath' | 'chaptersPath'>,
         driveFileId: drive?.fileId ?? null,
@@ -258,9 +285,10 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
-        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? [])],
+        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? []), ...exportWarnings],
         qc: report.qc,
         credits,
+        exports,
     };
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
@@ -354,4 +382,4 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
 
 export type EditRenderResult = Required<Pick<EpisodeEditRender,
     'videoPath' | 'wordsPath' | 'captionsPath' | 'chaptersPath' | 'driveFileId' | 'driveUrl' | 'folderUrl'
-    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits'>>;
+    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits' | 'exports'>>;

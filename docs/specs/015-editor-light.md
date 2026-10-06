@@ -187,6 +187,8 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - The video goes to `episodes/{id}/editRender/v{edit version}-{run id}/episode.mp4`.
    - Beside it go the words, captions (.srt) and chapters/quotes on the new times.
    - The video is also saved as "*title* (Editor Light).mp4" in "04 Final" in Drive.
+   - Files that open its cuts in DaVinci Resolve, Premiere Pro or Final Cut Pro go in `edit-files/` beside it, and in
+     "*title* (for other editors)" in "04 Final" (spec 019 item 4.1, `editExport.ts`); if they fail, the render is kept with a warning.
    - `episode.editRender` points at the new folder only once all of it is saved. The previous
      render's folder is then deleted.
 7. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is

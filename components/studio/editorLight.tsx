@@ -49,6 +49,7 @@ function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
 }
 import { QualityReport } from '@/components/studio/qualityReport';
 import { VoiceChoice } from '@/components/studio/voice';
+import { EditFiles } from '@/components/studio/editFiles';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
 // suggested cuts to review (kind Retakes in the counts). `onNotes` gets each suggestion's kind and why,
@@ -338,6 +339,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 </ul>
             )}
             {render?.status === 'ready' && <QualityReport qc={render.qc} />}
+            {render?.status === 'ready' && <EditFiles files={render.exports} />}
         </>
     );
 
