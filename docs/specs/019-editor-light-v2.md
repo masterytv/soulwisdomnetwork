@@ -98,7 +98,7 @@ for this work".
 | 2.3 | Correct a misheard word | Rescript (MIT) | M | High | — | Built (#149); a corrected word in YouTube's captions waits on a render and upload from `main` |
 | 2.4 | Names spelled right from the start | AssemblyAI | S | Medium | — | Built (#151); a test episode's spelling waits on an ingest run from `main` |
 | 2.5 | Highlight words the transcriber was unsure of | ours | S | Medium | — | Built (#152); in the editor once a transcript is accepted again |
-| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Not started |
+| 2.6 | Autosave that survives a closed tab | Rescript (MIT) | S | Medium | — | Built (#PR) |
 | **E** | **Studio editor: the full editing page (spec 020)** | | | | | |
 | E1 | Workspace shell: script, preview, panels, timeline | Descript's layout | S–M | High | — | Built (#143; spec 020, "E1 — Built") |
 | E2 | Timeline engine, waveform, thumbnails, drag cut edges | Rescript (MIT), ours | L | Extra | E1 | Built (#144; spec 020, "E2 — Built"); the waveform on a real episode waits on an ingest run from `main` |
@@ -549,6 +549,22 @@ YouTube captions of a test upload.
 - On load, offer to restore a local draft that is newer than the saved edit.
 - The server's version check (409) still decides; a stale draft is never written over a newer
   save.
+
+**Built (#PR):**
+- **`useAutosave`** takes an optional browser key. With it:
+  - each change is also kept in `localStorage` with the saved version it was made on
+    (`lib/localDraft.ts`, every call wrapped, so a full or blocked store changes nothing);
+  - the copy goes once the server has the change;
+  - hiding the tab (switching away, closing it, a phone locking) or leaving the page saves at once,
+    instead of after 800 ms.
+- **The editor** (Editor Light and the Studio editor) uses it, keyed `swc-studio-edit:<episode>`.
+  On load, `draftToOffer` (with tests) decides:
+  - a copy made on the version still saved: **"This browser has changes to this edit that were not
+    saved (time). Restore them / Discard"**. Restoring saves it against that version as usual;
+  - a copy a newer save overtook (another tab or person): dropped, with a note saying so. It is
+    never written over the newer save.
+- Show notes and Shorts keep their autosave as it was; they can pass a key the same way.
+- The copy is per browser, so it comes back only where it was made.
 
 ## Phase 3 — Sound
 

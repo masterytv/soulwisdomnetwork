@@ -8,6 +8,8 @@
 // as a toolbar tool. The Studio editor also loads its timeline's waveform and thumbnails (item E2).
 // Words retyped in the editor (spec 019 item 2.3) are saved through the words route, which publishes
 // them to the accepted transcript; the editor's words are swapped for the corrected ones.
+// Spec 019 item 2.6: unsaved changes are also kept in this browser, and offered back on the next load
+// when the saved edit has not moved on since (lib/localDraft.ts).
 
 "use client";
 
@@ -27,6 +29,7 @@ import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
 import type { StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
+import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
 import { QualityReport } from '@/components/studio/qualityReport';
 
 // "Suggest a tighter edit" in the toolbar: ask Claude to read the transcript, then add what it found as
@@ -116,6 +119,11 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
     const [cutNotes, setCutNotes] = useState<Record<string, string>>({});
+    // Unsaved changes found in this browser from an earlier visit (spec 019 item 2.6), and a note when
+    // some were dropped because a newer save overtook them.
+    const draftKey = `swc-studio-edit:${episodeId}`;
+    const [localDraft, setLocalDraft] = useState<LocalDraft<EpisodeEdit> | null>(null);
+    const [draftNote, setDraftNote] = useState('');
     const { change, reset, flush, saveState, saveError } = useAutosave<EpisodeEdit>(
         async (value, version) => {
             const res = await studioFetch<{ version: number }>(`/api/studio/episodes/${episodeId}/edit`, {
@@ -124,7 +132,9 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 body: JSON.stringify({ edit: value, version }),
             });
             return res.version;
-        }
+        },
+        800,
+        draftKey,
     );
 
     useEffect(() => {
@@ -134,10 +144,15 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 setOverlayUrls(data.overlayUrls ?? {});
                 setSilences(data.silences ?? null);
                 reset(data.edit.version);
+                const found = draftToOffer<EpisodeEdit>(localDrafts.read(draftKey), data.edit.version);
+                if (found === 'stale') {
+                    localDrafts.clear(draftKey);
+                    setDraftNote('Changes left unsaved in this browser were older than the saved edit, so the saved edit is shown.');
+                } else if (found) setLocalDraft(found);
                 setLoaded(true);
             })
             .catch(() => { setLoaded(true); });
-    }, [episodeId, reset]);
+    }, [episodeId, reset, draftKey]);
 
     // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
     // Either may be missing on an episode the ingest catch-up has not reached yet.
@@ -196,6 +211,31 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [watching, setWatching] = useState(false);
 
     if (!loaded) return <p className={small}>Loading editor…</p>;
+
+    // A local copy from an earlier visit: put it back (it saves against the version it was made on), or drop it.
+    const restoreDraft = () => {
+        if (!localDraft) return;
+        const restored = { ...localDraft.value, version: edit.version };
+        setEdit(restored);
+        change(restored);
+        setLocalDraft(null);
+    };
+    const draftBanner = (localDraft || draftNote) && (
+        <div role="status" className={`${workspace ? 'inline-flex' : 'flex mb-2'} flex-wrap items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-100`}>
+            {localDraft ? (
+                <>
+                    <span>This browser has changes to this edit that were not saved ({new Date(localDraft.at).toLocaleString()}).</span>
+                    <button type="button" onClick={restoreDraft} className={primary}>Restore them</button>
+                    <button type="button" onClick={() => { localDrafts.clear(draftKey); setLocalDraft(null); }} className={secondary}>Discard</button>
+                </>
+            ) : (
+                <>
+                    <span>{draftNote}</span>
+                    <button type="button" onClick={() => setDraftNote('')} className={secondary}>OK</button>
+                </>
+            )}
+        </div>
+    );
 
     // Save status in plain words, same labels and colours as the show notes autosave.
     const saveStatus = (
@@ -289,7 +329,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
             onChange={(e) => { setEdit(e); change(e); }}
             heading={heading}
-            status={saveStatus}
+            status={<>{saveStatus}{workspace && draftBanner}</>}
             actions={workspace ? renderBar : undefined}
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
             timelineMedia={timelineMedia}
@@ -304,6 +344,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     return (
         <>
             {saveStatus}
+            {draftBanner}
             {editor}
             {renderControls}
             {renderResult}
