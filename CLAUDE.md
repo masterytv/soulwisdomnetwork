@@ -59,7 +59,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               with one set up and saved (item E10, lib/programme.ts firstEdit: its fillers, stammers and long pauses cut,
               each one a cut that can be brought back, its teasers placed and the b-roll as layers), and the timeline's
               Programme row and the preview show and play the teasers, intro, episode and outro in order
-              (components/studio/programme.tsx); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
+              (components/studio/programme.tsx; teasers are trimmed and reordered there, item E12); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
               and the show's intro is public/studio/show-intro.mp4, which the editor plays too
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
