@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E12 in 019's table)
+## Building it (rows E1–E13 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -422,6 +422,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E10 | **Open with everything in place.** The first time an episode opens with no saved edit: its filler words and long pauses already cut (each one can be brought back), the teasers, intro and outro on the timeline and in the preview, and the b-roll on V2. The render makes exactly what is shown. Built (#174). | M | High | E9, the b-roll gate (#173) |
 | E11 | **Drag sections on the timeline.** V1 shows the sections between splits in the order they play; drag one to a new place. Built (#176). | M | Extra | E9 |
 | E12 | **Trim and reorder teasers.** On the Programme row: drag a teaser onto another to take its place, or ‹ ›; click one to trim its start and end. Built (#178). | S | Medium | E10 |
+| E13 | **Only what plays on the timeline.** The cuts closed up, a marker where each one was; drag the end of a clip out to bring back what was cut there, or in to cut more, and everything after it moves (a ripple trim). Show cuts brings back the whole recording. Built (#180). | M | Extra | E11 |
 
 ### E1 — Built (#143)
 
@@ -953,6 +954,41 @@ Tom asked (7 October 2026) to trim and reorder the teasers.
 - Each change is one undo step and saves `edit.teasers`, which the render cuts exactly (E10).
 - **Checked:** `lib/programme.test.ts`; in Chromium, nudging both ends, End here at the playhead, moving one later
   with ›, and dragging the first teaser onto the third.
+
+### E13 — Built (#180)
+
+Tom asked (7 October 2026) for the timeline to show only the clips that play, as other editors do, and to drag a clip's
+side back out after trimming it in.
+- **Only what plays** (`lib/timeline.ts` `playedAxis`): the timeline draws the kept stretches (`playOrder`, so what the
+  render plays: the cuts kept 40 ms off the words either side, short slivers dropped) end to end in play order, divided
+  at the splits. Nothing cut is drawn, and the ruler counts the edited episode (transitions are not overlapped here, so
+  after one the ruler runs that much ahead of the preview's clock). Pictures, speakers, the waveform, captions, layers,
+  sounds, transitions, selections, the Blade and the playhead are placed through it, as E11's sections are; a moment
+  that is cut is drawn at the join where it was closed up, so the playhead sits there while the video is in a cut.
+- **Markers:** each join where something is cut has a line over the picture and the voice and a notch on top, amber
+  when all of it is suggestions (fillers, stammers, pauses), grey when any of it is the producer's own (`joinMarks`).
+  Hovering says what is cut there; a click chooses it, and the bar shows "Cut 0:37.50–0:39.24 (1.74 s, filler,
+  pause)" with ▶ Hear and **Bring back**; a double-click brings it all back. A section cut whole has a red ✂ where it
+  would play: click it, then Bring back.
+- **Ripple trim** (`pieceEdgeAt`, `rippleTrim`): with the Select tool, drag the end of a clip at a join. Out, it brings
+  back what was cut there, up to the next kept stretch of its section (joining the two) or the section's end; in, it
+  cuts, words and all, as the producer's own cut (MIN_PIECE_MS keeps 200 ms). It stops between words unless Alt is
+  held, and snaps as other drags do. Everything after it moves along: dragging the start of a clip leaves its start
+  where it is and moves the rest later or earlier. A label says "+1.24 s back" or "−0.50 s cut"; one undo step. Cuts
+  made in and shortened are made 40 ms beyond the place it is dropped, so the clip ends there as heard; a cut
+  shortened becomes the producer's own, so marking suggestions again leaves it alone. A clip narrower than 10 px on
+  screen is not grabbed (zoom in), and crowded markers show only their notch, so at the whole-episode zoom a click
+  still jumps.
+- **Blade, then trim, then back:** a split divides a clip; dragging the start of the clip after it in cuts from the
+  split, and dragging it back out to the split brings that back, the split staying where it was.
+- **Show cuts** (beside Snap) draws the whole recording as before, with the cuts hatched, their edges dragged and the
+  section ends trimmed (E2, E3, E11). Off by default; switching keeps the playhead where it is on screen.
+- **Checked:** `lib/timeline.test.ts` (the axis both ways, a section cut whole, sections moved, the edge under the
+  pointer, ripple trims out, in, at a split and at both ends of the recording, checked against what `playOrder`
+  plays, and the markers' colours); in Chromium, choosing the filler's marker and Bring back, the Blade then the start
+  of the clip after the split dragged in 1.55 s ("−1.55 s cut") and back out (the split's two clips meeting again),
+  half a second of a pause brought back with Alt and undone, a double-click bringing back a cut of the producer's own,
+  and Show cuts on and off.
 
 ## Not in this spec
 
