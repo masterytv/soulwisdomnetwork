@@ -19,6 +19,9 @@
 // Item E11: the sections between splits are drawn in the order they play (lib/timeline.ts timelineAxis), and a section on
 // V1 can be dragged to a new place (`split.onOrder`); every time here is the recording's, drawn through that axis.
 // Item E10: `programme`, the Programme row (components/studio/programme.tsx), sits between the tools and the lanes.
+// Item E13: the timeline shows only what plays, closed up in play order (lib/timeline.ts playedAxis), with a marker at
+// each join where something is cut; an end of a kept stretch is dragged out to bring back what was cut there, or in to
+// cut more (rippleTrim), and everything after it moves with it. Show cuts draws the whole recording, cuts and all, as before.
 
 "use client";
 
@@ -29,7 +32,7 @@ import { keepRanges, keptBounds, MIN_PART_MS, moveSection, sectionAt, sectionsOf
 import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type Layer } from '@/lib/layers';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
-import { sourceTime, timelineTime, type Clip } from '@/lib/sequence';
+import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
 import { thumbAt, type ThumbSheets } from '@/lib/thumbs';
@@ -37,6 +40,7 @@ import {
     clampScroll, clampToWords, clampZoom, cutAt, edgeAt, edgeLimits, fitPxPerMs, keptWords, MAX_PX_PER_MS, MIN_CUT_MS, moveCutEdge,
     preciseTime, rangeOf, removedRanges, roundToStep, SNAP_PX, snapMs, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticksBetween, tickText, wordEdges, zoomAround, timelineAxis, dropPosition, type SpeakerBlock, type TimelineAxis,
+    playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, joinMarks, type AxisPiece, type JoinMark,
 } from '@/lib/timeline';
 import { secondary } from '@/components/studio/ui';
 import { useVideoTime } from '@/components/studio/useVideoTime';
@@ -48,12 +52,14 @@ export interface TimelineMedia {
     thumbs: ThumbSheets | null;
 }
 
-// What is selected on the timeline: a stretch of time (Delete cuts it), a cut (by its times), or a
-// section between splits (Delete cuts it whole).
+// What is selected on the timeline: a stretch of time (Delete cuts it), a cut (by its times), a
+// section between splits (Delete cuts it whole), or what is cut at a join of the closed-up timeline (item E13: the
+// stretch of the recording hidden there).
 export type TimelineSelection =
     | { kind: 'range'; startMs: number; endMs: number }
     | { kind: 'cut'; startMs: number; endMs: number }
-    | { kind: 'section'; startMs: number; endMs: number };
+    | { kind: 'section'; startMs: number; endMs: number }
+    | { kind: 'join'; startMs: number; endMs: number };
 
 // Splits: set at the playhead (S) or with the Blade tool, they divide the episode into sections, as
 // in Descript. A selected section can be cut or brought back whole; click a split's handle to
@@ -80,6 +86,9 @@ export const HEADER_W = 112;
 // How close to a cut's edge the pointer grabs it; a cut narrower than GRAB_PX on screen is grabbed
 // only once selected, and one narrower than PICK_PX is not picked by a click (zoom in for those).
 const EDGE_PX = 6, GRAB_PX = 8, PICK_PX = 3;
+// Item E13: an end of a kept stretch is grabbed only when the stretch is this wide on screen (zoom in for shorter ones),
+// and markers closer together than MARK_PX show only their notch.
+const PIECE_GRAB_PX = 10, MARK_PX = 6;
 // A press that moves less than this is a click.
 const CLICK_PX = 3;
 
@@ -117,6 +126,8 @@ interface DrawInput {
     levels: Int8Array[] | null; thumbs: ThumbSheets | null; images: Map<string, HTMLImageElement>;
     cuts: Cut[]; removed: KeptRange[]; blocks: SpeakerBlock[]; colors: Record<string, string>; splits: number[]; parts: Part[];
     captions: CaptionMark[];
+    // Item E13: where something is cut, on the closed-up timeline.
+    marks: JoinMark[];
     // Item E11: where each moment of the recording is drawn; everything above is already in the timeline's time, the
     // pictures and the waveform are read through it.
     axis: TimelineAxis;
@@ -297,6 +308,25 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Item E13: where something is cut, on the closed-up timeline: a line over the picture and the voice, and a notch
+    // on top (only the notch where they crowd). Amber when all of it is suggestions, grey when any of it is the producer's own.
+    let lastX = -Infinity;
+    for (const m of d.marks) {
+        if (m.viewMs < startMs - 1 / pxPerMs || m.viewMs > endMs) continue;
+        const X = Math.round(x(m.viewMs));
+        ctx.fillStyle = m.suggested ? SUGGESTED : YOURS;
+        if (X - lastX >= MARK_PX) {
+            ctx.globalAlpha = 0.85;
+            ctx.fillRect(X - 1, V1_TOP, 2, V1_H);
+            ctx.fillRect(X - 1, A1_TOP, 2, a1H);
+            ctx.globalAlpha = 1;
+        }
+        lastX = X;
+        ctx.beginPath();
+        ctx.moveTo(X - 4, V1_TOP); ctx.lineTo(X + 4, V1_TOP); ctx.lineTo(X, V1_TOP + 5);
+        ctx.fill();
+    }
+
     // After the end of the recording.
     if (end < width) {
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -398,6 +428,11 @@ type Drag =
     | {
         kind: 'trim'; section: Section; edge: 'start' | 'end'; base: Cut[]; from: number;
         limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Cut[];
+    }
+    // Item E13: an end of a kept stretch on the closed-up timeline, dragged out or in from `from` of the recording.
+    | {
+        kind: 'ripple'; piece: AxisPiece; edge: 'start' | 'end'; base: Cut[]; from: number; x0: number; moved: boolean;
+        lane: string; srcMs: number; limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Cut[];
     };
 
 const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/10 aria-pressed:text-amber-300';
@@ -427,6 +462,17 @@ function layerBounds(l: { anchor: Anchor; durationMs: number }, clips: Clip[], e
     const from = sourceTime(clips, span.startMs) ?? ('srcMs' in l.anchor ? l.anchor.srcMs : 0);
     const to = sourceTime(clips, Math.max(span.startMs, span.endMs - 1)) ?? from + (span.endMs - span.startMs);
     return { span, fromMs: from, toMs: Math.max(from, to) };
+}
+
+// Why each cut was made, as the timeline says it.
+const REASON_LABEL: Record<Cut['reason'], string> = {
+    filler: 'filler', pause: 'pause', repeat: 'repeat', manual: 'your cut', retake: 'tighter edit', gap: 'hesitation',
+};
+
+// What is cut in a stretch of the recording (item E13): where, how long, and why.
+function cutLabel(cuts: Cut[], startMs: number, endMs: number): string {
+    const why = [...new Set(cuts.filter(c => c.startMs < endMs && c.endMs > startMs).map(c => REASON_LABEL[c.reason]))];
+    return `Cut ${preciseTime(startMs)}–${preciseTime(endMs)} (${((endMs - startMs) / 1000).toFixed(2)} s${why.length ? `, ${why.join(', ')}` : ''})`;
 }
 
 // Where the video is, in ms.
@@ -497,6 +543,8 @@ export function Timeline({
     const [layerDrag, setLayerDragState] = useState<LayerDrag | null>(null);
     const setLayerDrag = (d: LayerDrag | null) => { layerDragRef.current = d; setLayerDragState(d); };
     const [snapOn, setSnapOn] = useState(true);
+    // Item E13: off, only what plays, closed up; on, the whole recording with its cuts.
+    const [showCuts, setShowCuts] = useState(false);
     const [locked, setLocked] = useState(false);
     const [muted, setMuted] = useState(false);
     // The tool: Select (V) picks, drags and trims; Blade (B) splits where it is clicked.
@@ -527,12 +575,21 @@ export function Timeline({
         return () => el.removeEventListener('volumechange', sync);
     }, [video]);
 
-    // Item E11: the sections in play order; every moment of the recording is drawn at axis.toView of it.
-    const axis = useMemo(() => timelineAxis(split?.splits ?? [], split?.order, totalMs), [split?.splits, split?.order, totalMs]);
-    const fit = fitPxPerMs(totalMs, size.w);
+    const splits = useMemo(() => split?.splits ?? [], [split?.splits]);
+    // While a cut's edge, a section's end or an end of a kept stretch is dragged, the timeline shows the edit as it would be.
+    const draft = drag?.kind === 'edge' || drag?.kind === 'trim' || drag?.kind === 'ripple' ? drag.draft : null;
+    const shownCuts = draft ?? cuts;
+    // Item E11: the sections in play order; every moment of the recording is drawn at axis.toView of it. Item E13: unless
+    // Show cuts is on, only what plays, closed up (and as the edit would be, while an end is dragged).
+    const sectionsAxis = useMemo(() => timelineAxis(splits, split?.order, totalMs), [splits, split?.order, totalMs]);
+    const playClips = useMemo(() => playOrder({ cuts: shownCuts, splits, order: split?.order }, totalMs, words), [shownCuts, splits, split?.order, totalMs, words]);
+    const playAxis = useMemo(() => playedAxis(playClips, splits, split?.order, totalMs), [playClips, splits, split?.order, totalMs]);
+    const axis = showCuts ? sectionsAxis : playAxis;
+    const lengthMs = axis.lengthMs;
+    const fit = fitPxPerMs(lengthMs, size.w);
     const pxPerMs = view.zoom === null ? fit : clampZoom(view.zoom, fit);
-    const contentW = Math.max(size.w, Math.ceil(totalMs * pxPerMs));
-    const scrollPx = clampScroll(view.scrollPx, totalMs, pxPerMs, size.w);
+    const contentW = Math.max(size.w, Math.ceil(lengthMs * pxPerMs));
+    const scrollPx = clampScroll(view.scrollPx, lengthMs, pxPerMs, size.w);
     const startMs = scrollPx / pxPerMs;
     const endMs = startMs + size.w / pxPerMs;
     const a1H = Math.max(MIN_A1_H, size.h - A1_TOP - soundsH);
@@ -547,9 +604,9 @@ export function Timeline({
 
     const zoomTo = useCallback((next: number, anchorX: number) => {
         const z = clampZoom(next, fit);
-        const s = clampScroll(zoomAround(pxPerMs, z, scrollPx, anchorX), totalMs, z, size.w);
+        const s = clampScroll(zoomAround(pxPerMs, z, scrollPx, anchorX), lengthMs, z, size.w);
         setView({ zoom: z <= fit * 1.0001 ? null : z, scrollPx: s });
-    }, [fit, pxPerMs, scrollPx, totalMs, size.w]);
+    }, [fit, pxPerMs, scrollPx, lengthMs, size.w]);
 
     // Zoom buttons, the slider and the keys keep the playhead where it is when it is in view, else
     // the middle.
@@ -596,8 +653,8 @@ export function Timeline({
 
     const onFollow = useCallback((ms: number) => {
         if (Date.now() - handScrolledAt.current < 3000) return;
-        setView(v => ({ ...v, scrollPx: clampScroll(ms * pxPerMs - size.w / 3, totalMs, pxPerMs, size.w) }));
-    }, [pxPerMs, size.w, totalMs]);
+        setView(v => ({ ...v, scrollPx: clampScroll(ms * pxPerMs - size.w / 3, lengthMs, pxPerMs, size.w) }));
+    }, [pxPerMs, size.w, lengthMs]);
 
     const blocks = useMemo(() => speakerBlocks(words), [words]);
     const captions = useMemo(() => captionMarks(cues, clips), [cues, clips]);
@@ -607,29 +664,39 @@ export function Timeline({
     const edgesOfWords = useMemo(() => wordEdges(words), [words]);
     const edgesOfCuts = useMemo(() => cuts.flatMap(c => [c.startMs, c.endMs]).sort((a, b) => a - b), [cuts]);
     const keptAll = useMemo(() => keptWords(words, cuts), [words, cuts]);
-    const splits = useMemo(() => split?.splits ?? [], [split?.splits]);
     const sections = useMemo(() => sectionsOf(splits, totalMs), [splits, totalMs]);
 
-    // While a cut's edge or a section's end is dragged, the timeline shows the edit as it would be.
-    const draft = drag?.kind === 'edge' || drag?.kind === 'trim' ? drag.draft : null;
-    const shownCuts = draft ?? cuts;
     const parts = useMemo(() => sections.map(section => ({ section, kept: keptBounds(shownCuts, section) })), [sections, shownCuts]);
     // In the recording's order (the clips come in play order).
     const removed = useMemo(() => removedRanges(draft ? keepRanges(totalMs, draft, 40, words) : [...ranges].sort((a, b) => a.startMs - b.startMs), totalMs),
         [draft, ranges, totalMs, words]);
     // What the canvas draws, in the timeline's time: as it is in the recording's order, through the axis once sections move.
     const drawn = useMemo(() => {
-        if (!axis.moved) return { cuts: shownCuts, removed, blocks, splits, parts, captions };
+        const marks: JoinMark[] = [];
+        if (!axis.moved) return { cuts: shownCuts, removed, blocks, splits, parts, captions, marks };
         const spread = <T extends { startMs: number; endMs: number }>(list: T[]) =>
             list.flatMap(r => axis.spans(r.startMs, r.endMs).map(sp => ({ ...r, startMs: sp.fromMs, endMs: sp.toMs })));
+        const spreadCaptions = captions.flatMap(c => axis.spans(c.fromMs, c.toMs).map(sp => ({ ...c, fromMs: sp.fromMs, toMs: sp.toMs })));
+        // Item E13: nothing cut is drawn; each section is a clip from where it starts to where it ends on the timeline.
+        if (axis.collapsed) {
+            return {
+                cuts: [], removed: [], blocks: spread(blocks), captions: spreadCaptions, marks: joinMarks(axis, shownCuts),
+                splits: axis.sections.slice(1).map(sec => sec.viewStart),
+                parts: axis.sections.map(sec => {
+                    const v = { startMs: sec.viewStart, endMs: sec.viewEnd };
+                    return { section: v, kept: sec.viewEnd > sec.viewStart ? v : null };
+                }),
+            };
+        }
         const view = (sec: Section) => ({ startMs: axis.toView(sec.startMs), endMs: axis.toView(sec.startMs) + (sec.endMs - sec.startMs) });
         return {
             cuts: spread(shownCuts),
             removed: spread(removed),
             blocks: spread(blocks),
-            splits: axis.pieces.slice(1).map(p => p.viewStart),
+            splits: axis.sections.slice(1).map(sec => sec.viewStart),
             parts: parts.map(p => ({ section: view(p.section), kept: p.kept && view(p.kept) })),
-            captions: captions.flatMap(c => axis.spans(c.fromMs, c.toMs).map(sp => ({ ...c, fromMs: sp.fromMs, toMs: sp.toMs }))),
+            captions: spreadCaptions,
+            marks,
         };
     }, [axis, shownCuts, removed, blocks, splits, parts, captions]);
 
@@ -671,24 +738,30 @@ export function Timeline({
         if (!ctx) return;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         drawTimeline(ctx, {
-            width: size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, images: images.current,
+            width: size.w, a1H, startMs, pxPerMs, totalMs: lengthMs, levels, thumbs, images: images.current,
             ...drawn, colors, axis,
         });
-    }, [size.w, a1H, startMs, pxPerMs, totalMs, levels, thumbs, drawn, colors, axis, loadedSheets]);
+    }, [size.w, a1H, startMs, pxPerMs, totalMs, lengthMs, levels, thumbs, drawn, colors, axis, loadedSheets]);
 
     if (totalMs <= 0) return null;
 
     // Cuts wide enough on screen to grab by an edge, or to pick with a click; the selected one always.
     const selectedCut = selection?.kind === 'cut'
         ? cuts.find(c => c.startMs === selection.startMs && c.endMs === selection.endMs) : undefined;
-    const inView = axis.moved ? cuts.filter(c => axis.spans(c.startMs, c.endMs).some(sp => sp.toMs >= startMs && sp.fromMs <= endMs))
+    const inView = axis.collapsed ? [] : axis.moved ? cuts.filter(c => axis.spans(c.startMs, c.endMs).some(sp => sp.toMs >= startMs && sp.fromMs <= endMs))
         : cuts.filter(c => c.endMs >= startMs && c.startMs <= endMs);
-    // A moment of the recording, on screen; and whether a stretch of it is in view.
+    // A moment of the recording, on screen; and whether a stretch of it is in view (a cut one, at its join).
     const xs = (ms: number) => x(axis.toView(ms));
-    const shown = (fromMs: number, toMs: number) => axis.spans(fromMs, Math.max(toMs, fromMs + 1)).some(sp => sp.toMs >= startMs && sp.fromMs <= endMs);
-    // How wide a stretch of the recording is drawn: from where it starts to where it ends, which in play order can be a
-    // different section (a layer over a moved part's end); never less than its own length on screen.
-    const wide = (fromMs: number, toMs: number) => Math.max((toMs - fromMs) * pxPerMs, (axis.toView(toMs) - axis.toView(fromMs)) * pxPerMs);
+    const shown = (fromMs: number, toMs: number) => {
+        const v = axis.toView(fromMs);
+        return (v >= startMs && v <= endMs) || axis.spans(fromMs, Math.max(toMs, fromMs + 1)).some(sp => sp.toMs >= startMs && sp.fromMs <= endMs);
+    };
+    // How wide a stretch of the recording is on screen: its length, or once what plays is closed up, what of it plays.
+    const spanPx = (fromMs: number, toMs: number) => (axis.collapsed ? Math.max(0, axis.toView(toMs) - axis.toView(fromMs)) : toMs - fromMs) * pxPerMs;
+    // How wide a layer is drawn: from where it starts to where it ends, which in play order can be a different section (a
+    // layer over a moved part's end); never less than its own length on screen (unless cuts are closed up).
+    const wide = (fromMs: number, toMs: number) => (axis.collapsed ? spanPx(fromMs, toMs)
+        : Math.max((toMs - fromMs) * pxPerMs, (axis.toView(toMs) - axis.toView(fromMs)) * pxPerMs));
     const grabbable = inView.filter(c => c === selectedCut || (c.endMs - c.startMs) * pxPerMs >= GRAB_PX);
     const pickable = inView.filter(c => c === selectedCut || (c.endMs - c.startMs) * pxPerMs >= PICK_PX);
     // The selected section, while its splits are still there.
@@ -698,6 +771,7 @@ export function Timeline({
     // The end of a section's kept part near a moment, on V1: drag it to trim the section. At a split
     // both sections have an end in the same place: the one on the pointer's side wins.
     const trimAt = (ms: number) => {
+        if (axis.collapsed) return null;
         let best: { part: Part; edge: 'start' | 'end'; d: number; inside: boolean } | null = null;
         for (const part of parts) {
             const k = part.kept;
@@ -712,10 +786,19 @@ export function Timeline({
         return best;
     };
 
+    // Item E13: the end of a kept stretch under the pointer on the closed-up timeline, when the stretch is wide enough to grab.
+    const pieceEnd = (view: number) => {
+        if (!axis.collapsed) return null;
+        const hit = pieceEdgeAt(axis, view, EDGE_PX / pxPerMs);
+        if (!hit) return null;
+        const p = axis.pieces[hit.index];
+        return (p.srcEnd - p.srcStart) * pxPerMs >= PIECE_GRAB_PX ? hit : null;
+    };
+
     const pointAt = (e: { clientX: number; clientY: number }) => {
         const r = lanesRef.current!.getBoundingClientRect();
         const px = e.clientX - r.left, py = e.clientY - r.top;
-        const view = Math.max(0, Math.min(totalMs, startMs + px / pxPerMs));
+        const view = Math.max(0, Math.min(lengthMs, startMs + px / pxPerMs));
         return { px, py, view, ms: axis.toSrc(view) };
     };
     const laneAt = (py: number) => py < RULER_H ? 'ruler' : py < V1_TOP ? 'v2' : py < CC_TOP ? 'v1' : py < A1_TOP ? 'cc' : py < A1_TOP + a1H ? 'a1' : 'sounds';
@@ -804,6 +887,18 @@ export function Timeline({
             }
             return;
         }
+        // Item E13: on the closed-up timeline, an end of a kept stretch drags out (bringing back what was cut there) or
+        // in (cutting more); a press that does not move is a click, which chooses what is cut there.
+        const end = !locked && (lane === 'v1' || lane === 'a1') ? pieceEnd(view) : null;
+        if (end) {
+            const piece = axis.pieces[end.index];
+            const from = end.edge === 'start' ? piece.srcStart : piece.srcEnd;
+            setDrag({
+                kind: 'ripple', piece, edge: end.edge, base: cuts, from, x0: px, moved: false, lane, srcMs: ms,
+                limits: rippleLimits(piece, end.edge), targets: [[timeOf(video)], edgesOfWords], ms: from, guide: null, draft: cuts,
+            });
+            return;
+        }
         // On V1, the ends of what a section keeps trim it.
         const trim = !locked && lane === 'v1' ? trimAt(ms) : null;
         if (trim) {
@@ -832,10 +927,10 @@ export function Timeline({
             }
         }
         // On V1, once there are splits, a press can drag its section to a new place; a press that does not move is a click.
-        if (lane === 'v1' && !locked && split?.onOrder && axis.pieces.length > 1) {
-            const from = axis.pieces.findIndex(p => view < p.viewStart + (p.srcEnd - p.srcStart));
-            const at = from < 0 ? axis.pieces.length - 1 : from;
-            setDrag({ kind: 'move', from: at, x0: px, grabMs: view - axis.pieces[at].viewStart, viewMs: view, moved: false, srcMs: ms });
+        if (lane === 'v1' && !locked && split?.onOrder && axis.sections.length > 1) {
+            const from = axis.sections.findIndex(sec => sec.viewEnd > sec.viewStart && view < sec.viewEnd);
+            const at = from < 0 ? axis.sections.length - 1 : from;
+            setDrag({ kind: 'move', from: at, x0: px, grabMs: view - axis.sections[at].viewStart, viewMs: view, moved: false, srcMs: ms });
             return;
         }
         const picked = cutAt(pickable, ms);
@@ -869,8 +964,18 @@ export function Timeline({
                 if (!locked) setBladeAt(place(ms, e.altKey, words, [0, totalMs], [0, totalMs], [[timeOf(video)], edgesOfWords, edgesOfCuts, splits]).ms);
             } else if (lane === 'v1' || lane === 'a1') {
                 if (tool === 'blade') setBladeAt(null);
+                const end = !locked ? pieceEnd(view) : null;
+                if (end) {
+                    cursor = 'ew-resize';
+                    const hidden = hiddenAt(axis.pieces[end.index], end.edge);
+                    e.currentTarget.title = hidden
+                        ? `${cutLabel(cuts, hidden.startMs, hidden.endMs)}. Drag the edge to bring it back or cut more (it stops between words unless Alt is held); click to choose it; double-click to bring it all back.`
+                        : 'Drag the edge in to cut more (it stops between words unless Alt is held).';
+                    e.currentTarget.style.cursor = cursor;
+                    return;
+                }
                 if (!locked && ((lane === 'v1' && trimAt(ms)) || edgeAt(grabbable, ms, EDGE_PX / pxPerMs))) cursor = 'ew-resize';
-                else if (lane === 'v1' && !locked && split?.onOrder && axis.pieces.length > 1) cursor = 'grab';
+                else if (lane === 'v1' && !locked && split?.onOrder && axis.sections.length > 1) cursor = 'grab';
                 else if (!cutAt(pickable, ms) && lane === 'a1' && !locked) cursor = 'text';
             } else if (tool === 'blade') setBladeAt(null);
             e.currentTarget.style.cursor = cursor;
@@ -881,6 +986,14 @@ export function Timeline({
         else if (drag.kind === 'move') {
             const moved = drag.moved || Math.abs(px - drag.x0) >= CLICK_PX;
             if (moved) { e.currentTarget.style.cursor = 'grabbing'; setDrag({ ...drag, moved, viewMs: view }); }
+        } else if (drag.kind === 'ripple') {
+            // The edge moves as far as the pointer has (everything before it stays where it is), between words unless Alt.
+            const moved = drag.moved || Math.abs(px - drag.x0) >= CLICK_PX;
+            if (!moved) return;
+            const p = place(drag.from + (px - drag.x0) / pxPerMs, e.altKey, words, drag.limits, drag.limits, drag.targets);
+            if (!drag.moved || p.ms !== drag.ms || p.guide !== drag.guide) {
+                setDrag({ ...drag, moved, ms: p.ms, guide: p.guide, draft: p.ms === drag.from ? drag.base : rippleTrim(drag.base, drag.piece, drag.edge, p.ms, totalMs) });
+            }
         } else if (drag.kind === 'trim') {
             const p = place(ms, e.altKey, words, drag.limits, drag.limits, drag.targets);
             if (p.ms !== drag.ms || p.guide !== drag.guide) setDrag({ ...drag, ms: p.ms, guide: p.guide, draft: trimSection(drag.base, drag.section, drag.edge, p.ms) });
@@ -889,7 +1002,7 @@ export function Timeline({
             if (p.ms !== drag.ms || p.guide !== drag.guide) setDrag({ ...drag, ms: p.ms, guide: p.guide, draft: moveCutEdge(drag.base, drag.cut, drag.edge, p.ms) });
         } else {
             // Once sections move, a stretch is chosen within one section (the timeline shows them apart).
-            const sec = axis.moved ? sectionAt(splits, drag.anchor, totalMs) : { startMs: 0, endMs: totalMs };
+            const sec = axis.reordered ? sectionAt(splits, drag.anchor, totalMs) : { startMs: 0, endMs: totalMs };
             const p = place(Math.min(sec.endMs, Math.max(sec.startMs, ms)), e.altKey, keptAll, [sec.startMs, sec.endMs], [sec.startMs, sec.endMs], drag.targets);
             setDrag({ ...drag, ms: p.ms, guide: p.guide, moved: drag.moved || Math.abs(px - drag.x0) >= CLICK_PX });
         }
@@ -907,13 +1020,21 @@ export function Timeline({
             }
         } else if (drag.kind === 'trim') {
             if (drag.ms !== drag.from) onCuts(drag.draft);
+        } else if (drag.kind === 'ripple') {
+            if (drag.moved) {
+                if (drag.ms !== drag.from) { onCuts(drag.draft); onSelect(null); }
+            } else {
+                const hidden = hiddenAt(drag.piece, drag.edge);
+                if (hidden) onSelect({ kind: 'join', ...hidden });
+                else clickV1(drag.lane, drag.srcMs);
+            }
         } else if (drag.kind === 'move') {
             e.currentTarget.style.cursor = 'grab';
             if (!drag.moved) clickV1('v1', drag.srcMs);
             else {
                 const to = dropPosition(axis, drag.from, drag.viewMs);
-                const piece = axis.pieces[drag.from];
-                if (to !== drag.from) split?.onOrder?.(moveSection(axis.pieces.map(p => p.section), axis.pieces.length, drag.from, to));
+                const piece = axis.sections[drag.from];
+                if (to !== drag.from) split?.onOrder?.(moveSection(axis.sections.map(sec => sec.section), axis.sections.length, drag.from, to));
                 onSelect({ kind: 'section', startMs: piece.srcStart, endMs: piece.srcEnd });
             }
         } else if (drag.kind === 'range') {
@@ -928,8 +1049,15 @@ export function Timeline({
 
     // Double-click a cut to bring it back, as in the transcript.
     const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-        const { py, ms } = pointAt(e);
+        const { py, ms, view } = pointAt(e);
         if (locked || (laneAt(py) !== 'v1' && laneAt(py) !== 'a1')) return;
+        // Item E13: at a join, everything cut there comes back.
+        const end = pieceEnd(view);
+        if (end) {
+            const p = axis.pieces[end.index];
+            if (hiddenAt(p, end.edge)) { onCuts(rippleTrim(cuts, p, end.edge, end.edge === 'end' ? p.reachEnd : p.reachStart, totalMs)); onSelect(null); }
+            return;
+        }
         const picked = cutAt(pickable, ms);
         if (picked) { onCuts(cuts.filter(c => c !== picked)); onSelect(null); }
     };
@@ -942,18 +1070,42 @@ export function Timeline({
     // Where a dragged section would land: its play position, and the line on the timeline where it goes in.
     const moving = drag?.kind === 'move' && drag.moved ? (() => {
         const to = dropPosition(axis, drag.from, drag.viewMs);
-        const target = axis.pieces[to], len = (p: typeof target) => p.srcEnd - p.srcStart;
-        const lineMs = to <= drag.from ? target.viewStart : target.viewStart + len(target);
-        const piece = axis.pieces[drag.from];
-        return { to, lineMs, leftMs: drag.viewMs - drag.grabMs, lengthMs: len(piece), piece };
+        const target = axis.sections[to];
+        const lineMs = to <= drag.from ? target.viewStart : target.viewEnd;
+        const piece = axis.sections[drag.from];
+        return { to, lineMs, leftMs: drag.viewMs - drag.grabMs, lengthMs: piece.viewEnd - piece.viewStart, piece };
     })() : null;
 
     // The zoom slider runs from the whole recording to the closest, evenly in ratio.
     const span = Math.log(MAX_PX_PER_MS / fit);
     const slider = span > 0 ? Math.round(1000 * Math.log(pxPerMs / fit) / span) : 0;
-    const reasonLabel: Record<Cut['reason'], string> = {
-        filler: 'filler', pause: 'pause', repeat: 'repeat', manual: 'your cut', retake: 'tighter edit', gap: 'hesitation',
+    const reasonLabel = REASON_LABEL;
+    // Item E13: what is cut at a join, chosen on the closed-up timeline; and bringing it all back, as dragging its edge
+    // all the way out does (the kept stretch it hides beside, found again on the closed-up timeline).
+    const joinSel = selection?.kind === 'join' ? selection : null;
+    const bringBackJoin = (j: { startMs: number; endMs: number }) => {
+        const atEnd = playAxis.pieces.find(p => p.srcEnd === j.startMs && p.reachEnd === j.endMs);
+        const atStart = atEnd ? undefined : playAxis.pieces.find(p => p.srcStart === j.endMs && p.reachStart === j.startMs);
+        if (atEnd) onCuts(rippleTrim(cuts, atEnd, 'end', atEnd.reachEnd, totalMs));
+        else if (atStart) onCuts(rippleTrim(cuts, atStart, 'start', atStart.reachStart, totalMs));
+        onSelect(null);
     };
+    // Show cuts on or off, keeping the playhead where it is on screen (or a third of the way in).
+    const toggleCuts = (on: boolean) => {
+        const next = on ? sectionsAxis : playAxis;
+        const t = timeOf(video);
+        const nowX = (axis.toView(t) - startMs) * pxPerMs;
+        const keepX = nowX >= 0 && nowX <= size.w ? nowX : size.w / 3;
+        const nextFit = fitPxPerMs(next.lengthMs, size.w);
+        setView(v => {
+            const z = v.zoom === null ? nextFit : clampZoom(v.zoom, nextFit);
+            return { zoom: v.zoom === null ? null : z, scrollPx: clampScroll(next.toView(t) * z - keepX, next.lengthMs, z, size.w) };
+        });
+        if (selection?.kind === 'cut' && !on) onSelect(null);
+        setShowCuts(on);
+    };
+    // A dragged end of a kept stretch: how much it brings back (+) or cuts (−).
+    const rippleBy = drag?.kind === 'ripple' && drag.moved ? (drag.edge === 'end' ? drag.ms - drag.from : drag.from - drag.ms) : null;
 
     return (
         <section aria-label="Timeline" className="h-full min-h-[210px] flex flex-col gap-1.5 rounded-lg bg-[#130b29] border border-white/5 p-2 select-none">
@@ -974,10 +1126,14 @@ export function Timeline({
                     onChange={e => zoomAt(fit * Math.exp(Number(e.target.value) / 1000 * span))}
                     className="w-28 shrink-0 accent-amber-400" />
                 <button aria-label="Zoom in" title="Zoom in (+)" disabled={pxPerMs >= MAX_PX_PER_MS} onClick={() => zoomBy(2)} className={`${secondary} px-2 py-0.5 shrink-0`}>+</button>
-                <button onClick={() => setView({ zoom: null, scrollPx: 0 })} title="Show the whole recording" className={`${secondary} px-2 py-0.5 shrink-0`}>Fit</button>
+                <button onClick={() => setView({ zoom: null, scrollPx: 0 })} title={showCuts ? 'Show the whole recording' : 'Show the whole episode'} className={`${secondary} px-2 py-0.5 shrink-0`}>Fit</button>
                 <span className="text-gray-400 w-10 shrink-0">{Math.round(pxPerMs / fit) >= 2 ? `${Math.round(pxPerMs / fit)}×` : 'whole'}</span>
                 <label className="flex items-center gap-1 text-gray-300 shrink-0" title="Snap to the playhead, word edges, cuts and splits. Hold Alt while dragging to turn it off.">
                     <input type="checkbox" checked={snapOn} onChange={e => setSnapOn(e.target.checked)} className="accent-amber-400" /> Snap
+                </label>
+                <label className="flex items-center gap-1 text-gray-300 shrink-0"
+                    title={showCuts ? 'Showing the whole recording, with what is cut hatched. Untick to see only what plays.' : 'Showing only what plays, with a marker where something is cut. Tick to see the whole recording, cuts and all.'}>
+                    <input type="checkbox" checked={showCuts} onChange={e => toggleCuts(e.target.checked)} className="accent-amber-400" /> Show cuts
                 </label>
                 {range && (
                     <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
@@ -995,6 +1151,14 @@ export function Timeline({
                             <button onClick={() => { onCuts(cuts.filter(c => c !== selectedCut)); onSelect(null); }} disabled={locked} title="Bring this cut back (or double-click it)" className={`${secondary} px-2 py-0.5 shrink-0`}>Bring back</button>
                             <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
                         </>}
+                    </span>
+                )}
+                {joinSel && (
+                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                        <span className="text-amber-200 truncate min-w-0">{cutLabel(cuts, joinSel.startMs, joinSel.endMs)}</span>
+                        <button onClick={() => onHear(Math.max(0, joinSel.startMs - 2000), joinSel.endMs + 2000)} title="Play from 2 s before to 2 s after, what is cut included" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Hear</button>
+                        <button onClick={() => bringBackJoin(joinSel)} disabled={locked} title="Bring all of it back (or double-click the marker)" className={`${secondary} px-2 py-0.5 shrink-0`}>Bring back</button>
+                        <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
                     </span>
                 )}
                 {selectedSection && split && (() => {
@@ -1119,7 +1283,9 @@ export function Timeline({
                             <div
                                 ref={lanesRef}
                                 role="application"
-                                aria-label="Timeline lanes: click to jump there, drag on the waveform to select a stretch of time, drag a cut's edge to trim it, double-click a cut to bring it back"
+                                aria-label={showCuts
+                                    ? "Timeline lanes: click to jump there, drag on the waveform to select a stretch of time, drag a cut's edge to trim it, double-click a cut to bring it back"
+                                    : 'Timeline lanes, only what plays: click to jump there, drag on the waveform to select a stretch of time, drag the end of a clip out to bring back what was cut there or in to cut more, double-click a marker to bring back what was cut there'}
                                 className="absolute inset-0 touch-none"
                                 onPointerDown={onPointerDown}
                                 onPointerMove={onPointerMove}
@@ -1137,7 +1303,7 @@ export function Timeline({
                                 {/* What the transitions overlap: the end of one part and the start of the next. */}
                                 {overlaps.filter(o => shown(o.fromMs, o.toMs)).map(o => (
                                     <div key={`${o.fromMs}-${o.toMs}`} aria-hidden className="absolute pointer-events-none bg-amber-300/15 border-x border-amber-300/40"
-                                        style={{ left: xs(o.fromMs), width: Math.max(1, (o.toMs - o.fromMs) * pxPerMs), top: V1_TOP, bottom: 0 }} />
+                                        style={{ left: xs(o.fromMs), width: Math.max(1, spanPx(o.fromMs, o.toMs)), top: V1_TOP, bottom: 0 }} />
                                 ))}
 
                                 {/* Each split's transition: click to choose one in the Transitions panel. */}
@@ -1157,10 +1323,27 @@ export function Timeline({
                                 ))}
 
                                 {/* The selected section. */}
-                                {selectedSection && (
-                                    <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300/80 bg-amber-300/5"
-                                        style={{ left: xs(selectedSection.startMs), width: (selectedSection.endMs - selectedSection.startMs) * pxPerMs, top: V1_TOP, bottom: 1 }} />
-                                )}
+                                {selectedSection && (() => {
+                                    const sec = axis.sections.find(v => v.srcStart === selectedSection.startMs && v.srcEnd === selectedSection.endMs);
+                                    return sec && (
+                                        <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300/80 bg-amber-300/5"
+                                            style={{ left: x(sec.viewStart) - (sec.viewEnd > sec.viewStart ? 0 : 3), width: Math.max(6, (sec.viewEnd - sec.viewStart) * pxPerMs), top: V1_TOP, bottom: 1 }} />
+                                    );
+                                })()}
+
+                                {/* Item E13: a section cut whole has nothing on the closed-up timeline: a marker where it would play. */}
+                                {axis.collapsed && axis.sections.filter(sec => sec.viewEnd <= sec.viewStart && sec.viewStart >= startMs && sec.viewStart <= endMs).map(sec => (
+                                    <button
+                                        key={`cut-${sec.section}`}
+                                        type="button"
+                                        aria-label={`Section ${tickLabel(sec.srcStart)}–${tickLabel(sec.srcEnd)} is cut whole: choose it`}
+                                        title={`Section ${preciseTime(sec.srcStart)}–${preciseTime(sec.srcEnd)} is cut whole. Click to choose it, then Bring back.`}
+                                        onPointerDown={e => e.stopPropagation()}
+                                        onClick={() => onSelect({ kind: 'section', startMs: sec.srcStart, endMs: sec.srcEnd })}
+                                        className="absolute h-4 px-1 rounded-sm text-[9px] leading-4 bg-red-500/90 text-white hover:bg-red-400"
+                                        style={{ left: x(sec.viewStart) - 8, top: V1_TOP + THUMB_H - 18 }}
+                                    >✂</button>
+                                ))}
 
                                 {/* V3 and V2: the layers. Click to select; drag to move; drag an end to trim. */}
                                 {shownLayers.map(l => {
@@ -1252,13 +1435,13 @@ export function Timeline({
                                 {/* The chosen stretch of time. */}
                                 {range && (
                                     <div aria-hidden className="absolute pointer-events-none bg-white/15 border-x border-white/80"
-                                        style={{ left: xs(range.startMs), width: Math.max(1, (range.endMs - range.startMs) * pxPerMs), top: RULER_H, bottom: 0 }} />
+                                        style={{ left: xs(range.startMs), width: Math.max(1, spanPx(range.startMs, range.endMs)), top: RULER_H, bottom: 0 }} />
                                 )}
 
                                 {/* The chosen cut, with its edges marked: drag them to trim it. */}
                                 {shownCut && (
                                     <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-white/85"
-                                        style={{ left: xs(shownCut.startMs), width: Math.max(2, (shownCut.endMs - shownCut.startMs) * pxPerMs), top: V1_TOP, bottom: 1 }}>
+                                        style={{ left: xs(shownCut.startMs), width: Math.max(2, spanPx(shownCut.startMs, shownCut.endMs)), top: V1_TOP, bottom: 1 }}>
                                         {!locked && <>
                                             <span className="absolute -left-[3px] top-1/2 -translate-y-1/2 w-1.5 h-6 rounded bg-white" />
                                             <span className="absolute -right-[3px] top-1/2 -translate-y-1/2 w-1.5 h-6 rounded bg-white" />
@@ -1266,14 +1449,28 @@ export function Timeline({
                                     </div>
                                 )}
 
+                                {/* Item E13: what is cut at the chosen join; on the closed-up timeline, the marker there. */}
+                                {joinSel && shown(joinSel.startMs, joinSel.endMs) && (
+                                    <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-white/85"
+                                        style={axis.collapsed
+                                            ? { left: xs(joinSel.startMs) - 4, width: 8, top: V1_TOP - 2, bottom: 1 }
+                                            : { left: xs(joinSel.startMs), width: Math.max(2, spanPx(joinSel.startMs, joinSel.endMs)), top: V1_TOP, bottom: 1 }} />
+                                )}
+
+                                {/* Item E13: the end of a kept stretch being dragged, where it is now. */}
+                                {drag?.kind === 'ripple' && drag.moved && (
+                                    <div aria-hidden className="absolute pointer-events-none w-0.5 bg-white" style={{ left: xs(drag.ms) - 1, top: V1_TOP, bottom: 0 }} />
+                                )}
+
                                 {/* Where a drag snapped, and the time it is at. */}
                                 {guide !== null && (
                                     <div aria-hidden className="absolute top-0 bottom-0 w-px bg-amber-300 pointer-events-none" style={{ left: xs(guide) }} />
                                 )}
-                                {drag && drag.kind !== 'scrub' && drag.kind !== 'move' && (
-                                    <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200"
-                                        style={{ left: Math.min(size.w - 70, Math.max(0, xs(drag.ms) + 6)), top: A1_TOP + 2 }}>
-                                        {preciseTime(drag.ms)}
+                                {drag && drag.kind !== 'scrub' && drag.kind !== 'move' && (drag.kind !== 'ripple' || drag.moved) && (
+                                    <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
+                                        style={{ left: Math.min(size.w - (rippleBy === null ? 70 : 100), Math.max(0, xs(drag.ms) + 6)), top: A1_TOP + 2 }}>
+                                        {rippleBy === null ? preciseTime(drag.ms)
+                                            : rippleBy === 0 ? 'as it was' : `${rippleBy > 0 ? '+' : '−'}${(Math.abs(rippleBy) / 1000).toFixed(2)} s ${rippleBy > 0 ? 'back' : 'cut'}`}
                                     </span>
                                 )}
 
@@ -1296,7 +1493,7 @@ export function Timeline({
                                         style={{ left: x(moving.leftMs), width: Math.max(6, moving.lengthMs * pxPerMs), top: V1_TOP, height: V1_H }} />
                                     <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
                                         style={{ left: Math.min(size.w - 230, Math.max(0, x(moving.leftMs))), top: V2_TOP + 2 }}>
-                                        Section {preciseTime(moving.piece.srcStart)}–{preciseTime(moving.piece.srcEnd)} → place {moving.to + 1} of {axis.pieces.length}
+                                        Section {preciseTime(moving.piece.srcStart)}–{preciseTime(moving.piece.srcEnd)} → place {moving.to + 1} of {axis.sections.length}
                                     </span>
                                 </>}
 

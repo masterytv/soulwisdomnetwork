@@ -4,6 +4,7 @@
 
 import type { Cut, KeptRange } from './edit';
 import { mmss } from './showNotes';
+import { SPLIT_SLACK_MS } from './sequence';
 
 // ---- Zoom and scroll ----
 
@@ -284,34 +285,64 @@ export function rangeOf(a: number, b: number, totalMs: number): KeptRange | null
 
 // ---- Sections in play order (spec 020 item E11) ----
 
-// Where the timeline draws each moment of the recording: the sections between splits laid end to end in the order
-// they play (`order`, spec 020 item E9), each whole, its cuts drawn inside it. In the recording's order every moment
-// is where it always was. `pieces` are the sections in play order, each with where it starts on the timeline.
+// A stretch of the recording drawn on the timeline, in the order they play: where it starts on the timeline, its section,
+// and how far each of its ends can be dragged out (item E13, rippleTrim): to the kept moment of its section before it
+// (`reachStart`) and after it (`reachEnd`), or to its section's ends; `mergeStart` and `mergeEnd` say a kept stretch is
+// there, so dragging all the way joins the two. Whole sections (Show cuts) reach no further than themselves.
+export interface AxisPiece {
+    srcStart: number; srcEnd: number; viewStart: number; section: number;
+    reachStart: number; reachEnd: number; mergeStart: boolean; mergeEnd: boolean;
+}
+
+// A section between splits in play order, and where it is drawn: from viewStart to viewEnd (the same place when what
+// plays is closed up and it is cut whole).
+export interface AxisSection { section: number; srcStart: number; srcEnd: number; viewStart: number; viewEnd: number }
+
+// Where the timeline draws each moment of the recording. With Show cuts (timelineAxis): the sections between splits laid
+// end to end in the order they play (`order`, spec 020 item E9), each whole, its cuts drawn inside it; in the recording's
+// order every moment is where it always was. Otherwise (playedAxis, item E13): only what plays, closed up, in play order.
 export interface TimelineAxis {
+    // Not drawn where it is in the recording: sections moved, or what plays closed up.
     moved: boolean;
-    pieces: { srcStart: number; srcEnd: number; viewStart: number; section: number }[];
+    // The sections play in another order.
+    reordered: boolean;
+    // Only what plays (playedAxis).
+    collapsed: boolean;
+    // How long the timeline is.
+    lengthMs: number;
+    pieces: AxisPiece[];
+    sections: AxisSection[];
     toView: (srcMs: number) => number;
     toSrc: (viewMs: number) => number;
-    // A stretch of the recording as the stretches of the timeline it is drawn on (one, unless it crosses a split).
+    // A stretch of the recording as the stretches of the timeline it is drawn on (one, unless it crosses a split, or a
+    // cut once what plays is closed up; none when all of it is cut).
     spans: (fromMs: number, toMs: number) => { fromMs: number; toMs: number }[];
 }
 
-export function timelineAxis(splits: number[], order: number[] | null | undefined, totalMs: number): TimelineAxis {
+// The sections the splits make, and the play order when it is a valid one that moves something.
+function sectionsAndOrder(splits: number[], order: number[] | null | undefined, totalMs: number) {
     const edges = [0, ...[...splits].sort((a, b) => a - b), totalMs];
     const sections = edges.slice(0, -1).map((s, i) => ({ srcStart: s, srcEnd: edges[i + 1] }));
     const valid = !!order && order.length === sections.length && [...order].sort((a, b) => a - b).every((v, i) => v === i)
         && sections.every(sec => sec.srcEnd > sec.srcStart);
-    const moved = valid && order!.some((v, i) => v !== i);
+    const reordered = valid && order!.some((v, i) => v !== i);
+    return { sections, play: reordered ? order! : sections.map((_, i) => i), reordered };
+}
+
+export function timelineAxis(splits: number[], order: number[] | null | undefined, totalMs: number): TimelineAxis {
+    const { sections, play, reordered: moved } = sectionsAndOrder(splits, order, totalMs);
     let at = 0;
-    const pieces = (moved ? order! : sections.map((_, i) => i)).map(section => {
+    const pieces: AxisPiece[] = play.map(section => {
         const sec = sections[section];
-        const p = { ...sec, viewStart: at, section };
+        const p = { ...sec, viewStart: at, section, reachStart: sec.srcStart, reachEnd: sec.srcEnd, mergeStart: false, mergeEnd: false };
         at += sec.srcEnd - sec.srcStart;
         return p;
     });
+    const axisSections = pieces.map(p => ({ section: p.section, srcStart: p.srcStart, srcEnd: p.srcEnd, viewStart: p.viewStart, viewEnd: p.viewStart + (p.srcEnd - p.srcStart) }));
+    const base = { moved, reordered: moved, collapsed: false, lengthMs: Math.max(0, totalMs), pieces, sections: axisSections };
     if (!moved) {
         const clamp = (ms: number) => Math.max(0, Math.min(totalMs, ms));
-        return { moved: false, pieces, toView: clamp, toSrc: clamp, spans: (fromMs, toMs) => (toMs > fromMs ? [{ fromMs, toMs }] : []) };
+        return { ...base, toView: clamp, toSrc: clamp, spans: (fromMs, toMs) => (toMs > fromMs ? [{ fromMs, toMs }] : []) };
     }
     const bySrc = [...pieces].sort((a, b) => a.srcStart - b.srcStart);
     const pieceOfSrc = (ms: number) => bySrc.find(p => ms < p.srcEnd) ?? bySrc[bySrc.length - 1];
@@ -329,17 +360,205 @@ export function timelineAxis(splits: number[], order: number[] | null | undefine
         const a = Math.max(fromMs, p.srcStart), b = Math.min(toMs, p.srcEnd);
         return b > a ? [{ fromMs: p.viewStart + (a - p.srcStart), toMs: p.viewStart + (b - p.srcStart) }] : [];
     });
-    return { moved: true, pieces, toView, toSrc, spans };
+    return { ...base, toView, toSrc, spans };
+}
+
+// ---- Only what plays (spec 020 item E13) ----
+
+// The timeline as the episode plays: the kept stretches (`clips`, in play order, as lib/sequence.ts playOrder makes them)
+// end to end, divided at the splits, with no gaps where the cuts were. Transitions are not overlapped here: each
+// stretch is drawn whole. A moment that is cut is drawn where its cut was closed up: the end of the kept stretch of its
+// section before it, or its section's place when nothing of the section before it plays.
+export function playedAxis(clips: { startMs: number; endMs: number }[], splits: number[], order: number[] | null | undefined, totalMs: number): TimelineAxis {
+    const { sections, play, reordered } = sectionsAndOrder(splits, order, totalMs);
+    const place = new Map(play.map((section, i) => [section, i]));
+    const sectionOf = (ms: number) => {
+        let lo = 0, hi = sections.length - 1;
+        while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (sections[mid].srcStart <= ms) lo = mid; else hi = mid - 1; }
+        return lo;
+    };
+    // The kept stretches, divided at the splits, except one this close to a stretch's end (lib/sequence.ts): that
+    // stretch plays with its section, as the render plays it.
+    const parts: { srcStart: number; srcEnd: number; section: number }[] = [];
+    const cutAt = sections.slice(1).map(s => s.srcStart);
+    for (const c of clips) {
+        const end = Math.min(totalMs, c.endMs);
+        let a = Math.max(0, c.startMs);
+        if (end <= a || !sections.length) continue;
+        for (const sp of cutAt) {
+            if (sp <= a + SPLIT_SLACK_MS || sp >= end - SPLIT_SLACK_MS) continue;
+            parts.push({ srcStart: a, srcEnd: sp, section: sectionOf((a + sp) / 2) });
+            a = sp;
+        }
+        parts.push({ srcStart: a, srcEnd: end, section: sectionOf((a + end) / 2) });
+    }
+    parts.sort((x, y) => place.get(x.section)! - place.get(y.section)! || x.srcStart - y.srcStart);
+
+    const pieces: AxisPiece[] = [];
+    const axisSections: AxisSection[] = [];
+    let at = 0, j = 0;
+    for (const section of play) {
+        const sec = sections[section];
+        const viewStart = at;
+        const first = j;
+        while (j < parts.length && parts[j].section === section) {
+            const p = parts[j];
+            const prev = j > first ? parts[j - 1] : null, next = j + 1 < parts.length && parts[j + 1].section === section ? parts[j + 1] : null;
+            pieces.push({
+                ...p, viewStart: at,
+                reachStart: Math.min(p.srcStart, prev ? prev.srcEnd : sec.srcStart), mergeStart: !!prev,
+                reachEnd: Math.max(p.srcEnd, next ? next.srcStart : sec.srcEnd), mergeEnd: !!next,
+            });
+            at += p.srcEnd - p.srcStart;
+            j++;
+        }
+        axisSections.push({ section, srcStart: sec.srcStart, srcEnd: sec.srcEnd, viewStart, viewEnd: at });
+    }
+    const lengthMs = at;
+    const bySrc = [...pieces].sort((a, b) => a.srcStart - b.srcStart);
+    const sectionView = new Map(axisSections.map(s => [s.section, s]));
+    // The last piece starting at or before a moment of the recording.
+    const lastFrom = (ms: number) => {
+        let lo = 0, hi = bySrc.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (bySrc[mid].srcStart <= ms) lo = mid + 1; else hi = mid; }
+        return lo - 1;
+    };
+    const toView = (ms: number) => {
+        if (!pieces.length) return 0;
+        const c = Math.max(0, Math.min(totalMs, ms));
+        const i = lastFrom(c), p = i >= 0 ? bySrc[i] : null;
+        if (p && c <= p.srcEnd) return p.viewStart + (c - p.srcStart);
+        const sec = sectionOf(c);
+        if (p && p.section === sec) return p.viewStart + (p.srcEnd - p.srcStart);
+        return sectionView.get(sec)?.viewStart ?? 0;
+    };
+    const toSrc = (v: number) => {
+        if (!pieces.length) return 0;
+        const c = Math.max(0, Math.min(lengthMs, v));
+        let lo = 0, hi = pieces.length - 1;
+        while (lo < hi) { const mid = (lo + hi) >> 1; const p = pieces[mid]; if (c < p.viewStart + (p.srcEnd - p.srcStart)) hi = mid; else lo = mid + 1; }
+        const p = pieces[lo];
+        return p.srcStart + Math.max(0, Math.min(p.srcEnd - p.srcStart, c - p.viewStart));
+    };
+    const spans = (fromMs: number, toMs: number) => {
+        const out: { fromMs: number; toMs: number }[] = [];
+        for (let i = Math.max(0, lastFrom(fromMs)); i < bySrc.length && bySrc[i].srcStart < toMs; i++) {
+            const p = bySrc[i];
+            const a = Math.max(fromMs, p.srcStart), b = Math.min(toMs, p.srcEnd);
+            if (b > a) out.push({ fromMs: p.viewStart + (a - p.srcStart), toMs: p.viewStart + (b - p.srcStart) });
+        }
+        return out;
+    };
+    return { moved: true, reordered, collapsed: true, lengthMs, pieces, sections: axisSections, toView, toSrc, spans };
+}
+
+// The end of a kept stretch near `viewMs` on a closed-up timeline, within `withinMs`: the one on the pointer's side at a
+// join (the end of the stretch before it, or the start of the one after). Its piece's index, and which end.
+export function pieceEdgeAt(axis: TimelineAxis, viewMs: number, withinMs: number): { index: number; edge: 'start' | 'end' } | null {
+    const ps = axis.pieces;
+    if (!ps.length) return null;
+    let lo = 0, hi = ps.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; const p = ps[mid]; if (viewMs < p.viewStart + (p.srcEnd - p.srcStart)) hi = mid; else lo = mid + 1; }
+    const p = ps[lo], end = p.viewStart + (p.srcEnd - p.srcStart);
+    const ds = Math.abs(viewMs - p.viewStart), de = Math.abs(end - viewMs);
+    if (Math.min(ds, de) > withinMs) return null;
+    return { index: lo, edge: ds <= de && viewMs >= p.viewStart ? 'start' : 'end' };
+}
+
+// What is hidden at an end of a kept stretch, in the recording: from the stretch's end to how far it reaches (or from
+// how far its start reaches to its start); null when nothing is.
+export function hiddenAt(p: AxisPiece, edge: 'start' | 'end'): { startMs: number; endMs: number } | null {
+    if (edge === 'end') return p.reachEnd > p.srcEnd ? { startMs: p.srcEnd, endMs: p.reachEnd } : null;
+    return p.reachStart < p.srcStart ? { startMs: p.reachStart, endMs: p.srcStart } : null;
+}
+
+// A kept stretch keeps at least this much when its end is dragged in (one shorter than 150 ms is not played; lib/edit.ts).
+export const MIN_PIECE_MS = 200;
+
+// How far an end of a kept stretch can be dragged: in, to MIN_PIECE_MS short of its other end; out, as far as it reaches.
+export function rippleLimits(p: AxisPiece, edge: 'start' | 'end'): [number, number] {
+    const len = p.srcEnd - p.srcStart;
+    if (edge === 'end') return [p.srcStart + Math.min(MIN_PIECE_MS, len), p.reachEnd];
+    return [p.reachStart, p.srcEnd - Math.min(MIN_PIECE_MS, len)];
+}
+
+// The cuts with [fromMs, toMs] of the recording brought back: cuts inside it go, cuts across its ends are shortened
+// and become the producer's own ('manual'), as a dragged cut edge does.
+export function uncut(cuts: Cut[], fromMs: number, toMs: number): Cut[] {
+    if (toMs <= fromMs) return cuts;
+    const out: Cut[] = [];
+    for (const c of cuts) {
+        if (c.endMs <= fromMs || c.startMs >= toMs) { out.push(c); continue; }
+        if (c.startMs < fromMs) out.push({ startMs: c.startMs, endMs: fromMs, reason: 'manual' });
+        if (c.endMs > toMs) out.push({ startMs: toMs, endMs: c.endMs, reason: 'manual' });
+    }
+    return out;
+}
+
+// Ripple trim (item E13): an end of a kept stretch (`p`, a piece of playedAxis) moved to `toMs` of the recording, as
+// heard. Out, it brings back what was cut there, up to how far it reaches (all of it at the reach, joining the kept
+// stretch there); in, it cuts, words and all, as the producer's own cut. Everything after it on the timeline moves
+// with it. A kept stretch is heard `padMs` into the cuts either side of it (lib/edit.ts keepRanges), so the cuts are
+// made and shortened that far beyond the place it is moved to, and it ends where it was dropped.
+export function rippleTrim(cuts: Cut[], p: AxisPiece, edge: 'start' | 'end', toMs: number, totalMs: number, padMs = 40): Cut[] {
+    const [lo, hi] = rippleLimits(p, edge);
+    const t = Math.round(Math.max(lo, Math.min(hi, toMs)));
+    if (edge === 'end') {
+        const e = p.srcEnd;
+        if (t < e) return [...cuts, { startMs: Math.max(0, t - padMs), endMs: Math.min(totalMs, e + padMs), reason: 'manual' }];
+        if (t > e) return uncut(cuts, e - padMs, t >= p.reachEnd && p.mergeEnd ? p.reachEnd + padMs : t - padMs);
+        return cuts;
+    }
+    const s = p.srcStart;
+    if (t > s) return [...cuts, { startMs: Math.max(0, s - padMs), endMs: Math.min(totalMs, t + padMs), reason: 'manual' }];
+    if (t < s) return uncut(cuts, t <= p.reachStart && p.mergeStart ? p.reachStart - padMs : t + padMs, s + padMs);
+    return cuts;
+}
+
+// The places on a closed-up timeline where something is cut: each end of a kept stretch with something hidden there
+// (two kept stretches of a section side by side share one), with whether every cut there is a suggestion (filler,
+// stammer, pause...), for its colour. `cuts` in any order.
+export interface JoinMark { viewMs: number; startMs: number; endMs: number; suggested: boolean }
+
+export function joinMarks(axis: TimelineAxis, cuts: Cut[]): JoinMark[] {
+    const sorted = [...cuts].sort((a, b) => a.startMs - b.startMs);
+    // The furthest any cut so far reaches, for finding the cuts over a stretch.
+    const reach: number[] = [];
+    sorted.forEach((c, i) => { reach[i] = Math.max(c.endMs, i ? reach[i - 1] : -Infinity); });
+    const suggestedIn = (a: number, b: number) => {
+        let lo = 0, hi = sorted.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (sorted[mid].startMs < b) lo = mid + 1; else hi = mid; }
+        let any = false;
+        for (let i = lo - 1; i >= 0 && reach[i] > a; i--) {
+            const c = sorted[i];
+            if (c.endMs <= a) continue;
+            if (c.reason === 'manual') return false;
+            any = true;
+        }
+        return any;
+    };
+    const out: JoinMark[] = [];
+    axis.pieces.forEach((p, i) => {
+        const before = hiddenAt(p, 'start');
+        // Shared with the end of the stretch before, when that is the kept stretch of this section before it.
+        if (before && !(p.mergeStart && i > 0 && axis.pieces[i - 1].srcEnd === p.reachStart)) {
+            out.push({ viewMs: p.viewStart, ...before, suggested: suggestedIn(before.startMs, before.endMs) });
+        }
+        const after = hiddenAt(p, 'end');
+        if (after) out.push({ viewMs: p.viewStart + (p.srcEnd - p.srcStart), ...after, suggested: suggestedIn(after.startMs, after.endMs) });
+    });
+    return out;
 }
 
 // Where a section dragged from play position `from` lands, dropped at `viewMs` of the timeline: before the section
 // under the pointer when it is in that section's first half, after it otherwise. Returns the new play position.
 export function dropPosition(axis: TimelineAxis, from: number, viewMs: number): number {
-    const count = axis.pieces.length;
+    const count = axis.sections.length;
     let slot = count;
     for (let i = 0; i < count; i++) {
-        const p = axis.pieces[i], len = p.srcEnd - p.srcStart;
-        if (viewMs < p.viewStart + len) { slot = viewMs < p.viewStart + len / 2 ? i : i + 1; break; }
+        const s = axis.sections[i];
+        if (s.viewEnd <= s.viewStart) continue;
+        if (viewMs < s.viewEnd) { slot = viewMs < (s.viewStart + s.viewEnd) / 2 ? i : i + 1; break; }
     }
     return slot > from ? slot - 1 : slot;
 }
