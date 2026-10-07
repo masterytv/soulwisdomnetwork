@@ -120,7 +120,9 @@ The podcast ingest job (`podcast_ingest.yml`) uses its own service account
 into `01 To Process` = one episode (`episodes/{driveFileId}`); so is a folder holding one video (Zoom's recording
 folder), whose per-person audio files become the episode's speaker tracks (spec 019 item 3.3, lib/speakerTracks.ts;
 the render makes the voice from them). It moves to `02 Processed`
-when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive). Ingest also measures the audio's
+when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive). Each episode's card in the Studio has **Start over** (keeps the recording and its speaker tracks, clears everything
+since, and transcribes it again from the copy in Storage) and **Delete** (its record, its Storage files and its transcript Doc;
+the Drive original and YouTube stay), each behind an "Are you sure?" (`lib/episodeReset.ts`, `lib/server/episodeReset.ts`); both are refused while a job is working on the episode. Ingest also measures the audio's
 silences for the editor's pause suggestions (`agent/src/podcast/silences.ts`, `analysis/silences.json`), and makes the Studio editor
 timeline's waveform peaks and thumbnail sheets (`agent/src/podcast/timelineMedia.ts`, `analysis/peaks.bin`, `analysis/thumbs_N.jpg`;
 spec 020 item E2); each run fills these in for older episodes (20 a run, thumbnails 5). It asks AssemblyAI to spell the show name, the hosts
