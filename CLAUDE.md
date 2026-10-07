@@ -54,7 +54,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
               components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,
               spec 019 item 4.3); sections can play in another order, and an episode can have its own intro and outro, in the
-              Parts panel (edit.order, components/studio/partsPanel.tsx, item E9); an episode with no saved edit opens
+              Parts panel (edit.order, components/studio/partsPanel.tsx, item E9) or by dragging them on the timeline's V1,
+              which draws the sections in play order (item E11, lib/timeline.ts timelineAxis); an episode with no saved edit opens
               with one set up and saved (item E10, lib/programme.ts firstEdit: its fillers, stammers and long pauses cut,
               each one a cut that can be brought back, its teasers placed and the b-roll as layers), and the timeline's
               Programme row and the preview show and play the teasers, intro, episode and outro in order
