@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E11 in 019's table)
+## Building it (rows E1–E12 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -421,6 +421,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 | E10 | **Open with everything in place.** The first time an episode opens with no saved edit: its filler words and long pauses already cut (each one can be brought back), the teasers, intro and outro on the timeline and in the preview, and the b-roll on V2. The render makes exactly what is shown. Built (#174). | M | High | E9, the b-roll gate (#173) |
 | E11 | **Drag sections on the timeline.** V1 shows the sections between splits in the order they play; drag one to a new place. Built (#176). | M | Extra | E9 |
+| E12 | **Trim and reorder teasers.** On the Programme row: drag a teaser onto another to take its place, or ‹ ›; click one to trim its start and end. Built (#178). | S | Medium | E10 |
 
 ### E1 — Built (#143)
 
@@ -916,8 +917,8 @@ Build Edit Package stays the Descript hand-off; it never touches the edit.
 - **Checked:** `lib/programme.test.ts` (teasers from the notes, the first edit, the programme's joins, the Studio's
   intro); the render job cuts the edit's own teasers exactly, tagged and in order, and none when the list is empty
   (`editRenderOptions.test.ts`); in Chromium, the Programme row and the preview playing a teaser and the intro.
-- **Not built:** trimming a teaser's ends or adding a new one on the timeline (take one out, or set the notes' clips
-  and start over), and transitions between the teasers, intro and outro in the preview.
+- **Not built then:** trimming and reordering teasers (built as E12); adding a new teaser on the timeline (take one out,
+  or set the notes' clips and start over); and transitions between the teasers, intro and outro in the preview.
 
 ### E11 — Built (#176)
 
@@ -939,6 +940,19 @@ Tom asked (7 October 2026) to drag sections on the timeline, not only move them 
 - **Checked:** `lib/timeline.test.ts` (the axis both ways, spans across a split, where a dropped section lands); in
   Chromium, a click selecting a section, dragging the last section first (`order` [2, 0, 1], the playhead for 2:10 of
   the recording drawn at 0:10), and dragging it back (`order` null).
+
+### E12 — Built (#178)
+
+Tom asked (7 October 2026) to trim and reorder the teasers.
+- **Reorder:** drag a teaser's clip on the Programme row onto another teaser; it takes that place (`lib/programme.ts`
+  `moveTeaser`). Or ‹ and › in its trim row.
+- **Trim:** click a teaser (it plays, as before) and a row under the Programme row shows its stretch of the recording
+  with Start and End: −½ s and +½ s, and Start here / End here at the playhead (the moment of the recording the
+  preview is at: find it in the script or on the timeline). A teaser stays inside the recording and keeps at least half
+  a second (`trimTeaser`). ▶ Play it plays the trimmed teaser; × closes the row.
+- Each change is one undo step and saves `edit.teasers`, which the render cuts exactly (E10).
+- **Checked:** `lib/programme.test.ts`; in Chromium, nudging both ends, End here at the playhead, moving one later
+  with ›, and dragging the first teaser onto the third.
 
 ## Not in this spec
 

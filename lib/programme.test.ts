@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { firstEdit, programmeOf, studioIntro, teasersFromNotes, TeasersSchema } from './programme';
+import { firstEdit, moveTeaser, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 
@@ -75,4 +75,17 @@ test('the Studio\'s intro, as the render picks it', () => {
     assert.deepEqual(studioIntro({ intro: 'show', introPath: null }, { introPath: 'episodes/x/package/intro.mp4' }), { path: 'episodes/x/package/intro.mp4' });
     assert.equal(studioIntro({ intro: 'show', introPath: null }, { introPath: null }), null);
     assert.equal(studioIntro({ intro: 'none', introPath: 'settings/intro.mp4' }, null), null);
+});
+
+test('teasers moved and trimmed (item E12)', () => {
+    const t = [{ startMs: 1000, endMs: 4000, speaker: 'A' }, { startMs: 9000, endMs: 12_000, speaker: 'B' }, { startMs: 20_000, endMs: 22_000, speaker: 'C' }];
+    assert.deepEqual(moveTeaser(t, 2, 0).map(x => x.speaker), ['C', 'A', 'B']);
+    assert.deepEqual(moveTeaser(t, 0, 1).map(x => x.speaker), ['B', 'A', 'C']);
+    assert.equal(moveTeaser(t, 0, 5), t);
+    assert.deepEqual(trimTeaser(t, 0, 'start', 2500)[0], { startMs: 2500, endMs: 4000, speaker: 'A' });
+    assert.deepEqual(trimTeaser(t, 0, 'start', 3900)[0].startMs, 3500);       // keeps half a second
+    assert.deepEqual(trimTeaser(t, 0, 'start', -200)[0].startMs, 0);
+    assert.deepEqual(trimTeaser(t, 2, 'end', 25_000, 23_000)[2].endMs, 23_000);  // not past the recording's end
+    assert.deepEqual(trimTeaser(t, 1, 'end', 9100)[1].endMs, 9500);
+    assert.equal(trimTeaser(t, 1, 'end', 12_000), t);
 });

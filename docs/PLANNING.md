@@ -16,7 +16,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/research/2026-10-05-open-source-editors.md` | What Rescript, CutScript, auto-editor, DeepFilterNet, Auphonic, Remotion, Revideo and others offer, their licences, and what was measured on a runner-like machine |
 | `docs/research/2026-10-05-free-music-and-effects.md` | Free and royalty-free music and effects sources, with terms to check by hand |
 | `docs/specs/019-editor-light-v2.md` | **The plan and its status table**: Phases 0–5 and E. Start at its "Before you start" |
-| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E11) |
+| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E12) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
@@ -92,6 +92,7 @@ item). So:
 8. **020 E10** (open with everything in place: fillers and pauses cut, the teasers, intro and outro on the timeline and
    in the preview, the render making exactly that): built, #174, at Tom's request.
 9. **020 E11** (drag sections on the timeline, which shows them in play order): built, #176, at Tom's request.
+10. **020 E12** (trim and reorder teasers on the Programme row): built, #178, at Tom's request.
 
 ## Overlaps with work already built — decided
 
