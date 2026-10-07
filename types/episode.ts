@@ -397,7 +397,8 @@ export interface Episode {
     };
     candidateSpeakers: string[];          // names offered to AssemblyAI (the hosts)
     // How the recording came in: missing or 'drive' is the Drive inbox; 'upload' was uploaded in
-    // the Studio, already in Cloud Storage, and has no Drive file (drive.fileId is the episode ID).
+    // the Studio, already in Cloud Storage, and has no Drive file (drive.fileId is the episode ID); an episode
+    // started over is 'upload' too, so ingest reads its recording from Storage (lib/episodeReset.ts).
     source?: 'drive' | 'upload';
     media?: {
         sourcePath?: string;              // Cloud Storage object paths

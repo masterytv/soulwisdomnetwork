@@ -111,3 +111,18 @@ It needs:
 
 - Upload a recording straight from the website instead of Drive.
 - Zoom cloud-recording webhook so recordings arrive with nobody moving files.
+
+## Start over and Delete (October 2026)
+
+Every episode's card on the dashboard has two quiet buttons, each behind an "Are you sure?" box that says what goes and what stays
+(`components/studio/episodeActions.tsx`):
+
+- **Start over** keeps the recording (and any speaker tracks) in Cloud Storage and clears everything since: the transcript, speaker
+  names, corrections, notes, b-roll, edits, renders, thumbnails, shorts, YouTube details and media bin. The transcript Google Doc goes
+  to the Drive bin. The episode is marked as already in Storage (`source: 'upload'`), so ingest transcribes it again from there; the
+  Drive original is not touched. `POST /api/studio/episodes/{id}/start-over`.
+- **Delete** removes the episode's Storage files, its transcript Doc (to the Drive bin) and its record with its approvals and media bin.
+  The Drive original and anything on YouTube stay. The title must be typed to confirm. `DELETE /api/studio/episodes/{id}`.
+
+Both are refused while a job is working on the episode (`runningJobs` in `lib/episodeReset.ts`); a job that has not moved for six hours
+is taken as dead.

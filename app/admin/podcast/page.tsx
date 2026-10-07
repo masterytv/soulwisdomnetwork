@@ -9,6 +9,7 @@ import AuthGuard from "@/components/auth/AuthGuard";
 import SetupCheck from "@/components/studio/SetupCheck";
 import { ErrorNote } from "@/components/studio/ErrorNote";
 import { UploadRecording } from "@/components/studio/upload";
+import { EpisodeActions } from "@/components/studio/episodeActions";
 import { ago, megabytes, minutes, STAGE_LABEL, usd } from "@/components/studio/format";
 import { useAuth } from "@/context/AuthContext";
 import { studioFetch } from "@/lib/studioClient";
@@ -162,6 +163,11 @@ export default function PodcastStudioPage() {
         saveOrder(next);
     }
 
+    // Start over and Delete, on every episode's card.
+    const actions = (e: EpisodeSummary) => (
+        <EpisodeActions episode={e} disabled={busy !== null} onDone={message => { setNotice(message); void load(); }} />
+    );
+
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
 
     if (!allowed) {
@@ -251,6 +257,7 @@ export default function PodcastStudioPage() {
                                 <EpisodeCard key={e.id} e={e}>
                                     <p className="text-xs text-amber-300 mt-2">{STAGE_LABEL[e.stage] ?? e.stage}… <span className="text-gray-500">updated {ago(e.updatedAt)}</span></p>
                                     {e.stuck && <p className="text-xs text-red-400 mt-1">⚠️ No progress for over 24 hours.</p>}
+                                    <div className="flex flex-wrap gap-2 mt-2">{actions(e)}</div>
                                 </EpisodeCard>
                             ))}
                         </Column>
@@ -269,6 +276,7 @@ export default function PodcastStudioPage() {
                                     <button onClick={() => processNow(e.id)} disabled={busy !== null || running} className={`${secondary} mt-2`}>
                                         {busy === `retry:${e.id}` ? "Starting…" : "Retry"}
                                     </button>
+                                    <div className="flex flex-wrap gap-2 mt-2">{actions(e)}</div>
                                 </EpisodeCard>
                             ))}
                         </Column>
@@ -303,6 +311,7 @@ export default function PodcastStudioPage() {
                                                 {busy === `finished:${e.id}` ? "Moving…" : "Finished ✓"}
                                             </button>
                                         )}
+                                        <span className={`flex gap-2 ${e.status === "speakers_confirmed" ? "" : "ml-auto"}`}>{actions(e)}</span>
                                     </div>
                                 </EpisodeCard>
                             );
@@ -384,6 +393,7 @@ export default function PodcastStudioPage() {
                                         <button onClick={() => markFinished(e, false)} disabled={busy !== null} className={`${secondary} ml-auto`}>
                                             {busy === `finished:${e.id}` ? "Moving…" : "Back to the list"}
                                         </button>
+                                        {actions(e)}
                                     </div>
                                 </EpisodeCard>
                             ))}
