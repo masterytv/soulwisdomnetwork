@@ -432,6 +432,8 @@ export interface Episode {
     };
     notes?: EpisodeNotes;                 // show notes, spec 005 step 5 and Checkpoint B
     broll?: EpisodeBroll;                 // b-roll images, spec 005 step 7
+    // B-roll skipped by the producer: editing and the edit package need not wait for images (lib/brollGate.ts).
+    brollSkipped?: { by: string; at: number } | null;
     package?: EpisodePackage;             // edit package for Descript, spec 005 step 8
     descript?: EpisodeDescript;           // the Descript project made from it
     final?: EpisodeFinal;                 // the finished episode, spec 005 steps 10-11

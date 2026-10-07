@@ -1,6 +1,7 @@
 // Podcast Studio data: what is waiting in Drive, what the pipeline has done, and the
 // actions that move work along. Used by the app/api/studio routes.
 
+import { brollBlock } from '@/lib/brollGate';
 import { isVideo, listFolderFiles, moveItem, type DriveFile } from '@/agent/src/podcast/drive';
 import type { Episode } from '@/types/episode';
 import type { DriveVideo, EpisodeProgress, EpisodeSummary, Pipeline } from '@/types/studio';
@@ -60,6 +61,7 @@ export function episodeProgress(e: Episode): EpisodeProgress {
         finalReady: e.final?.status === 'ready',
         published: !!e.youtube?.videoId,
         shortsScheduled: (e.shorts?.items ?? []).some(i => !!i.youtube),
+        brollSettled: brollBlock(e) === null,
     };
 }
 

@@ -14,10 +14,15 @@
 // first draws, turns an edit without layers into one with them: its overlays, and the notes plan's b-roll
 // (as the render draws it). That is saved only with the producer's next change. Without the bin, layers
 // cannot be changed, so a save could never drop the b-roll.
+// Spec 020 item E10: an episode with no saved edit opens with one set up (lib/programme.ts firstEdit): every filler word,
+// stammer, missed "um" and long pause cut (each a cut that can be brought back), the teasers from the approved notes, and
+// in the Studio editor the b-roll as layers; it is saved straight away, so the render uses what is on screen. The
+// Studio editor also gets the teasers and the Studio's intro for its Programme row and preview.
 
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
 import { useAutosave } from '@/components/studio/useAutosave';
@@ -35,6 +40,8 @@ import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
 import { brollLayer, layersOf, type BinItem, type Brand } from '@/lib/layers';
+import { firstEdit, type Teaser } from '@/lib/programme';
+import type { ProgrammeSetup } from '@/components/studio/programme';
 
 // An edit as the Studio editor works on it: with layers, the notes plan's b-roll among them.
 function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
@@ -46,6 +53,18 @@ function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
         layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));
     }
     return { ...edit, layers, overlays: [] };
+}
+
+// What an edit was set up with (item E10), in a line: "Set up for you: 214 filler words, 87 long pauses ...".
+function setUpNote(counts: Partial<Record<'filler' | 'repeat' | 'pause', number>>, teasers: number, broll: boolean, intro: boolean): string {
+    const n = (count: number | undefined, one: string, many: string) => (count ? [`${count} ${count === 1 ? one : many}`] : []);
+    const cut = [...n(counts.filler, 'filler word', 'filler words'), ...n(counts.repeat, 'stammer', 'stammers'), ...n(counts.pause, 'long pause', 'long pauses')];
+    const placed = [...n(teasers, 'teaser', 'teasers'), ...(intro ? ['the intro and outro'] : []), ...(broll ? ['the b-roll'] : [])];
+    return [
+        'Set up for you:',
+        cut.length ? `${cut.join(', ')} cut (bring any back: double-click it in the script, or select it on the timeline).` : 'nothing needed cutting.',
+        placed.length ? `${placed.join(', ')} placed, as the render will make them.` : '',
+    ].join(' ').trim();
 }
 import { QualityReport } from '@/components/studio/qualityReport';
 import { VoiceChoice } from '@/components/studio/voice';
@@ -129,6 +148,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         }
     }, [episodeId]);
     const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
+    // Why editing is held: the b-roll images are neither made nor skipped (lib/brollGate.ts).
+    const [brollHeld, setBrollHeld] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
@@ -144,6 +165,9 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     // The episode's media bin (Studio editor only): null while loading or when it failed (`binError`).
     const [bin, setBin] = useState<BinItem[] | null>(null);
     const [binError, setBinError] = useState('');
+    // Item E10: the teasers and the Studio's intro for the Programme row, and what was set up on opening a new edit.
+    const [programme, setProgramme] = useState<ProgrammeSetup | null>(null);
+    const [setupNote, setSetupNote] = useState('');
     // Unsaved changes found in this browser from an earlier visit (spec 019 item 2.6), and a note when
     // some were dropped because a newer save overtook them.
     const draftKey = `swc-studio-edit:${episodeId}`;
@@ -167,16 +191,30 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             ? studioFetch<{ items: BinItem[] }>(`/api/studio/episodes/${episodeId}/media`).then(v => v.items, e => { setBinError(`The media did not load: ${(e as Error).message}`); return null; })
             : Promise.resolve(null);
         Promise.all([
-            studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`),
+            studioFetch<{
+                edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
+                fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro'];
+            }>(`/api/studio/episodes/${episodeId}/edit`),
             binLoad,
         ])
             .then(([data, items]) => {
                 setBin(items);
-                setEdit(workspace && items ? withLayers(data.edit, items) : data.edit);
+                setBrollHeld(data.brollBlock ?? null);
+                setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null });
+                // No saved edit yet: set one up (item E10), and save it.
+                const setUp = data.fresh && !data.brollBlock
+                    ? firstEdit(data.edit, { words: accepted, silences: data.silences ?? null, teasers: data.teasers ?? [] }) : null;
+                const opened = setUp?.edit ?? data.edit;
+                const shown = workspace && items ? withLayers(opened, items) : opened;
+                setEdit(shown);
                 setOverlayUrls(data.overlayUrls ?? {});
                 setSilences(data.silences ?? null);
                 reset(data.edit.version);
-                const found = draftToOffer<EpisodeEdit>(localDrafts.read(draftKey), data.edit.version);
+                if (setUp) {
+                    change(shown);
+                    setSetupNote(setUpNote(setUp.counts, shown.teasers?.length ?? 0, (shown.layers?.length ?? 0) > 0, !!data.studioIntro || !!shown.intro));
+                }
+                const found = setUp ? null : draftToOffer<EpisodeEdit>(localDrafts.read(draftKey), data.edit.version);
                 if (found === 'stale') {
                     localDrafts.clear(draftKey);
                     setDraftNote('Changes left unsaved in this browser were older than the saved edit, so the saved edit is shown.');
@@ -184,7 +222,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 setLoaded(true);
             })
             .catch(() => { setLoaded(true); });
-    }, [episodeId, reset, draftKey, workspace]);
+    }, [episodeId, reset, change, draftKey, workspace, accepted]);
 
     // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
     // Either may be missing on an episode the ingest catch-up has not reached yet.
@@ -266,6 +304,14 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                     <button type="button" onClick={() => setDraftNote('')} className={secondary}>OK</button>
                 </>
             )}
+        </div>
+    );
+
+    // What was set up on opening (item E10), until it is put away.
+    const setupBanner = setupNote && (
+        <div role="status" className={`${workspace ? 'inline-flex' : 'flex mb-2'} flex-wrap items-center gap-2 rounded-lg border border-sky-400/40 bg-sky-500/10 px-2 py-1 text-xs text-sky-100`}>
+            <span>{setupNote}</span>
+            <button type="button" onClick={() => setSetupNote('')} className={secondary}>OK</button>
         </div>
     );
 
@@ -376,7 +422,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
             onChange={(e) => { setEdit(e); change(e); }}
             heading={heading}
-            status={<>{saveStatus}{workspace && draftBanner}</>}
+            status={<>{saveStatus}{workspace && draftBanner}{workspace && setupBanner}</>}
             actions={workspace ? renderBar : undefined}
             panels={workspace ? [{ id: 'render', label: 'Render', node: renderPanel }] : []}
             timelineMedia={timelineMedia}
@@ -386,8 +432,27 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             media={workspace ? { episodeId, items: bin, error: binError, onItems: setBin } : undefined}
             layersEditable={!workspace || !!bin}
             fixBusy={fixBusy}
+            programme={workspace ? programme : null}
         />
     );
+
+    // Held until the b-roll images are made or skipped: what to do instead of the editor.
+    if (brollHeld) {
+        const note = (
+            <div className="rounded-xl border border-amber-400/40 bg-amber-500/5 p-4 flex flex-col gap-2 text-sm text-gray-200 max-w-2xl">
+                <p className="font-semibold text-amber-300">Finish or skip the b-roll first</p>
+                <p>{brollHeld}</p>
+                <Link href={`/admin/podcast/${episodeId}/notes#broll`} className="text-amber-300 hover:underline self-start">Go to the b-roll images →</Link>
+            </div>
+        );
+        if (!workspace) return note;
+        return (
+            <div className="min-h-screen bg-[#0d0720] text-gray-100 p-4 sm:p-6">
+                <div className="border-b border-white/10 pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
+                {note}
+            </div>
+        );
+    }
 
     if (workspace) return editor;
 
@@ -395,6 +460,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         <>
             {saveStatus}
             {draftBanner}
+            {setupBanner}
             {editor}
             <div className="mt-4 flex flex-col gap-3">{voiceChoice}{speakerTracks}</div>
             {renderControls}

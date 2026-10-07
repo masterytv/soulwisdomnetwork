@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E9 in 019's table)
+## Building it (rows E1–E10 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -419,6 +419,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). Built (#160). | M | High | E5 |
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. Built (#162). | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
+| E10 | **Open with everything in place.** The first time an episode opens with no saved edit: its filler words and long pauses already cut (each one can be brought back), the teasers, intro and outro on the timeline and in the preview, and the b-roll on V2. The render makes exactly what is shown. Built (#174). | M | High | E9, the b-roll gate (#173) |
 
 ### E1 — Built (#143)
 
@@ -880,6 +881,42 @@ dragging on the timeline, and the episode's own intro and outro.
   recording, and going back to the recording's order.
 - **Not built:** dragging parts on the timeline itself (the timeline would have to show the edited order rather than
   the recording), and dropping a video onto the timeline's ends for the intro or outro (the panel's choice does it).
+
+### E10 — Built (#174)
+
+Tom asked (7 October 2026) for the editor to open "with all the edits completed and placed", the filler words and
+pauses accepted automatically, each one able to be unaccepted, so there are many cuts and clips on the timeline.
+Build Edit Package stays the Descript hand-off; it never touches the edit.
+- **The first edit** (`lib/programme.ts` `firstEdit`): when the editor (the Studio editor or the quick edit) opens an
+  episode with no saved edit, and the b-roll is made or skipped (`lib/brollGate.ts`), it cuts every filler word,
+  stammer, "um" the transcript missed and long pause (what "Mark filler words and long pauses" does), places the
+  teasers and, in the Studio editor, puts the notes plan's b-roll on V2 as layers; then it saves straight away, so a
+  render with no further change makes what is on screen. A note in the bar says how many of each were cut. Every cut
+  is its own and can be brought back: double-click it in the script, select it on the timeline and Bring back, or
+  Keep this in the review row. An episode with a saved edit is left alone (the edit route's GET says `fresh`).
+- **The teasers are on the edit** (`edit.teasers`: stretches of the recording, in play order, each with its speaker;
+  an empty list for none). They start as the approved notes' teaser clips cut as the edit package cuts them (300 ms
+  before, 600 ms after, at least a second; `teasersFromNotes`), when the Studio settings play teasers. The render cuts
+  exactly those stretches with the "In this episode" tag and the speaker burned in (`editRenderJob.ts`,
+  `teaserBanner.ts`); an edit saved before E10 (no `teasers`) gets the package's clips or the notes' as before.
+- **The programme** (`programmeOf`): the teasers, the intro, the episode and the outro joined as the render joins them,
+  with the transitions between them overlapping as they will (one too long plays as a straight cut, as in the render).
+  The intro and outro are the episode's own (E9) or the Studio's (`studioIntro`, the same choice the render makes).
+  The show's intro moved from `assets/podcast/intro.mp4` to `public/studio/show-intro.mp4`, so the editor can play
+  the file the render uses.
+- **On the timeline**, a Programme row over the lanes (`components/studio/programme.tsx`): a clip for each teaser, the
+  intro, the episode (with how far the preview is into it) and the outro. Click one to play from it; ▶ plays the whole
+  video from the start; × takes a teaser out (Undo puts it back); ⋯ on the intro or outro opens the Parts panel. The
+  bar shows the whole video's length beside the edited length.
+- **In the preview** a second video laid over the editor's plays the teasers (with the tag drawn as the render burns
+  it), the intro and the outro, then hands the episode to the editor's video, which hands back for the outro once it
+  plays past its last kept stretch. Space pauses whichever is playing; a seek on the episode closes the second video.
+  Transitions between these pieces play as straight cuts in the preview (the render has them).
+- **Checked:** `lib/programme.test.ts` (teasers from the notes, the first edit, the programme's joins, the Studio's
+  intro); the render job cuts the edit's own teasers exactly, tagged and in order, and none when the list is empty
+  (`editRenderOptions.test.ts`); in Chromium, the Programme row and the preview playing a teaser and the intro.
+- **Not built:** trimming a teaser's ends or adding a new one on the timeline (take one out, or set the notes' clips
+  and start over), and transitions between the teasers, intro and outro in the preview.
 
 ## Not in this spec
 

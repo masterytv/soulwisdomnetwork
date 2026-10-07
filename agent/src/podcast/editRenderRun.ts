@@ -5,6 +5,7 @@
 // as its voice clean-up (spec 019 item 3.2) that fails before sending anything gives its hold on the month's
 // free hours back (lib/server/spending.ts holdAuphonic).
 
+import * as fs from 'fs';
 import * as path from 'path';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
@@ -20,6 +21,8 @@ import { makeEditExports } from './editExport';
 import { runEditRender } from './editRenderJob';
 import { withRetry } from './errors';
 import { cutClip } from './media';
+import { teaserAss } from './teaserBanner';
+import { FONTS_DIR } from './shortsRender';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { loadSettings, storageBucket } from './settings';
 
@@ -81,7 +84,7 @@ async function main() {
         now: () => FieldValue.serverTimestamp(),
         // The Studio settings: intro, teasers, and whether this becomes the final cut.
         settings: await loadSettings(getFirestore()),
-        showIntro: path.resolve('assets/podcast/intro.mp4'),
+        showIntro: path.resolve('public/studio/show-intro.mp4'),
         siteLogo: path.resolve('public/logo.png'),
         // The show library (spec 020 item E7): its entries' licence state, and the log of every use.
         library: async ids => {
@@ -96,7 +99,13 @@ async function main() {
             const items = getFirestore().collection('studio').doc('media').collection('items');
             await Promise.all(ids.map(id => items.doc(id).update({ uses: FieldValue.arrayUnion(use) })));
         },
-        cutClip: async (input, output, start, seconds) => { await cutClip(input, output, start, seconds, true); },
+        // The edit's own teasers (spec 020 item E10) carry the "In this episode" tag and their speaker, as the package's do.
+        cutClip: async (input, output, start, seconds, tag) => {
+            if (!tag) { await cutClip(input, output, start, seconds, true); return; }
+            const ass = output.replace(/\.mp4$/, '.ass');
+            fs.writeFileSync(ass, teaserAss({ speaker: tag.speaker, durationMs: Math.round(seconds * 1000) }));
+            await cutClip(input, output, start, seconds, true, { ass, fontsDir: FONTS_DIR });
+        },
         // The voice clean-ups (spec 019 item 3.2): the workflow downloads deep-filter; Auphonic's key is a repo secret.
         voice: {
             deepFilter: process.env.DEEPFILTER_BIN || undefined,

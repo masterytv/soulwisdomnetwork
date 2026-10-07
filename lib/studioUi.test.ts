@@ -42,3 +42,11 @@ test('Continue leads to the step the episode is on', () => {
     assert.deepEqual(continueTarget(ep('ep1', 'speakers_confirmed', { progress: { notesApproved: true, finalReady: true, published: true, shortsScheduled: true } }), null),
         { label: 'Open', href: '/admin/podcast/ep1/notes' });
 });
+
+test('Continue leads to the b-roll while editing waits for it', () => {
+    const waiting = { ...none, notesApproved: true, brollSettled: false };
+    assert.deepEqual(continueTarget(ep('ep1', 'speakers_confirmed', { progress: waiting }), 'descript'),
+        { label: 'Continue: B-roll', href: '/admin/podcast/ep1/notes#broll' });
+    assert.deepEqual(continueTarget(ep('ep1', 'speakers_confirmed', { progress: { ...waiting, brollSettled: true } }), 'editorLight'),
+        { label: 'Continue: Edit', href: '/admin/podcast/ep1/notes#final' });
+});

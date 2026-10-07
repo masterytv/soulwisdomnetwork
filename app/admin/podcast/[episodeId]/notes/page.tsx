@@ -485,20 +485,23 @@ export default function ShowNotesPage() {
     }).length : null;
     const brollImages = broll.view?.images.length ?? 0;
     const brollSpent = broll.view?.images.reduce((t, i) => t + i.usd, 0) ?? 0;
+    const brollSkipped = broll.view?.skipped ?? null;
     const brollSummary = broll.working ? "Generating images…"
+        : brollSkipped && brollPending ? `Skipped by ${brollSkipped.by}`
         : broll.view?.status === "failed" ? failure("Some images", broll.view.error)
         : !notes?.broll.length ? "No b-roll ideas"
             : brollPending ? `${brollPending} of ${notes.broll.length} ideas need an image`
                 : `${brollImages} image${brollImages === 1 ? "" : "s"} ready · $${brollSpent.toFixed(2)}`;
     // Keyed on the images, not the ideas, so typing an idea does not refresh every section.
-    const brollKey = broll.view ? `${broll.view.status}:${broll.view.images.map(i => i.createdAt).join(",")}` : null;
+    const brollKey = broll.view ? `${broll.view.status}:${broll.view.images.map(i => i.createdAt).join(",")}:${brollSkipped?.at ?? ""}` : null;
     useEffect(() => {
         if (brollPending === null || brollKey === null) return;
         report("broll", {
-            done: !broll.working && !!view?.notes?.approved && brollPending === 0, failed: !broll.working && broll.view?.status === "failed",
+            done: !broll.working && !!view?.notes?.approved && (brollPending === 0 || !!brollSkipped),
+            failed: !broll.working && !brollSkipped && broll.view?.status === "failed",
             working: broll.working || broll.starting, summary: brollSummary, link: null, key: broll.working ? "working" : brollKey,
         });
-    }, [brollPending, brollKey, brollSummary, broll.working, broll.starting, broll.view?.status, view, report]);
+    }, [brollPending, brollKey, brollSummary, brollSkipped, broll.working, broll.starting, broll.view?.status, view, report]);
 
     const copyDescription = () => {
         if (!notes) return;
@@ -1053,6 +1056,18 @@ export default function ShowNotesPage() {
                                                         : ""}
                                         </span>
                                     </div>
+                                    {/* Or go without: editing and the edit package wait for the images unless b-roll is skipped (lib/brollGate.ts). */}
+                                    {upToDate && brollChanged > 0 && !broll.working && (brollSkipped ? (
+                                        <p className={small}>
+                                            B-roll skipped by {brollSkipped.by} {ago(brollSkipped.at)}: editing and the edit package go ahead without these images.{" "}
+                                            <button onClick={() => void broll.setSkipped(false)} disabled={broll.starting} className="text-amber-300 hover:underline disabled:opacity-40">Undo</button>
+                                        </p>
+                                    ) : (
+                                        <div className="flex flex-wrap items-center gap-3">
+                                            <button onClick={() => void broll.setSkipped(true)} disabled={broll.starting} className={secondary}>Skip b-roll</button>
+                                            <span className={small}>Editing and the edit package wait for the images. Skip to go ahead without them; you can still make them later.</span>
+                                        </div>
+                                    ))}
                                     {!upToDate && !broll.working && (
                                         <NeedsApproval what="generate images" approved={!!approved} busy={busy || drafting} onApprove={approve} onDiscard={discard} />
                                     )}
