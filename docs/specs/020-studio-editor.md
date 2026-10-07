@@ -1019,6 +1019,10 @@ and outro could not be fine-tuned, and a teaser could not be added once in the e
   outro, a teaser cut plainly without its tag); in Chromium, a click on teaser 2 showing it with the playhead there,
   trimming teaser 1's end by a second, dragging teaser 2 first, renaming the graphic and taking it off, a stretch copied
   and pasted at the start as the new first teaser, Delete on the intro and Undo.
+- **Part 2, the notes page (#184):** each "In this episode" clip shows the transcript around it (8 s either side), its
+  words highlighted; a click on a word before the clip's middle starts the clip there, after it ends it there, and the
+  clip's text follows (`lib/programme.ts` `wordsAround`, `pickTeaserWord`). Its times show to the hundredth of a second
+  and can be typed so (m:ss.cc). Checked: `lib/programme.test.ts`.
 
 ## Not in this spec
 

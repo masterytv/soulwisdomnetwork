@@ -26,6 +26,8 @@ import { field, hint as small, primary, secondary } from "@/components/studio/ui
 import { useAutosave } from "@/components/studio/useAutosave";
 import { useAuth } from "@/context/AuthContext";
 import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
+import { pickTeaserWord, wordsAround } from "@/lib/programme";
+import { preciseTime } from "@/lib/timeline";
 import { chooseDescription, locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { meetingDocx } from "@/lib/meetingDoc";
 import { TranscriptDownloads, WritingExtras } from "@/components/studio/extras";
@@ -46,21 +48,42 @@ function parseTime(text: string): number | null {
     return parts.reduce((total, n) => total * 60 + n, 0) * 1000;
 }
 
-// Edits a time as m:ss; commits on blur so half-typed times are not saved.
-function TimeInput({ ms, onChange }: { ms: number; onChange: (ms: number) => void }) {
-    const [text, setText] = useState(mmss(ms));
+// Edits a time as m:ss (or, `precise`, m:ss.cc: a teaser clip's); commits on blur so half-typed times are not saved.
+function TimeInput({ ms, onChange, precise = false }: { ms: number; onChange: (ms: number) => void; precise?: boolean }) {
+    const show = precise ? preciseTime : mmss;
+    const [text, setText] = useState(show(ms));
     return (
         <input
             value={text}
             onChange={e => setText(e.target.value)}
             onBlur={() => {
                 const parsed = parseTime(text);
-                if (parsed === null) setText(mmss(ms));
+                if (parsed === null) setText(show(ms));
                 else onChange(parsed);
             }}
-            className="w-20 bg-[#130b29] border border-white/10 rounded px-2 py-1 text-xs font-mono"
+            className={`${precise ? 'w-24' : 'w-20'} bg-[#130b29] border border-white/10 rounded px-2 py-1 text-xs font-mono`}
             aria-label="Time (m:ss)"
         />
+    );
+}
+
+// Spec 020 item E14 (part 2): the transcript around a teaser clip, its words highlighted. A click on a word before the
+// clip's middle starts the clip there, after it ends it there (lib/programme.ts pickTeaserWord), so a clip starts and
+// ends between words; the Studio editor's timeline trims it further.
+function ClipWords({ words, clip, onPick }: {
+    words: EpisodeNotesView['words']; clip: TeaserClip; onPick: (word: EpisodeNotesView['words'][number]) => void;
+}) {
+    const middle = (clip.startMs + clip.endMs) / 2;
+    return (
+        <p className="text-xs leading-6 text-gray-400" aria-label="The words around this clip: click one to start or end the clip there">
+            {wordsAround(words, clip).map(({ word, inside }) => (
+                <button key={word.start} type="button" onClick={() => onPick(word)}
+                    title={`${preciseTime(word.start)}: ${word.start < middle ? 'start' : 'end'} the clip ${word.start < middle ? 'at' : 'with'} this word`}
+                    className={`rounded px-0.5 mr-0.5 ${inside ? 'bg-amber-500/25 text-amber-100 hover:bg-amber-500/40' : 'hover:bg-white/10 hover:text-white'}`}>
+                    {word.text}
+                </button>
+            ))}
+        </p>
     );
 }
 
@@ -682,7 +705,7 @@ export default function ShowNotesPage() {
                                         </Part>
 
                                         <Part id="notes-teaser" title="“In this episode” clips"
-                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Leave them wanting more: end on a question or cut before the answer."
+                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Leave them wanting more: end on a question or cut before the answer. Click a word under a clip to start or end it there; fine-tune it on the Studio editor’s timeline."
                                             aside={notes.teaserClips.length > 0 && (
                                                 <span className="flex items-center gap-3">
                                                     <span className={`text-xs ${teaserSeconds < 20 || teaserSeconds > 40 ? "text-orange-300" : "text-gray-400"}`}>{teaserSeconds}s in total; aim for 20–40</span>
@@ -697,9 +720,9 @@ export default function ShowNotesPage() {
                                                     <div className="flex flex-wrap items-center gap-2 text-xs">
                                                         <span className="text-gray-500 w-4">{i + 1}</span>
                                                         <button onClick={() => playClips([c])} className="text-gray-400 hover:text-amber-300" title="Play this clip">▶</button>
-                                                        <TimeInput ms={c.startMs} onChange={ms => editClip(i, { startMs: ms })} />
+                                                        <TimeInput key={`s${c.startMs}`} precise ms={c.startMs} onChange={ms => editClip(i, { startMs: ms })} />
                                                         <span className="text-gray-500">to</span>
-                                                        <TimeInput ms={c.endMs} onChange={ms => editClip(i, { endMs: ms })} />
+                                                        <TimeInput key={`e${c.endMs}`} precise ms={c.endMs} onChange={ms => editClip(i, { endMs: ms })} />
                                                         <span className="text-gray-300">{c.speaker}</span>
                                                         <span className="text-gray-500">{((c.endMs - c.startMs) / 1000).toFixed(1)}s</span>
                                                         <span className="ml-auto flex gap-2">
@@ -708,6 +731,7 @@ export default function ShowNotesPage() {
                                                             <button onClick={() => edit(n => ({ ...n, teaserClips: n.teaserClips.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-300">Remove</button>
                                                         </span>
                                                     </div>
+                                                    {view.words.length > 0 && <ClipWords words={view.words} clip={c} onPick={w => editClip(i, pickTeaserWord(view.words, c, w))} />}
                                                     <textarea value={c.text} onChange={e => editClip(i, anchored(e.target.value, c.startMs, true))} rows={2} className={field} />
                                                     {!findInTranscript(c.text) && (
                                                         <p className="text-xs text-orange-300">Not found word for word in the transcript, so the times were not updated. Check the words or set the times by hand.</p>

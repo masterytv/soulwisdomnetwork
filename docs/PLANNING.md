@@ -94,7 +94,7 @@ item). So:
 9. **020 E11** (drag sections on the timeline, which shows them in play order): built, #176, at Tom's request.
 10. **020 E12** (trim and reorder teasers on the Programme row): built, #178, at Tom's request.
 11. **020 E13** (the timeline shows only what plays; a clip's end dragged out brings back what was cut, in cuts more): built, #180, at Tom's request.
-12. **020 E14** (the whole video on the timeline: teasers, intro and outro as clips, the "In this episode" graphic on V3, teasers made from the episode; the Programme row gone): built, #182, at Tom's request. Next: picking a teaser's words on the notes page instead of ±1 s (Medium).
+12. **020 E14** (the whole video on the timeline: teasers, intro and outro as clips, the "In this episode" graphic on V3, teasers made from the episode; the Programme row gone): built, #182, at Tom's request. Part 2, picking a teaser clip's words on the notes page: built, #184.
 
 ## Overlaps with work already built — decided
 
