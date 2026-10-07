@@ -57,9 +57,12 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               Parts panel (edit.order, components/studio/partsPanel.tsx, item E9) or by dragging them on the timeline's V1,
               which draws the sections in play order (item E11, lib/timeline.ts timelineAxis); an episode with no saved edit opens
               with one set up and saved (item E10, lib/programme.ts firstEdit: its fillers, stammers and long pauses cut,
-              each one a cut that can be brought back, its teasers placed and the b-roll as layers), and the timeline's
-              Programme row and the preview show and play the teasers, intro, episode and outro in order
-              (components/studio/programme.tsx; teasers are trimmed and reordered there, item E12); the timeline shows only what plays,
+              each one a cut that can be brought back, its teasers placed and the b-roll as layers), and the preview plays the
+              teasers, intro, episode and outro in order (components/studio/programme.tsx); on the timeline they are clips on V1
+              around the episode (item E14, lib/timeline.ts withProgramme): a teaser is trimmed between words and dragged to another
+              place, its "In this episode" graphic sits on V3 (renamed or taken off: the teaser's `tag`), Delete takes a teaser, the
+              intro or the outro (edit.intro or outro false) out, and a section or stretch becomes a teaser (+ Teaser, or copy and
+              paste, lib/programme.ts addTeaser); the timeline shows only what plays,
               closed up, with a marker where each cut was, and a clip's end dragged out brings back what was cut there or in cuts more,
               everything after it moving along (item E13, lib/timeline.ts playedAxis and rippleTrim; Show cuts draws the whole
               recording, cuts and all); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,

@@ -17,7 +17,7 @@
 // Spec 020 item E10: an episode with no saved edit opens with one set up (lib/programme.ts firstEdit): every filler word,
 // stammer, missed "um" and long pause cut (each a cut that can be brought back), the teasers from the approved notes, and
 // in the Studio editor the b-roll as layers; it is saved straight away, so the render uses what is on screen. The
-// Studio editor also gets the teasers and the Studio's intro for its Programme row and preview.
+// Studio editor also gets the teasers and the Studio's intro for its timeline and preview.
 
 "use client";
 
@@ -165,7 +165,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     // The episode's media bin (Studio editor only): null while loading or when it failed (`binError`).
     const [bin, setBin] = useState<BinItem[] | null>(null);
     const [binError, setBinError] = useState('');
-    // Item E10: the teasers and the Studio's intro for the Programme row, and what was set up on opening a new edit.
+    // Item E10: the teasers and the Studio's intro for the timeline, and what was set up on opening a new edit.
     const [programme, setProgramme] = useState<ProgrammeSetup | null>(null);
     const [setupNote, setSetupNote] = useState('');
     // Unsaved changes found in this browser from an earlier visit (spec 019 item 2.6), and a note when

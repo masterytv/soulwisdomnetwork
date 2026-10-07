@@ -45,10 +45,10 @@ export interface EpisodeEdit {
     speakerTracks?: boolean | null;
     // Spec 020 item E9: the sections (the stretches between splits, numbered in the recording's order) in the order
     // they play; null or missing: the recording's order. And this episode's own intro and outro, from its media bin
-    // (null or missing: the Studio settings').
+    // (null or missing: the Studio settings'; false: none in this episode, item E14).
     order?: number[] | null;
-    intro?: { path: string; name: string } | null;
-    outro?: { path: string; name: string } | null;
+    intro?: { path: string; name: string } | false | null;
+    outro?: { path: string; name: string } | false | null;
     // Item E10: the "In this episode" teasers, stretches of the recording played in this order before the intro,
     // as the Studio editor shows them (lib/programme.ts); an empty list for none. Null or missing (an edit saved
     // before E10): the edit package's clips, or the notes' cut plainly, as the render always made them.

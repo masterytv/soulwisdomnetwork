@@ -9,8 +9,9 @@ import { replaceSuggestions, suggestCuts, SUGGESTED_REASONS, type EpisodeEdit, t
 import type { SpokenWord } from './showNotes';
 import { SECTION_JOIN_LABELS, type SectionJoin, type SectionJoins } from './transitions';
 
-// A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker.
-export interface Teaser { startMs: number; endMs: number; speaker: string }
+// A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker; `tag`
+// false takes the tag off that teaser (item E14).
+export interface Teaser { startMs: number; endMs: number; speaker: string; tag?: boolean }
 
 // Breathing room around a clip the notes picked, and its shortest length: as the edit package has always cut them.
 export const TEASER_LEAD_MS = 300;
@@ -23,6 +24,7 @@ export const TeasersSchema = z.array(z.object({
     startMs: ms,
     endMs: ms,
     speaker: z.string().max(200),
+    tag: z.boolean().optional(),
 }).strict().refine(t => t.endMs > t.startMs, 'A teaser must end after it starts')).max(MAX_TEASERS);
 
 // The teasers from the approved notes' clips, as the edit package cuts them: from TEASER_LEAD_MS before each clip
@@ -139,5 +141,29 @@ export function trimTeaser(teasers: Teaser[], index: number, edge: 'start' | 'en
         ? { ...t, startMs: Math.max(0, Math.min(v, t.endMs - TEASER_SHORTEST_MS)) }
         : { ...t, endMs: Math.min(top, Math.max(v, t.startMs + TEASER_SHORTEST_MS)) };
     if (next.startMs === t.startMs && next.endMs === t.endMs) return teasers;
+    return teasers.map((x, i) => (i === index ? next : x));
+}
+
+// ─── Teasers made on the timeline (spec 020 item E14) ─────────────────────────
+
+// The teasers with a stretch of the recording added at place `at` (a section or a stretch chosen on the timeline, copied
+// and pasted, or "Make teaser"), its speaker the one heard first in it; unchanged when there are MAX_TEASERS already, or
+// the stretch is shorter than TEASER_SHORTEST_MS.
+export function addTeaser(teasers: Teaser[], stretch: { startMs: number; endMs: number }, at: number, words: { start: number; end: number; speaker: string }[]): Teaser[] {
+    const startMs = Math.round(stretch.startMs), endMs = Math.round(stretch.endMs);
+    if (teasers.length >= MAX_TEASERS || endMs - startMs < TEASER_SHORTEST_MS) return teasers;
+    const speaker = (words.find(w => w.end > startMs && w.start < endMs)?.speaker ?? '').slice(0, 200);
+    const out = [...teasers];
+    out.splice(Math.max(0, Math.min(teasers.length, at)), 0, { startMs, endMs, speaker });
+    return out;
+}
+
+// The teasers with one's "In this episode" tag changed: its name, or on and off.
+export function setTeaserTag(teasers: Teaser[], index: number, change: { speaker?: string; tag?: boolean }): Teaser[] {
+    const t = teasers[index];
+    if (!t) return teasers;
+    const next: Teaser = { ...t, ...(change.speaker !== undefined ? { speaker: change.speaker.trim().slice(0, 200) } : {}) };
+    if (change.tag === false) next.tag = false;
+    else if (change.tag === true) delete next.tag;
     return teasers.map((x, i) => (i === index ? next : x));
 }

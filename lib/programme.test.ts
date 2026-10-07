@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { firstEdit, moveTeaser, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, firstEdit, moveTeaser, setTeaserTag, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 
@@ -88,4 +88,24 @@ test('teasers moved and trimmed (item E12)', () => {
     assert.deepEqual(trimTeaser(t, 2, 'end', 25_000, 23_000)[2].endMs, 23_000);  // not past the recording's end
     assert.deepEqual(trimTeaser(t, 1, 'end', 9100)[1].endMs, 9500);
     assert.equal(trimTeaser(t, 1, 'end', 12_000), t);
+});
+
+test('teasers made on the timeline, and their "In this episode" tag (item E14)', () => {
+    const words = [w('Hello', 1000, 1500, 'Ana'), w('there', 1600, 2000, 'Ana'), w('Yes', 9000, 9400, 'Ben')];
+    const t = [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }];
+    // At a place, with the speaker heard first in it.
+    assert.deepEqual(addTeaser(t, { startMs: 8800, endMs: 12_000.4 }, 0, words), [{ startMs: 8800, endMs: 12_000, speaker: 'Ben' }, t[0]]);
+    assert.deepEqual(addTeaser(t, { startMs: 20_000, endMs: 22_000 }, 9, words)[1], { startMs: 20_000, endMs: 22_000, speaker: '' });
+    // Too short, or too many: unchanged.
+    assert.equal(addTeaser(t, { startMs: 0, endMs: 100 }, 0, words), t);
+    const full = Array.from({ length: 12 }, () => t[0]);
+    assert.equal(addTeaser(full, { startMs: 0, endMs: 5000 }, 0, words), full);
+    // The tag off and on again, and its name.
+    const off = setTeaserTag(t, 0, { tag: false });
+    assert.deepEqual(off, [{ ...t[0], tag: false }]);
+    assert.deepEqual(setTeaserTag(off, 0, { tag: true }), t);
+    assert.deepEqual(setTeaserTag(t, 0, { speaker: '  Ana Smith ' })[0].speaker, 'Ana Smith');
+    assert.equal(setTeaserTag(t, 5, { tag: false }), t);
+    // A teaser with its tag off can be saved; it plays plainly in the render.
+    assert.ok(TeasersSchema.safeParse(off).success);
 });

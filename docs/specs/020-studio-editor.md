@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E13 in 019's table)
+## Building it (rows E1–E14 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -423,6 +423,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E11 | **Drag sections on the timeline.** V1 shows the sections between splits in the order they play; drag one to a new place. Built (#176). | M | Extra | E9 |
 | E12 | **Trim and reorder teasers.** On the Programme row: drag a teaser onto another to take its place, or ‹ ›; click one to trim its start and end. Built (#178). | S | Medium | E10 |
 | E13 | **Only what plays on the timeline.** The cuts closed up, a marker where each one was; drag the end of a clip out to bring back what was cut there, or in to cut more, and everything after it moves (a ripple trim). Show cuts brings back the whole recording. Built (#180). | M | Extra | E11 |
+| E14 | **The whole video on the timeline.** Teasers, intro and outro as clips on V1 around the episode, the Programme row gone: teasers trimmed between words, moved, taken out; the "In this episode" graphic on V3; a section or stretch made a teaser, or copied and pasted. Built (#182). | M | Extra | E10, E13 |
 
 ### E1 — Built (#143)
 
@@ -989,6 +990,35 @@ side back out after trimming it in.
   of the clip after the split dragged in 1.55 s ("−1.55 s cut") and back out (the split's two clips meeting again),
   half a second of a pause brought back with Alt and undone, a double-click bringing back a cut of the producer's own,
   and Show cuts on and off.
+
+### E14 — Built (#182)
+
+Tom asked (7 October 2026) for everything to be on the timeline and editable there: the Programme row's teasers, intro
+and outro could not be fine-tuned, and a teaser could not be added once in the editor.
+- **V1, the whole video** (`lib/timeline.ts` `withProgramme`): the teasers, then the intro, are clips before the episode,
+  the outro after it; the ruler and the playhead run over all of it, and everything in the episode is drawn after them.
+  A teaser shows its own pictures and voice (a copy of its stretch of the recording; the episode keeps its own), an amber
+  band and its name (T1 · Ana Host); the intro and outro are violet, with their names. The Programme row and its trim row
+  are gone; ▶ Whole video plays from the start.
+- **Teasers:** a click shows it in the preview at that moment (the second video, paused; Space plays) and chooses it: the
+  bar has ▶ Play, In the episode (where its stretch plays in the episode), + Graphic (when taken off), and Remove. Drag an
+  end to trim it (between words unless Alt is held, "Ends at 0:25.00 · 5.00 s (+1.00 s)"); drag its body to another place
+  among the teasers ("Teaser 2 → place 1 of 2"). Delete takes it out. Each is one undo step.
+- **The "In this episode" graphic** is on V3 over each teaser, drawn as the render burns it in (the purple box, the gold
+  bar and IN THIS EPISODE with the name). Click it to change the name on it, or take it off (Delete); the teaser's `tag`
+  is then false, and the render cuts it plainly (`editRenderJob.ts`), as the preview plays it.
+- **Making a teaser:** choose a section (Blade at both ends, then click it) or a stretch on the waveform, then **+ Teaser**,
+  or copy it (⌘C or Ctrl+C) and paste (⌘V): it goes where the preview is among the teasers (before the one it shows, in
+  that one's first half; after it in its second), or after the last one; its speaker is the first heard in it
+  (`lib/programme.ts` `addTeaser`, `lib/timeline.ts` `teaserSlot`). Twelve at most.
+- **The intro and outro:** a click shows and chooses it (▶ Play, Change in the Parts panel, Remove); Delete or Remove sets
+  this episode's `intro` or `outro` to false, none in this episode, and the render leaves it out; the Parts panel has
+  "No intro in this episode" and puts the Studio's back.
+- **Checked:** `lib/timeline.test.ts` (the whole video's layout, what is where, a teaser's ends, where a dragged one lands,
+  where a new one goes), `lib/programme.test.ts` (`addTeaser`, `setTeaserTag`), `editRenderJob.test.ts` (no intro or
+  outro, a teaser cut plainly without its tag); in Chromium, a click on teaser 2 showing it with the playhead there,
+  trimming teaser 1's end by a second, dragging teaser 2 first, renaming the graphic and taking it off, a stretch copied
+  and pasted at the start as the new first teaser, Delete on the intro and Undo.
 
 ## Not in this spec
 

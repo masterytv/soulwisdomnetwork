@@ -1,7 +1,8 @@
 "use client";
 
 // Why: the whole video in the Studio editor (spec 020 item E10): the "In this episode" teasers, the intro, the edited
-// episode and the outro as clips on the timeline's Programme row, played in the preview in that order. The teasers are
+// episode and the outro, played in the preview in that order, and (item E14) clips on the timeline's V1
+// (components/studio/timeline.tsx), where the playhead follows the second video through them. The teasers are
 // stretches of the recording and the intro and outro are files of their own, so they play on a second video laid over
 // the editor's (ProgrammePlayer); the editor's own video plays only the episode, as before, and the outro follows its
 // last kept stretch. What plays is what the render makes (lib/programme.ts): the same teasers, intro and outro, in the
@@ -9,24 +10,26 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EpisodeEdit, KeptRange } from '@/lib/edit';
-import { moveTeaser, pieceLabel, programmeOf, trimTeaser, type Programme, type ProgrammePiece, type Teaser } from '@/lib/programme';
-import { preciseTime } from '@/lib/timeline';
+import { pieceLabel, programmeOf, type Programme, type ProgrammePiece, type Teaser } from '@/lib/programme';
 import { sectionJoins, type SectionJoins } from '@/lib/transitions';
-import { timelineTime, type Clip } from '@/lib/sequence';
-import { mmss } from '@/lib/showNotes';
 import { secondary } from '@/components/studio/ui';
-import { useVideoTime } from '@/components/studio/useVideoTime';
-import { HEADER_W } from '@/components/studio/timeline';
 
 // What the editor's page loaded for the programme: the teasers a new edit gets, and the Studio's intro (also its outro).
 export interface ProgrammeSetup { teasers: Teaser[]; studioIntro: { name: string; url: string } | null }
 
 // Which piece the second video is playing (null: none; the editor's video has the episode), shared by the player and
-// the timeline's Programme row without redrawing the editor. The player puts its play and pause in.
+// the timeline (its V1 clips and playhead, item E14) without redrawing the editor. The player puts its play and pause in.
+interface Handlers {
+    play: (piece: number, ms: number, playing: boolean) => void;
+    toggle: () => boolean;
+    stop: () => void;
+    position: () => { piece: number; ms: number } | null;
+}
+
 export class ProgrammeControl {
     private current: number | null = null;
     private listeners = new Set<() => void>();
-    private handlers: { play: (piece: number) => void; toggle: () => boolean; stop: () => void } | null = null;
+    private handlers: Handlers | null = null;
     subscribe = (f: () => void) => { this.listeners.add(f); return () => { this.listeners.delete(f); }; };
     get = () => this.current;
     set(piece: number | null) {
@@ -35,12 +38,16 @@ export class ProgrammeControl {
         this.listeners.forEach(f => f());
     }
     // The player's own play, pause and stop; returns the call that takes them away again.
-    attach(h: { play: (piece: number) => void; toggle: () => boolean; stop: () => void }) {
+    attach(h: Handlers) {
         this.handlers = h;
         return () => { if (this.handlers === h) this.handlers = null; };
     }
     // Plays the programme from a piece (its index in the pieces).
-    play(piece: number) { this.handlers?.play(piece); }
+    play(piece: number) { this.handlers?.play(piece, 0, true); }
+    // Item E14: shows a piece `ms` into it, paused (a click or a scrub on the timeline), or playing from there.
+    cue(piece: number, ms: number, playing = false) { this.handlers?.play(piece, ms, playing); }
+    // Which piece the second video shows and how far into it it is; null when it shows none.
+    position(): { piece: number; ms: number } | null { return this.handlers?.position() ?? null; }
     // Space: pauses or plays the piece playing on the second video; false when there is none.
     toggle(): boolean { return this.handlers?.toggle() ?? false; }
     // Closes the second video, back to the episode.
@@ -55,6 +62,7 @@ export interface ShownPiece extends ProgrammePiece {
     fromMs: number;
     toMs: number;                // Infinity: to the file's end
     speaker?: string;
+    tag?: boolean;               // a teaser's "In this episode" tag (item E14: it can be taken off)
 }
 
 export interface ProgrammeView {
@@ -86,9 +94,10 @@ export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: 
     setup: ProgrammeSetup | null; edit: EpisodeEdit; urls: Record<string, string>; studioJoins: SectionJoins | null; src: string; editedMs: number;
 }): ProgrammeView | null {
     const [control] = useState(() => new ProgrammeControl());
-    const intro = useMemo(() => edit.intro ? { name: edit.intro.name, url: urls[edit.intro.path] ?? null } : setup?.studioIntro ?? null,
+    // The episode's own, none (false, item E14), or the Studio's.
+    const intro = useMemo(() => edit.intro === false ? null : edit.intro ? { name: edit.intro.name, url: urls[edit.intro.path] ?? null } : setup?.studioIntro ?? null,
         [edit.intro, urls, setup?.studioIntro]);
-    const outro = useMemo(() => edit.outro ? { name: edit.outro.name, url: urls[edit.outro.path] ?? null } : setup?.studioIntro ?? null,
+    const outro = useMemo(() => edit.outro === false ? null : edit.outro ? { name: edit.outro.name, url: urls[edit.outro.path] ?? null } : setup?.studioIntro ?? null,
         [edit.outro, urls, setup?.studioIntro]);
     const introMs = useMediaLength(intro?.url ?? null);
     const outroMs = useMediaLength(outro?.url ?? null);
@@ -107,7 +116,7 @@ export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: 
             const label = pieceLabel(p);
             if (p.kind === 'teaser') {
                 const t = teasers[p.index];
-                return { ...p, label, name: t.speaker, src, fromMs: t.startMs, toMs: t.endMs, speaker: t.speaker };
+                return { ...p, label, name: t.speaker, src, fromMs: t.startMs, toMs: t.endMs, speaker: t.speaker, tag: t.tag !== false };
             }
             const file = p.kind === 'intro' ? intro : p.kind === 'outro' ? outro : null;
             return { ...p, label, name: file?.name ?? 'The edited episode', src: file?.url ?? null, fromMs: 0, toMs: Infinity };
@@ -153,15 +162,16 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
             };
             raf = requestAnimationFrame(tick);
         };
-        const play = (from: number) => {
+        // From `ms` into piece `from`, playing or paused there (item E14: a click on the timeline).
+        const play = (from: number, ms = 0, playing = true) => {
             // A file with no link (its link expired, or it was removed) is passed over.
             let k = from;
-            while (pieces[k] && pieces[k].kind !== 'episode' && !pieces[k].src) k++;
+            while (pieces[k] && pieces[k].kind !== 'episode' && !pieces[k].src) { k++; ms = 0; }
             const piece = pieces[k];
             if (!piece) { stop(); return; }
             if (piece.kind === 'episode') {
                 stop();
-                if (ranges[0]) { main.currentTime = ranges[0].startMs / 1000; void main.play().catch(() => {}); }
+                if (ranges[0]) { main.currentTime = ranges[0].startMs / 1000; if (playing) void main.play().catch(() => {}); }
                 return;
             }
             const mine = ++run;
@@ -170,13 +180,14 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
             control.set(k);
             const start = () => {
                 if (mine !== run) return;
-                o.currentTime = piece.fromMs / 1000;
-                void o.play().catch(() => {});
+                const end = Number.isFinite(piece.toMs) ? piece.toMs : (Number.isFinite(o.duration) ? o.duration * 1000 : Infinity);
+                o.currentTime = Math.max(piece.fromMs, Math.min(end - 1, piece.fromMs + ms)) / 1000;
+                if (playing) void o.play().catch(() => {}); else o.pause();
                 follow(k, mine);
             };
             if (o.getAttribute('src') !== piece.src) {
                 // A file that cannot be played (an expired link, a format this browser lacks) is passed over.
-                const failed = () => { if (mine === run) play(k + 1); };
+                const failed = () => { if (mine === run) play(k + 1, 0, playing); };
                 o.addEventListener('loadedmetadata', () => { o.removeEventListener('error', failed); start(); }, { once: true });
                 o.addEventListener('error', failed, { once: true });
                 o.src = piece.src!;
@@ -213,6 +224,10 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
         const detach = control.attach({
             play,
             stop,
+            position: () => {
+                const k = control.get();
+                return k === null || !pieces[k] ? null : { piece: k, ms: Math.max(0, o.currentTime * 1000 - pieces[k].fromMs) };
+            },
             toggle: () => {
                 if (control.get() === null) return false;
                 if (o.paused) void o.play().catch(() => {}); else o.pause();
@@ -242,7 +257,7 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
             <video ref={overlay} playsInline preload="auto" className="w-full h-full rounded-lg"
                 onPlay={() => setPaused(false)} onPause={() => setPaused(true)} aria-label="The teasers, intro and outro" />
             {/* The "In this episode" tag the render burns into each teaser (agent/src/podcast/teaserBanner.ts), drawn here. */}
-            {piece?.kind === 'teaser' && (
+            {piece?.kind === 'teaser' && piece.tag !== false && (
                 <div aria-hidden className="absolute pointer-events-none" style={{ left: '4.2cqw', bottom: '4.7cqw' }}>
                     <div className="flex" style={{ background: 'rgba(42,21,82,0.8)' }}>
                         <span style={{ width: '0.42cqw', background: '#e9b949' }} />
@@ -269,131 +284,4 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
             )}
         </div>
     );
-}
-
-// The timeline's Programme row: the teasers, the intro, the episode and the outro, in order, each a clip to click and
-// play; a teaser can be taken out (× on it). The episode fills the rest of the row, with how far the preview is into it.
-export function ProgrammeStrip({ view, video, clips, editedMs, onTeasers, onParts }: {
-    view: ProgrammeView;
-    video: React.RefObject<HTMLVideoElement | null>;
-    clips: Clip[];
-    editedMs: number;
-    onTeasers?: (teasers: Teaser[]) => void;
-    onParts?: () => void;
-}) {
-    const { pieces, programme, teasers, control } = view;
-    const current = useSyncExternalStore(control.subscribe, control.get, () => null);
-    const extras = pieces.length > 1;
-    // Item E12: the teaser chosen for trimming (its play position), and the one being dragged to a new place.
-    const [picked, setPicked] = useState<number | null>(null);
-    const [dragFrom, setDragFrom] = useState<number | null>(null);
-    const [dropOn, setDropOn] = useState<number | null>(null);
-    const chosen = picked !== null && picked < teasers.length ? picked : null;
-    return (
-        <div className="flex flex-col gap-1 shrink-0">
-        <div className="flex items-stretch h-7 text-[11px] shrink-0" aria-label="Programme: the whole video in order">
-            <div style={{ width: HEADER_W }} className="shrink-0 flex items-center gap-1 pr-2 text-gray-300">
-                <span className="grow truncate" title={`The whole video, ${mmss(programme.lengthMs)}: teasers, intro, episode and outro, as the render makes it`}>Programme</span>
-                <button type="button" onClick={() => control.play(0)} title={`Play the whole video from the start (${mmss(programme.lengthMs)})`}
-                    aria-label="Play the whole video from the start" className="px-1 rounded text-amber-300 hover:bg-white/10">▶</button>
-            </div>
-            <div className="flex-1 min-w-0 flex items-stretch gap-0.5">
-                {pieces.map((p, k) => {
-                    const playing = current === k;
-                    const join = p.joinMs ? ` (the transition into it overlaps ${(p.joinMs / 1000).toFixed(1)} s in the render)` : '';
-                    if (p.kind === 'episode') {
-                        return (
-                            <button key="episode" type="button" onClick={() => control.play(k)}
-                                title={`The edited episode, ${mmss(editedMs)}: play it from its start${join}`}
-                                className="relative flex-1 min-w-[80px] rounded-sm bg-sky-400/25 hover:bg-sky-400/35 text-left px-2 text-sky-100 overflow-hidden">
-                                <EpisodeProgress video={video} clips={clips} editedMs={editedMs} />
-                                <span className="relative">Episode {mmss(editedMs)}</span>
-                                {!extras && <span className="relative ml-2 text-gray-400">No teasers, intro or outro (the Studio settings)</span>}
-                            </button>
-                        );
-                    }
-                    const teaser = p.kind === 'teaser' ? teasers[p.index] : null;
-                    const color = p.kind === 'teaser' ? 'bg-amber-400/80 text-black' : 'bg-violet-400/80 text-black';
-                    return (
-                        <div key={`${p.kind}-${p.index}`}
-                            className={`relative shrink-0 w-[92px] rounded-sm ${color} ${playing ? 'ring-2 ring-white' : teaser && chosen === p.index ? 'ring-2 ring-amber-200' : ''} ${p.src ? '' : 'opacity-50'} ${teaser && dropOn === p.index && dragFrom !== p.index ? 'outline outline-2 outline-white' : ''}`}
-                            // A teaser can be dragged onto another to take its place (item E12).
-                            draggable={!!teaser && !!onTeasers}
-                            onDragStart={teaser ? e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(p.index)); setDragFrom(p.index); } : undefined}
-                            onDragOver={teaser && dragFrom !== null ? e => { e.preventDefault(); setDropOn(p.index); } : undefined}
-                            onDragLeave={teaser ? () => setDropOn(d => (d === p.index ? null : d)) : undefined}
-                            onDrop={teaser && dragFrom !== null ? e => {
-                                e.preventDefault();
-                                onTeasers?.(moveTeaser(teasers, dragFrom, p.index));
-                                setPicked(p.index);
-                                setDragFrom(null); setDropOn(null);
-                            } : undefined}
-                            onDragEnd={() => { setDragFrom(null); setDropOn(null); }}>
-                            <button type="button" onClick={() => { if (teaser) setPicked(p.index); control.play(k); }} className="w-full h-full text-left px-1.5 truncate"
-                                title={teaser
-                                    ? `${p.label}: ${teaser.speaker} at ${mmss(teaser.startMs)}–${mmss(teaser.endMs)} of the recording (${((teaser.endMs - teaser.startMs) / 1000).toFixed(1)} s). Click to play and trim it; drag it onto another teaser to swap places${join}`
-                                    : `${p.label}: ${p.name}${p.lengthMs ? ` (${(p.lengthMs / 1000).toFixed(1)} s)` : ''}${p.src ? '. Click to play' : '. Its file cannot be played'}${join}. Change it in the Parts panel`}>
-                                {p.kind === 'teaser' ? `T${p.index + 1} ${(p.lengthMs / 1000).toFixed(0)}s` : p.label}
-                            </button>
-                            {teaser && onTeasers && (
-                                <button type="button" aria-label={`Take out ${p.label}`} title={`Take ${p.label} out of the video (Undo puts it back)`}
-                                    onClick={() => { onTeasers(teasers.filter((_, i) => i !== p.index)); setPicked(null); }}
-                                    className="absolute right-0.5 top-0.5 w-3.5 h-3.5 rounded-full bg-black/60 text-white text-[9px] leading-[14px] text-center hover:bg-black">×</button>
-                            )}
-                            {p.kind !== 'teaser' && onParts && (
-                                <button type="button" aria-label={`Change the ${p.label.toLowerCase()}`} title="Change it in the Parts panel"
-                                    onClick={onParts}
-                                    className="absolute right-0.5 top-0.5 w-3.5 h-3.5 rounded-full bg-black/60 text-white text-[9px] leading-[14px] text-center hover:bg-black">⋯</button>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-        {chosen !== null && onTeasers && (
-            <TeaserTrim teasers={teasers} index={chosen} video={video} onTeasers={onTeasers} onClose={() => setPicked(null)}
-                onPlay={() => control.play(pieces.findIndex(p => p.kind === 'teaser' && p.index === chosen))} onPicked={setPicked} />
-        )}
-        </div>
-    );
-}
-
-// Item E12: the chosen teaser's start and end, moved half a second at a time or to the playhead (the moment of the
-// recording the preview is at: find it in the script or on the timeline), and its place among the teasers.
-function TeaserTrim({ teasers, index, video, onTeasers, onClose, onPlay, onPicked }: {
-    teasers: Teaser[]; index: number; video: React.RefObject<HTMLVideoElement | null>;
-    onTeasers: (teasers: Teaser[]) => void; onClose: () => void; onPlay: () => void; onPicked: (i: number) => void;
-}) {
-    const t = teasers[index];
-    const playhead = useVideoTime(video);
-    const length = () => (video.current && Number.isFinite(video.current.duration) ? video.current.duration * 1000 : undefined);
-    const set = (edge: 'start' | 'end', ms: number) => onTeasers(trimTeaser(teasers, index, edge, ms, length()));
-    const move = (to: number) => { onTeasers(moveTeaser(teasers, index, to)); onPicked(to); };
-    const btn = `${secondary} px-1.5 py-0.5 shrink-0`;
-    return (
-        <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-gray-300 rounded bg-amber-400/5 border border-amber-400/20 px-2 py-1" aria-label={`Trim teaser ${index + 1}`}>
-            <span className="text-amber-200 shrink-0">Teaser {index + 1} of {teasers.length}{t.speaker ? ` · ${t.speaker}` : ''} · {preciseTime(t.startMs)}–{preciseTime(t.endMs)} ({((t.endMs - t.startMs) / 1000).toFixed(1)} s)</span>
-            <span className="ml-2 shrink-0">Start</span>
-            <button type="button" className={btn} onClick={() => set('start', t.startMs - 500)} title="Start half a second earlier">−½ s</button>
-            <button type="button" className={btn} onClick={() => set('start', t.startMs + 500)} title="Start half a second later">+½ s</button>
-            <button type="button" className={btn} onClick={() => set('start', playhead)} title={`Start at the playhead, ${preciseTime(playhead)} of the recording`}>Start here</button>
-            <span className="ml-2 shrink-0">End</span>
-            <button type="button" className={btn} onClick={() => set('end', t.endMs - 500)} title="End half a second earlier">−½ s</button>
-            <button type="button" className={btn} onClick={() => set('end', t.endMs + 500)} title="End half a second later">+½ s</button>
-            <button type="button" className={btn} onClick={() => set('end', playhead)} title={`End at the playhead, ${preciseTime(playhead)} of the recording`}>End here</button>
-            <span className="ml-2 shrink-0">Place</span>
-            <button type="button" className={btn} disabled={index === 0} onClick={() => move(index - 1)} aria-label="Play it earlier" title="Earlier among the teasers">‹</button>
-            <button type="button" className={btn} disabled={index === teasers.length - 1} onClick={() => move(index + 1)} aria-label="Play it later" title="Later among the teasers">›</button>
-            <button type="button" className={`${btn} ml-2`} onClick={onPlay}>▶ Play it</button>
-            <button type="button" className={btn} onClick={onClose} aria-label="Close the teaser's trim" title="Close">×</button>
-        </div>
-    );
-}
-
-// How far the preview is into the edited episode, as a bar along the episode's clip.
-function EpisodeProgress({ video, clips, editedMs }: { video: React.RefObject<HTMLVideoElement | null>; clips: Clip[]; editedMs: number }) {
-    const ms = useVideoTime(video);
-    const at = timelineTime(clips, ms, true) ?? 0;
-    const share = editedMs > 0 ? Math.min(1, Math.max(0, at / editedMs)) : 0;
-    return <span aria-hidden className="absolute inset-y-0 left-0 bg-sky-400/30 pointer-events-none" style={{ width: `${share * 100}%` }} />;
 }
