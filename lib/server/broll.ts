@@ -43,6 +43,7 @@ export async function requestBroll(id: string, index: number | null) {
         if (busy(episode.broll)) throw new HttpError(409, 'B-roll images are already being generated');
         tx.set(ref, {
             broll: { status: 'queued', only: index, requestedAt: FieldValue.serverTimestamp(), error: null },
+            brollSkipped: null,
             updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
     });
@@ -77,6 +78,22 @@ export async function getBroll(id: string): Promise<BrollView> {
         only: b?.only ?? null,
         error: b?.error ?? (lost ? 'Generating did not finish. Check the Podcast B-roll run in GitHub Actions, then try again.' : null),
         notesApproved: episode.notes?.status === 'approved',
+        skipped: episode.brollSkipped ?? null,
         images: images.sort((x, y) => x.index - y.index),
     };
+}
+
+// Skips b-roll (or takes the skip back), so editing and the edit package need not wait for images
+// (lib/brollGate.ts). Making images later takes the skip back too.
+export async function skipBroll(id: string, skip: boolean, user: { uid: string }) {
+    const ref = episodeRef(id);
+    const episode = (await ref.get()).data() as Episode | undefined;
+    if (!episode) throw new HttpError(404, 'Episode not found');
+    if (skip && busy(episode.broll)) throw new HttpError(409, 'B-roll images are being made; wait for them to finish');
+    let by = 'a producer';
+    if (skip) {
+        const profile = (await adminDb().collection('users').doc(user.uid).get()).data() ?? {};
+        by = (profile.displayName as string) || by;
+    }
+    await ref.update({ brollSkipped: skip ? { by, at: Date.now() } : null, updatedAt: FieldValue.serverTimestamp() });
 }

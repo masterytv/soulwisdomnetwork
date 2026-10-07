@@ -43,7 +43,10 @@ export interface EpisodeSummary {
 }
 
 // How far an episode has got after speaker review (lib/server/pipeline.ts episodeProgress).
-export interface EpisodeProgress { notesApproved: boolean; finalReady: boolean; published: boolean; shortsScheduled: boolean }
+export interface EpisodeProgress {
+    notesApproved: boolean; finalReady: boolean; published: boolean; shortsScheduled: boolean;
+    brollSettled?: boolean;         // b-roll images made or skipped (lib/brollGate.ts); missing counts as settled
+}
 
 export interface IngestRun {
     id: number;
@@ -157,6 +160,7 @@ export interface BrollView {
     only: number | null;
     error: string | null;
     notesApproved: boolean;
+    skipped: { by: string; at: number } | null;   // b-roll skipped (lib/brollGate.ts)
     images: {
         index: number;
         idea: string;
@@ -181,6 +185,7 @@ export interface PackageView {
     notesApproved: boolean;
     approvedVersion: number | null;
     clipsStored: boolean;           // false for packages built before the Descript step
+    brollBlock: string | null;      // why it cannot be built yet: b-roll images neither made nor skipped (lib/brollGate.ts)
     descript: {
         status: EpisodeDescript['status'] | null;
         error: string | null;

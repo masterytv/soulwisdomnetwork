@@ -18,6 +18,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
 import { useAutosave } from '@/components/studio/useAutosave';
@@ -129,6 +130,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         }
     }, [episodeId]);
     const [edit, setEdit] = useState<EpisodeEdit>({ cuts: [], version: 0 });
+    // Why editing is held: the b-roll images are neither made nor skipped (lib/brollGate.ts).
+    const [brollHeld, setBrollHeld] = useState<string | null>(null);
     const [loaded, setLoaded] = useState(false);
     // Links to the overlay images, and the Studio's captions setting, for the full-page editor's preview.
     const [overlayUrls, setOverlayUrls] = useState<Record<string, string>>({});
@@ -167,11 +170,12 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             ? studioFetch<{ items: BinItem[] }>(`/api/studio/episodes/${episodeId}/media`).then(v => v.items, e => { setBinError(`The media did not load: ${(e as Error).message}`); return null; })
             : Promise.resolve(null);
         Promise.all([
-            studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null }>(`/api/studio/episodes/${episodeId}/edit`),
+            studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null }>(`/api/studio/episodes/${episodeId}/edit`),
             binLoad,
         ])
             .then(([data, items]) => {
                 setBin(items);
+                setBrollHeld(data.brollBlock ?? null);
                 setEdit(workspace && items ? withLayers(data.edit, items) : data.edit);
                 setOverlayUrls(data.overlayUrls ?? {});
                 setSilences(data.silences ?? null);
@@ -388,6 +392,24 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             fixBusy={fixBusy}
         />
     );
+
+    // Held until the b-roll images are made or skipped: what to do instead of the editor.
+    if (brollHeld) {
+        const note = (
+            <div className="rounded-xl border border-amber-400/40 bg-amber-500/5 p-4 flex flex-col gap-2 text-sm text-gray-200 max-w-2xl">
+                <p className="font-semibold text-amber-300">Finish or skip the b-roll first</p>
+                <p>{brollHeld}</p>
+                <Link href={`/admin/podcast/${episodeId}/notes#broll`} className="text-amber-300 hover:underline self-start">Go to the b-roll images →</Link>
+            </div>
+        );
+        if (!workspace) return note;
+        return (
+            <div className="min-h-screen bg-[#0d0720] text-gray-100 p-4 sm:p-6">
+                <div className="border-b border-white/10 pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
+                {note}
+            </div>
+        );
+    }
 
     if (workspace) return editor;
 
