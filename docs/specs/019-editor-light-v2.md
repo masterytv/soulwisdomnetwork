@@ -11,7 +11,7 @@ repeat it.
 **Related:** `docs/specs/005-podcast-production-pipeline.md` (stages),
 `docs/specs/010-final-cut.md`, `docs/specs/015-editor-light.md`,
 `docs/specs/018-studio-settings.md`, `docs/specs/020-studio-editor.md` (the full editing page,
-items E1–E11 below)
+items E1–E12 below)
 
 We keep our own editor and render, and add the best ideas from the alternatives. The goal is for
 Editor Light to replace Descript as the final edit, with:
@@ -111,6 +111,7 @@ for this work".
 | E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Built (#170; spec 020, "E9 — Built"): in a Parts panel; dragging on the timeline came with E11 (#176) |
 | E10 | Open with everything in place: fillers and pauses cut, teasers, intro and outro on the timeline | ours | M | High | E9, #173 | Built (#174; spec 020, "E10 — Built") |
 | E11 | Drag sections on the timeline, shown in play order | ours | M | Extra | E9 | Built (#176; spec 020, "E11 — Built") |
+| E12 | Trim and reorder teasers on the Programme row | ours | S | Medium | E10 | Built (#178; spec 020, "E12 — Built") |
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |

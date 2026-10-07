@@ -113,3 +113,31 @@ export function studioIntro(settings: { intro: 'show' | 'custom' | 'none'; intro
     if (settings.intro === 'show') return pkg ? (pkg.introPath ? { path: pkg.introPath } : null) : 'site';
     return null;
 }
+
+// ─── Trimming and reordering teasers (spec 020 item E12) ──────────────────────
+
+// A teaser keeps at least this much.
+export const TEASER_SHORTEST_MS = 500;
+
+// The teasers with the one at `from` moved to `to` (play positions).
+export function moveTeaser(teasers: Teaser[], from: number, to: number): Teaser[] {
+    if (from === to || from < 0 || from >= teasers.length || to < 0 || to >= teasers.length) return teasers;
+    const out = [...teasers];
+    const [t] = out.splice(from, 1);
+    out.splice(to, 0, t);
+    return out;
+}
+
+// The teasers with one's start or end moved to `ms` of the recording: inside the recording (when its length is
+// known), and TEASER_SHORTEST_MS short of its other end.
+export function trimTeaser(teasers: Teaser[], index: number, edge: 'start' | 'end', ms: number, durationMs?: number): Teaser[] {
+    const t = teasers[index];
+    if (!t) return teasers;
+    const top = durationMs && durationMs > 0 ? durationMs : Infinity;
+    const v = Math.round(ms);
+    const next = edge === 'start'
+        ? { ...t, startMs: Math.max(0, Math.min(v, t.endMs - TEASER_SHORTEST_MS)) }
+        : { ...t, endMs: Math.min(top, Math.max(v, t.startMs + TEASER_SHORTEST_MS)) };
+    if (next.startMs === t.startMs && next.endMs === t.endMs) return teasers;
+    return teasers.map((x, i) => (i === index ? next : x));
+}
