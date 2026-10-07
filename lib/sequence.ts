@@ -31,7 +31,7 @@ export interface Sequence {
 
 // A split this close to the edge of a kept stretch does not divide it: the stretch goes whole to
 // one side, so no part starts or ends with a sliver.
-const SPLIT_SLACK_MS = 100;
+export const SPLIT_SLACK_MS = 100;
 
 // The kept stretches in play order (keepRanges: the cuts, kept off the words, slivers dropped),
 // each with its place in the edited episode. Parts keep the recording's order unless the edit moved them (`order`,
