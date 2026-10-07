@@ -16,6 +16,7 @@
 // drag; and a file dragged from the Media panel lands where it is dropped.
 // Item E8: the CC lane under V1 shows the YouTube caption track (each caption where it is heard, amber when
 // too fast to read); a click goes to the caption, and its header turns CC on the preview on and off.
+// Item E10: `programme`, the Programme row (components/studio/programme.tsx), sits between the tools and the lanes.
 
 "use client";
 
@@ -70,7 +71,7 @@ const V3_TOP = RULER_H, V2_TOP = V3_TOP + LANE_H;
 const V1_TOP = V2_TOP + LANE_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
 const CC_TOP = V1_TOP + V1_H + 2, CC_H = 16;
 const A1_TOP = CC_TOP + CC_H + 2, MIN_A1_H = 24;
-const HEADER_W = 112;
+export const HEADER_W = 112;
 // How close to a cut's edge the pointer grabs it; a cut narrower than GRAB_PX on screen is grabbed
 // only once selected, and one narrower than PICK_PX is not picked by a click (zoom in for those).
 const EDGE_PX = 6, GRAB_PX = 8, PICK_PX = 3;
@@ -422,7 +423,7 @@ export function Timeline({
     words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
     sounds = [], onSounds, mutedTracks = [], onMutedTracks, captions: cues = NO_CUES, captionsShown = false, onCaptionsShown,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
-    overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin,
+    overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin, programme,
 }: {
     words: SpokenWord[];
     cuts: Cut[];
@@ -456,6 +457,7 @@ export function Timeline({
     transitions?: SplitTransition[];
     overlaps?: { fromMs: number; toMs: number }[];   // what the transitions overlap, in the recording
     onJoin?: (splitMs: number) => void;              // a split's ⧓ marker was clicked
+    programme?: React.ReactNode;                     // item E10: the whole video's row, over the lanes
 }) {
     const scrollRef = useRef<HTMLDivElement>(null);
     const lanesRef = useRef<HTMLDivElement>(null);
@@ -941,6 +943,8 @@ export function Timeline({
                 <span className="grow" />
                 {split && <SplitButton split={split} video={video} totalMs={totalMs} disabled={locked} />}
             </div>
+
+            {programme}
 
             <div className="flex flex-1 min-h-0">
                 {/* Track headers. */}

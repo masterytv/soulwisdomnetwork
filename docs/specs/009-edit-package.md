@@ -19,7 +19,7 @@ API (part 2). The folder also works on its own: download it and drag it into Des
 | File | What |
 |---|---|
 | `00 Full episode - <title>.mp4` | A Drive copy of the original recording (server-side), or its 1920x1080 fill when the recording is not 16:9 (below) |
-| `00 Intro - Soul Wisdom Collective.mp4` | The show's 3-second intro, from `assets/podcast/intro.mp4` in the repo; it closes the episode too, as the outro |
+| `00 Intro - Soul Wisdom Collective.mp4` | The show's 3-second intro, from `public/studio/show-intro.mp4` (moved from `assets/podcast/intro.mp4` on 7 Oct 2026, so the Studio editor can play it) in the repo; it closes the episode too, as the outro |
 | `00 In this episode banner.png` | The generic "In this episode" tag, a transparent 1920x1080 PNG, for clips added by hand in Descript (below) |
 | `01 In this episode - clip N (m.ss-m.ss) <speaker>.mp4` | Each approved teaser clip, cut from the original at full quality, in order, with 0.3 s before and 0.6 s after so no word is clipped, and the "In this episode" tag burned in (below) |
 | `02 B-roll N at m.ss for Ns - moving.mp4` | Each b-roll image as a 1920x1080 clip of that length with a slow zoom or pan built in (zoom in, pan right, zoom out, pan left, in turn; zooms between 100% and 125%, pans across about a fifth of the frame; eased), ready for the timeline |
@@ -76,7 +76,7 @@ project made before the tag existed: drop it on a layer over those clips and str
 
 ## The intro
 
-The show's intro is `assets/podcast/intro.mp4` in this repo (added 24 Sept 2026: 3 s,
+The show's intro is `public/studio/show-intro.mp4` (moved from `assets/podcast/intro.mp4` on 7 Oct 2026, so the Studio editor can play it) in this repo (added 24 Sept 2026: 3 s,
 1920x1080, 30 fps, AAC stereo; the logo animation with "A modern conversation on
 consciousness & spirituality"). To change it, replace that file; builds after the change use
 the new one. A package built without it (the file missing) says so in its warnings.

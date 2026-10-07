@@ -1,7 +1,7 @@
 // Spec 005 step 8, part 1: the edit package. Gathers everything for the Descript edit into
 // one Drive folder, "03 For Descript/<episode>", from the approved show notes:
 //   00 the full episode (a Drive copy of the original) and the show's intro
-//      (assets/podcast/intro.mp4 in this repo), which also closes the episode as the outro
+//      (public/studio/show-intro.mp4 in this repo, which the Studio editor's preview also plays), which also closes the episode as the outro
 //   00 the generic "In this episode" banner, a transparent PNG to place by hand
 //   01 each "In this episode" clip, cut from the original, numbered in order, with the
 //      "In this episode" tag and the speaker's name in the lower left
@@ -31,7 +31,7 @@ const CLIP_LEAD_MS = 300;
 const CLIP_TAIL_MS = 600;
 const SITE = 'https://soulwisdomcollective.com';
 // The show's intro, versioned in the repo; replace the file to change it for later builds.
-const INTRO_FILE = path.resolve('assets/podcast/intro.mp4');
+const INTRO_FILE = path.resolve('public/studio/show-intro.mp4');
 const INTRO_NAME = '00 Intro - Soul Wisdom Collective.mp4';
 const BANNER_NAME = '00 In this episode banner.png';
 
@@ -168,7 +168,7 @@ async function main() {
         keep.push(INTRO_NAME);
         console.log('  ✅ Intro');
     } else {
-        warnings.push('The intro (assets/podcast/intro.mp4) is missing from the repo, so it was left out.');
+        warnings.push('The intro (public/studio/show-intro.mp4) is missing from the repo, so it was left out.');
     }
 
     // The generic banner (the tag without a name), for clips added by hand in Descript.

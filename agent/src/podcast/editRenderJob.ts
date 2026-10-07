@@ -15,6 +15,8 @@
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
 // Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
 // Item E9 (spec 020): the edit's own play order of sections goes with it; its own intro and outro replace the Studio's.
+// Item E10 (spec 020): the edit's own teasers (lib/programme.ts), as the Studio editor shows them, are cut from the recording
+// exactly, with the "In this episode" tag; an edit saved before them gets the package's clips or the notes' as before.
 // Item 3.3: when the episode has speaker tracks (lib/speakerTracks.ts), the voice is made from them unless its edit says not.
 // Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
 // they cannot be made, the render is still kept, with a warning.
@@ -34,6 +36,7 @@ import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
 import type { ExportResult } from './editExport';
 import { sequenceOf, type Clip } from '../../../lib/sequence';
+import { studioIntro } from '../../../lib/programme';
 
 export interface EditRenderDeps {
     getEpisode: () => Promise<Episode | undefined>;
@@ -53,8 +56,9 @@ export interface EditRenderDeps {
     settings?: StudioSettings;           // the defaults when left out
     showIntro?: string;                  // the show's intro in the repository, when there is no edit package
     siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
-    // Cuts a plain teaser clip from the recording, when there is no edit package to take clips from.
-    cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number) => Promise<void>;
+    // Cuts a teaser clip from the recording: plainly, when there is no edit package to take clips from, or with the
+    // "In this episode" tag and its speaker (`tag`) for the edit's own teasers (item E10).
+    cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number, tag?: { speaker: string }) => Promise<void>;
     // The show library's entries for the sounds' files (spec 020 item E7), and its log of uses.
     library?: (ids: string[]) => Promise<Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>>;
     logUses?: (ids: string[], use: LibraryUse) => Promise<void>;
@@ -69,7 +73,10 @@ export interface EditRenderPlan {
     edit: EpisodeEdit;
     video: string;                       // Storage path of the source
     teasers: string[];                   // Storage paths, in order (from the edit package)
-    teaserClips: { startMs: number; endMs: number }[];   // to cut from the recording when there is no package
+    // To cut from the recording: the edit's own teasers (item E10: exactly, with the "In this episode" tag and their
+    // speaker, as the editor shows them; `exact`), or the notes' clips when there is no package (plainly, with room around them).
+    teaserClips: { startMs: number; endMs: number; speaker?: string }[];
+    exact: boolean;
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
     // The episode's own intro and outro (spec 020 item E9), from its media bin: they replace the Studio's.
@@ -111,24 +118,29 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
     const notes = episode.notes?.status === 'approved' ? episode.notes.approved : undefined;
     if (!notes) warnings.push('The show notes are not approved, so no chapter or quote times were made.');
 
-    const teasers = settings.teasers && pkg ? pkg.clipPaths ?? [] : [];
-    const teaserClips = settings.teasers && !pkg
-        ? (notes?.teaserClips ?? []).filter(c => c.endMs > c.startMs).map(c => ({ startMs: c.startMs, endMs: c.endMs }))
-        : [];
-    const intro = settings.intro === 'custom' ? settings.introPath
-        : settings.intro === 'show' && pkg ? pkg.introPath ?? null : null;
-    const showIntro = settings.intro === 'show' && !pkg;
+    // The edit's own teasers (item E10), as the Studio editor shows them, cut from the recording exactly; for an edit
+    // saved before them, the edit package's clips, or the notes' cut plainly.
+    const own = edit.teasers ?? null;
+    const teasers = !own && settings.teasers && pkg ? pkg.clipPaths ?? [] : [];
+    const teaserClips = own ? own.map(t => ({ startMs: t.startMs, endMs: t.endMs, speaker: t.speaker }))
+        : settings.teasers && !pkg
+            ? (notes?.teaserClips ?? []).filter(c => c.endMs > c.startMs).map(c => ({ startMs: c.startMs, endMs: c.endMs }))
+            : [];
+    const studio = studioIntro(settings, pkg);
+    const intro = studio && studio !== 'site' ? studio.path : null;
+    const showIntro = studio === 'site';
     const captions = captionLook(edit, settings);
     const wordsPath = episode.review?.reviewedPath ?? null;
     if (captions && !wordsPath) warnings.push('Captions are on, but the transcript is not accepted, so no captions were burned in.');
-    if (!pkg && (settings.teasers || settings.intro === 'show')) {
-        warnings.push('The edit package is not built, so the teaser clips are cut plainly from the recording and the show\'s intro comes from the site\'s files.');
+    if (!pkg && !own && settings.teasers) {
+        warnings.push('The edit package is not built, so the teaser clips are cut plainly from the recording.');
     }
     return {
         edit,
         video,
         teasers,
         teaserClips,
+        exact: !!own,
         intro,
         showIntro,
         ownIntro: edit.intro?.path ?? null,
@@ -185,8 +197,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     if (plan.teaserClips.length && deps.cutClip) {
         for (const [i, c] of plan.teaserClips.entries()) {
             const out = path.join(workDir, `teaser-cut-${i + 1}.mp4`);
-            const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
-            await deps.cutClip(video, out, start / 1000, (c.endMs + CLIP_TAIL_MS - start) / 1000);
+            if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, { speaker: c.speaker ?? '' });
+            else {
+                const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
+                await deps.cutClip(video, out, start / 1000, (c.endMs + CLIP_TAIL_MS - start) / 1000);
+            }
             teasers.push(out);
         }
     }

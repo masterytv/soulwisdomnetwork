@@ -18,6 +18,8 @@
 // preview with CC, and in the Captions panel (components/studio/captions.tsx), which also holds Part I's
 // burned-in option; Ctrl or ⌘ + C, X and V copy, cut and paste a layer or sound at the playhead; J, K and L
 // shuttle (K with J or L steps a frame).
+// Spec 020 item E10: the whole video, teasers, intro, episode and outro, on the timeline's Programme row and in the
+// preview (components/studio/programme.tsx), from `programme` (what the page loaded for it).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -54,6 +56,7 @@ import { CutBridge } from '@/components/studio/cutBridge';
 import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
+import { ProgrammePlayer, ProgrammeStrip, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
 
 // No media videos: one array, so the Parts panel does not redraw on every render.
 const NO_VIDEOS: BinItem[] = [];
@@ -156,7 +159,7 @@ function scrollBoxTo(box: HTMLElement, target: HTMLElement) {
 export function Editor({
     words, videoUrl, edit, onChange, workspace = false, studioCaptions, overlayUrls = {}, tools, cutNotes = {}, silences = null,
     heading, status, actions, panels = [], timelineMedia = null, studioJoins = null, onFixWords, fixBusy = false, media, layersEditable = true,
-    brand = DEFAULT_BRAND,
+    brand = DEFAULT_BRAND, programme = null,
 }: {
     words: SpokenWord[];
     videoUrl: string;
@@ -179,6 +182,7 @@ export function Editor({
     media?: { episodeId: string; items: BinItem[] | null; error: string; onItems: (items: BinItem[]) => void };
     layersEditable?: boolean;
     brand?: Brand;
+    programme?: ProgrammeSetup | null;
 }) {
     const studio = studioCaptions ?? { on: false, style: DEFAULT_CAPTION_STYLE };
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -296,6 +300,9 @@ export function Editor({
         for (const it of media?.items ?? []) if (it.url && !urls[it.path]) urls[it.path] = it.url;
         return urls;
     }, [overlayUrls, media?.items]);
+    // The whole video (item E10): teasers, intro, this episode and outro.
+    const prog = useProgramme({ setup: workspace ? programme : null, edit, urls: mediaUrls, studioJoins, src: videoUrl, editedMs });
+    const programmeControl = prog?.control;
     // Choosing a layer on the preview or the timeline keeps the keys with the editor (Delete removes it),
     // even when the element that was clicked goes away. Not from the panel, whose fields need the keys.
     const pickLayer = useCallback((id: string | null) => {
@@ -448,7 +455,7 @@ export function Editor({
             if (e.key === ' ') {
                 e.preventDefault();
                 const video = videoRef.current;
-                if (!video) return;
+                if (!video || programmeControl?.toggle()) return;
                 if (reverse) setReverse(0);
                 else if (video.paused) video.play(); else video.pause();
                 return;
@@ -514,7 +521,7 @@ export function Editor({
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
     }, [selectedRange, words, edit.cuts, updateEdit, undo, redo, cutSelection, addSplit, workspace, timelineSel, layers, selectedLayer, setLayers, sounds, setSounds,
-        reverse]);
+        reverse, programmeControl]);
 
     // Video time mapping: skip cut ranges during playback, in play order (lib/sequence.ts playStep: with moved
     // sections, spec 020 item E9, the next stretch can be anywhere in the recording). `playIdx`: the stretch playing.
@@ -888,7 +895,7 @@ export function Editor({
 
     const lengthLabel = (
         <span className={hint}>
-            Edited length {mmss(editedMs)} · saves {mmss(timeSavedMs)}
+            Edited length {mmss(editedMs)} · saves {mmss(timeSavedMs)}{prog && prog.pieces.length > 1 && ` · whole video ${mmss(prog.programme.lengthMs)}`}
         </span>
     );
 
@@ -1007,6 +1014,7 @@ export function Editor({
             {workspace && sounds.length > 0 && (
                 <SoundsPreview sounds={sounds} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls} words={words} mutedTracks={mutedTracks} />
             )}
+            {prog && <ProgrammePlayer view={prog} video={videoRef} ranges={ranges} hold={previewRef} active={playMode === 'edited'} />}
         </div>
     );
 
@@ -1371,6 +1379,10 @@ export function Editor({
                             })}
                             overlaps={sequence.joins.flatMap(j => [{ fromMs: j.aFromMs, toMs: j.aEndMs }, { fromMs: j.bStartMs, toMs: j.bUntilMs }])}
                             onJoin={splitMs => { setJoinFocus(splitMs); setPanelId('transitions'); }}
+                            programme={prog && (
+                                <ProgrammeStrip view={prog} video={videoRef} clips={kept} editedMs={editedMs}
+                                    onTeasers={teasers => updateEdit(prev => ({ ...prev, teasers }))} onParts={() => setPanelId('parts')} />
+                            )}
                             split={{
                                 splits: edit.splits ?? NO_SPLITS,
                                 onSplit: addSplit,

@@ -9,7 +9,9 @@
 // Sounds (spec 020 item E7, lib/audio.ts): a show library file must have its licence checked, and an
 // episode's own sound its uploader's word on the rights; GET links them too. The voice clean-up (spec 019 item 3.2)
 // is one of lib/voice.ts's choices, or null for the Studio's. Editing waits for the b-roll images, or for b-roll
-// to be skipped (lib/brollGate.ts): GET says why, and PUT refuses.
+// to be skipped (lib/brollGate.ts): GET says why, and PUT refuses. Spec 020 item E10: GET also says whether the episode
+// has a saved edit yet (`fresh`: the editor then sets one up), the teasers to place from the approved notes, and where the
+// Studio's intro (also its outro) is, so the editor can play it; PUT checks the edit's teasers (lib/programme.ts).
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
@@ -25,6 +27,7 @@ import { getSettings } from '@/lib/server/studioSettings';
 import { SoundsSchema, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import { brollBlock } from '@/lib/brollGate';
+import { SHOW_INTRO_URL, studioIntro, teasersFromNotes, TeasersSchema, type Teaser } from '@/lib/programme';
 
 // The episode's own intro or outro (spec 020 item E9): a video from its media bin.
 const SectionFileSchema = z.object({ path: z.string().min(1).max(300), name: z.string().max(200) }).strict();
@@ -67,14 +70,24 @@ export const GET = handle<Context>(async (request, { params }) => {
         const parsed = SilencesFileSchema.safeParse(raw);
         if (parsed.success) silences = parsed.data.silences;
     }
+    // Item E10: the teasers an edit set up now would have (from the approved notes, when the Studio plays teasers), and the
+    // Studio's intro, which is also the outro unless the episode has its own.
+    const settings = await getSettings();
+    const notes = data.notes?.status === 'approved' ? data.notes.approved : undefined;
+    const teasers = settings.teasers && notes ? teasersFromNotes(notes.teaserClips ?? []) : [];
+    const pkg = data.package?.status === 'ready' ? data.package : undefined;
+    const intro = studioIntro(settings, pkg);
+    const introUrl = intro === 'site' ? SHOW_INTRO_URL
+        : intro ? await adminBucket().file(intro.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null) : null;
+    const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
-    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data) });
+    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown; order?: unknown; intro?: unknown; outro?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown; order?: unknown; intro?: unknown; outro?: unknown; teasers?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -152,6 +165,13 @@ export const PUT = handle<Context>(async (request, { params }) => {
         for (const f of [ends.intro, ends.outro]) {
             if (f && !bin.some(i => i.kind === 'video' && i.path === f.path)) throw new HttpError(400, 'The intro or outro must be a video in this episode\'s media');
         }
+    }
+    // The teasers (item E10): stretches of the recording. Left out of the request, they stay as saved.
+    let teasers: Teaser[] | null | undefined;
+    if (body.edit.teasers !== undefined) {
+        const r = TeasersSchema.nullable().safeParse(body.edit.teasers);
+        if (!r.success) throw new HttpError(400, `Teasers: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        teasers = r.data;
     }
     // Whether the render uses the speaker tracks (spec 019 item 3.3). Left out of the request, it stays as saved.
     let speakerTracks: boolean | null | undefined;
@@ -231,6 +251,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 })(),
                 intro: ends.intro !== undefined ? ends.intro : current?.intro ?? null,
                 outro: ends.outro !== undefined ? ends.outro : current?.outro ?? null,
+                teasers: teasers !== undefined ? teasers : current?.teasers ?? null,
                 splits: keptSplits,
                 joins: keptJoins,
                 ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),
