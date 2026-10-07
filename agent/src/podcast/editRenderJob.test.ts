@@ -444,5 +444,32 @@ test('the episode\'s own intro and outro, from its media, replace the Studio\'s 
     assert.deepEqual(await run({}), { intro: 'intro.mp4', outro: 'intro.mp4' });
     assert.deepEqual(await run({ intro: { path: `episodes/${ID}/media/mv1.mp4`, name: 'New intro' } }), { intro: 'own-intro.mp4', outro: 'intro.mp4' });
     assert.deepEqual(await run({ outro: { path: `episodes/${ID}/media/mv2.mp4`, name: 'Goodbye' } }), { intro: 'intro.mp4', outro: 'own-outro.mp4' });
+    // Item E14: none in this episode.
+    assert.deepEqual(await run({ intro: false }), { intro: undefined, outro: 'intro.mp4' });
+    assert.deepEqual(await run({ intro: false, outro: false }), { intro: undefined, outro: undefined });
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the edit\'s own teasers are cut exactly, with the "In this episode" tag unless it was taken off (spec 020 items E10, E14)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-tags-'));
+    const cut: { start: number; tag?: { speaker: string } }[] = [];
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], teasers: [
+            { startMs: 1000, endMs: 3000, speaker: 'Ana' },
+            { startMs: 5000, endMs: 7000, speaker: 'Ben', tag: false },
+        ] } }),
+        download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async () => {},
+        cutClip: async (_in, out, start, _s, tag) => { cut.push({ start, tag }); fs.writeFileSync(out, ''); },
+        render: async opts => {
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, intro: 'none' },
+    }, path.join(dir, 'work'), '1');
+    assert.deepEqual(cut, [{ start: 1, tag: { speaker: 'Ana' } }, { start: 5, tag: undefined }]);
     fs.rmSync(dir, { recursive: true, force: true });
 });

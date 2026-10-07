@@ -75,13 +75,16 @@ export interface EditRenderPlan {
     teasers: string[];                   // Storage paths, in order (from the edit package)
     // To cut from the recording: the edit's own teasers (item E10: exactly, with the "In this episode" tag and their
     // speaker, as the editor shows them; `exact`), or the notes' clips when there is no package (plainly, with room around them).
-    teaserClips: { startMs: number; endMs: number; speaker?: string }[];
+    teaserClips: { startMs: number; endMs: number; speaker?: string; tag?: boolean }[];
     exact: boolean;
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
     // The episode's own intro and outro (spec 020 item E9), from its media bin: they replace the Studio's.
     ownIntro: string | null;
     ownOutro: string | null;
+    // Item E14: no intro or outro in this episode (the edit's `intro` or `outro` is false).
+    introOff?: boolean;
+    outroOff?: boolean;
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
     // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
@@ -122,7 +125,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
     // saved before them, the edit package's clips, or the notes' cut plainly.
     const own = edit.teasers ?? null;
     const teasers = !own && settings.teasers && pkg ? pkg.clipPaths ?? [] : [];
-    const teaserClips = own ? own.map(t => ({ startMs: t.startMs, endMs: t.endMs, speaker: t.speaker }))
+    const teaserClips = own ? own.map(t => ({ startMs: t.startMs, endMs: t.endMs, speaker: t.speaker, ...(t.tag === false ? { tag: false } : {}) }))
         : settings.teasers && !pkg
             ? (notes?.teaserClips ?? []).filter(c => c.endMs > c.startMs).map(c => ({ startMs: c.startMs, endMs: c.endMs }))
             : [];
@@ -143,8 +146,10 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         exact: !!own,
         intro,
         showIntro,
-        ownIntro: edit.intro?.path ?? null,
-        ownOutro: edit.outro?.path ?? null,
+        ownIntro: edit.intro ? edit.intro.path : null,
+        ownOutro: edit.outro ? edit.outro.path : null,
+        introOff: edit.intro === false,
+        outroOff: edit.outro === false,
         // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
         // first opened the edit), so the notes plan's is drawn only for an edit without.
         broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
@@ -197,7 +202,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     if (plan.teaserClips.length && deps.cutClip) {
         for (const [i, c] of plan.teaserClips.entries()) {
             const out = path.join(workDir, `teaser-cut-${i + 1}.mp4`);
-            if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, { speaker: c.speaker ?? '' });
+            // A teaser whose tag was taken off in the Studio editor (item E14) is cut plainly.
+            if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, c.tag === false ? undefined : { speaker: c.speaker ?? '' });
             else {
                 const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
                 await deps.cutClip(video, out, start / 1000, (c.endMs + CLIP_TAIL_MS - start) / 1000);
@@ -208,8 +214,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const studioIntro = plan.intro ? await get(plan.intro, 'intro')
         : plan.showIntro && deps.showIntro && fs.existsSync(deps.showIntro) ? deps.showIntro : undefined;
     // The episode's own intro or outro replaces the Studio's; the outro is otherwise the Studio's intro, as always.
-    const intro = plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro;
-    const outro = plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro;
+    const intro = plan.introOff ? undefined : plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro;
+    const outro = plan.outroOff ? undefined : plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro;
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
