@@ -281,3 +281,65 @@ export function rangeOf(a: number, b: number, totalMs: number): KeptRange | null
     const endMs = Math.min(totalMs, Math.round(Math.max(a, b)));
     return endMs - startMs >= MIN_CUT_MS ? { startMs, endMs } : null;
 }
+
+// ---- Sections in play order (spec 020 item E11) ----
+
+// Where the timeline draws each moment of the recording: the sections between splits laid end to end in the order
+// they play (`order`, spec 020 item E9), each whole, its cuts drawn inside it. In the recording's order every moment
+// is where it always was. `pieces` are the sections in play order, each with where it starts on the timeline.
+export interface TimelineAxis {
+    moved: boolean;
+    pieces: { srcStart: number; srcEnd: number; viewStart: number; section: number }[];
+    toView: (srcMs: number) => number;
+    toSrc: (viewMs: number) => number;
+    // A stretch of the recording as the stretches of the timeline it is drawn on (one, unless it crosses a split).
+    spans: (fromMs: number, toMs: number) => { fromMs: number; toMs: number }[];
+}
+
+export function timelineAxis(splits: number[], order: number[] | null | undefined, totalMs: number): TimelineAxis {
+    const edges = [0, ...[...splits].sort((a, b) => a - b), totalMs];
+    const sections = edges.slice(0, -1).map((s, i) => ({ srcStart: s, srcEnd: edges[i + 1] }));
+    const valid = !!order && order.length === sections.length && [...order].sort((a, b) => a - b).every((v, i) => v === i)
+        && sections.every(sec => sec.srcEnd > sec.srcStart);
+    const moved = valid && order!.some((v, i) => v !== i);
+    let at = 0;
+    const pieces = (moved ? order! : sections.map((_, i) => i)).map(section => {
+        const sec = sections[section];
+        const p = { ...sec, viewStart: at, section };
+        at += sec.srcEnd - sec.srcStart;
+        return p;
+    });
+    if (!moved) {
+        const clamp = (ms: number) => Math.max(0, Math.min(totalMs, ms));
+        return { moved: false, pieces, toView: clamp, toSrc: clamp, spans: (fromMs, toMs) => (toMs > fromMs ? [{ fromMs, toMs }] : []) };
+    }
+    const bySrc = [...pieces].sort((a, b) => a.srcStart - b.srcStart);
+    const pieceOfSrc = (ms: number) => bySrc.find(p => ms < p.srcEnd) ?? bySrc[bySrc.length - 1];
+    const toView = (ms: number) => {
+        const c = Math.max(0, Math.min(totalMs, ms));
+        const p = pieceOfSrc(c);
+        return p.viewStart + (c - p.srcStart);
+    };
+    const toSrc = (v: number) => {
+        const c = Math.max(0, Math.min(totalMs, v));
+        const p = pieces.find(x => c < x.viewStart + (x.srcEnd - x.srcStart)) ?? pieces[pieces.length - 1];
+        return p.srcStart + (c - p.viewStart);
+    };
+    const spans = (fromMs: number, toMs: number) => bySrc.flatMap(p => {
+        const a = Math.max(fromMs, p.srcStart), b = Math.min(toMs, p.srcEnd);
+        return b > a ? [{ fromMs: p.viewStart + (a - p.srcStart), toMs: p.viewStart + (b - p.srcStart) }] : [];
+    });
+    return { moved: true, pieces, toView, toSrc, spans };
+}
+
+// Where a section dragged from play position `from` lands, dropped at `viewMs` of the timeline: before the section
+// under the pointer when it is in that section's first half, after it otherwise. Returns the new play position.
+export function dropPosition(axis: TimelineAxis, from: number, viewMs: number): number {
+    const count = axis.pieces.length;
+    let slot = count;
+    for (let i = 0; i < count; i++) {
+        const p = axis.pieces[i], len = p.srcEnd - p.srcStart;
+        if (viewMs < p.viewStart + len) { slot = viewMs < p.viewStart + len / 2 ? i : i + 1; break; }
+    }
+    return slot > from ? slot - 1 : slot;
+}

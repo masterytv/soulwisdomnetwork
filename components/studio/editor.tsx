@@ -1395,6 +1395,9 @@ export function Editor({
                                 })),
                                 onCutSection: section => updateEdit(prev => ({ ...prev, cuts: cutSection(prev.cuts, section) })),
                                 onRestoreSection: section => updateEdit(prev => ({ ...prev, cuts: restoreSection(prev.cuts, section) })),
+                                // Item E11: drag a section to a new place on V1.
+                                order: edit.order,
+                                onOrder: order => updateEdit(prev => ({ ...prev, order })),
                             }}
                         />
                     }

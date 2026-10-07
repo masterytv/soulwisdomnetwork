@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E10 in 019's table)
+## Building it (rows E1–E11 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -420,6 +420,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. Built (#162). | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 | E10 | **Open with everything in place.** The first time an episode opens with no saved edit: its filler words and long pauses already cut (each one can be brought back), the teasers, intro and outro on the timeline and in the preview, and the b-roll on V2. The render makes exactly what is shown. Built (#174). | M | High | E9, the b-roll gate (#173) |
+| E11 | **Drag sections on the timeline.** V1 shows the sections between splits in the order they play; drag one to a new place. Built (#176). | M | Extra | E9 |
 
 ### E1 — Built (#143)
 
@@ -879,8 +880,8 @@ dragging on the timeline, and the episode's own intro and outro.
   second, has the picture, the sound and the words in that order (`editRender.test.ts`); the job picks the own
   intro and outro (`editRenderJob.test.ts`); in Chromium, moving a part, playing past its end into the start of the
   recording, and going back to the recording's order.
-- **Not built:** dragging parts on the timeline itself (the timeline would have to show the edited order rather than
-  the recording), and dropping a video onto the timeline's ends for the intro or outro (the panel's choice does it).
+- **Not built then:** dragging parts on the timeline itself (built later as E11), and dropping a video onto the
+  timeline's ends for the intro or outro (the panel's choice does it).
 
 ### E10 — Built (#174)
 
@@ -917,6 +918,27 @@ Build Edit Package stays the Descript hand-off; it never touches the edit.
   (`editRenderOptions.test.ts`); in Chromium, the Programme row and the preview playing a teaser and the intro.
 - **Not built:** trimming a teaser's ends or adding a new one on the timeline (take one out, or set the notes' clips
   and start over), and transitions between the teasers, intro and outro in the preview.
+
+### E11 — Built (#176)
+
+Tom asked (7 October 2026) to drag sections on the timeline, not only move them in the Parts panel.
+- **The timeline draws the play order** (`lib/timeline.ts` `timelineAxis`): the sections between splits laid end to
+  end in `edit.order`, each whole, with its cuts drawn inside it. Every time the timeline keeps is still the
+  recording's; the axis maps a moment to where it is drawn (`toView`), a place on the timeline back to its moment
+  (`toSrc`), and a stretch across a split to the pieces it is drawn in (`spans`). In the recording's order it is the
+  identity, so nothing changes until a section moves. The cuts, the red of the waveform, the speakers, the captions,
+  the section clips and the splits' lines are drawn through it; the pictures and the waveform are read from each
+  section's own stretch of the recording; layers, sounds, transitions, selections, the Blade, snapping guides and the
+  playhead are placed through it, and a layer dragged moves along the drawn timeline.
+- **Dragging:** with the Select tool, press on a section on V1 and drag. A box follows the pointer, a line shows where
+  it goes in and a label says "→ place 2 of 5"; let go and `edit.order` changes (`dropPosition`, `moveSection`), one
+  undo step. A press that does not move is a click as before (it picks a cut, or selects the section and jumps
+  there); the ends of a section and the edges of cuts still trim. Locked, nothing moves.
+- **While moved:** a stretch of time chosen on the waveform stays inside one section; a split's × sits where the
+  section it starts is drawn. The ruler counts along the timeline as drawn; the times in the bar are the recording's.
+- **Checked:** `lib/timeline.test.ts` (the axis both ways, spans across a split, where a dropped section lands); in
+  Chromium, a click selecting a section, dragging the last section first (`order` [2, 0, 1], the playhead for 2:10 of
+  the recording drawn at 0:10), and dragging it back (`order` null).
 
 ## Not in this spec
 

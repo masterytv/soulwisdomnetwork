@@ -165,6 +165,7 @@ const SHORTCUTS: [string, string][] = [
     ['V, B', 'Select tool; Blade tool (click the timeline to split there)'],
     ['Drag the end of a section on the timeline', 'Trim it (the ends of each section are marked [ and ])'],
     ['Click a section on the timeline', 'Select it: Delete cuts it whole'],
+    ['Drag a section along V1', 'Move it to a new place: it plays there (the Parts panel lists the order)'],
     ['Ctrl or ⌘ + C, X, V', 'Copy or cut the selected layer or sound; paste it at the playhead'],
     ['Click a caption on the CC lane', 'Go to it (the CC button shows the caption track over the preview)'],
     ['Ctrl or ⌘ + Z', 'Undo'],
