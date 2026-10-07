@@ -153,6 +153,8 @@ export function Workspace({ header, script, preview, panels, panelId, onPanel, t
 // The keys and clicks of the Studio editor, opened with "?" (the button or the key).
 const SHORTCUTS: [string, string][] = [
     ['Space', 'Play or pause'],
+    ['J, K, L', 'Play backwards, stop, play (J or L again: faster)'],
+    ['K + J or L', 'Back or forward one frame'],
     ['Click a word, or drag across words', 'Select'],
     ['Shift + click', 'Extend the selection'],
     ['Delete or Backspace', 'Cut the selection'],
@@ -163,6 +165,8 @@ const SHORTCUTS: [string, string][] = [
     ['V, B', 'Select tool; Blade tool (click the timeline to split there)'],
     ['Drag the end of a section on the timeline', 'Trim it (the ends of each section are marked [ and ])'],
     ['Click a section on the timeline', 'Select it: Delete cuts it whole'],
+    ['Ctrl or ⌘ + C, X, V', 'Copy or cut the selected layer or sound; paste it at the playhead'],
+    ['Click a caption on the CC lane', 'Go to it (the CC button shows the caption track over the preview)'],
     ['Ctrl or ⌘ + Z', 'Undo'],
     ['Shift + Ctrl or ⌘ + Z, or Ctrl + Y', 'Redo'],
     ['Enter in search', 'Next match'],

@@ -417,6 +417,16 @@ export interface BinItem {
 
 const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
 
+// A copy of a layer or a sound, pasted at the playhead (item E8): a new id, and the original's kind of anchor,
+// on the moment of the recording at the playhead (`srcMs`) or at its time in the edited video (`atMs`).
+export function pasteAt<T extends { id: string; anchor: Anchor }>(item: T, srcMs: number, atMs: number): T {
+    return {
+        ...structuredClone(item),
+        id: newId(item.id.charAt(0) || 'p'),
+        anchor: 'atMs' in item.anchor ? { atMs: Math.max(0, Math.round(atMs)) } : { srcMs: Math.max(0, Math.round(srcMs)) },
+    };
+}
+
 // A layer for a bin item, starting at `srcMs` of the recording: b-roll as the notes plan has it; the logo
 // small in the top right for the whole episode's first minute; an uploaded picture a fifth of the width
 // in the top right; video across the whole frame for its own length (at most a minute), silent.

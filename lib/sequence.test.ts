@@ -119,3 +119,51 @@ test('chapters, quotes, words and on-screen items follow a transition', () => {
     assert.deepEqual(editedWords([{ start: 6000, end: 6400 }], clips), [{ start: 5000, end: 5400 }]);
     assert.deepEqual(layerSpan({ anchor: { srcMs: 9000 }, durationMs: 2000 }, clips, sequenceLength(clips)), { startMs: 8000, endMs: 9000 });
 });
+
+// ─── Moving sections (spec 020 item E9) ──────────────────────────────────────
+
+test('moved sections: the play order, the times in it, and a transition into a moved part', async () => {
+    const { moveSection, orderAfterSplit, orderAfterUnsplit, validOrder, editedTime, editedWords } = await import('./edit');
+    const { sequenceOf, playStep, previewRanges } = await import('./sequence');
+    // Three sections of 10 s (splits at 10 s and 20 s), played third, first, second.
+    const edit = { cuts: [], splits: [10_000, 20_000], order: [2, 0, 1] };
+    const seq = sequenceOf(edit, 30_000);
+    assert.deepEqual(seq.clips.map(c => [c.startMs, c.endMs, c.atMs, c.part]), [[20_000, 30_000, 0, 2], [0, 10_000, 10_000, 0], [10_000, 20_000, 20_000, 1]]);
+    // A moment of the recording lands where its section plays; a cut moment rounds to where the next kept one plays.
+    assert.equal(editedTime(25_000, seq.clips), 5_000);
+    assert.equal(editedTime(3_000, seq.clips), 13_000);
+    const cut = sequenceOf({ ...edit, cuts: [{ startMs: 2000, endMs: 4000, reason: 'manual' as const }] }, 30_000);
+    assert.equal(editedTime(3_000, cut.clips), null);
+    assert.equal(editedTime(3_000, cut.clips, true), cut.clips.find(c => c.startMs >= 4000 - 50 && c.startMs <= 4100)!.atMs);
+    // Words come out in the order they are heard.
+    const words = [{ text: 'a', start: 1000, end: 1400 }, { text: 'b', start: 21_000, end: 21_400 }];
+    assert.deepEqual(editedWords(words, seq.clips).map(w => [w.text, w.start]), [['b', 1000], ['a', 11_000]]);
+    // A dissolve at the split the first section played starts at (10 s): into section 1, from section 0 before it.
+    const withJoin = sequenceOf({ ...edit, joins: [{ at: { atSplit: 10_000 }, transition: 'dissolve' as const, durationMs: 1000 }] }, 30_000);
+    assert.deepEqual(withJoin.joins.map(j => [j.part, j.atMs, j.aEndMs, j.bStartMs]), [[1, 19_000, 10_000, 10_000]]);
+    // A transition into the section that now plays first has nothing before it.
+    const first = sequenceOf({ ...edit, joins: [{ at: { atSplit: 20_000 }, transition: 'dissolve' as const, durationMs: 1000 }] }, 30_000);
+    assert.equal(first.joins.length, 0);
+    assert.match(first.skipped['split:20000'], /now plays first/);
+    // Without a moved section, everything is as before (the recording's order).
+    assert.deepEqual(sequenceOf({ cuts: [], splits: [10_000, 20_000], order: [0, 1, 2] }, 30_000).clips.map(c => c.startMs), [0]);
+    // The order helpers.
+    assert.equal(validOrder([2, 0, 1], 3), true);
+    assert.equal(validOrder([2, 0, 0], 3), false);
+    assert.deepEqual(moveSection(null, 3, 2, 0), [2, 0, 1]);
+    assert.equal(moveSection([1, 0, 2], 3, 1, 0), null);           // back to the recording's order
+    assert.deepEqual(orderAfterSplit([2, 0, 1], [10_000, 20_000], 25_000), [2, 3, 0, 1]);
+    assert.deepEqual(orderAfterSplit([2, 0, 1], [10_000, 20_000], 5_000), [3, 0, 1, 2]);
+    assert.equal(orderAfterUnsplit([2, 0, 1], [10_000, 20_000], 20_000), null);   // sections 1 and 2 join: the recording's order again
+    assert.deepEqual(orderAfterUnsplit([2, 1, 0], [10_000, 20_000], 10_000), [1, 0]);
+    // The preview steps through the play order: from the end of the third section to the start of the first.
+    const ranges = previewRanges(seq);
+    assert.deepEqual(playStep(ranges, 25_000, 0), { index: 0, seekTo: null });
+    assert.deepEqual(playStep(ranges, 30_000, 0), { index: 1, seekTo: 0 });
+    // The first section runs straight into the second, which plays next: no seek.
+    assert.deepEqual(playStep(ranges, 10_010, 1), { index: 2, seekTo: null });
+    // At the end of the last in play order (20 s, the start of the third in the recording): the end, not the third again.
+    assert.deepEqual(playStep(ranges, 20_010, 2), { index: 2, seekTo: null });
+    // Moved by hand into a cut: the next kept moment.
+    assert.deepEqual(playStep(previewRanges(cut), 3000, 1), { index: 2, seekTo: cut.clips[2].startMs });
+});

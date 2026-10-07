@@ -417,7 +417,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E5 | **Media and overlays.** Image overlays are built (#130: upload, nine positions, width, preview, render). Left: `overlays` → `layers` (`toLayer`, a free box), episode bin and video and audio uploads, transitions in and out, motion, dragging and resizing on the preview with react-rnd, dragging and trimming on the timeline. Existing b-roll becomes layers. | L | Extra | E3 |
 | E6 | **Elements.** Text with a second line and **Name titles** per speaker are built (#130, ASS render). Left: title card, lower-third style from Studio branding, logo bug, and the Properties panel. Built (#159). | M | High | E5 |
 | E7 | **Music and effects.** Show library with the licence record and "not checked" gate, and audio uploads. Credits added to the YouTube description. Music, effects and stingers with gain, fades and ducking. Preview mixing; `amix` and `sidechaincompress` in the render, starting from Part H's `musicMix` (Jo Ann H, `bc5b006`, not merged; credit her). No composed music or AI video (`docs/PLANNING.md` N2). Built (#160). | M | High | E5 |
-| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. | M | High | E6 |
+| E8 | **Captions track and polish.** The YouTube caption track on the timeline and in the Captions panel (not burned in). Part I's burned-in option stays as an on/off choice in the Captions panel (`docs/PLANNING.md` N1). Copy and paste items. J/K/L. Built (#162). | M | High | E6 |
 | E9 | **Later: move clips.** Drag parts to a new place on V1, and drop a new intro or outro onto the timeline. Every time mapping follows the new order; chapters stay in order. | L | Extra | E4, and Tom's go-ahead |
 
 ### E1 — Built (#143)
@@ -793,10 +793,93 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
       the use.
   - **Not yet on a real episode, or in a render from `main`.** The library starts empty: an admin adds the first files.
 
+### E8 — Built (#162)
+
+- **The caption track as YouTube gets it** (`lib/captions.ts`, tested in `lib/captions.test.ts`): `editCues` is the
+  edit's kept words on the edited timeline (`editedWords` over the play order), grouped by `buildCues`, exactly as the
+  render writes its `.srt` (which only shifts it by the teasers and intro) and burns captions in. So the editor shows the
+  track before anything is rendered. When Descript makes the final cut, the track comes from its transcript instead, and
+  the panel says so.
+  - **Too fast to read:** over 20 characters a second (`MAX_CPS`, Netflix's limit for adults; `cueCps`, `cueTooFast`).
+    Marked in amber; YouTube shows it anyway. Nothing can be typed into a caption: a wrong word is fixed in the script
+    (019 item 2.3), which fixes the caption too.
+  - **Fixed on the way:** a word that starts exactly where a part after a transition starts was dropped from the
+    captions and the final cut's words (`editedWords` counted the moment in the part before, whose length then did not
+    match). A word inside one range now takes that range's place; one across two ranges played back to back is kept as
+    before.
+- **Studio editor:**
+  - **Timeline:** a **CC Captions** lane under V1, drawn on the canvas (a block per caption where it is heard in the
+    recording, its words once there is room, amber when too fast). Clicking one goes to it; hovering shows its words.
+    Its header turns CC on the preview on and off. The default timeline height grew from 240 to 270 px to fit it.
+  - **CC** beside the speed buttons: the caption being spoken over the preview, roughly as YouTube's player draws it
+    (white on a dark box, low in the middle). Not burned in. When burned-in captions are on, they show instead.
+  - **Captions** panel (`components/studio/captions.tsx`, on the rail after On screen): what the track is and how to fix
+    a word; **Show them over the preview (CC)**; **Burned in**, Part I's choice and look, moved here from On screen (N1:
+    the Studio setting, on with a look of its own, or off for this video); the count of captions and of too-fast ones,
+    with **Next one** and **Only those**; and every caption with its time in the edit. Click one to go there (the script
+    follows, so the wrong word is in view); the one being spoken is marked, and kept in view while playing.
+  - The burned-in preview now reads the same cues on the edited timeline, as the render burns them in (it grouped the
+    recording's words before, so a caption could hold a word that was cut).
+  - **Copy and paste** (`components/studio/editorKeys.tsx`): Ctrl or ⌘ + C or X copies or cuts the selected layer or
+    sound; Ctrl or ⌘ + V pastes it at the playhead as a new one (`pasteAt` in `lib/layers.ts`: a new id, anchored as the
+    original was, to the words at the playhead or to its time in the edit). The clipboard is the page's own: another
+    episode's bin would not have the file. Not while words or a stretch of the timeline are selected. One undo step each.
+  - **J, K and L:** L plays, and again plays faster (the speed buttons follow, up to 2×); K stops; J plays backwards, and
+    again faster (1×, 2×, 4×), shown beside the speed buttons. With K held, J and L step a frame. Backwards is a seek a
+    frame at a time (`ReversePlay`; a video cannot play in reverse): through the edit it skips the cuts as playing does,
+    and passes over the start of a part that a transition's second video plays.
+  - The shortcut sheet lists them.
+- **Checked:**
+  - Unit tests (`lib/captions.test.ts`): the editor's track is the render's `.srt` after a cut; a dissolve moves the words
+    after it a second earlier and keeps the word at the split; reading speed; the caption at a moment; pasting a lower
+    third, the logo bug and a sound (new id, anchor, schema, a deep copy).
+  - Chromium, with a test video: 53 captions, one too fast at 37 a second, in amber on the lane and in the list. Clicking
+    the caption at 0:29 in the edit went to 33.4 s of the recording (4 s of cuts before it); CC showed it over the preview;
+    **Next one** went to the fast one; a click on the CC lane went to that caption; burned in on, the burned caption showed
+    and CC stepped aside. A lower third copied and pasted at 0:40 kept its words, anchored at 40 s with a new id; Ctrl+X
+    and Ctrl+Z. L played, again at 1.25×; K stopped; J went back about a second a second, again about two, and passed
+    over a 1.55 s cut without stopping in it; K with L, L and J moved one frame.
+  - **Not yet on a real episode.**
+
 **Each row is one PR.** Each ends with:
 - the page usable on the real 48-minute episode;
 - a render of it checked by 019 item 0.2;
 - `lib/` tests for any new pure function.
+
+### E9 — Built (#170)
+
+Tom gave the go-ahead (6 October 2026: "finish all the rest of the features"). Moving parts, in a panel rather than by
+dragging on the timeline, and the episode's own intro and outro.
+- **The model:** `edit.order`, the sections between splits (numbered in the recording's order) in play order; null or
+  missing is the recording's order, so every edit made before plays exactly as it did. `lib/edit.ts` has
+  `validOrder`, `isReordered`, `moveSection`, and `orderAfterSplit` / `orderAfterUnsplit`, which keep the order
+  right when a split is added (the section becomes two, side by side) or removed (the section after it joins the one
+  before). The edit route drops an order that no longer fits the splits.
+- **The play order** (`lib/sequence.ts` `sequenceOf`): with a moved section, the episode is divided at every split and
+  the sections laid out in `order`; the transition into a part is the one at the split it starts at (so a dissolve
+  "at 10:00" always leads into the section that starts at 10:00, wherever it plays), and one into the section that
+  now plays first says it cannot play. Unmoved, nothing changed.
+- **Every time follows it:** `editedTime` maps a moment to wherever its section plays (a cut moment rounds to where
+  the next kept moment of the recording plays); `editedWords` returns words in the order they are heard (captions,
+  the .srt, the final cut's words); chapters are re-sorted by their new times before YouTube's rules are applied
+  (`tidyChapters`); layers and sounds anchored to words move with their section; the render's windows and sound
+  (4.2) take the clips in play order.
+- **The preview** steps through the play order (`playStep`): at the end of a stretch it goes to the start of the
+  next one in play order, wherever that is in the recording; a seek by hand takes the stretch it lands in. In the
+  recording's order this is the skip over each cut it always made. The second video at cuts (4.3) follows it too.
+- **The Parts panel** (`components/studio/partsPanel.tsx`): the sections in play order, each with its times, how
+  much is kept and its first words (click to go there), ↑ and ↓ to move it, and "Back to the recording's order". The
+  timeline keeps showing the recording in its own order; the panel says so.
+- **The episode's own intro and outro:** chosen in the same panel from the episode's media bin videos
+  (`edit.intro`, `edit.outro`; the route checks the file is in the bin). The render job uses them instead of the
+  Studio's; without them the outro is the Studio's intro, as always.
+- **Checked:** the play order, times, words, the transition into a moved part and the order helpers
+  (`lib/sequence.test.ts`); a real render of three coloured sections with their own tones, played third, first,
+  second, has the picture, the sound and the words in that order (`editRender.test.ts`); the job picks the own
+  intro and outro (`editRenderJob.test.ts`); in Chromium, moving a part, playing past its end into the start of the
+  recording, and going back to the recording's order.
+- **Not built:** dragging parts on the timeline itself (the timeline would have to show the edited order rather than
+  the recording), and dropping a video onto the timeline's ends for the intro or outro (the panel's choice does it).
 
 ## Not in this spec
 

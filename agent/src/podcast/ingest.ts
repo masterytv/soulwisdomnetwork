@@ -4,6 +4,9 @@
 // candidate speaker names.
 // Recordings uploaded in the Studio (lib/server/uploads.ts) are already in Cloud Storage; they
 // go through the same steps without Drive, which is optional when only uploads are used.
+// A folder in the inbox holding one video (a Zoom recording folder) is one episode too, and the audio files in it
+// that are one per speaker are copied beside it as its speaker tracks (spec 019 item 3.3, lib/speakerTracks.ts);
+// the whole folder moves to "02 Processed" when it is through.
 // Runs in GitHub Actions (.github/workflows/podcast_ingest.yml), NOT on App Hosting.
 //
 // Every step records its output on the episode document before moving on, so a failed or
@@ -17,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { DetectedSpeaker, Episode, EpisodeStage } from '../../../types/episode';
 import { THUMBS, type ThumbIndex } from '../../../lib/thumbs';
+import { pickTracks, trackName, type SpeakerTrack } from '../../../lib/speakerTracks';
 import { ASSEMBLYAI_USD_PER_HOUR, KEYTERMS_USD_PER_HOUR, MAX_ATTEMPTS, SETTLE_MINUTES, loadConfig } from './config';
 import {
     checkFolderAccess, createDrive, createGoogleDoc, downloadFile, isVideo, listFolderFiles, listSubfolders, moveItem, type DriveFile,
@@ -240,13 +244,16 @@ async function catchUpReviews() {
 // `uploaded`: the recording was uploaded in the Studio; its original is already in Cloud
 // Storage, so it is read from there and there is no Drive file to move.
 // `keyterms`: names and terms the transcriber should spell right (spec 019 item 2.4).
-async function processEpisode(video: DriveFile, candidates: string[], keyterms: string[], uploaded = false): Promise<Failure | null> {
+// `folder`: the recording came in a folder of its own (Zoom's), with these speaker tracks; the folder moves when done.
+async function processEpisode(video: DriveFile, candidates: string[], keyterms: string[], uploaded = false,
+    folder?: { id: string; tracks: DriveFile[] }): Promise<Failure | null> {
     const fileId = video.id!;
     const fileName = video.name ?? fileId;
     const title = episodeTitle(fileName);
+    const moveId = folder?.id ?? fileId;
 
-    // createdTime too: an upload can keep the file's original modifiedTime.
-    const lastChange = Math.max(Date.parse(video.createdTime ?? '') || 0, Date.parse(video.modifiedTime ?? '') || 0);
+    // createdTime too: an upload can keep the file's original modifiedTime. A folder's tracks may still be arriving.
+    const lastChange = Math.max(...[video, ...(folder?.tracks ?? [])].flatMap(f => [Date.parse(f.createdTime ?? '') || 0, Date.parse(f.modifiedTime ?? '') || 0]));
     if (!config.skipWait && lastChange > Date.now() - SETTLE_MINUTES * 60_000) {
         console.log(`⏳ ${title}: added in the last ${SETTLE_MINUTES} min, waiting for the next run.`);
         return null;
@@ -261,7 +268,7 @@ async function processEpisode(video: DriveFile, candidates: string[], keyterms: 
     }
     if (existing?.status === 'awaiting_speaker_review' && !uploaded) {
         // Finished on an earlier run but the Drive move did not happen.
-        await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
+        await moveItem(drive, moveId, config.toProcessFolderId, config.processedFolderId);
         console.log(`📁 ${title}: already transcribed, moved to Processed.`);
         return null;
     }
@@ -326,6 +333,21 @@ async function processEpisode(video: DriveFile, candidates: string[], keyterms: 
             const sourcePath = await upload(localSource, `${prefix}/source/${fileName}`, video.mimeType ?? 'video/mp4');
             media = { ...media, sourcePath };
             await touch(ref, { status: 'ingesting', stage, 'media.sourcePath': sourcePath });
+        }
+        // The speaker tracks from the recording's folder, once (spec 019 item 3.3).
+        if (folder?.tracks.length && !media.speakerTracks?.length) {
+            const tracks: SpeakerTrack[] = [];
+            for (const [i, t] of folder.tracks.entries()) {
+                const name = t.name ?? `track-${i + 1}`;
+                const local = path.join(workDir, `track-${i + 1}${path.extname(name) || '.m4a'}`);
+                await downloadFile(drive, t.id!, local);
+                const trackPath = await upload(local, `${prefix}/source/tracks/${i + 1}-${name.replace(/[^\w.\- ]+/g, '-').slice(0, 120)}`, t.mimeType ?? 'audio/mp4');
+                fs.rmSync(local, { force: true });
+                tracks.push({ path: trackPath, fileName: name, name: trackName(name) });
+            }
+            media = { ...media, speakerTracks: tracks };
+            await touch(ref, { 'media.speakerTracks': tracks });
+            console.log(`  🎚️ ${tracks.length} speaker tracks: ${tracks.map(t => t.name).join(', ')}`);
         }
 
         // 2. 720p proxy and audio-only file.
@@ -399,7 +421,7 @@ async function processEpisode(video: DriveFile, candidates: string[], keyterms: 
             // Whether "um" and "uh" are written out (spec 019 item 1.6); AssemblyAI echoes the option.
             'transcription.disfluencies': transcript.disfluencies === true,
         });
-        if (!uploaded) await moveItem(drive, fileId, config.toProcessFolderId, config.processedFolderId);
+        if (!uploaded) await moveItem(drive, moveId, config.toProcessFolderId, config.processedFolderId);
         console.log(`  ✅ ${title}: ${speakers.length} speaker(s) detected, ready for speaker review.`);
         try {
             await publishReview(ref, (await ref.get()).data() as Episode, speakers, transcript);
@@ -457,8 +479,28 @@ async function main() {
         // One video file = one episode. Anything else in the inbox is left alone.
         const videos = (await listFolderFiles(drive, config.toProcessFolderId)).filter(isVideo);
         console.log(`📂 ${videos.length} video(s) in "${inboxName}"`);
+        // A folder holding one video (Zoom's recording folder) is one episode, with its speaker tracks.
+        const folders: { video: DriveFile; folder: { id: string; tracks: DriveFile[] } }[] = [];
         for (const sub of await listSubfolders(drive, config.toProcessFolderId)) {
-            console.warn(`⚠️ Subfolder "${sub.name}" is ignored — drop video files straight into "${inboxName}".`);
+            const top = await listFolderFiles(drive, sub.id!);
+            const inside = (await Promise.all((await listSubfolders(drive, sub.id!)).map(f => listFolderFiles(drive, f.id!)))).flat();
+            const vids = top.filter(isVideo);
+            if (vids.length !== 1) {
+                console.warn(`⚠️ Folder "${sub.name}" is ignored: it needs exactly one video (it has ${vids.length}).`);
+                continue;
+            }
+            folders.push({ video: vids[0], folder: { id: sub.id!, tracks: pickTracks(top, inside) } });
+        }
+        if (folders.length) console.log(`📂 ${folders.length} recording folder(s) in "${inboxName}"`);
+        for (const { video, folder } of folders) {
+            try {
+                const failure = await processEpisode(video, candidates, keyterms, false, folder);
+                if (failure) failures.push(failure);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                console.error(`❌ ${video.name}: ${message}`);
+                failures.push({ episode: video.name ?? video.id!, stage: 'copy', message, fileId: video.id! });
+            }
         }
 
         for (const video of videos) {

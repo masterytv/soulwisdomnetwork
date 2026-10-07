@@ -3,13 +3,13 @@
 // Uploads from the Studio (lib/server/uploads.ts): asks the server for a one-time upload link,
 // sends the file straight to Cloud Storage with a progress bar, and, for a recording, turns it
 // into an episode. Used on the Studio page (recordings), the Settings page (logo, intro) and the
-// editor (overlay images, Part I; the media bin's pictures, video and sounds, spec 020 item E5).
+// editor (overlay images, Part I; the media bin's pictures, video and sounds, spec 020 item E5; speakers' tracks, spec 019 item 3.3).
 
 import { useRef, useState } from "react";
 import { studioFetch } from "@/lib/studioClient";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
 
-type Kind = "episode" | "logo" | "intro" | "overlay" | "media" | "library" | "licence";
+type Kind = "episode" | "logo" | "intro" | "overlay" | "media" | "library" | "licence" | "track";
 
 // Some browsers leave the type empty for video files; the extension says what it is.
 const BY_EXTENSION: Record<string, string> = {

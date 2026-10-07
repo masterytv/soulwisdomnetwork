@@ -1,7 +1,10 @@
 // Captions for the finished episode (spec 005 step 13; docs/specs/012-youtube-upload.md), built from
 // the final cut's own word timings (final/words.json, made in step 11), so names and spellings
-// match what AssemblyAI heard in the edit rather than YouTube's automatic captions.
+// match what AssemblyAI heard in the edit rather than YouTube's automatic captions. When the Studio's
+// render is the final cut, those words are the edit's (editedWords), so the Studio editor shows the same
+// track before rendering (spec 020 item E8: editCues, the CC lane and the Captions panel).
 
+import { editedWords, type KeptRange } from './edit';
 import type { TimedWord } from './retime';
 
 // Broadcast-style limits: two lines of up to 42 characters, on screen for 1 to 6 seconds.
@@ -65,4 +68,33 @@ function stamp(ms: number) {
 
 export function toSrt(cues: Cue[]) {
     return cues.map((c, i) => `${i + 1}\n${stamp(c.startMs)} --> ${stamp(c.endMs)}\n${c.lines.join('\n')}\n`).join('\n');
+}
+
+// The caption track the edit will have: the kept words on the edited timeline, grouped as the render's .srt
+// groups them (before any teasers and intro, which only shift it).
+export function editCues(words: TimedWord[], ranges: KeptRange[]): Cue[] {
+    return buildCues(editedWords(words, ranges));
+}
+
+// Reading speed: over this many characters a second a caption is hard to read before it goes (Netflix's
+// limit for adults is 20). YouTube shows it anyway; the Captions panel marks it.
+export const MAX_CPS = 20;
+
+export function cueCps(c: Cue): number {
+    const chars = c.lines.join(' ').length;
+    return chars / Math.max(0.001, (c.endMs - c.startMs) / 1000);
+}
+
+export const cueTooFast = (c: Cue) => cueCps(c) > MAX_CPS;
+
+// The caption on screen at `ms` (cues are in time order and do not overlap), or -1.
+export function cueAt(cues: Cue[], ms: number): number {
+    let lo = 0, hi = cues.length - 1;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (cues[mid].endMs <= ms) lo = mid + 1;
+        else if (cues[mid].startMs > ms) hi = mid - 1;
+        else return mid;
+    }
+    return -1;
 }

@@ -29,9 +29,10 @@ permissions:
   contents: read
 
 env:
-  # DeepFilterNet's LADSPA plugin, pinned to v0.5.6 (its last release) and checked against this checksum.
-  DEEPFILTER_URL: https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/libdeep_filter_ladspa-0.5.6-x86_64-unknown-linux-gnu.so
-  DEEPFILTER_SHA256: 2ca3205c2911d389604a826a240e745597d50252b5cab81c8248252b335e2236
+  # DeepFilterNet's command-line program, pinned to v0.5.6 (its last release) and checked against this checksum.
+  # The same as the render's (podcast_edit_render.yml); its LADSPA plugin let the voice drift (spec 019 item 3.2).
+  DEEPFILTER_URL: https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/deep-filter-0.5.6-x86_64-unknown-linux-musl
+  DEEPFILTER_SHA256: 70775e251eee44c0f2451a1e833326cf8bcbbe304d3e7cd12851e6fce72ef7da
 
 jobs:
   compare:
@@ -58,8 +59,9 @@ jobs:
 
     - name: Download DeepFilterNet
       run: |
-        curl -sSL --fail -o "$RUNNER_TEMP/deep_filter.so" "$DEEPFILTER_URL"
-        echo "$DEEPFILTER_SHA256  $RUNNER_TEMP/deep_filter.so" | sha256sum -c -
+        curl -sSL --fail -o "$RUNNER_TEMP/deep-filter" "$DEEPFILTER_URL"
+        echo "$DEEPFILTER_SHA256  $RUNNER_TEMP/deep-filter" | sha256sum -c -
+        chmod +x "$RUNNER_TEMP/deep-filter"
 
     - name: Compare clean-ups
       env:
@@ -72,4 +74,4 @@ jobs:
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
-      run: DEEPFILTER_LADSPA="$RUNNER_TEMP/deep_filter.so" npx tsx agent/src/podcast/cleanupCompare.ts
+      run: DEEPFILTER_BIN="$RUNNER_TEMP/deep-filter" npx tsx agent/src/podcast/cleanupCompare.ts

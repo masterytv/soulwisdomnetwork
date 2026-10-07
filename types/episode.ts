@@ -5,6 +5,8 @@ import type { ShowNotes } from '../lib/showNotes';
 import type { RedraftScope } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
 import type { EpisodeEdit } from '../lib/edit';
+import type { VoiceCleanup } from '../lib/voice';
+import type { SpeakerTrack } from '../lib/speakerTracks';
 import type { Extras } from '../lib/extras';
 import type { Retake } from '../lib/retakes';
 
@@ -232,6 +234,29 @@ export interface EpisodeEditRender {
     warnings?: string[];
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
+    voice?: VoiceCleanup;                 // the voice clean-up it used (spec 019 item 3.2)
+    tracks?: number;                      // the speaker tracks its voice was made from (spec 019 item 3.3); 0 or missing: the recording's sound
+    // Files that open the edit's cuts in another editor (spec 019 item 4.1), in the render's folder: kind is
+    // resolve, premiere, finalcut, captions (.srt on their timeline) or constantRate (the recording's copy they name).
+    exports?: { kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate'; name: string; path: string; driveUrl: string | null }[];
+    auphonicHold?: string | null;         // its hold on Auphonic's free hours (lib/server/spending.ts), given back if it fails before sending
+}
+
+// The audio podcast feed (spec 019 item 5.1, lib/podcastFeed.ts): the final cut as an MP3 at −16 LUFS with its
+// chapters and the show's artwork (agent/src/podcast/podcastAudio.ts), and whether it is in the feed.
+export interface EpisodePodcast {
+    status: 'queued' | 'making' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    audioPath?: string;                   // Cloud Storage, episodes/{id}/podcast/episode.mp3
+    bytes?: number;
+    durationSeconds?: number;
+    finalAt?: number;                     // the final cut it was made from (its finishedAt, ms)
+    loudness?: { afterLufs: number; truePeak: number };
+    published?: boolean;                  // in the feed
+    publishedAt?: number;                 // when it first went in (ms): the feed's date for it
 }
 
 // Thumbnail options (spec 005 step 12; docs/specs/011-thumbnails.md). The job makes the raw
@@ -382,6 +407,7 @@ export interface Episode {
         silencesPath?: string;            // analysis/silences.json: the audio's silences (lib/edit.ts SilencesFile; spec 019 item 1.1)
         peaksPath?: string;               // analysis/peaks.bin: the Studio editor's waveform (lib/peaks.ts; spec 020 item E2)
         thumbsPath?: string;              // analysis/thumbs.json: its thumbnail sheets (lib/thumbs.ts; spec 020 item E2)
+        speakerTracks?: SpeakerTrack[];   // one audio file per speaker, when Zoom made them (lib/speakerTracks.ts; spec 019 item 3.3)
     };
     transcription?: {
         provider: 'assemblyai';
@@ -414,6 +440,7 @@ export interface Episode {
     thumbnails?: EpisodeThumbnails;       // thumbnail options, spec 005 step 12
     approval?: EpisodeApproval;           // Checkpoint D
     youtube?: EpisodeYoutube;             // the upload, spec 005 step 13
+    podcast?: EpisodePodcast;             // the audio podcast feed, spec 019 item 5.1
     shorts?: EpisodeShorts;               // shorts and Checkpoint E, spec 005 step 14
     extras?: EpisodeExtras;                // social posts and follow-up email from the approved notes
     translations?: EpisodeTranslations;    // captions, title and description in other languages (Part I)

@@ -114,9 +114,4 @@ test('the stretch is cut at 48 kHz stereo, and each chain keeps its length', asy
         await applyChain(stretch, chainFor(kind), out);
         assert.ok(Math.abs(Number(JSON.parse(probe(out)).format.duration) - 6) < 0.05, kind);
     }
-    // DeepFilterNet replaces afftdn in today's chain, around a mix to mono and back.
-    const dfn = chainFor('deepfilter', '/opt/dfn.so');
-    assert.match(dfn, /highpass=f=80,aresample=48000,pan=mono\|c0=0\.5\*c0\+0\.5\*c1,ladspa=file=\/opt\/dfn\.so:plugin=deep_filter_mono:controls=c0=100,pan=stereo\|c0=c0\|c1=c0,acompressor=/);
-    assert.equal(dfn.includes('afftdn'), false);
-    assert.throws(() => chainFor('deepfilter'), /LADSPA plugin/);
 });

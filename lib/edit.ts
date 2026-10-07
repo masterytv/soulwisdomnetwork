@@ -7,6 +7,7 @@ import type { CaptionChoice, Overlay } from './onScreen';
 import type { Join } from './transitions';
 import type { Layer } from './layers';
 import type { Sound } from './audio';
+import type { VoiceCleanup } from './voice';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -36,6 +37,17 @@ export interface EpisodeEdit {
     layers?: Layer[];
     // Music and effects (spec 020 item E7, lib/audio.ts) on A2 and A3, from the show library or the episode's media.
     audio?: Sound[];
+    // This episode's voice clean-up in the render (spec 019 item 3.2, lib/voice.ts); null or missing: the Studio's.
+    voice?: VoiceCleanup | null;
+    // Whether the render makes the voice from the episode's speaker tracks, when it has them (spec 019 item 3.3);
+    // null or missing: yes.
+    speakerTracks?: boolean | null;
+    // Spec 020 item E9: the sections (the stretches between splits, numbered in the recording's order) in the order
+    // they play; null or missing: the recording's order. And this episode's own intro and outro, from its media bin
+    // (null or missing: the Studio settings').
+    order?: number[] | null;
+    intro?: { path: string; name: string } | null;
+    outro?: { path: string; name: string } | null;
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode
@@ -123,6 +135,7 @@ export function keepRanges(durationMs: number, cuts: Cut[], padMs = 40, words?: 
 // next kept range instead of null. Ranges from playOrder (lib/sequence.ts) carry their own
 // place in the edited episode, so transitions that overlap two ranges move everything after them.
 export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextKept = false): number | null {
+    if (!inSourceOrder(ranges)) return editedTimeAnyOrder(originalMs, ranges, roundToNextKept);
     let offset = 0;
     for (const r of ranges) {
         const at = r.atMs ?? offset;
@@ -138,6 +151,62 @@ export function editedTime(originalMs: number, ranges: KeptRange[], roundToNextK
     }
     // Past the last kept range — either cut or past the end.
     return roundToNextKept ? offset : null;
+}
+
+// Whether the ranges play in the recording's order (always, until sections are moved: spec 020 item E9).
+function inSourceOrder(ranges: KeptRange[]) {
+    for (let i = 1; i < ranges.length; i++) if (ranges[i].startMs < ranges[i - 1].startMs) return false;
+    return true;
+}
+
+// editedTime when sections were moved: the range a moment is in, wherever it plays; when it is cut, with
+// `roundToNextKept`, where the next kept moment of the recording plays (or the end, past the last).
+function editedTimeAnyOrder(originalMs: number, ranges: KeptRange[], roundToNextKept: boolean): number | null {
+    let offset = 0, end = 0;
+    let next: { startMs: number; at: number } | null = null;
+    for (const r of ranges) {
+        const at = r.atMs ?? offset;
+        if (originalMs >= r.startMs && originalMs <= r.endMs) return at + (originalMs - r.startMs);
+        if (r.startMs > originalMs && (!next || r.startMs < next.startMs)) next = { startMs: r.startMs, at };
+        offset = at + (r.endMs - r.startMs);
+        end = Math.max(end, offset);
+    }
+    return roundToNextKept ? next?.at ?? end : null;
+}
+
+// ─── Moving sections (spec 020 item E9) ──────────────────────────────────────
+
+// Whether `order` is a play order for `count` sections: each once.
+export function validOrder(order: unknown, count: number): order is number[] {
+    return Array.isArray(order) && order.length === count && [...order].sort((a, b) => a - b).every((v, i) => v === i);
+}
+
+// Whether an order moves anything.
+export const isReordered = (order: number[] | null | undefined) => !!order && order.some((v, i) => v !== i);
+
+// The order after a split at `ms` (with `splits` as they were): the section it divides becomes two, side by side.
+export function orderAfterSplit(order: number[] | null | undefined, splits: number[], ms: number): number[] | null {
+    if (!isReordered(order)) return null;
+    const s = splits.filter(x => x < ms).length;
+    return order!.flatMap(v => (v === s ? [s, s + 1] : [v > s ? v + 1 : v]));
+}
+
+// The order after the split at `ms` is removed: the section after it joins the one before, which keeps its place.
+export function orderAfterUnsplit(order: number[] | null | undefined, splits: number[], ms: number): number[] | null {
+    if (!isReordered(order)) return null;
+    const i = [...splits].sort((a, b) => a - b).indexOf(ms);
+    if (i < 0) return order!;
+    const next = order!.filter(v => v !== i + 1).map(v => (v > i + 1 ? v - 1 : v));
+    return isReordered(next) ? next : null;
+}
+
+// Moves the section at play position `from` to `to`.
+export function moveSection(order: number[] | null | undefined, count: number, from: number, to: number): number[] | null {
+    const base = validOrder(order, count) ? [...order] : Array.from({ length: count }, (_, i) => i);
+    if (from < 0 || from >= count || to < 0 || to >= count) return isReordered(base) ? base : null;
+    const [v] = base.splice(from, 1);
+    base.splice(to, 0, v);
+    return isReordered(base) ? base : null;
 }
 
 // Total duration of the edited episode from the kept ranges.
@@ -401,6 +470,8 @@ export function applyToChapters(
     chapters: { startMs: number; title: string }[],
     ranges: KeptRange[],
 ): { startMs: number; title: string }[] {
+    // Index for index with `chapters` (callers pair them up); with moved sections (spec 020 item E9) they may then
+    // need sorting by their new times.
     return chapters.map(ch => {
         const t = editedTime(ch.startMs, ranges, true);
         return { ...ch, startMs: t ?? 0 };
@@ -422,13 +493,28 @@ export function applyToQuotes(
 // The transcript as it will be heard in the edited episode: words that are fully kept, moved
 // onto the edited timeline and shifted by `offsetMs` (whatever plays before the episode, such
 // as teasers and the intro). Cut words are dropped. This replaces re-transcribing the final cut.
+// A word inside one range takes that range's place: one starting exactly where a part after a
+// transition starts belongs to that part, not to the end of the one before (spec 020 item E8).
 export function editedWords<W extends { start: number; end: number }>(words: W[], ranges: KeptRange[], offsetMs = 0): W[] {
-    const out: W[] = [];
+    const out: { word: W; stretch: number }[] = [];
     for (const w of words) {
-        const start = editedTime(w.start, ranges);
-        const end = editedTime(w.end, ranges);
-        if (start === null || end === null || end - start !== w.end - w.start) continue;
-        out.push({ ...w, start: start + offsetMs, end: end + offsetMs });
+        let start: number | null = null, offset = 0, stretch = -1;
+        for (const [i, r] of ranges.entries()) {
+            const at = r.atMs ?? offset;
+            if (w.start >= r.startMs && w.end <= r.endMs) { start = at + (w.start - r.startMs); stretch = i; break; }
+            offset = at + (r.endMs - r.startMs);
+        }
+        if (start === null) {
+            // Across two ranges that play back to back.
+            const s = editedTime(w.start, ranges), e = editedTime(w.end, ranges);
+            if (s === null || e === null || e - s !== w.end - w.start) continue;
+            start = s;
+            stretch = ranges.findIndex(r => w.start >= r.startMs && w.start <= r.endMs);
+        }
+        out.push({ word: { ...w, start: start + offsetMs, end: start + (w.end - w.start) + offsetMs }, stretch });
     }
-    return out;
+    // In the order they are heard: by the stretch they play in, then by time. In the recording's order that is the
+    // order they came in (within a transition's overlap the earlier part's words stay first); with moved sections
+    // (spec 020 item E9) a later section's words can come first.
+    return out.sort((a, b) => a.stretch - b.stretch || a.word.start - b.word.start).map(x => x.word);
 }

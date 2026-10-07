@@ -1,0 +1,53 @@
+# The audio podcast feed (docs/specs/019-editor-light-v2.md item 5.1; agent/src/podcast/podcastAudioRun.ts): the final
+# cut's sound as an MP3 at −16 LUFS with its chapters and the show's artwork, saved to Cloud Storage, where the
+# site's feed (/podcast/feed.xml) serves it once the producer puts it in the feed. Started from the show notes page,
+# or by hand from the Actions tab.
+
+name: Podcast Audio
+run-name: "Podcast Audio · ${{ inputs.episode_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      episode_id:
+        description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
+        required: true
+
+concurrency:
+  group: podcast-audio-${{ inputs.episode_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Install ffmpeg
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+
+    - name: Make the podcast audio
+      env:
+        EPISODE_ID: ${{ inputs.episode_id }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/podcast/podcastAudioRun.ts

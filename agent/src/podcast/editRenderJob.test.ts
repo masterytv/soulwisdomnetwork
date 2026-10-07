@@ -276,3 +276,173 @@ test('job: library sounds play only while checked; their credits and uses are re
     assert.deepEqual(logged, [{ ids: ['ok'], kind: 'episode', ref: `episodes/${ID}/editRender/v3-9/episode.mp4` }]);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the voice clean-up: the edit\'s own choice or the Studio\'s, given to the renderer and kept with the render (spec 019 item 3.2)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-voice-'));
+    const run = async (voice: 'standard' | 'deepfilter' | 'auphonic' | null, studio: 'standard' | 'deepfilter' | 'auphonic') => {
+        const updates: Record<string, unknown>[] = [];
+        let given: Parameters<EditRenderDeps['render']>[0] | null = null;
+        await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [], voice } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async fields => { updates.push(fields); },
+            render: async opts => {
+                given = opts;
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, voiceCleanup: studio },
+            voice: { deepFilter: '/opt/deep-filter', auphonicKey: 'k3y' },
+        }, path.join(dir, 'work'), '1');
+        const ready = updates.find(u => u['editRender.status'] === 'ready')!;
+        return { clean: given!.clean, voice: given!.voice, kept: ready['editRender.voice'] };
+    };
+    assert.deepEqual(await run(null, 'standard').then(r => [r.clean, r.kept]), ['light', 'standard']);
+    assert.deepEqual(await run(null, 'deepfilter').then(r => [r.clean, r.kept]), ['deepfilter', 'deepfilter']);
+    assert.deepEqual(await run('auphonic', 'deepfilter').then(r => [r.clean, r.kept]), ['auphonic', 'auphonic']);
+    const tools = (await run('auphonic', 'standard')).voice!;
+    assert.equal(tools.deepFilter, '/opt/deep-filter');
+    assert.equal(tools.auphonic?.apiKey, 'k3y');
+    assert.equal(planEditRender(episode({ edit: { version: 1, cuts: [] } })).voice, 'standard');
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the files for other editors are saved with the render; when they cannot be made, the render is kept with a warning (spec 019 item 4.1)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-files-'));
+    const run = async (exportEdit: EditRenderDeps['exportEdit']) => {
+        const uploads: string[] = [];
+        const drive: { name: string; type?: string; folder?: string }[] = [];
+        const result = await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 4, cuts: [{ startMs: 1000, endMs: 3000, reason: 'manual' }] } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async (_l, p) => { uploads.push(p); },
+            saveToDrive: async (_l, name, type, folder) => { drive.push({ name, type, folder }); return { fileId: `f${drive.length}`, folderId: 'F' }; },
+            update: async () => {},
+            render: async opts => {
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 20, outputSeconds: 18, cuts: 1, timeSavedSeconds: 2, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            exportEdit,
+        }, path.join(dir, 'work'), '5');
+        return { result, uploads, drive };
+    };
+    let asked: Parameters<NonNullable<EditRenderDeps['exportEdit']>>[0] | null = null;
+    const local = path.join(dir, 'r.xml');
+    fs.writeFileSync(local, '<xmeml/>');
+    const made = await run(async o => {
+        asked = o;
+        return { files: [{ kind: 'resolve', local, name: 'Test- Episode - One - DaVinci Resolve.xml', contentType: 'application/xml' }], warnings: ['varies'], frameRate: { rate: '25/1', fps: 25, variable: true } };
+    });
+    // The play order of the saved edit, on the recording's length (two stretches around the cut), and the recording's
+    // file name (here the stored one; an episode from Drive gives its original name).
+    assert.equal(asked!.clips.length, 2);
+    assert.equal(asked!.clips[1].endMs, 20_000);
+    assert.equal(asked!.name, path.basename(planEditRender(episode()).video));
+    assert.ok(made.uploads.includes(`episodes/${ID}/editRender/v4-5/edit-files/resolve.xml`));
+    assert.deepEqual(made.drive[1], { name: 'Test- Episode - One - DaVinci Resolve.xml', type: 'application/xml', folder: 'Test- Episode - One (for other editors)' });
+    assert.deepEqual(made.result.exports, [{ kind: 'resolve', name: 'Test- Episode - One - DaVinci Resolve.xml', path: `episodes/${ID}/editRender/v4-5/edit-files/resolve.xml`, driveUrl: 'https://drive.google.com/file/d/f2/view' }]);
+    assert.ok(made.result.warnings.includes('varies'));
+
+    const failed = await run(async () => { throw new Error('auto-editor exited 1'); });
+    assert.deepEqual(failed.result.exports, []);
+    assert.ok(failed.result.warnings.some(w => /files for Resolve, Premiere and Final Cut were not made: auto-editor exited 1/.test(w)));
+    assert.equal(failed.result.videoPath, `episodes/${ID}/editRender/v4-5/episode.mp4`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('finished windows are kept under the run\'s work folder for a re-run, and removed once the render is saved (spec 019 item 4.2)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-work-'));
+    const stored = new Set([`episodes/${ID}/editRender/work/77/window-0-abc.mkv`]);
+    const uploads: string[] = [], downloads: string[] = [], removed: string[] = [];
+    let found: boolean[] = [];
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 2, cuts: [] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async (_l, p) => { uploads.push(p); },
+        exists: async p => stored.has(p),
+        removeFolder: async p => { removed.push(p); },
+        saveToDrive: async () => null,
+        update: async () => {},
+        render: async opts => {
+            found = [await opts.store!.get('window-0-abc.mkv', path.join(dir, 'a.mkv')), await opts.store!.get('window-1-def.mkv', path.join(dir, 'b.mkv'))];
+            await opts.store!.put(path.join(dir, 'b.mkv'), 'window-1-def.mkv');
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+    }, path.join(dir, 'work'), '77');
+    assert.deepEqual(found, [true, false]);
+    assert.ok(downloads.includes(`episodes/${ID}/editRender/work/77/window-0-abc.mkv`));
+    assert.ok(uploads.includes(`episodes/${ID}/editRender/work/77/window-1-def.mkv`));
+    assert.ok(removed.includes(`episodes/${ID}/editRender/work`));
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('speaker tracks: downloaded and given to the renderer, unless the edit turns them off; the render says how many (spec 019 item 3.3)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-tracks-'));
+    const speakerTracks = [
+        { path: `episodes/${ID}/source/tracks/1-audioTom.m4a`, name: 'Tom', fileName: 'audioTom.m4a' },
+        { path: `episodes/${ID}/source/tracks/2-audioAna.m4a`, name: 'Ana', fileName: 'audioAna.m4a' },
+    ];
+    const run = async (use: boolean | undefined) => {
+        const downloads: string[] = [], updates: Record<string, unknown>[] = [];
+        let given: string[] | undefined;
+        await runEditRender(ID, {
+            getEpisode: async () => {
+                const e = episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], speakerTracks: use } });
+                return { ...e, media: { ...e.media, speakerTracks } };
+            },
+            download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async f => { updates.push(f); },
+            render: async opts => {
+                given = opts.tracks;
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+        }, path.join(dir, 'work'), '1');
+        return { given, downloads, tracks: updates.find(u => u['editRender.status'] === 'ready')!['editRender.tracks'] };
+    };
+    const on = await run(undefined);
+    assert.equal(on.given?.length, 2);
+    assert.ok(on.given!.every(f => /track-\d\.m4a$/.test(f)));
+    assert.ok(speakerTracks.every(t => on.downloads.includes(t.path)));
+    assert.equal(on.tracks, 2);
+    const off = await run(false);
+    assert.equal(off.given, undefined);
+    assert.equal(off.tracks, 0);
+    assert.ok(!off.downloads.some(p => p.includes('/tracks/')));
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the episode\'s own intro and outro, from its media, replace the Studio\'s (spec 020 item E9)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-ends-'));
+    const run = async (edit: Partial<Episode['edit']>) => {
+        let given: { intro?: string; outro?: string } = {};
+        await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], ...edit } }),
+            download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async () => {},
+            render: async opts => {
+                given = { intro: opts.intro && path.basename(opts.intro), outro: opts.outro && path.basename(opts.outro) };
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, intro: 'custom', introPath: 'settings/intro-1.mp4' },
+        }, path.join(dir, 'work'), '1');
+        return given;
+    };
+    assert.deepEqual(await run({}), { intro: 'intro.mp4', outro: 'intro.mp4' });
+    assert.deepEqual(await run({ intro: { path: `episodes/${ID}/media/mv1.mp4`, name: 'New intro' } }), { intro: 'own-intro.mp4', outro: 'intro.mp4' });
+    assert.deepEqual(await run({ outro: { path: `episodes/${ID}/media/mv2.mp4`, name: 'Goodbye' } }), { intro: 'intro.mp4', outro: 'own-outro.mp4' });
+    fs.rmSync(dir, { recursive: true, force: true });
+});

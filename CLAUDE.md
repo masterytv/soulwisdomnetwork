@@ -32,10 +32,15 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/thumbnails.ts — spec 005 step 12 (thumbnail texts, frames and AI background), GitHub Actions only;
               the Studio draws the options (components/studio/thumbnailCanvas.ts) and approves them (Checkpoint D)
               podcast/youtube.ts — spec 005 step 13 (YouTube upload via podcast/youtubeApi.ts), GitHub Actions only
+              podcast/podcastAudio.ts — spec 019 item 5.1 (the audio podcast feed's MP3 at −16 LUFS with chapters and artwork;
+              podcastAudioRun.ts, podcast_audio.yml), GitHub Actions only; the feed is lib/podcastFeed.ts and lib/server/podcast.ts
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
-              teasers, intro, outro, b-roll, voice cleanup, on-screen text, images and captions, then a quality report
+              its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
+              teasers, intro, outro, b-roll, voice cleanup (standard, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
+              spec 019 item 3.2), on-screen text, images and captions, then a quality report, and files that open its cuts in
+              Resolve, Premiere or Final Cut (podcast/editExport.ts with the pinned auto-editor binary, item 4.1)
               (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:
               /admin/podcast/[episodeId]/studio-editor, laid out by components/studio/workspace.tsx, with
@@ -44,7 +49,12 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin;
+              the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
+              editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
+              components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,
+              spec 019 item 4.3); sections can play in another order, and an episode can have its own intro and outro, in the
+              Parts panel (edit.order, components/studio/partsPanel.tsx, item E9)
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
@@ -107,7 +117,9 @@ from `apphosting.yaml`.
 The podcast ingest job (`podcast_ingest.yml`) uses its own service account
 (`podcast-pipeline@`, roles: Cloud Datastore User + Storage Object Admin, Editor on the
 `SWC Podcast Pipeline` Drive folder), not the Firebase admin key. One video file dropped
-into `01 To Process` = one episode (`episodes/{driveFileId}`); it moves to `02 Processed`
+into `01 To Process` = one episode (`episodes/{driveFileId}`); so is a folder holding one video (Zoom's recording
+folder), whose per-person audio files become the episode's speaker tracks (spec 019 item 3.3, lib/speakerTracks.ts;
+the render makes the voice from them). It moves to `02 Processed`
 when transcribed (a recording uploaded in the Studio instead is already in Storage, and needs no Drive). Ingest also measures the audio's
 silences for the editor's pause suggestions (`agent/src/podcast/silences.ts`, `analysis/silences.json`), and makes the Studio editor
 timeline's waveform peaks and thumbnail sheets (`agent/src/podcast/timelineMedia.ts`, `analysis/peaks.bin`, `analysis/thumbs_N.jpg`;
@@ -133,7 +145,8 @@ approves the episode there (Checkpoint D). "Upload to YouTube" then starts `podc
 `docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest moments), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
 (the shorts approved at Checkpoint E, scheduled one a day, with the same YouTube secrets). The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
-`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and optionally `AUPHONIC_API_KEY` (the clean-up comparison). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
+`ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and `AUPHONIC_API_KEY` (the clean-up comparison, and renders with Auphonic as
+the voice clean-up: free plan only, its 2 hours a month counted in `studio/spending`). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
 `DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
 
 ### Firestore
@@ -149,7 +162,7 @@ Collections: `users`, `posts` and `comments` (the community feed, `docs/specs/01
 each has a `votes` subcollection; server only), `community_limits` (hourly post and comment
 limits, server only), `conversations`, `messages`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`; earlier
 show-notes approvals in its `approvals` subcollection, and the media bin's uploads in its `media` subcollection),
-`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger, and `media`, whose `items`
+`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger (with Auphonic's hours this month), and `media`, whose `items`
 are the show library's music and effects with their licence records (spec 020 item E7); Admin SDK only), `usage_reports`
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).
@@ -189,7 +202,9 @@ Adding a query with `where` + `orderBy` on different fields needs a composite in
 (`firestore.rules`); admins change roles from `/admin`, which calls a server route. The
 browser's role check only decides what to show. **Every API route must call
 `requireRole()`** (`lib/server/staff.ts`), which verifies the ID token and reads the role
-with the Admin SDK, and refuses banned members. Producers get the Podcast Studio
+with the Admin SDK, and refuses banned members. The only routes without it are the audio podcast feed's,
+public by design for podcast apps and outside `/api`: `/podcast/feed.xml`, `/podcast/audio/{id}.mp3` and
+`/podcast/art.jpg` (spec 019 item 5.1), which show only episodes put in the feed, and nothing while it is off. Producers get the Podcast Studio
 (`/admin/podcast`); only admins manage members and ban them (`/api/admin/users/ban`, which also
 disables their Firebase Auth account). Community routes use `requireMember()`
 (`lib/server/community.ts`): `requireRole` with every role, plus a confirmed email and App Check.

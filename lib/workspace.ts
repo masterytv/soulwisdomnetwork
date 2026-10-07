@@ -7,7 +7,7 @@ export interface PaneSizes {
     timelinePx: number;
 }
 
-export const DEFAULT_PANES: PaneSizes = { scriptPx: 380, panelPx: 340, timelinePx: 240 };
+export const DEFAULT_PANES: PaneSizes = { scriptPx: 380, panelPx: 340, timelinePx: 270 };
 
 // Each size's smallest and largest value.
 export const PANE_LIMITS: Record<keyof PaneSizes, [number, number]> = {

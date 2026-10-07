@@ -13,6 +13,11 @@
 // Spec 020 item E4: so do the transitions between the video's sections (the edit's own, or the Studio's);
 // the ones at splits come with the edit. Item E5: the edit's layers (lib/layers.ts) replace the overlays,
 // and once an edit has them its b-roll is among them; before that, the notes plan's b-roll is drawn as always.
+// Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
+// Item E9 (spec 020): the edit's own play order of sections goes with it; its own intro and outro replace the Studio's.
+// Item 3.3: when the episode has speaker tracks (lib/speakerTracks.ts), the voice is made from them unless its edit says not.
+// Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
+// they cannot be made, the render is still kept, with a warning.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -23,18 +28,26 @@ import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '..
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
+import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
+import { usesTracks, type SpeakerTrack } from '../../../lib/speakerTracks';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
+import type { ExportResult } from './editExport';
+import { sequenceOf, type Clip } from '../../../lib/sequence';
 
 export interface EditRenderDeps {
     getEpisode: () => Promise<Episode | undefined>;
     download: (storagePath: string, dest: string) => Promise<void>;
     upload: (local: string, storagePath: string, contentType: string) => Promise<void>;
     // null when no Drive folder is set up; the video is then only in Cloud Storage.
-    saveToDrive: (local: string, name: string) => Promise<{ fileId: string; folderId: string } | null>;
+    // `subfolder`, when given, is a folder of that name inside the final folder.
+    saveToDrive: (local: string, name: string, contentType?: string, subfolder?: string) => Promise<{ fileId: string; folderId: string } | null>;
     update: (fields: Record<string, unknown>) => Promise<void>;
     // Deletes every file under a Storage folder: the previous render, once this one is saved.
     removeFolder?: (prefix: string) => Promise<void>;
+    // Whether a file is in Storage: with it, finished windows are kept under the run's work folder, so a re-run of
+    // the same GitHub run skips them (spec 019 item 4.2).
+    exists?: (storagePath: string) => Promise<boolean>;
     render: typeof renderEdit;
     now: () => unknown;                  // a server timestamp in production
     settings?: StudioSettings;           // the defaults when left out
@@ -45,6 +58,11 @@ export interface EditRenderDeps {
     // The show library's entries for the sounds' files (spec 020 item E7), and its log of uses.
     library?: (ids: string[]) => Promise<Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>>;
     logUses?: (ids: string[], use: LibraryUse) => Promise<void>;
+    // The voice clean-ups' tools (spec 019 item 3.2): the deep-filter program, the Auphonic key, and a call made
+    // just before the audio goes to Auphonic.
+    voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
+    // The files that open the edit in Resolve, Premiere or Final Cut (spec 019 item 4.1, editExport.ts); left out, none are made.
+    exportEdit?: (o: { video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string }) => Promise<ExportResult>;
 }
 
 export interface EditRenderPlan {
@@ -54,6 +72,9 @@ export interface EditRenderPlan {
     teaserClips: { startMs: number; endMs: number }[];   // to cut from the recording when there is no package
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
+    // The episode's own intro and outro (spec 020 item E9), from its media bin: they replace the Studio's.
+    ownIntro: string | null;
+    ownOutro: string | null;
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
     // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
@@ -62,8 +83,13 @@ export interface EditRenderPlan {
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
     sections: SectionJoins;              // the transitions between the video's sections
     sounds: Sound[];                     // music and effects (spec 020 item E7)
+    voice: VoiceCleanup;                 // the voice clean-up (spec 019 item 3.2)
+    tracks: SpeakerTrack[];              // the speaker tracks the voice is made from (spec 019 item 3.3); empty: the recording's sound
     warnings: string[];
 }
+
+// The renderer's name for each voice clean-up.
+const CLEAN_FOR = { standard: 'light', deepfilter: 'deepfilter', auphonic: 'auphonic' } as const satisfies Record<VoiceCleanup, string>;
 
 // Breathing room around a teaser clip cut here, as the edit package gives its clips.
 const CLIP_LEAD_MS = 300;
@@ -105,6 +131,8 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         teaserClips,
         intro,
         showIntro,
+        ownIntro: edit.intro?.path ?? null,
+        ownOutro: edit.outro?.path ?? null,
         // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
         // first opened the edit), so the notes plan's is drawn only for an edit without.
         broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
@@ -119,6 +147,8 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
             .map(q => ({ text: q.text, speaker: q.speaker, startMs: q.startMs, endMs: q.endMs })),
         sections: sectionJoins(edit.joins, settings.joins),
         sounds: edit.audio ?? [],
+        voice: voiceFor(edit, settings.voiceCleanup),
+        tracks: usesTracks(episode.media?.speakerTracks, edit) ? episode.media!.speakerTracks! : [],
         warnings,
     };
 }
@@ -160,8 +190,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             teasers.push(out);
         }
     }
-    const intro = plan.intro ? await get(plan.intro, 'intro')
+    const studioIntro = plan.intro ? await get(plan.intro, 'intro')
         : plan.showIntro && deps.showIntro && fs.existsSync(deps.showIntro) ? deps.showIntro : undefined;
+    // The episode's own intro or outro replaces the Studio's; the outro is otherwise the Studio's intro, as always.
+    const intro = plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro;
+    const outro = plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro;
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
@@ -189,6 +222,9 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
+    // The speaker tracks, when the render uses them.
+    const tracks: string[] = [];
+    for (const [i, t] of plan.tracks.entries()) tracks.push(await get(t.path, `track-${i + 1}`));
     let words: TimedWord[] | undefined;
     if (plan.wordsPath) {
         const local = await get(plan.wordsPath, 'reviewed');
@@ -196,16 +232,33 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
 
     await deps.update({ 'editRender.status': 'rendering' });
+    // This run's finished windows; GitHub's "Re-run" keeps the run's ID, so it finds them here.
+    const work = `episodes/${episodeId}/editRender/work/${runId.replace(/[^\w-]/g, '')}`;
     const out = path.join(workDir, 'episode.mp4');
     const report = await deps.render({
         video, edit: plan.edit, out,
         teasers: teasers.length ? teasers : undefined,
-        intro, outro: intro,
+        intro, outro,
         broll: broll.length ? broll : undefined,
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
         ...(sounds.length ? { sounds } : {}),
+        ...(deps.exists ? { store: {
+            get: async (name: string, local: string) => {
+                const at = `${work}/${name}`;
+                if (!(await deps.exists!(at))) return false;
+                await deps.download(at, local);
+                return true;
+            },
+            put: (local: string, name: string) => deps.upload(local, `${work}/${name}`, name.endsWith('.flac') ? 'audio/flac' : 'video/x-matroska'),
+        } } : {}),
+        ...(tracks.length ? { tracks } : {}),
+        clean: CLEAN_FOR[plan.voice],
+        voice: {
+            deepFilter: deps.voice?.deepFilter,
+            ...(deps.voice?.auphonicKey ? { auphonic: { apiKey: deps.voice.auphonicKey, title: `${episode.title} (render)`, onSending: deps.voice.onAuphonicSending } } : {}),
+        },
     });
     // The credits the library files it played ask for, and those files, for the description and the log.
     const order = report.soundsPlayed ?? [];
@@ -233,6 +286,26 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         extras[key] = `${prefix}/${name}`;
     }
     const drive = await deps.saveToDrive(out, `${safeName(episode.title)} (Editor Light).mp4`);
+    // The files for other editors (item 4.1), in the render's folder and beside it in Drive.
+    const exports: NonNullable<EpisodeEditRender['exports']> = [];
+    const exportWarnings: string[] = [];
+    if (deps.exportEdit) {
+        try {
+            const clips = sequenceOf(plan.edit, Math.round(report.inputSeconds * 1000), words).clips;
+            const made = await deps.exportEdit({
+                video, name: episode.drive?.fileName || path.basename(plan.video), title: safeName(episode.title), clips, words, workDir,
+            });
+            exportWarnings.push(...made.warnings);
+            for (const f of made.files) {
+                const storagePath = `${prefix}/edit-files/${f.kind}${path.extname(f.name)}`;
+                await deps.upload(f.local, storagePath, f.contentType);
+                const saved = await deps.saveToDrive(f.local, f.name, f.contentType, `${safeName(episode.title)} (for other editors)`);
+                exports.push({ kind: f.kind, name: f.name, path: storagePath, driveUrl: saved ? `https://drive.google.com/file/d/${saved.fileId}/view` : null });
+            }
+        } catch (error) {
+            exportWarnings.push(`The files for Resolve, Premiere and Final Cut were not made: ${(error as Error).message}`);
+        }
+    }
     const result: EditRenderResult = {
         videoPath, ...extras as Pick<EditRenderResult, 'wordsPath' | 'captionsPath' | 'chaptersPath'>,
         driveFileId: drive?.fileId ?? null,
@@ -243,16 +316,23 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
-        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? [])],
+        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? []), ...exportWarnings],
         qc: report.qc,
         credits,
+        exports,
     };
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
         'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
+        'editRender.voice': plan.voice,
+        'editRender.tracks': tracks.length,
         updatedAt: deps.now(),
         ...(settings.finalSource === 'editorLight' ? await asFinalCut(prefix, episode, plan, result, workDir, deps, usedLibrary) : {}),
     });
+    // The kept windows are no longer needed, nor any an earlier failed run left.
+    if (deps.exists && deps.removeFolder) {
+        await deps.removeFolder(`episodes/${episodeId}/editRender/work`).catch(error => console.warn(`⚠️ Could not remove the kept windows: ${(error as Error).message}`));
+    }
     // Every use of a library file is noted on its entry, so a Content ID claim can be traced to its licence.
     if (usedLibrary.length && deps.logUses) {
         await deps.logUses(usedLibrary, { episodeId, kind: 'episode', ref: videoPath, at: new Date().toISOString() })
@@ -309,7 +389,9 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
     const timed = fs.existsSync(moved)
         ? JSON.parse(fs.readFileSync(moved, 'utf8')) as { chapters: { startMs: number }[]; quotes: { startMs: number; endMs: number }[] }
         : { chapters: [], quotes: [] };
-    const tidy = tidyChapters(plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs })));
+    // In the order they are heard: moved sections (spec 020 item E9) can bring a later chapter earlier.
+    const tidy = tidyChapters(plan.chapters.map((c, i) => ({ title: c.title, originalMs: c.startMs, startMs: timed.chapters[i]?.startMs ?? c.startMs }))
+        .sort((a, b) => a.startMs - b.startMs));
     return {
         final: {
             status: 'ready',
@@ -338,4 +420,4 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
 
 export type EditRenderResult = Required<Pick<EpisodeEditRender,
     'videoPath' | 'wordsPath' | 'captionsPath' | 'chaptersPath' | 'driveFileId' | 'driveUrl' | 'folderUrl'
-    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits'>>;
+    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits' | 'exports'>>;

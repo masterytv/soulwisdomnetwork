@@ -161,23 +161,28 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - the edit package's teasers and intro (the intro is also used as the outro);
    - the b-roll stills;
    - the reviewed transcript.
-2. **Clean the voice**, once, over the whole sound track: highpass at 80 Hz, `afftdn`, and a gentle
-   `acompressor`.
-3. **Cut, in blocks.** The kept ranges, in their play order (`lib/sequence.ts`), go into blocks of up
-   to 15 minutes or 20 ranges. Each block seeks into the source once per range, with a 15 ms fade at
-   every join, and is encoded on its own. The blocks are then joined. Each range becomes a whole
-   number of frames, counted from where it starts and ends in the edited episode (`framesOf`), so the
-   video keeps to the edit's times within half a frame however many cuts there are. Until 5 October
-   2026 each range was rounded up to a whole frame on its own, which made the video about 20 ms longer
-   per cut than the edit: on a 49-minute episode with 1,000 cuts, captions, chapters and quotes near
-   the end would have been about 20 s late.
-4. **Assemble** the programme: teasers → intro → the edited episode with b-roll (Ken Burns,
-   placed at its edited time, with 0.5 s fades) → outro. It is 1920x1080, 30 fps, AAC 48 kHz,
-   normalized to −14 LUFS. Each part of the episode (between transitions at splits) is its own file;
-   the parts, and the teasers, intro, episode and outro, are joined with `xfade` and `acrossfade`
-   where there is a transition and a concat where there is not, every piece cut to whole frames so
-   each offset is exact (`chainPieces`). A transition at the very start or end is a fade from or to
-   black.
+2. **Clean the voice**, once, over the whole sound track, as the Studio settings or the episode choose
+   (spec 019 item 3.2, `lib/voice.ts`): **standard** is highpass at 80 Hz, `afftdn` (less its 25 ms delay, fixed
+   in #164) and a gentle `acompressor`; **DeepFilterNet** or **Auphonic** instead make the track in
+   `voiceCleanup.ts`.
+3. **Make the sound**, once, for the whole programme (spec 019 item 4.2): the kept ranges in their
+   play order (`lib/sequence.ts`), each its whole number of frames of the cleaned voice (1,600 samples
+   a frame at 48 kHz), with a 15 ms fade at every join; the parts crossfaded at transitions; music,
+   effects and video layers' sound mixed under it; the teasers, intro and outro joined around it; the
+   fades at the very start and end; normalized to −14 LUFS. Each range is counted from where it starts
+   and ends in the edited episode (`framesOf`), so the video keeps to the edit's times within half a
+   frame however many cuts there are. Until 5 October 2026 each range was rounded up to a whole frame on
+   its own, which made the video about 20 ms longer per cut than the edit: on a 49-minute episode with
+   1,000 cuts, captions, chapters and quotes near the end would have been about 20 s late.
+4. **Make the picture in windows** of the finished video (`renderWindows.ts`): each window (up to 15
+   minutes or 20 kept ranges, cut at a straight cut, never inside a transition) is built with everything
+   that shows in it (its ranges, each seeked on its own; the teasers, intro or outro; transitions; b-roll
+   with Ken Burns and 0.5 s fades; layers; captions and text) and encoded once, two at a time, then
+   checked frame for frame against the plan. The windows are joined without encoding again, with the
+   sound. It is 1920x1080, 30 fps, AAC 48 kHz. Each finished window is kept under
+   `episodes/{id}/editRender/work/{run}/`, so a re-run of the same GitHub run skips it; the folder is
+   removed once a render is saved. Until 4.2 the picture was encoded twice (blocks, then the whole
+   programme), and a render with b-roll or captions and a transition came out a frame short.
 5. **Check** the finished file (`renderQc.ts`, spec 019 item 0.2): loudness, true peak, length
    against the plan, dead air, black picture, sound against picture, and on-screen items. The
    numbers and warnings go in `editRender.qc` and show under the render; they never fail it.
@@ -185,6 +190,8 @@ connects Firestore, Storage and Drive. `editRenderJob.ts` plans and runs the job
    - The video goes to `episodes/{id}/editRender/v{edit version}-{run id}/episode.mp4`.
    - Beside it go the words, captions (.srt) and chapters/quotes on the new times.
    - The video is also saved as "*title* (Editor Light).mp4" in "04 Final" in Drive.
+   - Files that open its cuts in DaVinci Resolve, Premiere Pro or Final Cut Pro go in `edit-files/` beside it, and in
+     "*title* (for other editors)" in "04 Final" (spec 019 item 4.1, `editExport.ts`); if they fail, the render is kept with a warning.
    - `episode.editRender` points at the new folder only once all of it is saved. The previous
      render's folder is then deleted.
 7. **On failure** the job marks the render failed and emails `ALERT_EMAIL`. If the run is
@@ -231,9 +238,9 @@ notes, and reserve $0.40 per language and $0.50 against the daily spending limit
 
 ### Auphonic
 
-`agent/src/podcast/auphonic.ts` works from the command line only (`editRender.ts --clean auphonic`
-or `--detect auphonic`, with `AUPHONIC_API_KEY`). It has never made a live call, and the Studio
-never uses it.
+Auphonic as the voice clean-up is a Studio choice since spec 019 item 3.2 (`voiceCleanup.ts`, free plan only).
+`agent/src/podcast/auphonic.ts` is left for its cut detection from the command line (`editRender.ts --detect
+auphonic`, with `AUPHONIC_API_KEY`). That has never made a live call, and the Studio never uses it.
 
 ### Data
 
@@ -269,7 +276,8 @@ it had been 48.003 s).
 
 **Not chosen yet.** Run **Podcast Clean-up Comparison** from the Actions tab (on `main`) on a real
 episode, listen to A–E without the key, then write here which one was chosen, by whom, and why, with
-the run's loudness and time numbers. Item 3.2 makes the winner a Studio setting.
+the run's loudness and time numbers. All three are already choices (spec 019 item 3.2, #164, standard by
+default): the winner becomes the Studio settings' "Voice clean-up in the render".
 
 ## Next
 

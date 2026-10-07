@@ -1,6 +1,9 @@
 # Editor Light (spec 015): renders the edit saved in the Studio (agent/src/podcast/editRenderRun.ts).
 # Downloads the episode, teasers, intro and b-roll, renders, and saves to Cloud Storage and
 # "04 Final" in Drive. Started from the show notes page, or by hand from the Actions tab.
+# The voice clean-up (spec 019 item 3.2) is the Studio's or the episode's: standard (ffmpeg), DeepFilterNet
+# (downloaded below) or Auphonic (the AUPHONIC_API_KEY repo secret, free plan only). Files that open the edit in
+# Resolve, Premiere or Final Cut are made beside the render with auto-editor (item 4.1).
 
 name: Podcast Edit Render
 run-name: "Podcast Edit Render · ${{ inputs.episode_id }}"
@@ -19,10 +22,20 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # DeepFilterNet's command-line program, pinned to v0.5.6 (its last release) and checked against this checksum.
+  DEEPFILTER_URL: https://github.com/Rikorose/DeepFilterNet/releases/download/v0.5.6/deep-filter-0.5.6-x86_64-unknown-linux-musl
+  DEEPFILTER_SHA256: 70775e251eee44c0f2451a1e833326cf8bcbbe304d3e7cd12851e6fce72ef7da
+  # auto-editor (Unlicense), pinned to 31.7.2 and checked against this checksum: it writes the files that open
+  # the edit in Resolve, Premiere and Final Cut (spec 019 item 4.1).
+  AUTO_EDITOR_URL: https://github.com/WyattBlue/auto-editor/releases/download/31.7.2/auto-editor-linux-x86_64
+  AUTO_EDITOR_SHA256: 3da1ff7fb0dbc9057527d5776310e4b0a680004814a7bbb60db2f8c37c45269a
+
 jobs:
   render:
     runs-on: ubuntu-latest
-    # A long episode's picture is encoded twice (blocks, then assembly; loudness copies it). GitHub's limit is 360.
+    # The picture is encoded once, in windows (spec 019 item 4.2); a re-run of the same run picks up the windows
+    # it kept in Storage. GitHub's limit is 360.
     timeout-minutes: 350
 
     steps:
@@ -51,6 +64,18 @@ jobs:
     - name: Install ffmpeg
       run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-open-sans fonts-roboto fonts-lato fonts-ebgaramond fonts-dejavu-core
 
+    - name: Download DeepFilterNet
+      run: |
+        curl -sSL --fail -o "$RUNNER_TEMP/deep-filter" "$DEEPFILTER_URL"
+        echo "$DEEPFILTER_SHA256  $RUNNER_TEMP/deep-filter" | sha256sum -c -
+        chmod +x "$RUNNER_TEMP/deep-filter"
+
+    - name: Download auto-editor
+      run: |
+        curl -sSL --fail -o "$RUNNER_TEMP/auto-editor" "$AUTO_EDITOR_URL"
+        echo "$AUTO_EDITOR_SHA256  $RUNNER_TEMP/auto-editor" | sha256sum -c -
+        chmod +x "$RUNNER_TEMP/auto-editor"
+
     - name: Render the edit
       env:
         EPISODE_ID: ${{ inputs.episode_id }}
@@ -60,7 +85,8 @@ jobs:
         DRIVE_PROCESSED_FOLDER_ID: ${{ vars.DRIVE_PROCESSED_FOLDER_ID }}
         DRIVE_FINAL_FOLDER_ID: ${{ vars.DRIVE_FINAL_FOLDER_ID }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-      run: npx tsx agent/src/podcast/editRenderRun.ts
+        AUPHONIC_API_KEY: ${{ secrets.AUPHONIC_API_KEY }}
+      run: DEEPFILTER_BIN="$RUNNER_TEMP/deep-filter" AUTO_EDITOR_BIN="$RUNNER_TEMP/auto-editor" npx tsx agent/src/podcast/editRenderRun.ts
 
     # Only when the step above was cancelled or killed before it could record the failure.
     - name: Mark an unfinished render as failed

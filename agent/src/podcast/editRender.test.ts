@@ -6,7 +6,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as fs from 'fs';
 import * as path from 'path';
-import { spawn } from 'child_process';
+import { execFileSync, spawn } from 'child_process';
+import * as os from 'os';
 import { keepRanges, editedDuration, editedTime, type Cut, type EpisodeEdit } from '../../../lib/edit';
 import { playOrder, sequenceLength } from '../../../lib/sequence';
 import { chainPieces, FPS, frameAt, framesOf, renderEdit } from './editRender';
@@ -190,7 +191,7 @@ test('render with cuts, teasers, intro, outro, b-roll, and --clean light', async
     assert.ok(!reportData.qc.warnings.some((w: string) => w.startsWith('The video is')), 'no length warning');
 });
 
-test('block rendering for long episodes', async () => {
+test('windows for long episodes (spec 019 item 4.2), and a retry that finds the windows kept', async () => {
     const dir = path.join(process.env.TMPDIR || '/tmp', 'edit-render-block-test');
     fs.mkdirSync(dir, { recursive: true });
 
@@ -216,6 +217,19 @@ test('block rendering for long episodes', async () => {
     // per cut than the edit said: here 0.6 s, on a long episode with many cuts many seconds.
     const expectedSec = frameAt(sequenceLength(playOrder(edit, 180_000))) / FPS;
 
+    // A stand-in for the job's Storage: what the render keeps, by name.
+    const keptDir = fs.mkdtempSync(path.join(dir, 'kept-'));
+    const log: string[] = [];
+    const store = {
+        get: async (name: string, local: string) => {
+            const f = path.join(keptDir, name);
+            if (!fs.existsSync(f)) return false;
+            fs.copyFileSync(f, local);
+            log.push(`get ${name}`);
+            return true;
+        },
+        put: async (local: string, name: string) => { fs.copyFileSync(local, path.join(keptDir, name)); log.push(`put ${name}`); },
+    };
     const out = path.join(dir, 'output.mp4');
     await renderEdit({
         video,
@@ -223,7 +237,17 @@ test('block rendering for long episodes', async () => {
         out,
         clean: 'off',
         blockMinutes: 1,
+        store,
     });
+    // More than one window, each kept as it was made.
+    const made = log.filter(l => l.startsWith('put window-'));
+    assert.ok(made.length >= 2, log.join(', '));
+    // A retry: every window is found, none is made again, and the video is the same length.
+    log.length = 0;
+    const again = path.join(dir, 'again.mp4');
+    await renderEdit({ video, edit, out: again, clean: 'off', blockMinutes: 1, store });
+    assert.deepEqual([...log].sort(), made.map(l => l.replace('put', 'get')).sort());
+    assert.equal((await probeStreams(again)).duration, (await probeStreams(out)).duration);
 
     // Check output length within 2 frames of expected.
     const probe = await probeStreams(out);
@@ -393,4 +417,37 @@ test('transitions between the intro, the episode and the outro, and fades at the
     });
     assert.ok(Math.abs(short.outputSeconds - 5) < 1.5 / FPS, `length ${short.outputSeconds}, not 5 s`);
     assert.equal(short.warnings.length, 1);
+});
+
+test('moved sections play in their new order, picture and sound together (spec 020 item E9)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-order-'));
+    // Three 3 s sections: red with a 300 Hz tone, green with 600 Hz, blue with 900 Hz.
+    const video = path.join(dir, 'clip.mp4');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', 'color=c=red:s=640x360:d=3:r=30', '-f', 'lavfi', '-i', 'color=c=green:s=640x360:d=3:r=30', '-f', 'lavfi', '-i', 'color=c=blue:s=640x360:d=3:r=30',
+        '-f', 'lavfi', '-i', 'sine=f=300:d=3', '-f', 'lavfi', '-i', 'sine=f=600:d=3', '-f', 'lavfi', '-i', 'sine=f=900:d=3',
+        '-filter_complex', '[0][1][2]concat=n=3:v=1:a=0[v];[3][4][5]concat=n=3:v=0:a=1[a]', '-map', '[v]', '-map', '[a]',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', video]);
+    const edit: EpisodeEdit = { cuts: [], version: 1, splits: [3000, 6000], order: [2, 0, 1] };
+    const out = path.join(dir, 'out.mp4');
+    await renderEdit({ video, edit, out, clean: 'off', words: [{ text: 'red', start: 1000, end: 1500 }, { text: 'blue', start: 7000, end: 7500 }] });
+    assert.ok(Math.abs((await probeStreams(out)).duration - 9) < 0.1);
+    // Blue, then red, then green.
+    const [b, r, g] = await Promise.all([1.5, 4.5, 7.5].map(t => frameColour(out, t)));
+    assert.ok(b[2] > 150 && b[0] < 80, `blue first: ${b}`);
+    assert.ok(r[0] > 150 && r[2] < 80, `red second: ${r}`);
+    assert.ok(g[1] > 100 && g[0] < 80, `green third: ${g}`);
+    // The sound moved with the picture: 900 Hz first (the blue section's), counted by zero crossings over 1 s.
+    const tone = (at: number) => {
+        const pcm = execFileSync('ffmpeg', ['-v', 'error', '-ss', String(at), '-t', '1', '-i', out, '-ac', '1', '-ar', '48000', '-f', 's16le', '-']);
+        const s = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.length / 2);
+        let crossings = 0;
+        for (let i = 1; i < s.length; i++) if ((s[i - 1] < 0) !== (s[i] < 0)) crossings++;
+        return crossings / 2;
+    };
+    assert.ok(Math.abs(tone(1) - 900) < 30 && Math.abs(tone(4) - 300) < 30 && Math.abs(tone(7) - 600) < 30, `${tone(1)} ${tone(4)} ${tone(7)}`);
+    // The words in the new order, at their new times: "blue" (7 s in the recording) first, at 1 s.
+    const words = JSON.parse(fs.readFileSync(path.join(dir, 'out.words.json'), 'utf8')) as { text: string; start: number }[];
+    assert.deepEqual(words.map(w => [w.text, Math.round(w.start / 100) * 100]), [['blue', 1000], ['red', 4000]]);
+    fs.rmSync(dir, { recursive: true, force: true });
 });

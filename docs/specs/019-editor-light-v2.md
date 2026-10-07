@@ -107,18 +107,18 @@ for this work".
 | E5 | Media bin, uploads, image and video overlays | ours (no react-rnd or dnd-kit; see 020 "E5 — Built") | L | Extra | E3 | Built (#157; spec 020, "E5 — Built"); a render with layers waits on `main` |
 | E6 | Titles, lower thirds, logo, text; Properties panel | ours (ASS, as Shorts) | M | High | E5 | Built (#159; spec 020, "E6 — Built"); a render with elements waits on `main` |
 | E7 | Music and effects tracks, fades, ducking | ours (ffmpeg, Part H's mix), free libraries | M | High | E5 | Built (#160; spec 020, "E7 — Built"); a render with sounds waits on `main` |
-| E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Not started |
-| E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Not started |
+| E8 | YouTube caption track on the timeline; polish | ours | M | High | E6 | Built (#162; spec 020, "E8 — Built"); the fix for a word at a transition reaches renders from `main` |
+| E9 | Later: move clips, drop a new intro or outro | ours | L | Extra | E4, Tom's go-ahead | Built (#170; spec 020, "E9 — Built"): in a Parts panel; dragging on the timeline itself is not built |
 | **3** | **Sound** | | | | | |
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
-| 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Not started |
-| 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Not started |
+| 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
+| 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Built (#168), the ffmpeg route; a Zoom recording with separate files waits on Tom |
 | **4** | **Render and hand-off** | | | | | |
-| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Not started |
-| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Not started |
-| 4.3 | Smoother preview | ours | M | High | — | Not started |
+| 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
+| 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
+| 4.3 | Smoother preview | ours | M | High | — | Built (#167) |
 | **5** | **The rest of the pipeline** | | | | | |
-| 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Not started |
+| 5.1 | Audio podcast feed (yes, later, D2) | ours | L | High | — | Built (#169); submitting the feed to Apple and Spotify waits on Tom |
 | 5.2 | Animated captions and graphics, if wanted | Revideo | M | — | — | Dropped for full episodes (D4); Shorts keep theirs |
 | 5.3 | Retire Descript | — | S | Medium | 0.2, 3.2, three real episodes | Not started |
 
@@ -640,6 +640,51 @@ from the Actions tab once it is on `main`) runs `agent/src/podcast/cleanupCompar
     while hours remain.
   - Use detect-only cutting as today, so our cut list stays the record.
 
+**Built (#164):** Tom chose to build all three before the comparison is heard, with today's chain as the default;
+the comparison's answer only decides which one the Studio settings choose.
+- **The choice** (`lib/voice.ts`): `voiceCleanup: 'standard' | 'deepfilter' | 'auphonic'` in the Studio settings
+  (default `standard`; "Voice clean-up in the render" on the settings page), and `edit.voice` for one episode
+  (null: the Studio's), chosen in the Studio editor's Render panel (`components/studio/voice.tsx`). The job
+  (`editRenderJob.ts`) passes it to the renderer and keeps it on the render (`editRender.voice`); the panel says
+  when the current render used another one.
+- **Standard** is today's chain, with one fix found while measuring: `afftdn` hands its sound on 25 ms late (at
+  44.1 and 48 kHz, whatever its settings), so every render so far had the voice 25 ms behind the picture. The
+  chain now drops afftdn's first 25 ms and pads the end (`AFFTDN_DELAY_SEC`); measured within 0.3 ms.
+- **DeepFilterNet** (`agent/src/podcast/voiceCleanup.ts`) runs as its **command-line program**
+  (`deep-filter` v0.5.6, downloaded and checked against its SHA-256 by `podcast_edit_render.yml` and now also
+  `podcast_cleanup_compare.yml`), not the LADSPA plugin 3.1 used. Measured before building it in:
+  - the **plugin** works as if live, and slips silence in whenever it falls behind ("Underrun detected"), so the
+    voice drifted later than the picture: 20–30 ms at the start, 80–100 ms after 48 s, different on each run.
+    Unusable for a render. (The comparison's DeepFilterNet version could also have had those gaps; it now uses
+    the program too, so what is heard is what renders.)
+  - the **program with `-D`** keeps the voice where it was (0 samples at 48 kHz) and gives the same file every
+    run; it leaves the last 30 ms off, which is padded back.
+  - Before it: `highpass=f=80`, as one channel at 48 kHz. After it: today's compressor, and both channels again.
+  - **Speed:** 0.4× the audio's length on one core, so the recording is cut into up to four pieces (one per
+    core, none under a minute) that overlap by 1 s and are joined with crossfades. 4 minutes took 30 s here, so
+    an hour should take about 8 minutes on the runner. No shift at the joins, and no change in level (tests,
+    with a stand-in program, since CI does not download it).
+- **Auphonic** (free plan only, D1):
+  - It is sent **only the stretch the edit keeps** (`auphonicSpan`: the first to the last moment played,
+    transitions included, with 2 s either side), as 48 kHz stereo FLAC, with the same algorithms as the
+    comparison (denoise, leveller, −14 LUFS, high-pass), and put back at its place in a track of the
+    recording's length. No cutting algorithms, so our cut list stays the record. The upload is read from disk
+    as it goes (`fs.openAsBlob`).
+  - **The month's hours** are counted in `studio/spending` (`auphonic`: one hold per render, plus what each
+    comparison sent). Starting a render with Auphonic holds its stretch's length first and is refused (429)
+    when this calendar month's holds and it would pass 2 hours; the Render panel shows what is left and what
+    the edit needs before Render is pressed. A render that fails before sending anything gives its hold back
+    (`editRenderRun.ts`); one stopped by cancelling keeps it, to be safe.
+  - **The account's own count:** before sending, the job reads `credits` from `GET /api/user.json` and stops
+    with a clear message when the account has less than the stretch. That field name is from Auphonic's docs
+    and was not checked live (auphonic.com is blocked from the sandbox); if it is missing, the job only logs it
+    and relies on the Studio's count.
+  - Never buys credits or a plan. Needs the `AUPHONIC_API_KEY` repo secret (added by Tom).
+  - The older `auphonic.ts` stays only for `--detect auphonic` on the command line; `--clean auphonic` now uses
+    the above.
+- **First real render with each:** check the quality report's sync and listen at a few cuts; for Auphonic,
+  also that its file came back the same length as the stretch (a shift there would move the voice).
+
 ### 3.3 One track per speaker (L, optional)
 
 **An option, never a requirement** (decision D5). Zoom's "record a separate audio file for each
@@ -659,6 +704,30 @@ Auphonic multitrack does all of this in one call. The ffmpeg route (`agate` and 
 track, then `amix`) is free but harder to tune. Choose after 3.1.
 
 **Bonus:** speaker detection becomes almost free of errors, because each track is one person.
+
+**Built (#168), the ffmpeg route** (free; Auphonic's multitrack would spend the free plan's 2 hours on every
+episode, D1). Tom said to go with my suggestion rather than wait for 3.1's listening.
+- **Where tracks come from** (`lib/speakerTracks.ts`, kept as `media.speakerTracks`, at most 8):
+  - **The Studio editor's Render panel** (`components/studio/speakerTracks.tsx`): "Add speaker tracks" uploads the
+    files (kind `track`, MP3, M4A or WAV under 2 GB, checked like other uploads) to
+    `episodes/{id}/source/tracks/`, through `/api/studio/episodes/[id]/tracks` (add, rename, remove; `requireRole`).
+    This works for any episode, Drive or upload, so the upload page needs no extra field.
+  - **The Drive inbox:** a folder in "01 To Process" with exactly one video is one episode (Zoom's local recording
+    folder). Its tracks are the audio files in its subfolders (Zoom's "Audio Record"), or two or more audio files
+    beside the video when there are none (one alone is the mix). Ingest copies them beside the original, names them
+    from the file name ("audioTomWood1…" → "Tom Wood"), and moves the whole folder to "02 Processed". Loose video
+    files work as before; a folder with no video or several is left with a warning.
+- **The render** (`voiceCleanup.ts` `speakerMix`): each track is lined up with the recording (the shift at which
+  their loudness every 10 ms over the first 10 minutes matches best, within ±10 s, preferring the smallest shift),
+  then high-passed, gated (`agate`, so the room and others' voices leaking in drop away between the person's words)
+  and levelled (`dynaudnorm`), and the tracks are summed. That mix then goes through the chosen voice clean-up
+  (standard, DeepFilterNet or Auphonic, 3.2) in place of the recording's own sound.
+- **Optional, per episode:** "Make the voice from these tracks" (`edit.speakerTracks`, on when there are tracks);
+  the render records how many it used (`editRender.tracks`) and the panel says which the current render used.
+- **Checked:** two synthetic speakers taking turns, one track 300 ms late and one 200 ms early, are lined up within
+  10 ms and the mix keeps step with the recording; a real render with two tracks keeps in step (0.4 ms) with a clean
+  quality report. Not checked: a real Zoom recording with separate files, and the speaker detection bonus (the
+  transcript still comes from the mix).
 
 ## Phase 4 — Render and hand-off
 
@@ -681,6 +750,32 @@ every run. Descript cannot import these files, so this is the replacement path.
 
 **Done when:** each file opens in DaVinci Resolve (free) with the right cuts in sync.
 
+**Built (#165):** every Editor Light render now also saves files that open its cuts in another editor
+(`agent/src/podcast/editExport.ts`, tests in `editExport.test.ts`), linked from the Render panel
+(`components/studio/editFiles.tsx`) and put in Drive in a "<title> (for other editors)" folder inside "04 Final".
+- **The timeline:** the saved edit's play order (`lib/sequence.ts`), back to back, written as auto-editor's v3
+  JSON and exported by the pinned 31.7.2 binary (`podcast_edit_render.yml` downloads it and checks its SHA-256;
+  Unlicense, `docs/licences/auto-editor.md`) as **FCP7 XML for DaVinci Resolve** (`resolve-fcp7`), **FCP7 XML
+  for Premiere Pro** (`premiere`) and **FCPXML 1.10 for Final Cut Pro** (`final-cut-pro:version=10`).
+- **Frames, not milliseconds** (a change from the plan above): with `-tb 1000` auto-editor writes a 1000 fps
+  timeline (`frameDuration="1/1000s"`), which no editor app opens. So the timeline is in whole frames of the
+  recording's own rate (the nearest standard one to ffprobe's `r_frame_rate`, e.g. `30000/1001`): each stretch
+  from the frame nearest its start to the frame nearest its end, as the render rounds.
+- **What is in it:** straight cuts only. Transitions become cuts, and the teasers, intro, outro, b-roll, layers,
+  sounds and burned-in captions are left out; the panel says so. A **captions .srt on the exported timeline**
+  goes with it (the render's own .srt is on the render's times, teasers and intro included).
+- **Paths:** each file names only the recording, by its original file name (`drive.fileName`); the producer
+  points the editor at their copy when it asks.
+- **Variable frame rate:** when ffprobe's average rate is more than 0.5% from the nominal one, a
+  **constant-frame-rate copy** of the recording is made (`-fps_mode cfr`, x264 veryfast, CRF 20) and saved beside
+  the files, which name it instead; the render's warnings say to relink to it. On a long episode that copy
+  adds an encode of the whole recording to the render.
+- **Never fails the render:** if the files cannot be made, the render is kept with a warning.
+- **Checked:** the real binary on a 29.97 fps and a variable-rate test file (in and out points in frames, paths,
+  the copy's rate); the tests use a stand-in for it, since CI does not download it. **Not checked: opening
+  them in Resolve, Premiere or Final Cut**, which needs Tom: render an episode on `main`, open the Resolve file
+  in DaVinci Resolve, relink, and check a few cuts against the render.
+
 ### 4.2 Faster, resumable render (L, spec 015 "Next")
 
 **Build:**
@@ -690,6 +785,36 @@ every run. Descript cannot import these files, so this is the replacement path.
   blocks that are already there.
 - **Parallel:** encode two blocks at a time on the runner's 4 cores.
 - **Measure:** time per hour of episode, before and after. 0.2 must stay clean on both.
+
+**Built (#166):** `agent/src/podcast/renderWindows.ts` (plan, tests in `renderWindows.test.ts`) and
+`editRender.ts`.
+- **One encode, in windows of the finished video** rather than blocks of the episode. Each window is cut at a
+  straight cut (never inside a transition between parts, or between the episode and the intro or outro, and
+  never in the first or last second or fade), up to 15 minutes or 20 kept ranges, since each range is a seeked
+  input of its own. It is built with everything that shows in it: a piece or part on either side of a
+  transition in the window is taken whole on that side, so the transition is drawn as in the whole programme,
+  then the window is cut to its frames. The b-roll, layers, captions and text go over the episode in its own
+  time, as before.
+- **The sound is made once**, without the picture: the kept ranges read straight from the cleaned voice as
+  PCM (1,600 samples a frame), the 15 ms fades and the transitions' crossfades done in code
+  (`PcmAssembler`), then one ffmpeg pass for music, effects and ducking, the sections, the edge fades and
+  the two-pass loudness. The plan's "normalize in each block's graph" would have measured loudness per block;
+  measuring the whole programme's sound once keeps one gain for the episode, as before.
+- **Exact:** every window's frames are counted after encoding and must match the plan. That check found an
+  old bug: after an overlay (b-roll, captions), the `fps` before a transition dropped the stream's last frame,
+  so the old render came out a frame short. The episode is now held a frame and cut to its length.
+- **Resume:** each finished window goes to `episodes/{id}/editRender/work/{GitHub run}/`, named by a hash of
+  what made it; GitHub's "Re-run" keeps the run's ID, so a re-run downloads the windows it finds and makes the
+  rest. A DeepFilterNet or Auphonic clean-up is kept there too (FLAC), so a retry does not spend the minutes or
+  the Auphonic hours again. The work folder is removed when a render is saved.
+- **Parallel:** two windows at a time.
+- **Measured** on a 12-minute 1080p episode with 50 cuts, a dissolve at a split, two teasers, intro and outro
+  with transitions and edge fades, two b-roll stills, captions, a lower third and a ducked music bed, on a
+  4-core machine like the runner: **1,417 s before, 756 s after (47% less; 2.2× and 1.2× the video's
+  length)**. The quality report was clean on both (−13.9 LUFS, linear, no warnings); the new one is the
+  planned 644.500 s exactly, the old one 644.47 s (the lost frame). The two videos match frame for frame
+  (same frame numbers at 3 s to 640 s) and their sound is in step (0 ms). A real hour-long episode's time
+  waits on a render from `main`.
 
 ### 4.3 Smoother preview (M)
 
@@ -703,6 +828,25 @@ a cut.
 - At the cut, swap which element is visible and playing.
 - A 15 ms volume ramp on each side, through Web Audio, to match the render's join fades.
 - Fall back to seeking when the next cut is under 1 s away.
+
+**Built (#167):** `components/studio/cutBridge.tsx` (tests in `cutBridge.test.ts`), in the Studio editor.
+- **A second video** on the same proxy waits, seeked to the start of the next kept stretch, from three seconds
+  before each cut. At the cut (40 ms before it) it plays on top while the main video jumps 300 ms ahead and
+  waits there at the slowest rate browsers allow (1/16). When the second video reaches it, the main video plays
+  on at its own speed and the second one hides.
+- **The main video stays the one everything follows** (the timeline, the script, layers, captions, J/K/L), so
+  nothing else changed; the plan's "swap which element is visible and playing" would have moved all of those
+  to whichever video was playing.
+- **Not pausing:** the main video waits at 1/16 speed rather than pausing, which would flash the Play button.
+- **The sound:** a 15 ms ramp on each video's volume at each hand-over. Not Web Audio, as planned: the Storage
+  bucket's CORS refuses the browser, and a video Web Audio cannot read plays silent (the same reason the
+  waveform's peaks come through the server).
+- **Left as before:** a next stretch under a second (the second video could not be ready again), a cut where a
+  transition plays (TransitionPreview), Original, Hear it and reverse play.
+- **Measured** in Chromium on the editor with a 3-minute test video, playing through a cut and sampling every
+  frame: with the video served slowly (each request held 400 ms, as a far Storage link can be), the picture
+  froze for 82–92 ms at the cut without it and for 17 ms (one frame) with it. Served locally, both were
+  50–72 ms (the seek was fast already).
 
 ## Phase 5 — The rest of the pipeline
 
@@ -719,6 +863,30 @@ prefer −16 LUFS.
     bucket path;
   - or a podcast host's API.
 - `storage.rules` stays closed whichever way.
+
+**Built (#169)**, on our own site (the first way above):
+- **The MP3** (`agent/src/podcast/podcastAudio.ts`, run by **Podcast Audio**, `podcast_audio.yml`, from the show notes
+  page's new "Podcast feed" part once there is a final cut): the final cut's sound at **−16 LUFS** (two loudnorm
+  passes, one linear gain), MP3 128 kb/s 44.1 kHz stereo, the final cut's chapters as **ID3 CHAP** frames, and the
+  feed's artwork (else the Studio's logo, else the site's) fitted into a **1400×1400** cover on the brand's
+  background. Saved to `episodes/{id}/podcast/episode.mp3`; `episode.podcast` records it (`types/episode.ts`).
+  Making it again replaces it and keeps it in the feed; the panel says when the final cut changed since.
+- **In the feed or not:** a checkbox on the same part (`/api/studio/episodes/[id]/podcast`, `requireRole`); its date
+  in the feed is when it first went in.
+- **The feed** (`lib/podcastFeed.ts`): RSS 2.0 with Apple's `itunes:` tags at **`/podcast/feed.xml`**, newest first,
+  each episode with the approved YouTube title and description (chapters, links and credits included), the MP3 as
+  its enclosure (size and duration) and the episode ID as its GUID. The show is the Studio settings' name, about,
+  hosts and the new **Podcast feed** section: on or off (off by default; the feed is then a 404), artwork (square,
+  1400–3000 px), Apple category (Religion & Spirituality by default), explicit, and an optional owner email.
+- **Public routes, by design:** podcast apps read without signing in, so `/podcast/feed.xml`,
+  `/podcast/audio/{id}.mp3` and `/podcast/art.jpg` are site routes (not under `/api`) with no `requireRole`. They show
+  only episodes put in the feed, and nothing while it is off. The MP3s and artwork stay in the private bucket
+  (`storage.rules` closed): the audio and art routes send the app on to a signed link (6 hours) each time, which
+  podcast apps follow. Links in the feed use the address the request came in on, so staging's feed points at staging.
+- **Checked:** the MP3 at −16 LUFS (±1) with both chapters and a 1400×1400 attached cover; the feed's escaping,
+  order, enclosure, duration, dates and owner. Not checked: Apple's and Spotify's validators, which need the feed on
+  the live site (Tom: turn it on in the settings, put an episode in, then submit the feed's address in Apple Podcasts
+  Connect and Spotify for Creators).
 
 ### 5.2 Animated captions and graphics — dropped for full episodes (D4)
 

@@ -86,9 +86,9 @@ item). So:
 4. **020 E1–E4:** workspace (moving the existing full-page editor into it; built, #143), timeline engine with
    waveform (built, #144), splits that transitions can attach to (built, #145), transitions (built, #147,
    after #146 made the render's timing frame-accurate). E5, layers and the media bin, built (#157).
-5. **019 Phase 2** (built: 2.3, #149; 2.4, #151; 2.5, #152; 2.6, #153), **Phase 3** (3.1 the sound bake-off, built, #155; 3.2 and 3.3 wait on its choice), then **020 E6–E8** (E6, elements and the Properties panel, built, #159; E7, music and effects, built, #160).
-6. **019 Phase 4** (hand-off export, faster render), then **Phase 5**.
-7. **020 E9** (move clips) when Tom says.
+5. **019 Phase 2** (built: 2.3, #149; 2.4, #151; 2.5, #152; 2.6, #153), **Phase 3** (3.1 the sound bake-off, built, #155; 3.2, all three clean-ups as choices, built, #164; 3.3, speaker tracks, built, #168), then **020 E6–E8** (E6, elements and the Properties panel, built, #159; E7, music and effects, built, #160; E8, the captions track and polish, built, #162).
+6. **019 Phase 4** (4.1 the hand-off export, built, #165; 4.2 the faster render, built, #166; 4.3 the smoother preview, built, #167), then **Phase 5** (5.1 the audio podcast feed, built, #169; 5.3 waits on three real episodes).
+7. **020 E9** (move clips): built, #170, after Tom's go-ahead.
 
 ## Overlaps with work already built — decided
 

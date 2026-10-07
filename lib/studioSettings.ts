@@ -9,6 +9,8 @@ import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
 import type { Brand } from './layers';
 import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
+import { VOICE_CLEANUPS } from './voice';
+import { PODCAST_CATEGORIES } from './podcastFeed';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -54,7 +56,16 @@ export const StudioSettingsSchema = z.object({
     // episode (spec 020 item E4); straight cuts until chosen. An episode can choose its own.
     joins: SectionJoinsSchema,
     finalSource: z.enum(['descript', 'editorLight']),
+    // The Editor Light render's voice clean-up (spec 019 item 3.2, lib/voice.ts); an episode can choose its own.
+    voiceCleanup: z.enum(VOICE_CLEANUPS),
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
+    // The audio podcast feed (spec 019 item 5.1, lib/podcastFeed.ts): on or off, its square artwork (Cloud Storage;
+    // null uses the site's logo), Apple's category, whether it is explicit, and the owner's email apps may show.
+    podcastFeed: z.boolean(),
+    podcastArtPath: z.string().max(300).nullable(),
+    podcastCategory: z.enum(PODCAST_CATEGORIES),
+    podcastExplicit: z.boolean(),
+    podcastEmail: z.string().trim().max(120).refine(s => s === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), 'Use an email address, or leave it empty'),
 });
 
 export type StudioSettings = z.infer<typeof StudioSettingsSchema>;
@@ -84,7 +95,13 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     teasers: true,
     joins: DEFAULT_SECTION_JOINS,
     finalSource: 'descript',
+    voiceCleanup: 'standard',
     useDrive: true,
+    podcastFeed: false,
+    podcastArtPath: null,
+    podcastCategory: 'Religion & Spirituality',
+    podcastExplicit: false,
+    podcastEmail: '',
 };
 
 // Whatever is saved, filled out with the defaults; anything that no longer fits is ignored, so
