@@ -18,6 +18,8 @@ import type { Episode } from '../../../types/episode';
 import { renderEdit } from './editRender';
 import { runEditRender, tidyChapters, type EditRenderDeps } from './editRenderJob';
 import { cutClip, probeDuration } from './media';
+import { teaserAss } from './teaserBanner';
+import { FONTS_DIR } from './shortsRender';
 
 const ID = 'testEpisode456';
 const RENDER = `episodes/${ID}/editRender/v3-run7`;
@@ -79,6 +81,7 @@ async function run(settings: StudioSettings, withCutter = true, change?: (e: Epi
     const downloads: string[] = [];
     const uploads: string[] = [];
     const updates: Record<string, unknown>[] = [];
+    const cuts: { start: number; seconds: number; tag?: { speaker: string } }[] = [];
     const deps: EditRenderDeps = {
         getEpisode: async () => e,
         download: async (p, dest) => { downloads.push(p); fs.copyFileSync(path.join(store, p), dest); },
@@ -90,12 +93,17 @@ async function run(settings: StudioSettings, withCutter = true, change?: (e: Epi
         now: () => 'NOW',
         settings,
         showIntro: path.join(dir, 'show-intro.mp4'),
-        ...(withCutter ? { cutClip: async (i: string, o: string, s: number, d: number) => { await cutClip(i, o, s, d, true); } } : {}),
+        ...(withCutter ? { cutClip: async (i: string, o: string, s: number, d: number, tag?: { speaker: string }) => {
+            cuts.push({ start: s, seconds: d, ...(tag ? { tag } : {}) });
+            const ass = o.replace(/\.mp4$/, '.ass');
+            if (tag) fs.writeFileSync(ass, teaserAss({ speaker: tag.speaker, durationMs: Math.round(d * 1000) }));
+            await cutClip(i, o, s, d, true, tag ? { ass, fontsDir: FONTS_DIR } : undefined);
+        } } : {}),
     };
     const result = await runEditRender(ID, deps, path.join(dir, 'work'), 'run7');
     assert.equal(result.videoPath, `${RENDER}/episode.mp4`);
     const seconds = await probeDuration(path.join(store, result.videoPath));
-    return { dir, store, e, result, seconds, downloads, uploads, updates, removed, last: updates[updates.length - 1] };
+    return { dir, store, e, result, seconds, downloads, uploads, updates, removed, cuts, last: updates[updates.length - 1] };
 }
 
 test('no intro and no teasers: only the edited recording', { timeout: 600_000 }, async () => {
@@ -120,6 +128,24 @@ test('no edit package: teaser cut from the recording, the show intro from the si
     // Teaser 12.0 s to 13.1 s with 0.3 s before and 0.6 s after = 2.0 s; show intro 2 s, twice.
     assert.ok(Math.abs(r.seconds - (2.0 + 2 + EDITED + 2)) < 0.5, `rendered ${r.seconds}s`);
     assert.match(r.result.warnings.join(' '), /edit package is not built/);
+    fs.rmSync(r.dir, { recursive: true, force: true });
+});
+
+test('the edit\'s own teasers (spec 020 item E10): cut exactly as the editor shows them, tagged, in their order', { timeout: 600_000 }, async () => {
+    // Teasers off in the settings: the edit's own list is what plays.
+    const r = await run(withDefaults({ intro: 'none', teasers: false }), true, e => {
+        e.edit!.teasers = [{ startMs: 20_000, endMs: 23_000, speaker: 'Sam' }, { startMs: 1000, endMs: 2500, speaker: 'Alex' }];
+    });
+    assert.deepEqual(r.cuts, [{ start: 20, seconds: 3, tag: { speaker: 'Sam' } }, { start: 1, seconds: 1.5, tag: { speaker: 'Alex' } }]);
+    assert.ok(Math.abs(r.seconds - (3 + 1.5 + EDITED)) < 0.5, `rendered ${r.seconds}s`);
+    assert.doesNotMatch(r.result.warnings.join(' '), /edit package is not built/);
+    fs.rmSync(r.dir, { recursive: true, force: true });
+});
+
+test('the edit\'s own teasers, none: no teasers, though the notes and settings have them', { timeout: 600_000 }, async () => {
+    const r = await run(withDefaults({ intro: 'none' }), true, e => { e.edit!.teasers = []; });
+    assert.deepEqual(r.cuts, []);
+    assert.ok(Math.abs(r.seconds - EDITED) < 0.5, `rendered ${r.seconds}s`);
     fs.rmSync(r.dir, { recursive: true, force: true });
 });
 

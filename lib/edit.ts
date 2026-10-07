@@ -8,6 +8,7 @@ import type { Join } from './transitions';
 import type { Layer } from './layers';
 import type { Sound } from './audio';
 import type { VoiceCleanup } from './voice';
+import type { Teaser } from './programme';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -48,6 +49,10 @@ export interface EpisodeEdit {
     order?: number[] | null;
     intro?: { path: string; name: string } | null;
     outro?: { path: string; name: string } | null;
+    // Item E10: the "In this episode" teasers, stretches of the recording played in this order before the intro,
+    // as the Studio editor shows them (lib/programme.ts); an empty list for none. Null or missing (an edit saved
+    // before E10): the edit package's clips, or the notes' cut plainly, as the render always made them.
+    teasers?: Teaser[] | null;
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

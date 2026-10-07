@@ -16,7 +16,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/research/2026-10-05-open-source-editors.md` | What Rescript, CutScript, auto-editor, DeepFilterNet, Auphonic, Remotion, Revideo and others offer, their licences, and what was measured on a runner-like machine |
 | `docs/research/2026-10-05-free-music-and-effects.md` | Free and royalty-free music and effects sources, with terms to check by hand |
 | `docs/specs/019-editor-light-v2.md` | **The plan and its status table**: Phases 0–5 and E. Start at its "Before you start" |
-| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E9) |
+| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E10) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
@@ -89,6 +89,8 @@ item). So:
 5. **019 Phase 2** (built: 2.3, #149; 2.4, #151; 2.5, #152; 2.6, #153), **Phase 3** (3.1 the sound bake-off, built, #155; 3.2, all three clean-ups as choices, built, #164; 3.3, speaker tracks, built, #168), then **020 E6–E8** (E6, elements and the Properties panel, built, #159; E7, music and effects, built, #160; E8, the captions track and polish, built, #162).
 6. **019 Phase 4** (4.1 the hand-off export, built, #165; 4.2 the faster render, built, #166; 4.3 the smoother preview, built, #167), then **Phase 5** (5.1 the audio podcast feed, built, #169; 5.3 waits on three real episodes).
 7. **020 E9** (move clips): built, #170, after Tom's go-ahead.
+8. **020 E10** (open with everything in place: fillers and pauses cut, the teasers, intro and outro on the timeline and
+   in the preview, the render making exactly that): built, #174, at Tom's request.
 
 ## Overlaps with work already built — decided
 
