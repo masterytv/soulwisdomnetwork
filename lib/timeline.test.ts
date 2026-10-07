@@ -9,6 +9,7 @@ import {
     clampScroll, clampToWords, clampZoom, cutAt, edgeAt, edgeLimits, fitPxPerMs, keptWords, MAX_PX_PER_MS, MIN_CUT_MS, moveCutEdge,
     msAt, nearest, pct, preciseTime, rangeOf, removedRanges, snapMs, SPEAKER_COLORS, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticks, ticksBetween, tickStep, tickText, wordEdges, zoomAround,
+    timelineAxis, dropPosition,
 } from './timeline';
 
 test('zoom: from the whole recording to 2 ms a pixel, around a fixed point', () => {
@@ -141,4 +142,41 @@ test('moving an edge makes the cut your own, and a cut never shrinks below 10 ms
     assert.deepEqual(rangeOf(1300, 1250.6, 5000), { startMs: 1251, endMs: 1300 });
     assert.deepEqual(rangeOf(4990, 6000, 5000), { startMs: 4990, endMs: 5000 });
     assert.equal(rangeOf(100, 105, 5000), null);
+});
+
+// ---- Sections in play order (spec 020 item E11) ----
+
+test('the timeline axis: in the recording\'s order, every moment where it always was', () => {
+    const a = timelineAxis([10_000, 30_000], null, 60_000);
+    assert.equal(a.moved, false);
+    assert.equal(a.pieces.length, 3);
+    assert.equal(a.toView(12_345), 12_345);
+    assert.equal(a.toSrc(45_000), 45_000);
+    assert.deepEqual(a.spans(5_000, 35_000), [{ fromMs: 5_000, toMs: 35_000 }]);
+});
+
+test('the timeline axis: sections laid out in play order, whole', () => {
+    // Sections 0–10 s, 10–30 s and 30–60 s, played third, first, second.
+    const a = timelineAxis([10_000, 30_000], [2, 0, 1], 60_000);
+    assert.equal(a.moved, true);
+    assert.deepEqual(a.pieces.map(p => [p.section, p.viewStart]), [[2, 0], [0, 30_000], [1, 40_000]]);
+    assert.equal(a.toView(31_000), 1_000);
+    assert.equal(a.toView(5_000), 35_000);
+    assert.equal(a.toView(10_000), 40_000);       // a split belongs to the section it starts
+    assert.equal(a.toSrc(35_000), 5_000);
+    assert.equal(a.toSrc(59_999), 29_999);
+    for (const ms of [0, 9_999, 10_000, 29_999, 30_000, 59_999]) assert.equal(a.toSrc(a.toView(ms)), ms);
+    // A stretch across a split is drawn in two places.
+    assert.deepEqual(a.spans(8_000, 12_000), [{ fromMs: 38_000, toMs: 40_000 }, { fromMs: 40_000, toMs: 42_000 }]);
+    // An order that does not fit the splits is the recording's.
+    assert.equal(timelineAxis([10_000], [2, 0, 1], 60_000).moved, false);
+});
+
+test('where a dragged section lands', () => {
+    const a = timelineAxis([10_000, 30_000], null, 60_000);   // 0–10, 10–30, 30–60
+    assert.equal(dropPosition(a, 0, 59_000), 2);   // the first, dropped late in the last: last
+    assert.equal(dropPosition(a, 0, 35_000), 1);   // into the last's first half: before it
+    assert.equal(dropPosition(a, 2, 1_000), 0);    // the last, dropped in the first's first half: first
+    assert.equal(dropPosition(a, 2, 8_000), 1);    // its second half: after it
+    assert.equal(dropPosition(a, 1, 12_000), 1);   // over itself: where it was
 });

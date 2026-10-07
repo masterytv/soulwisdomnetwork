@@ -1,7 +1,7 @@
 "use client";
 
 // Why: moving clips (spec 020 item E9). The splits divide the episode into sections; here they can be put in another
-// order (the timeline keeps showing the recording, so the play order is listed here), and the episode can have its
+// order (also by dragging them on the timeline's V1, item E11, which draws them in play order), and the episode can have its
 // own intro or outro from its media instead of the Studio's. Everything that follows the edit's times (the preview,
 // captions, chapters, layers anchored to words, the render) follows the new order (lib/sequence.ts).
 
@@ -38,7 +38,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
                 <span className="text-sm font-semibold text-gray-200">Parts</span>
                 <span className={hint}>
                     The sections between splits, in the order they play. Move one earlier or later; the preview, captions, chapters and render follow.
-                    The timeline still shows the recording in its own order. Split with S or the Blade first.
+                    Or drag a section along V1 on the timeline, which shows them in this order. Split with S or the Blade first.
                 </span>
             </div>
             {sections.length < 2 ? <p className={hint}>One section: add a split to move parts.</p> : (
