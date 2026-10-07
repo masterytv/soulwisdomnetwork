@@ -43,6 +43,10 @@ export function continueTarget(
     if (e.status === 'awaiting_speaker_review') {
         return { label: 'Continue: Speakers', href: `/admin/podcast/${e.id}` };
     }
+    // Editing waits for the b-roll images (or for b-roll to be skipped, lib/brollGate.ts), so that comes first.
+    if (e.progress.notesApproved && e.progress.brollSettled === false && !e.progress.finalReady) {
+        return { label: 'Continue: B-roll', href: `/admin/podcast/${e.id}/notes#broll` };
+    }
     const entries = journey({ accepted: true, ...e.progress });
     const index = entries.findIndex(en => en.status === 'current');
     if (index < 0) {

@@ -1,4 +1,4 @@
-import { getBroll, requestBroll } from '@/lib/server/broll';
+import { getBroll, requestBroll, skipBroll } from '@/lib/server/broll';
 import { handle, requireRole, STUDIO_ROLES } from '@/lib/server/staff';
 
 export const dynamic = 'force-dynamic';
@@ -11,9 +11,14 @@ export const GET = handle<Context>(async (request, { params }) => {
 });
 
 // Body: { index?: number }. Generates the missing or changed images, or regenerates one.
+// Body: { skip: boolean } instead skips b-roll, or takes the skip back (lib/brollGate.ts).
 export const POST = handle<Context>(async (request, { params }) => {
-    await requireRole(request, STUDIO_ROLES);
-    const { index } = await request.json().catch(() => ({})) as { index?: unknown };
+    const user = await requireRole(request, STUDIO_ROLES);
+    const { index, skip } = await request.json().catch(() => ({})) as { index?: unknown; skip?: unknown };
+    if (typeof skip === 'boolean') {
+        await skipBroll((await params).id, skip, user);
+        return Response.json({ skipped: skip });
+    }
     if (index !== undefined && index !== null && !(Number.isInteger(index) && (index as number) >= 0)) {
         return Response.json({ error: 'index must be a whole number' }, { status: 400 });
     }

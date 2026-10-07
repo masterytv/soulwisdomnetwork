@@ -78,3 +78,12 @@ the "altered or synthetic content" flag.
 
 - Send the images to the Descript project with the episode (step 8).
 - Stock footage or AI video (options B and C) as other sources for the same records.
+
+## Editing waits for the b-roll (October 2026)
+
+The edit is made with the b-roll in it, so building the edit package and editing (the Studio editor and the edit on the
+show notes page) wait until every approved idea has an image made for its current wording and style, or the producer
+presses **Skip b-roll** (`brollSkipped` on the episode; Undo takes it back, and making images clears it). Notes with no
+b-roll ideas, and episodes whose edit or edit package already exists, are never held. The check is `brollBlock` in
+`lib/brollGate.ts`: the edit route refuses to save and the package route to build while it holds, the editor shows
+"Finish or skip the b-roll first" instead, and an episode's Continue button leads to the b-roll.

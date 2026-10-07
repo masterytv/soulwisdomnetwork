@@ -1,7 +1,8 @@
 "use client";
 
 // B-roll images on the show notes page (docs/specs/008-broll-images.md): loads what has been
-// generated, starts the Podcast B-roll run, and checks back while it works.
+// generated, starts the Podcast B-roll run, and checks back while it works. B-roll can be skipped instead, which
+// lets editing and the edit package go ahead without images (lib/brollGate.ts).
 
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "@/components/studio/format";
@@ -46,8 +47,21 @@ export function useBroll(episodeId: string, enabled: boolean) {
         }
     }, [episodeId, load]);
 
+    // Skips b-roll, or takes the skip back: editing and the edit package wait for images unless it is skipped.
+    const setSkipped = useCallback(async (skip: boolean) => {
+        setStarting(true);
+        try {
+            await studioFetch(`/api/studio/episodes/${episodeId}/broll`, { method: "POST", body: JSON.stringify({ skip }) });
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setStarting(false);
+        }
+    }, [episodeId, load]);
+
     const image = (index: number) => view?.images.find(i => i.index === index);
-    return { view, error, working, starting, generate, image };
+    return { view, error, working, starting, generate, setSkipped, image };
 }
 
 export type Broll = ReturnType<typeof useBroll>;

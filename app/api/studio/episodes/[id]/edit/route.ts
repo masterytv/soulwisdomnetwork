@@ -8,7 +8,8 @@
 // episode's media bin (lib/server/mediaBin.ts) or be an overlay upload, and GET links every file they use.
 // Sounds (spec 020 item E7, lib/audio.ts): a show library file must have its licence checked, and an
 // episode's own sound its uploader's word on the rights; GET links them too. The voice clean-up (spec 019 item 3.2)
-// is one of lib/voice.ts's choices, or null for the Studio's.
+// is one of lib/voice.ts's choices, or null for the Studio's. Editing waits for the b-roll images, or for b-roll
+// to be skipped (lib/brollGate.ts): GET says why, and PUT refuses.
 import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
@@ -23,6 +24,7 @@ import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
 import { SoundsSchema, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
+import { brollBlock } from '@/lib/brollGate';
 
 // The episode's own intro or outro (spec 020 item E9): a video from its media bin.
 const SectionFileSchema = z.object({ path: z.string().min(1).max(300), name: z.string().max(200) }).strict();
@@ -42,7 +44,7 @@ export const GET = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const doc = await episodeRef((await params).id).get();
     if (!doc.exists) throw new HttpError(404, 'Episode not found');
-    const data = doc.data() as { edit?: EpisodeEdit; media?: { silencesPath?: string } };
+    const data = doc.data() as Episode;
     const edit = data.edit ?? { cuts: [], version: 0 };
     // Links to every picture the layers (or the overlays they grew from) use, so the editor can show them.
     const overlayUrls: Record<string, string> = {};
@@ -65,7 +67,8 @@ export const GET = handle<Context>(async (request, { params }) => {
         const parsed = SilencesFileSchema.safeParse(raw);
         if (parsed.success) silences = parsed.data.silences;
     }
-    return Response.json({ edit, overlayUrls, silences });
+    // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
+    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data) });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {
@@ -203,6 +206,9 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const snap = await tx.get(ref);
         if (!snap.exists) throw new HttpError(404, 'Episode not found');
         const current = (snap.data() as { edit?: EpisodeEdit }).edit;
+        // Editing waits for the b-roll images, or for b-roll to be skipped (lib/brollGate.ts).
+        const held = brollBlock(snap.data() as Episode);
+        if (held) throw new HttpError(409, held);
         if ((current?.version ?? 0) !== body.version) {
             throw new HttpError(409, 'Version mismatch — someone else edited');
         }

@@ -3,6 +3,7 @@
 // notes, and show where they stand on the notes page.
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { brollBlock } from '@/lib/brollGate';
 import type { Episode, EpisodeDescript, EpisodePackage } from '@/types/episode';
 import type { PackageView } from '@/types/studio';
 import { adminDb } from './firebaseAdmin';
@@ -75,6 +76,8 @@ export async function requestPackage(id: string) {
         const episode = (await tx.get(ref)).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
         if (episode.notes?.status !== 'approved') throw new HttpError(409, 'Approve the show notes first');
+        const held = brollBlock(episode);
+        if (held) throw new HttpError(409, held);
         if (busy(episode.package)) throw new HttpError(409, 'The edit package is already being built');
         if (descriptBusy(episode.descript)) throw new HttpError(409, 'Wait until the Descript project is made');
         tx.set(ref, {
@@ -111,6 +114,7 @@ export async function getPackage(id: string): Promise<PackageView> {
         notesApproved: episode.notes?.status === 'approved',
         approvedVersion: episode.notes?.approvedVersion ?? null,
         clipsStored: clipsStored(episode),
+        brollBlock: brollBlock(episode),
         descript: {
             status: dLost ? 'failed' : d?.status ?? null,
             error: d?.error ?? (dLost ? 'Sending did not finish. Check the Podcast Descript run in GitHub Actions and the project in Descript.' : null),

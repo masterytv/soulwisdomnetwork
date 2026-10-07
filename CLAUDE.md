@@ -133,7 +133,8 @@ to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.y
 `mode: extras` writes the social posts and follow-up email from the approved notes; `mode: translations`
 and `mode: retakes` serve the editor (spec 015). Once notes are approved, "Generate b-roll
 images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
-`docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. "Build edit package" starts
+`docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. Editing and "Build edit package" wait until every approved b-roll idea has its image, or b-roll is skipped
+(`lib/brollGate.ts`; an episode whose edit or package already exists is not held). "Build edit package" starts
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
 the episode, teaser clips (with the "In this episode" tag burned in by `podcast/teaserBanner.ts`), b-roll and notes in `03 For Descript/<episode>`; "Send to Descript" then
 starts `podcast_descript.yml` (`agent/src/podcast/descript.ts`), which makes the Descript project through

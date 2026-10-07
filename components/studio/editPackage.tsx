@@ -111,7 +111,7 @@ export function EditPackage({ episodeId, enabled, upToDate, report, revision }: 
         <div className="flex flex-col gap-2">
             <h3 className="text-base font-semibold text-gray-100">Edit package</h3>
             <div className="flex flex-wrap items-center gap-3">
-                <button onClick={build} disabled={!upToDate || working || starting} className={built && !stale ? secondary : primary}>
+                <button onClick={build} disabled={!upToDate || working || starting || !!view?.brollBlock} title={view?.brollBlock ?? undefined} className={built && !stale ? secondary : primary}>
                     {working ? "Building…" : built ? "Rebuild edit package" : "Build edit package"}
                 </button>
                 {view?.folderUrl && (
@@ -125,6 +125,8 @@ export function EditPackage({ episodeId, enabled, upToDate, report, revision }: 
                     ? "Cutting the clips and copying files; usually a few minutes. This page updates by itself."
                     : !upToDate
                         ? "Approve the show notes first; the package is built from the approved notes."
+                        : view?.brollBlock
+                            ? <span className="text-amber-300">{view.brollBlock}</span>
                         : built
                             ? <>
                                 {`Built ${view.finishedAt ? ago(view.finishedAt) : ""}. ${!view.clipsStored ? "Built before Descript could use it; rebuild once." : stale ? "The notes have been approved again since: rebuild to match, or go back to the notes it was built from." : "Rebuilding replaces the files in place."}`}
