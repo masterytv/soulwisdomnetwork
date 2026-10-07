@@ -18,8 +18,9 @@
 // preview with CC, and in the Captions panel (components/studio/captions.tsx), which also holds Part I's
 // burned-in option; Ctrl or ⌘ + C, X and V copy, cut and paste a layer or sound at the playhead; J, K and L
 // shuttle (K with J or L steps a frame).
-// Spec 020 item E10: the whole video, teasers, intro, episode and outro, on the timeline's Programme row and in the
-// preview (components/studio/programme.tsx), from `programme` (what the page loaded for it).
+// Spec 020 item E10: the whole video, teasers, intro, episode and outro, in the preview (components/studio/programme.tsx),
+// from `programme` (what the page loaded for it), and (item E14) as clips on the timeline's V1, where a section or stretch
+// becomes a teaser (addTeaser: + Teaser, or copy and paste).
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SpokenWord } from '@/lib/showNotes';
@@ -56,7 +57,9 @@ import { CutBridge } from '@/components/studio/cutBridge';
 import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
-import { ProgrammePlayer, ProgrammeStrip, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
+import { ProgrammePlayer, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
+import { addTeaser as withTeaser } from '@/lib/programme';
+import { teaserSlot } from '@/lib/timeline';
 
 // No media videos: one array, so the Parts panel does not redraw on every render.
 const NO_VIDEOS: BinItem[] = [];
@@ -303,6 +306,19 @@ export function Editor({
     // The whole video (item E10): teasers, intro, this episode and outro.
     const prog = useProgramme({ setup: workspace ? programme : null, edit, urls: mediaUrls, studioJoins, src: videoUrl, editedMs });
     const programmeControl = prog?.control;
+    // Item E14: a stretch of the recording (a section or stretch chosen on the timeline, made a teaser or copied and
+    // pasted) added as a teaser where the preview is among the teasers (before the one it shows in that one's first
+    // half, after it in its second), or after the last one; then chosen on the timeline.
+    const addTeaser = useCallback((stretch: { startMs: number; endMs: number }) => {
+        if (!prog) return;
+        const pos = prog.control.position();
+        const piece = pos ? prog.pieces[pos.piece] : null;
+        const at = teaserSlot(prog.teasers.length, piece && pos ? { kind: piece.kind, index: piece.index, ms: pos.ms, lengthMs: piece.lengthMs } : null);
+        const next = withTeaser(prog.teasers, stretch, at, words);
+        if (next === prog.teasers) return;
+        updateEdit(prev => ({ ...prev, teasers: next }));
+        setTimelineSel({ kind: 'teaser', index: at });
+    }, [prog, words, updateEdit, setTimelineSel]);
     // Choosing a layer on the preview or the timeline keeps the keys with the editor (Delete removes it),
     // even when the element that was clicked goes away. Not from the panel, whose fields need the keys.
     const pickLayer = useCallback((id: string | null) => {
@@ -364,6 +380,9 @@ export function Editor({
         container: containerRef, video: videoRef, enabled: workspace, clips: kept, layers, sounds, layersEditable,
         selected: selectedLayer, busy: !!selectedRange || !!timelineSel, setLayers, setSounds, pick: pickLayer, remove: removeLayer,
         setReverse, setSpeed,
+        // Item E14: a section or stretch chosen on the timeline is copied, and pasted as a teaser.
+        stretch: timelineSel?.kind === 'range' || timelineSel?.kind === 'section' ? timelineSel : null,
+        pasteStretch: prog ? addTeaser : undefined,
     });
 
     const undo = useCallback(() => {
@@ -1379,10 +1398,15 @@ export function Editor({
                             })}
                             overlaps={sequence.joins.flatMap(j => [{ fromMs: j.aFromMs, toMs: j.aEndMs }, { fromMs: j.bStartMs, toMs: j.bUntilMs }])}
                             onJoin={splitMs => { setJoinFocus(splitMs); setPanelId('transitions'); }}
-                            programme={prog && (
-                                <ProgrammeStrip view={prog} video={videoRef} clips={kept} editedMs={editedMs}
-                                    onTeasers={teasers => updateEdit(prev => ({ ...prev, teasers }))} onParts={() => setPanelId('parts')} />
-                            )}
+                            programme={prog && {
+                                teasers: prog.teasers,
+                                pieces: prog.pieces,
+                                control: prog.control,
+                                onTeasers: teasers => updateEdit(prev => ({ ...prev, teasers })),
+                                onMakeTeaser: addTeaser,
+                                onEnd: key => updateEdit(prev => ({ ...prev, [key]: false })),
+                                onParts: () => setPanelId('parts'),
+                            }}
                             split={{
                                 splits: edit.splits ?? NO_SPLITS,
                                 onSplit: addSplit,

@@ -5,7 +5,8 @@
 //   stops. With K held, J and L step one frame back or forward.
 // - Ctrl or ⌘ + C, X and V: copy or cut the selected layer or sound, and paste it at the playhead as a new one,
 //   anchored as the original was. The clipboard is this page's only: another episode's bin would not have the
-//   file. Not while words or a stretch of the timeline are selected (their keys mean something else).
+//   file. Not while words or a stretch of the timeline are selected (their keys mean something else), except (item E14)
+//   a section or stretch chosen on the timeline: Ctrl or ⌘ + C copies it, and V pastes it as a teaser (`pasteStretch`).
 // Playing backwards is a seek a frame at a time (ReversePlay), since a video cannot play in reverse.
 
 import { useEffect, useRef } from 'react';
@@ -16,7 +17,7 @@ import { SPEEDS } from '@/lib/studioUi';
 
 export function useStudioKeys({
     container, video: videoRef, enabled, clips, layers, sounds, layersEditable, selected, busy,
-    setLayers, setSounds, pick, remove, setReverse, setSpeed,
+    setLayers, setSounds, pick, remove, setReverse, setSpeed, stretch, pasteStretch,
 }: {
     container: React.RefObject<HTMLElement | null>;
     video: React.RefObject<HTMLVideoElement | null>;
@@ -33,8 +34,10 @@ export function useStudioKeys({
     remove: (id: string) => void;
     setReverse: React.Dispatch<React.SetStateAction<number>>;
     setSpeed: (speed: number) => void;
+    stretch?: { startMs: number; endMs: number } | null;   // the section or stretch chosen on the timeline
+    pasteStretch?: (stretch: { startMs: number; endMs: number }) => void;
 }) {
-    const clipboard = useRef<{ layer: Layer } | { sound: Sound } | null>(null);
+    const clipboard = useRef<{ layer: Layer } | { sound: Sound } | { stretch: { startMs: number; endMs: number } } | null>(null);
     const kHeld = useRef(false);
 
     useEffect(() => {
@@ -67,6 +70,7 @@ export function useStudioKeys({
         const paste = () => {
             const clip = clipboard.current;
             if (!clip) return;
+            if ('stretch' in clip) { pasteStretch?.(clip.stretch); return; }
             const srcMs = (videoRef.current?.currentTime ?? 0) * 1000;
             const atMs = timelineTime(clips, srcMs, true) ?? 0;
             if ('layer' in clip) {
@@ -89,6 +93,11 @@ export function useStudioKeys({
                     if (clipboard.current) { e.preventDefault(); paste(); }
                     return;
                 }
+                if (key === 'c' && stretch && pasteStretch) {
+                    e.preventDefault();
+                    clipboard.current = { stretch: { startMs: stretch.startMs, endMs: stretch.endMs } };
+                    return;
+                }
                 if (!selected || busy) return;
                 const layer = layers.find(l => l.id === selected);
                 const sound = sounds.find(x => x.id === selected);
@@ -106,7 +115,7 @@ export function useStudioKeys({
         };
         el.addEventListener('keydown', handler);
         return () => el.removeEventListener('keydown', handler);
-    }, [container, videoRef, enabled, clips, layers, sounds, layersEditable, selected, busy, setLayers, setSounds, pick, remove, setReverse, setSpeed]);
+    }, [container, videoRef, enabled, clips, layers, sounds, layersEditable, selected, busy, setLayers, setSounds, pick, remove, setReverse, setSpeed, stretch, pasteStretch]);
 }
 
 // A moment the one preview video plays, at or before `ms`: `ms` itself when it is in `ranges`, else the end of

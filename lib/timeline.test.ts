@@ -10,6 +10,7 @@ import {
     msAt, nearest, pct, preciseTime, rangeOf, removedRanges, snapMs, SPEAKER_COLORS, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticks, ticksBetween, tickStep, tickText, wordEdges, zoomAround,
     timelineAxis, dropPosition, playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, uncut, joinMarks, MIN_PIECE_MS,
+    withProgramme, extraAt, teaserEdgeAt, teaserDrop, teaserSlot,
 } from './timeline';
 import { playOrder } from './sequence';
 
@@ -316,4 +317,48 @@ test('where something is cut on a closed-up timeline, and whose cut it is', () =
         [9_080, 10_040, 12_960, true],
         [26_160, 30_040, 30_960, false],
     ]);
+});
+
+// ---- The whole video on the timeline (spec 020 item E14) ----
+
+const teaser = (index: number, srcStart: number, lengthMs: number) => ({ kind: 'teaser' as const, index, srcStart, lengthMs });
+
+test('the teasers and intro before the episode, the outro after it', () => {
+    const inner = played([{ startMs: 10_000, endMs: 12_000, reason: 'filler' }]);
+    const a = withProgramme(inner, [teaser(0, 30_000, 4_000), teaser(1, 5_000, 2_000), { kind: 'intro', index: 0, srcStart: 0, lengthMs: 3_000 }],
+        [{ kind: 'outro', index: 0, srcStart: 0, lengthMs: 3_000 }]);
+    assert.equal(a.leadMs, 9_000);
+    assert.equal(a.lengthMs, 9_000 + inner.lengthMs + 3_000);
+    assert.deepEqual(a.extras.map(c => [c.kind, c.index, c.viewStart]), [['teaser', 0, 0], ['teaser', 1, 4_000], ['intro', 0, 6_000], ['outro', 0, 9_000 + inner.lengthMs]]);
+    // The episode, everything in it, after them; a teaser's copy of a moment does not move where the episode plays it.
+    assert.equal(a.toView(5_000), 14_000);
+    assert.equal(a.toSrc(14_000), 5_000);
+    assert.deepEqual(a.pieces.map(p => p.viewStart), inner.pieces.map(p => p.viewStart + 9_000));
+    assert.deepEqual(a.spans(9_000, 13_000), inner.spans(9_000, 13_000).map(sp => ({ fromMs: sp.fromMs + 9_000, toMs: sp.toMs + 9_000 })));
+    assert.equal(a.moved, true);
+    // What is where.
+    assert.equal(extraAt(a, 4_500)?.index, 1);
+    assert.equal(extraAt(a, 7_000)?.kind, 'intro');
+    assert.equal(extraAt(a, 9_000), null);
+    assert.equal(extraAt(a, a.lengthMs - 1)?.kind, 'outro');
+    // Nothing around the episode: the same timeline.
+    assert.equal(withProgramme(inner, [], []), inner);
+});
+
+test('a teaser\'s ends, where a dragged one lands, and where a new one goes', () => {
+    const a = withProgramme(timelineAxis([], null, 60_000), [teaser(0, 30_000, 4_000), teaser(1, 5_000, 2_000), teaser(2, 40_000, 4_000)], []);
+    assert.deepEqual(teaserEdgeAt(a, 3_990, 50), { index: 0, edge: 'end' });
+    assert.deepEqual(teaserEdgeAt(a, 4_010, 50), { index: 1, edge: 'start' });
+    assert.equal(teaserEdgeAt(a, 2_000, 50), null);
+    assert.equal(teaserEdgeAt(a, 20_000, 50), null);          // in the episode
+    assert.equal(teaserDrop(a, 2, 1_000), 0);                  // the last onto the first's first half: first
+    assert.equal(teaserDrop(a, 0, 8_500), 2);                  // the first past the third's middle: last
+    assert.equal(teaserDrop(a, 0, 7_500), 1);                  // before the third's middle: between the other two
+    assert.equal(teaserDrop(a, 0, 4_500), 0);                  // before the second: where it was
+    assert.equal(teaserDrop(a, 0, 30_000), 2);                 // dropped on the episode: last
+    assert.equal(teaserSlot(3, null), 3);
+    assert.equal(teaserSlot(3, { kind: 'teaser', index: 0, ms: 0, lengthMs: 4_000 }), 0);
+    assert.equal(teaserSlot(3, { kind: 'teaser', index: 1, ms: 1_500, lengthMs: 2_000 }), 2);
+    assert.equal(teaserSlot(3, { kind: 'intro', index: 0, ms: 0, lengthMs: 3_000 }), 3);
+    assert.equal(teaserSlot(0, { kind: 'episode', index: 0, ms: 0, lengthMs: 9 }), 0);
 });

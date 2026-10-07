@@ -149,11 +149,12 @@ export const PUT = handle<Context>(async (request, { params }) => {
         }
         order = body.edit.order as number[] | null;
     }
-    const ends: { intro?: SectionFile | null; outro?: SectionFile | null } = {};
+    // false: none in this episode (item E14).
+    const ends: { intro?: SectionFile | false | null; outro?: SectionFile | false | null } = {};
     for (const key of ['intro', 'outro'] as const) {
         const v = body.edit[key];
         if (v === undefined) continue;
-        if (v === null) { ends[key] = null; continue; }
+        if (v === null || v === false) { ends[key] = v; continue; }
         const r = SectionFileSchema.safeParse(v);
         if (!r.success) throw new HttpError(400, `${key === 'intro' ? 'Intro' : 'Outro'}: not valid`);
         ends[key] = r.data;

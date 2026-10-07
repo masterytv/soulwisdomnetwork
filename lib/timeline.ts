@@ -317,7 +317,15 @@ export interface TimelineAxis {
     // A stretch of the recording as the stretches of the timeline it is drawn on (one, unless it crosses a split, or a
     // cut once what plays is closed up; none when all of it is cut).
     spans: (fromMs: number, toMs: number) => { fromMs: number; toMs: number }[];
+    // Item E14: the teasers and intro before the episode and the outro after it (withProgramme), and how long the ones
+    // before it are; none, 0, until they are added.
+    extras: ProgrammeClip[];
+    leadMs: number;
 }
+
+// A clip of the whole video that is not the episode (item E14): a teaser (a stretch of the recording: `srcStart`), the
+// intro or the outro (files), where it is on the timeline and how long it is. `index` numbers the teasers.
+export interface ProgrammeClip { kind: 'teaser' | 'intro' | 'outro'; index: number; viewStart: number; lengthMs: number; srcStart: number }
 
 // The sections the splits make, and the play order when it is a valid one that moves something.
 function sectionsAndOrder(splits: number[], order: number[] | null | undefined, totalMs: number) {
@@ -339,7 +347,7 @@ export function timelineAxis(splits: number[], order: number[] | null | undefine
         return p;
     });
     const axisSections = pieces.map(p => ({ section: p.section, srcStart: p.srcStart, srcEnd: p.srcEnd, viewStart: p.viewStart, viewEnd: p.viewStart + (p.srcEnd - p.srcStart) }));
-    const base = { moved, reordered: moved, collapsed: false, lengthMs: Math.max(0, totalMs), pieces, sections: axisSections };
+    const base = { moved, reordered: moved, collapsed: false, lengthMs: Math.max(0, totalMs), pieces, sections: axisSections, extras: [], leadMs: 0 };
     if (!moved) {
         const clamp = (ms: number) => Math.max(0, Math.min(totalMs, ms));
         return { ...base, toView: clamp, toSrc: clamp, spans: (fromMs, toMs) => (toMs > fromMs ? [{ fromMs, toMs }] : []) };
@@ -449,7 +457,7 @@ export function playedAxis(clips: { startMs: number; endMs: number }[], splits: 
         }
         return out;
     };
-    return { moved: true, reordered, collapsed: true, lengthMs, pieces, sections: axisSections, toView, toSrc, spans };
+    return { moved: true, reordered, collapsed: true, lengthMs, pieces, sections: axisSections, toView, toSrc, spans, extras: [], leadMs: 0 };
 }
 
 // The end of a kept stretch near `viewMs` on a closed-up timeline, within `withinMs`: the one on the pointer's side at a
@@ -561,4 +569,66 @@ export function dropPosition(axis: TimelineAxis, from: number, viewMs: number): 
         if (viewMs < s.viewEnd) { slot = viewMs < (s.viewStart + s.viewEnd) / 2 ? i : i + 1; break; }
     }
     return slot > from ? slot - 1 : slot;
+}
+
+// ---- The whole video on the timeline (spec 020 item E14) ----
+
+// The timeline with the teasers and the intro laid before the episode and the outro after it, end to end (transitions
+// between them are not overlapped here, as within the episode). Every moment of the recording is still drawn where the
+// episode plays it: a teaser's copy of it is a clip of its own.
+export function withProgramme(axis: TimelineAxis, lead: Omit<ProgrammeClip, 'viewStart'>[], tail: Omit<ProgrammeClip, 'viewStart'>[]): TimelineAxis {
+    if (!lead.length && !tail.length) return axis;
+    let at = 0;
+    const before = lead.map(c => { const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
+    const leadMs = at;
+    at = leadMs + axis.lengthMs;
+    const after = tail.map(c => { const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
+    return {
+        moved: axis.moved || leadMs > 0,
+        reordered: axis.reordered,
+        collapsed: axis.collapsed,
+        lengthMs: at,
+        pieces: axis.pieces.map(p => ({ ...p, viewStart: p.viewStart + leadMs })),
+        sections: axis.sections.map(sec => ({ ...sec, viewStart: sec.viewStart + leadMs, viewEnd: sec.viewEnd + leadMs })),
+        toView: ms => leadMs + axis.toView(ms),
+        toSrc: v => axis.toSrc(v - leadMs),
+        spans: (fromMs, toMs) => axis.spans(fromMs, toMs).map(sp => ({ fromMs: sp.fromMs + leadMs, toMs: sp.toMs + leadMs })),
+        extras: [...before, ...after],
+        leadMs,
+    };
+}
+
+// The teaser, intro or outro at a moment of the timeline; null in the episode.
+export function extraAt(axis: TimelineAxis, viewMs: number): ProgrammeClip | null {
+    for (const c of axis.extras) if (viewMs >= c.viewStart && viewMs < c.viewStart + c.lengthMs) return c;
+    const last = axis.extras[axis.extras.length - 1];
+    return last && last.kind === 'outro' && viewMs >= axis.lengthMs && viewMs === last.viewStart + last.lengthMs ? last : null;
+}
+
+// The end of a teaser near `viewMs`, within `withinMs`: the one on the pointer's side where two meet.
+export function teaserEdgeAt(axis: TimelineAxis, viewMs: number, withinMs: number): { index: number; edge: 'start' | 'end' } | null {
+    const c = extraAt(axis, viewMs);
+    if (!c || c.kind !== 'teaser') return null;
+    const ds = viewMs - c.viewStart, de = c.viewStart + c.lengthMs - viewMs;
+    if (Math.min(ds, de) > withinMs) return null;
+    return { index: c.index, edge: ds <= de ? 'start' : 'end' };
+}
+
+// Where a teaser dragged from place `from` lands among the teasers, dropped at `viewMs`: before the teaser under the
+// pointer in its first half, after it in its second; after the last one past the teasers.
+export function teaserDrop(axis: TimelineAxis, from: number, viewMs: number): number {
+    const teasers = axis.extras.filter(c => c.kind === 'teaser');
+    let slot = teasers.length;
+    for (let i = 0; i < teasers.length; i++) {
+        const c = teasers[i];
+        if (viewMs < c.viewStart + c.lengthMs) { slot = viewMs < c.viewStart + c.lengthMs / 2 ? i : i + 1; break; }
+    }
+    return slot > from ? slot - 1 : slot;
+}
+
+// Where a new teaser goes among `count` teasers when the preview is at `at` (item E14): before the teaser it is on, in
+// that teaser's first half, or after it; after the last one when it is on the intro, the episode or the outro.
+export function teaserSlot(count: number, at: { kind: 'teaser' | 'intro' | 'outro' | 'episode'; index: number; ms: number; lengthMs: number } | null): number {
+    if (!at || at.kind !== 'teaser') return count;
+    return Math.min(count, at.ms < at.lengthMs / 2 ? at.index : at.index + 1);
 }

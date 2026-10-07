@@ -12,6 +12,9 @@ import type { Clip } from "@/lib/sequence";
 import { hint, secondary } from "@/components/studio/ui";
 import { mmss } from "@/components/studio/onScreen";
 
+// The choice for no intro or outro in this episode (item E14).
+const NONE = "__none";
+
 type Patch = Pick<EpisodeEdit, "order" | "intro" | "outro">;
 
 export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words, videos, onChange, onSeek }: {
@@ -30,7 +33,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
     const moved = order.some((v, i) => v !== i);
     const pick = (key: "intro" | "outro", path: string) => {
         const v = videos.find(x => x.path === path);
-        onChange({ [key]: v ? { path: v.path, name: v.name } : null });
+        onChange({ [key]: v ? { path: v.path, name: v.name } : path === NONE ? false : null });
     };
     return (
         <section aria-label="Parts" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
@@ -67,9 +70,10 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
                 {(["intro", "outro"] as const).map(key => (
                     <label key={key} className="flex flex-wrap items-center gap-2 text-sm text-gray-200">
                         {key === "intro" ? "Intro" : "Outro"}
-                        <select aria-label={key === "intro" ? "This episode's intro" : "This episode's outro"} value={edit[key]?.path ?? ""}
+                        <select aria-label={key === "intro" ? "This episode's intro" : "This episode's outro"} value={edit[key] === false ? NONE : edit[key] ? edit[key].path : ""}
                             onChange={e => pick(key, e.target.value)} className="max-w-full min-w-0 rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
                             <option value="">The Studio&apos;s {key}</option>
+                            <option value={NONE}>No {key} in this episode</option>
                             {videos.map(v => <option key={v.path} value={v.path}>{v.name}</option>)}
                         </select>
                     </label>
