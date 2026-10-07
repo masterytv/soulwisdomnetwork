@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, firstEdit, moveTeaser, setTeaserTag, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, firstEdit, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 
@@ -108,4 +108,18 @@ test('teasers made on the timeline, and their "In this episode" tag (item E14)',
     assert.equal(setTeaserTag(t, 5, { tag: false }), t);
     // A teaser with its tag off can be saved; it plays plainly in the render.
     assert.ok(TeasersSchema.safeParse(off).success);
+});
+
+test('picking a teaser clip\'s words on the notes page', () => {
+    const ws = [w('One', 0, 400, 'A'), w('two', 500, 900, 'A'), w('three', 1000, 1400, 'A'), w('four', 1500, 1900, 'B'), w('five', 2000, 2400, 'B'), w('six', 20_000, 20_400, 'B')];
+    const clip = { startMs: 500, endMs: 1900 };
+    assert.deepEqual(wordsAround(ws, clip).map(x => [x.word.text, x.inside]),
+        [['One', false], ['two', true], ['three', true], ['four', true], ['five', false]]);
+    // Before the middle: starts there; after: ends there; the text follows.
+    assert.deepEqual(pickTeaserWord(ws, clip, ws[0]), { startMs: 0, endMs: 1900, text: 'One two three four', speaker: 'A' });
+    assert.deepEqual(pickTeaserWord(ws, clip, ws[4]), { startMs: 500, endMs: 2400, text: 'two three four five', speaker: 'A' });
+    assert.deepEqual(pickTeaserWord(ws, clip, ws[3]), { startMs: 500, endMs: 1900, text: 'two three four', speaker: 'A' });
+    assert.deepEqual(pickTeaserWord(ws, clip, ws[1]), { startMs: 500, endMs: 1900, text: 'two three four', speaker: 'A' });
+    // Too short a clip: just the word, at least half a second.
+    assert.deepEqual(pickTeaserWord(ws, { startMs: 1000, endMs: 1400 }, ws[2]).endMs - 1000, 500);
 });
