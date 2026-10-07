@@ -167,3 +167,29 @@ export function setTeaserTag(teasers: Teaser[], index: number, change: { speaker
     else if (change.tag === true) delete next.tag;
     return teasers.map((x, i) => (i === index ? next : x));
 }
+
+// ─── Picking a teaser's words on the notes page (spec 020 item E14, part 2) ───
+
+// How much of the transcript is shown either side of a teaser clip for picking its words.
+export const PICK_CONTEXT_MS = 8000;
+
+// The words around a clip (from PICK_CONTEXT_MS before it starts to as long after it ends), each marked inside it or not.
+export function wordsAround<W extends { start: number; end: number }>(words: W[], clip: { startMs: number; endMs: number }, contextMs = PICK_CONTEXT_MS): { word: W; inside: boolean }[] {
+    return words
+        .filter(w => w.end > clip.startMs - contextMs && w.start < clip.endMs + contextMs)
+        .map(word => ({ word, inside: word.start >= clip.startMs - 1 && word.end <= clip.endMs + 1 }));
+}
+
+// The clip with a word picked: before the clip's middle, the clip starts at that word; after it, it ends with it. A pick
+// that would leave it shorter than TEASER_SHORTEST_MS moves the other end too (the clip is that one word). Its text is
+// then the words in it, and its speaker the first one's.
+export function pickTeaserWord<W extends { text: string; start: number; end: number; speaker: string }>(
+    words: W[], clip: { startMs: number; endMs: number }, word: W,
+): { startMs: number; endMs: number; text: string; speaker: string } {
+    const middle = (clip.startMs + clip.endMs) / 2;
+    let startMs = clip.startMs, endMs = clip.endMs;
+    if (word.start < middle) startMs = word.start; else endMs = word.end;
+    if (endMs - startMs < TEASER_SHORTEST_MS) { startMs = word.start; endMs = Math.max(word.end, word.start + TEASER_SHORTEST_MS); }
+    const inside = words.filter(w => w.start >= startMs - 1 && w.end <= endMs + 1);
+    return { startMs, endMs, text: inside.map(w => w.text).join(' '), speaker: inside[0]?.speaker ?? word.speaker };
+}
