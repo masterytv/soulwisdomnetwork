@@ -68,8 +68,10 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               recording, cuts and all); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
               and the show's intro is public/studio/show-intro.mp4, which the editor plays too
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
-              transitions, final cut, Drive on/off. Every job reads them through withDefaults; the defaults are what the
+              transitions, final cut, Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
+lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
+              hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
               019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor;

@@ -180,6 +180,9 @@ export default function StudioSettingsPage() {
                                 <Field label="This Studio's web address" help="Used for the links in emails, e.g. https://yoursite.com.">
                                     <input className={field} value={s.studioUrl} onChange={e => set("studioUrl", e.target.value)} disabled={off} placeholder="https://" />
                                 </Field>
+                                <Field label="Zoom room for recording" help="The meeting link the hosts record in. It shows on the Studio and the recording checklist, with a copy button, for admins and producers only. Leave empty for none.">
+                                    <input className={field} value={s.meetingUrl} onChange={e => set("meetingUrl", e.target.value)} disabled={off} placeholder="https://us02web.zoom.us/j/…" />
+                                </Field>
                             </Section>
 
                             <Section title="Speakers" intro="Names that are always offered when the transcript is made, and on the speaker review page. One per line. Others are named during speaker review.">

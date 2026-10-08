@@ -10,6 +10,7 @@ import SetupCheck from "@/components/studio/SetupCheck";
 import { ErrorNote } from "@/components/studio/ErrorNote";
 import { UploadRecording } from "@/components/studio/upload";
 import { EpisodeActions } from "@/components/studio/episodeActions";
+import { MeetingLink } from "@/components/studio/meetingLink";
 import { ago, megabytes, minutes, STAGE_LABEL, usd } from "@/components/studio/format";
 import { useAuth } from "@/context/AuthContext";
 import { studioFetch } from "@/lib/studioClient";
@@ -216,6 +217,7 @@ export default function PodcastStudioPage() {
                             <button onClick={load} className={secondary}>Refresh</button>
                             <Link href="/admin/podcast/settings" className={secondary}>Studio settings</Link>
                             <Link href="/admin/podcast/library" className={secondary}>Music and effects</Link>
+                            <Link href="/admin/podcast/recording" className={secondary}>Recording checklist</Link>
                             {profile?.role === "admin" && (
                                 <>
                                     <Link href="/admin/usage" className="text-sm text-gray-400 hover:text-white ml-2">Usage</Link>
@@ -225,6 +227,7 @@ export default function PodcastStudioPage() {
                         </div>
                     </div>
 
+                    <MeetingLink />
                     <ErrorNote message={error} />
                     {notice && (
                         <p className={`text-sm rounded-lg px-4 py-2 ${notice.startsWith("⚠️") ? "bg-red-900/20 text-red-300" : "bg-green-900/20 text-green-300"}`}>
