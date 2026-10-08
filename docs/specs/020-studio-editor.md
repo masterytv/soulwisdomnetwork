@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E14 in 019's table)
+## Building it (rows E1–E15 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -424,6 +424,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E12 | **Trim and reorder teasers.** On the Programme row: drag a teaser onto another to take its place, or ‹ ›; click one to trim its start and end. Built (#178). | S | Medium | E10 |
 | E13 | **Only what plays on the timeline.** The cuts closed up, a marker where each one was; drag the end of a clip out to bring back what was cut there, or in to cut more, and everything after it moves (a ripple trim). Show cuts brings back the whole recording. Built (#180). | M | Extra | E11 |
 | E14 | **The whole video on the timeline.** Teasers, intro and outro as clips on V1 around the episode, the Programme row gone: teasers trimmed between words, moved, taken out; the "In this episode" graphic on V3; a section or stretch made a teaser, or copied and pasted. Built (#182). | M | Extra | E10, E13 |
+| E15 | **Build edit package.** Step 3 on the show notes page, when the Studio editor makes the final cut: **Build for Studio editor** sets up the whole edit and opens it; **Build and export** sets it up and renders it straight away, the final cut. Descript and the Final cut step hidden behind the Studio setting, kept to compare. Built (#186). | M | High | E10, E14 |
 
 ### E1 — Built (#143)
 
@@ -1023,6 +1024,29 @@ and outro could not be fine-tuned, and a teaser could not be added once in the e
   words highlighted; a click on a word before the clip's middle starts the clip there, after it ends it there, and the
   clip's text follows (`lib/programme.ts` `wordsAround`, `pickTeaserWord`). Its times show to the hundredth of a second
   and can be typed so (m:ss.cc). Checked: `lib/programme.test.ts`.
+
+### E15 — Built (#186)
+
+Tom asked (8 October 2026) for step 3 on the show notes page to read **Build edit package**, with two choices, and for
+Descript to be hidden but kept until the Studio editor is shown to be as good.
+- **Where:** with the Studio settings' "The Studio editor makes the final cut" (`finalSource: 'editorLight'`, listed first
+  now), step 3 is **Build edit package** (`components/studio/buildPackage.tsx`), and the steps are Show notes, B-roll, Build
+  edit package, Thumbnail and upload, Shorts (`components/studio/steps.ts`). There is no Descript step and no separate
+  Final cut step: the export is the final cut, shown under the two choices with its chapters and quality report
+  (`FinalCut`). "Descript makes the final cut (to compare)" brings back the earlier page, unchanged.
+- **Build for Studio editor** sets up the edit on the server (`lib/server/buildEdit.ts`, `POST /api/studio/episodes/[id]/build`)
+  exactly as the editor sets one up the first time it opens (E10): the filler words, stammers, missed "um"s and long pauses
+  cut, each a cut that can be brought back; the teasers from the approved notes, with their "In this episode" graphic; the
+  Studio's intro and outro; and the notes plan's b-roll as layers with their slow zoom or pan (`lib/layers.ts` `withLayers`,
+  now shared with the editor). Then it opens the Studio editor; afterwards the button is **Open in Studio editor**.
+- **Build and export** sets up the same edit and starts the render (`requestEditRender`); with the Studio editor making
+  the final cut, the render is the final cut (`editRenderJob.ts` `asFinalCut`), which Thumbnails, YouTube and Shorts use.
+  An episode with a saved edit keeps it: nothing is rebuilt and the button renders it as saved ("Export the edit", then
+  "Export again"). Both wait for approved notes and the b-roll images (or b-roll skipped).
+- **Not changed:** the render job, and an episode whose final cut came from Descript keeps it (`lib/finalCut.ts`); exporting
+  replaces it. A rebuild that keeps hand changes is not here (the "rebuild-safe" idea, later).
+- **Checked:** `lib/layers.test.ts` (`withLayers`), `components/studio/steps.test.ts`; in Chromium, step 3 before building,
+  while rendering and with the final cut ready (the API mocked).
 
 ## Not in this spec
 

@@ -41,7 +41,7 @@ function descriptBusy(episode: Episode) {
 export async function requestFinal(id: string) {
     const ref = episodeRef(id);
     if ((await getSettings()).finalSource === 'editorLight') {
-        throw new HttpError(409, 'The Studio settings make the final cut from the Editor Light render: use "Render this edit"');
+        throw new HttpError(409, 'The Studio settings make the final cut in the Studio editor: use "Build and export" in step 3, or render in the Studio editor');
     }
     let hours = 1;
     await adminDb().runTransaction(async tx => {

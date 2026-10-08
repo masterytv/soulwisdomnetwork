@@ -64,7 +64,7 @@ export async function requestNotes(id: string, { force = false, redraft = null }
 // reviewed.json is rewritten on every Accept, so it is cached by path and acceptance time.
 const wordCache = new Map<string, SpokenWord[]>();
 
-async function acceptedWords(episode: Episode): Promise<SpokenWord[]> {
+export async function acceptedWords(episode: Episode): Promise<SpokenWord[]> {
     const path = episode.review?.reviewedPath;
     if (!path) return [];
     const key = `${path}@${millis(episode.review?.acceptedAt)}`;

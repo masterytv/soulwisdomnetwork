@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { handle, requireRole, STUDIO_ROLES, HttpError } from '@/lib/server/staff';
 import { adminBucket, adminDb } from '@/lib/server/firebaseAdmin';
 import { checkUploaded } from '@/lib/server/uploads';
-import { CutsSchema, isReordered, MAX_SPLITS, SilencesFileSchema, SplitsSchema, validOrder, type EpisodeEdit, type Silence } from '@/lib/edit';
+import { CutsSchema, isReordered, MAX_SPLITS, SplitsSchema, validOrder, type EpisodeEdit } from '@/lib/edit';
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
 import { layersOf, LayersSchema, SITE_LOGO, SITE_LOGO_URL, type BinItem, type Layer } from '@/lib/layers';
@@ -27,6 +27,7 @@ import { getSettings } from '@/lib/server/studioSettings';
 import { SoundsSchema, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import { brollBlock } from '@/lib/brollGate';
+import { loadSilences } from '@/lib/server/buildEdit';
 import { SHOW_INTRO_URL, studioIntro, teasersFromNotes, TeasersSchema, type Teaser } from '@/lib/programme';
 
 // The episode's own intro or outro (spec 020 item E9): a video from its media bin.
@@ -64,12 +65,7 @@ export const GET = handle<Context>(async (request, { params }) => {
         if (url) overlayUrls[snd.media.path] = url;
     }
     // The silences measured at ingest; null for an episode not measured yet, so the editor uses word gaps.
-    let silences: Silence[] | null = null;
-    if (data.media?.silencesPath) {
-        const raw = await adminBucket().file(data.media.silencesPath).download().then(([b]) => JSON.parse(b.toString('utf8'))).catch(() => null);
-        const parsed = SilencesFileSchema.safeParse(raw);
-        if (parsed.success) silences = parsed.data.silences;
-    }
+    const silences = await loadSilences(data);
     // Item E10: the teasers an edit set up now would have (from the approved notes, when the Studio plays teasers), and the
     // Studio's intro, which is also the outro unless the episode has its own.
     const settings = await getSettings();

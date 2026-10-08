@@ -16,7 +16,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/research/2026-10-05-open-source-editors.md` | What Rescript, CutScript, auto-editor, DeepFilterNet, Auphonic, Remotion, Revideo and others offer, their licences, and what was measured on a runner-like machine |
 | `docs/research/2026-10-05-free-music-and-effects.md` | Free and royalty-free music and effects sources, with terms to check by hand |
 | `docs/specs/019-editor-light-v2.md` | **The plan and its status table**: Phases 0–5 and E. Start at its "Before you start" |
-| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E14) |
+| `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E15) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
@@ -95,6 +95,7 @@ item). So:
 10. **020 E12** (trim and reorder teasers on the Programme row): built, #178, at Tom's request.
 11. **020 E13** (the timeline shows only what plays; a clip's end dragged out brings back what was cut, in cuts more): built, #180, at Tom's request.
 12. **020 E14** (the whole video on the timeline: teasers, intro and outro as clips, the "In this episode" graphic on V3, teasers made from the episode; the Programme row gone): built, #182, at Tom's request. Part 2, picking a teaser clip's words on the notes page: built, #184.
+13. **020 E15** (step 3 is Build edit package: Build for Studio editor, or Build and export, which is the final cut; Descript and the Final cut step hidden behind the Studio setting, kept to compare): built, #186, at Tom's request.
 
 ## Overlaps with work already built — decided
 

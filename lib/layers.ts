@@ -508,3 +508,16 @@ export function logoBug(logo: { path: string; name: string }): ImageLayer {
         media: { path: logo.path, name: logo.name || 'Logo' }, w: 0.08, motion: 'none',
     };
 }
+
+// An edit as the Studio editor works on it: with layers, the notes plan's b-roll among them (spec 020 item E5). Used by
+// the editor when it opens and by "Build for Studio editor" (lib/server/buildEdit.ts), so both set up the same layers.
+export function withLayers<E extends { layers?: Layer[]; overlays?: Overlay[] }>(edit: E, bin: BinItem[]): E {
+    if (edit.layers) return edit;
+    const layers = layersOf(edit);
+    const have = new Set(layers.flatMap(l => (l.kind === 'text' ? [] : [l.media.path])));
+    for (const b of bin) {
+        if (b.source !== 'broll' || have.has(b.path) || b.startMs === undefined) continue;
+        layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));
+    }
+    return { ...edit, layers, overlays: [] };
+}

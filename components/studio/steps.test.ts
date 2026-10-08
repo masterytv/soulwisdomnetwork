@@ -18,12 +18,12 @@ test('Descript, or nothing set: exactly the steps and stages the Studio always h
     assert.deepEqual(STEPS.map(([id]) => id), ['notes', 'broll', 'package', 'descript', 'final', 'thumbnail', 'youtube', 'shorts']);
 });
 
-test('Editor Light: no edit package or Descript; the edit and render are the final cut', () => {
+test('Studio editor: the edit package is built for the editor or exported, and is the final cut; no Descript', () => {
     const flow = flowFor('editorLight');
     assert.deepEqual(flow.steps.map(([id]) => id), ['notes', 'broll', 'final', 'thumbnail', 'youtube', 'shorts']);
     assert.deepEqual(flow.stages.map(s => s.id), ['notes', 'broll', 'final', 'thumbnail', 'shorts']);
-    assert.equal(labelIn(flow, 'final'), 'Edit and render the final cut');
-    assert.equal(stageIn(flow, 'final')?.title, 'Edit and final cut');
+    assert.equal(labelIn(flow, 'final'), 'Build the edit package');
+    assert.equal(stageIn(flow, 'final')?.title, 'Build edit package');
     assert.equal(stageIn(flow, 'package'), undefined);
     assert.deepEqual(flow.stages.filter(s => s.checkpoint).map(s => [s.id, s.checkpoint]), [['notes', 'B'], ['thumbnail', 'D'], ['shorts', 'E']]);
     assert.ok(!JSON.stringify(flow).includes('Descript'));
