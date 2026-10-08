@@ -40,6 +40,8 @@ export const StudioSettingsSchema = z.object({
     extraInstructions: z.string().trim().max(3000),
     descriptionChoices: z.number().int().min(1).max(5),  // YouTube descriptions Claude writes to choose from
     studioUrl: url,                               // where this Studio runs, for links in emails
+    // The hosts' Zoom room for recording, shown to the Studio's staff only (never to members); empty shows none.
+    meetingUrl: z.string().trim().max(300).refine(s => s === '' || /^https:\/\/\S+$/.test(s), 'Use the full meeting link, starting with https://'),
     siteUrl: url,                                 // the website named in descriptions; empty leaves it out
     siteLinkText: z.string().trim().max(120),
     subscribeLine: z.string().trim().max(200),
@@ -83,6 +85,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     extraInstructions: '',
     descriptionChoices: 1,
     studioUrl: 'https://soulwisdomcollective.com',
+    meetingUrl: '',
     siteUrl: 'https://soulwisdomcollective.com',
     siteLinkText: '🌐 Full episodes, transcripts and the Soul Wisdom community:',
     subscribeLine: '🔔 Subscribe and turn on notifications so you never miss a conversation.',
