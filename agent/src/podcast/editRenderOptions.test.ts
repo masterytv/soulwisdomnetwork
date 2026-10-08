@@ -107,7 +107,7 @@ async function run(settings: StudioSettings, withCutter = true, change?: (e: Epi
 }
 
 test('no intro and no teasers: only the edited recording', { timeout: 600_000 }, async () => {
-    const r = await run(withDefaults({ intro: 'none', teasers: false }));
+    const r = await run(withDefaults({ intro: 'none', teasers: false, finalCutBy: 'descript' }));
     assert.ok(Math.abs(r.seconds - EDITED) < 0.5, `rendered ${r.seconds}s, expected ${EDITED}s`);
     assert.equal(r.result.driveUrl, null);
     assert.equal(r.result.driveFileId, null);
@@ -150,7 +150,7 @@ test('the edit\'s own teasers, none: no teasers, though the notes and settings h
 });
 
 test('Editor Light as the final cut: the final record is written for thumbnails, Shorts and YouTube', { timeout: 600_000 }, async () => {
-    const r = await run(withDefaults({ finalSource: 'editorLight', intro: 'none', teasers: false }));
+    const r = await run(withDefaults({ finalCutBy: 'editorLight', intro: 'none', teasers: false }));
     const final = r.last.final as NonNullable<Episode['final']>;
     assert.equal(final.status, 'ready');
     assert.equal(final.source, 'editorLight');
@@ -181,7 +181,7 @@ test('Editor Light as the final cut: the final record is written for thumbnails,
 
 test('the previous render is removed, unless it is still the final cut', { timeout: 600_000 }, async () => {
     const old = `episodes/${ID}/editRender/v2-run6`;
-    const plain = withDefaults({ intro: 'none', teasers: false });
+    const plain = withDefaults({ intro: 'none', teasers: false, finalCutBy: 'descript' });
     const a = await run(plain, true, e => { e.editRender = { status: 'ready', videoPath: `${old}/episode.mp4` }; });
     assert.deepEqual(a.removed, [old]);
     fs.rmSync(a.dir, { recursive: true, force: true });

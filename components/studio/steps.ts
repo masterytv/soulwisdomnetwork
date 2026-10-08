@@ -110,10 +110,11 @@ const EDITOR_LIGHT_STAGES: readonly FlowStage[] = [
     { id: "shorts", title: "Shorts", steps: ["shorts"], checkpoint: "E" },
 ];
 
-// The flow for the chosen source; anything else returns the Descript steps and stages.
+// The flow for the chosen source: the Descript steps and stages only when Descript is chosen; the Studio editor's
+// otherwise, also while the settings are loading (the default since spec 020 item E15).
 export function flowFor(source: FinalSource | null | undefined): Flow {
-    if (source === "editorLight") return { steps: EDITOR_LIGHT_STEPS, stages: EDITOR_LIGHT_STAGES };
-    return { steps: STEPS, stages: STAGES };
+    if (source === "descript") return { steps: STEPS, stages: STAGES };
+    return { steps: EDITOR_LIGHT_STEPS, stages: EDITOR_LIGHT_STAGES };
 }
 
 // The first step in the flow whose state is not done; undefined when all are done.
@@ -154,9 +155,9 @@ export function journeyHref(episodeId: string, index: number, source: FinalSourc
         case 0: return "/admin/podcast";
         case 1: return `/admin/podcast/${episodeId}`;
         case 2: return `/admin/podcast/${episodeId}/notes#notes`;
-        case 3: return source === "editorLight"
-            ? `/admin/podcast/${episodeId}/notes#final`
-            : `/admin/podcast/${episodeId}/notes#package`;
+        case 3: return source === "descript"
+            ? `/admin/podcast/${episodeId}/notes#package`
+            : `/admin/podcast/${episodeId}/notes#final`;
         case 4: return `/admin/podcast/${episodeId}/notes#thumbnail`;
         case 5: return `/admin/podcast/${episodeId}/notes#shorts`;
         default: return `/admin/podcast/${episodeId}/notes`;

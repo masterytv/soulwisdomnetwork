@@ -2,7 +2,7 @@
 // by an admin, and shown to the Settings page with short-lived links to the logo and intro.
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { SETTINGS_DOC, StudioSettingsSchema, withDefaults, type StudioSettings } from '@/lib/studioSettings';
+import { SETTINGS_DOC, StudioSettingsSchema, toStored, withDefaults, type StudioSettings } from '@/lib/studioSettings';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
 import { checkUploaded } from './uploads';
@@ -42,6 +42,6 @@ export async function saveSettings(input: unknown, uid: string): Promise<StudioS
     if (s.intro === 'custom' && !s.introPath) throw new HttpError(400, 'Upload your intro video, or choose another intro option');
     if (s.logoPath) await checkUploaded('logo', s.logoPath);
     if (s.introPath) await checkUploaded('intro', s.introPath);
-    await ref().set({ ...s, updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
+    await ref().set({ ...toStored(s), updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
     return s;
 }

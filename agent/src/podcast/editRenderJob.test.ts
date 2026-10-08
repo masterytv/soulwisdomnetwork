@@ -137,6 +137,7 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
     let driveName = '';
     e.editRender = { status: 'queued', videoPath: `episodes/${ID}/editRender/v6-111/episode.mp4` };
     const deps: EditRenderDeps = {
+        settings: { ...DEFAULT_SETTINGS, finalSource: 'descript' },   // the render beside Descript's final cut
         getEpisode: async () => e,
         download: async (p, dest) => { downloads.push(p); fs.copyFileSync(path.join(store, p), dest); },
         upload: async (local, p, type) => { uploads[p] = type; fs.copyFileSync(local, put(p)); },

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     assColor, DEFAULT_SETTINGS, gradientExpr, notesSystemPrompt, shortsSystemPrompt, StudioSettingsSchema,
-    thumbnailsSystemPrompt, transcriptionKeyterms, KEYTERMS_MAX, withDefaults,
+    thumbnailsSystemPrompt, toStored, transcriptionKeyterms, KEYTERMS_MAX, withDefaults,
 } from './studioSettings';
 
 // The prompts exactly as the Studio sent them before settings existed.
@@ -76,4 +76,16 @@ test('names and terms to spell right: the show, the hosts and the list, once eac
     // A saved list that is too long or holds a bad entry falls back to none, so ingest never stops.
     assert.deepEqual(withDefaults({ recurringNames: ['ok', ''] }).recurringNames, []);
     assert.deepEqual(withDefaults({ recurringNames: ['Raymond Moody'] }).recurringNames, ['Raymond Moody']);
+});
+
+test('who makes the final cut (spec 020 item E15): the Studio editor by default; Descript only when chosen since', () => {
+    assert.equal(withDefaults(undefined).finalSource, 'editorLight');
+    // Saved before E15, at the old default: ignored.
+    assert.equal(withDefaults({ finalSource: 'descript' }).finalSource, 'editorLight');
+    assert.equal(withDefaults({ finalSource: 'descript', finalCutBy: 'descript' }).finalSource, 'descript');
+    const stored = toStored({ ...DEFAULT_SETTINGS, finalSource: 'descript' });
+    assert.equal(stored.finalCutBy, 'descript');
+    assert.equal('finalSource' in stored, false);
+    assert.equal(withDefaults(stored).finalSource, 'descript');
+    assert.equal(withDefaults({ finalCutBy: 'nonsense' }).finalSource, 'editorLight');
 });
