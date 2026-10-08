@@ -406,7 +406,7 @@ The teasers, intro and outro assembly keeps its order, with joins between them. 
 graph string for a small sequence. A flash-and-beep clip with a split and a dissolve must stay in
 sync (spec 015's check), and its length must equal the parts minus the transition.
 
-## Building it (rows E1–E15 in 019's table)
+## Building it (rows E1–E16 in 019's table)
 
 | # | Item | Effort | Model effort | Needs |
 |---|---|---|---|---|
@@ -425,6 +425,7 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 | E13 | **Only what plays on the timeline.** The cuts closed up, a marker where each one was; drag the end of a clip out to bring back what was cut there, or in to cut more, and everything after it moves (a ripple trim). Show cuts brings back the whole recording. Built (#180). | M | Extra | E11 |
 | E14 | **The whole video on the timeline.** Teasers, intro and outro as clips on V1 around the episode, the Programme row gone: teasers trimmed between words, moved, taken out; the "In this episode" graphic on V3; a section or stretch made a teaser, or copied and pasted. Built (#182). | M | Extra | E10, E13 |
 | E15 | **Build edit package.** Step 3 on the show notes page, when the Studio editor makes the final cut: **Build for Studio editor** sets up the whole edit and opens it; **Build and export** sets it up and renders it straight away, the final cut. Descript and the Final cut step hidden behind the Studio setting, kept to compare. Built (#186). | M | High | E10, E14 |
+| E16 | **Transitions around the episode in the preview.** The dissolves, fades and wipes between the teasers, intro, episode and outro, and the fade in and out at the video's start and end, play in the preview as the render makes them. Built (#191). | M | High | E4, E14 |
 
 ### E1 — Built (#143)
 
@@ -1053,6 +1054,26 @@ Descript to be hidden but kept until the Studio editor is shown to be as good.
   replaces it. A rebuild that keeps hand changes is not here (the "rebuild-safe" idea, later).
 - **Checked:** `lib/layers.test.ts` (`withLayers`), `components/studio/steps.test.ts`; in Chromium, step 3 before building,
   while rendering and with the final cut ready (the API mocked).
+
+### E16 — Built (#191)
+
+Tom chose a dissolve between the teaser clips (8 October 2026) and the preview still cut straight: until now only the
+transitions at splits played there.
+- **How:** the teasers, intro and outro play on two videos over the editor's that take turns
+  (`components/studio/programme.tsx` `ProgrammePlayer`): a join's length before a piece ends, the next piece starts on the
+  other video, drawn over it for its kind as at the splits (`transitionPreview.tsx` `draw`: opacity, a black or white
+  veil, clip-path, a mask or a slide), and the sound crossfades. Each piece carries the transition into it
+  (`lib/programme.ts` `programmeOf`, `transition`; a cut, or one too long to fit, plays straight).
+- **Into the episode:** the recording plays on the other video for the join, then the editor's video carries on where
+  the join ends (`recordingAt`), waiting paused underneath. **Into the outro:** the outro is drawn over the editor's video
+  for the join's last stretch of the episode (`playedAt`).
+- **Start and end:** with a transition chosen for the start or end of the video, ▶ Whole video fades in from black (white
+  for Fade through white) and the outro fades out, as the render does. An episode with no outro ends on the editor's video
+  without the fade.
+- **Checked:** `lib/programme.test.ts` (each piece's transition, `recordingAt` and `playedAt`); in Chromium with two
+  teasers, the intro and the outro: the fade in from black over the first second, a 1 s dissolve between the teasers
+  (both pictures and voices crossfading), a wipe into the intro, a dissolve into the episode with the editor's video taking
+  over at 1.0 s, a fade through black into the outro and the fade out at the end, with no errors.
 
 ## Not in this spec
 

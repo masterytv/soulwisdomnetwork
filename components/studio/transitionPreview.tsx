@@ -14,8 +14,9 @@ import type { TransitionKind } from '@/lib/transitions';
 // starts at bStartMs, and they overlap by durationMs.
 export interface PreviewJoin { aEndMs: number; bStartMs: number; durationMs: number; transition: Exclude<TransitionKind, 'cut'> }
 
-// How far into a transition the picture is (0 to 1), for the kind.
-function draw(kind: PreviewJoin['transition'], p: number, main: HTMLVideoElement, next: HTMLVideoElement, veil: HTMLDivElement) {
+// How far into a transition the picture is (0 to 1), for the kind: `next` drawn over `main`. Also used by the teasers,
+// intro and outro (components/studio/programme.tsx, spec 020 item E16).
+export function draw(kind: PreviewJoin['transition'], p: number, main: HTMLVideoElement, next: HTMLVideoElement, veil: HTMLDivElement) {
     const n = next.style, v = veil.style;
     n.opacity = '1'; n.clipPath = ''; n.transform = ''; n.filter = ''; n.maskImage = ''; n.webkitMaskImage = '';
     v.opacity = '0';
