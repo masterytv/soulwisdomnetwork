@@ -35,8 +35,11 @@ export async function getSettingsView(): Promise<SettingsView> {
 // Uploaded logos and intros live under settings/ (lib/server/uploads.ts); nothing else may be named.
 const ownFile = (path: string | null) => path === null || /^settings\/(logo|intro)-\d+\.(png|jpg|jpeg|mp4|mov)$/i.test(path);
 
+// A setting the page did not send (a page loaded before the setting existed, still open after a deploy) keeps its saved
+// value, so saving from it never fails or resets what it does not show.
 export async function saveSettings(input: unknown, uid: string): Promise<StudioSettings> {
-    const parsed = StudioSettingsSchema.safeParse(input);
+    const sent = input && typeof input === 'object' ? input as Record<string, unknown> : {};
+    const parsed = StudioSettingsSchema.safeParse({ ...(await getSettings()), ...sent });
     if (!parsed.success) throw new HttpError(400, parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; '));
     const s = parsed.data;
     if (!ownFile(s.logoPath) || !ownFile(s.introPath)) throw new HttpError(400, 'Upload the logo and intro on the Settings page');
