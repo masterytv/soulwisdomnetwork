@@ -189,7 +189,7 @@ export default function StudioSettingsPage() {
                                 <div className="flex flex-col gap-2">
                                     {FORMATS.map(f => <Choice key={f} name="format" value={f} current={s.format} label={FORMAT_LABELS[f]} onPick={() => set("format", f)} disabled={off} />)}
                                 </div>
-                                <Field label="YouTube descriptions to choose from" help="Claude writes this many, each from a different angle; you pick one on the show notes page.">
+                                <Field label="Number of YouTube descriptions to choose from" help="Claude writes this many, each from a different angle; you pick one on the show notes page.">
                                     <select value={s.descriptionChoices} onChange={e => set("descriptionChoices", Number(e.target.value))} disabled={off} className={field}>
                                         {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
                                     </select>
