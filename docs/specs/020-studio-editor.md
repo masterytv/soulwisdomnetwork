@@ -991,6 +991,11 @@ side back out after trimming it in.
   of the clip after the split dragged in 1.55 s ("−1.55 s cut") and back out (the split's two clips meeting again),
   half a second of a pause brought back with Alt and undone, a double-click bringing back a cut of the producer's own,
   and Show cuts on and off.
+- **Inside a word (#189):** a stutter the transcript heard as part of one word ("Go-Good" as "Good") has no word edge to
+  stop at, so the Blade and dragged edges, which stay between words, could not cut it. With Snap off they now go exactly
+  where the pointer is, as Option (Alt) held already did; with Snap on, the Blade's label says "between words; ⌥ or Alt
+  for anywhere", and the Snap box and the shortcut sheet say so too. Checked in Chromium: a Blade click inside a word
+  splits at the word's start with Snap on, where it was clicked with Snap off, and anywhere with Alt.
 
 ### E14 — Built (#182)
 
