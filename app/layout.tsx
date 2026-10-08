@@ -1,23 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Outfit } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 
-const geistSans = Geist({
+// The fonts are in the repo (app/fonts: the variable fonts' Latin files, as Google Fonts serves them; SIL Open Font
+// Licence), so a build never depends on downloading them.
+const geistSans = localFont({
+  src: "./fonts/Geist-latin.woff2",
   variable: "--font-geist-sans",
-  subsets: ["latin"],
+  weight: "100 900",
 });
 
-const geistMono = Geist_Mono({
+const geistMono = localFont({
+  src: "./fonts/GeistMono-latin.woff2",
   variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: "100 900",
 });
 
-const outfit = Outfit({
+const outfit = localFont({
+  src: "./fonts/Outfit-latin.woff2",
   variable: "--font-outfit",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
+  weight: "100 900",
 });
 
 export const metadata: Metadata = {
