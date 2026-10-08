@@ -39,7 +39,7 @@ export async function binItems(id: string, episode: Episode, settings: StudioSet
     const intro = settings.intro === 'custom' ? settings.introPath : pkg?.introPath ?? null;
     if (intro) items.push({ id: 'intro', kind: 'video', source: 'intro', path: intro, name: 'Intro' });
     // The Studio's logo, or the site's when none is uploaded (as Shorts and thumbnails do).
-    items.push({ id: 'logo', kind: 'image', source: 'logo', path: settings.logoPath ?? SITE_LOGO, name: 'Logo', width: settings.logoPath ? null : 512, height: settings.logoPath ? null : 512 });
+    items.push({ id: 'logo', kind: 'image', source: 'logo', path: settings.logoPath ?? SITE_LOGO, name: 'Logo', width: settings.logoPath ? null : 1024, height: settings.logoPath ? null : 1024 });
     const uploads = await episodeRef(id).collection('media').orderBy('addedAt', 'desc').limit(BIN_MAX).get();
     for (const d of uploads.docs) {
         const u = d.data() as UploadDoc;
