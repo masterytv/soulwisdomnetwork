@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type Studi
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
 import { VOICE_CLEANUPS, VOICE_SHORT, type VoiceCleanup } from "@/lib/voice";
-import { PODCAST_CATEGORIES } from "@/lib/podcastFeed";
+import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/podcastFeed";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
@@ -343,6 +343,15 @@ export default function StudioSettingsPage() {
                                         {PODCAST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </label>
+                                {PODCAST_SUBCATEGORIES[s.podcastCategory].length > 0 && (
+                                    <label className="flex flex-col gap-1 text-sm text-gray-200">
+                                        Subcategory
+                                        <select className={`${field} !w-auto`} value={subcategoryOf(s.podcastCategory, s.podcastSubcategory)} disabled={off} onChange={e => set("podcastSubcategory", e.target.value)}>
+                                            <option value="">None</option>
+                                            {PODCAST_SUBCATEGORIES[s.podcastCategory].map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </label>
+                                )}
                                 <label className="flex items-center gap-2 text-sm text-gray-200">
                                     <input type="checkbox" checked={s.podcastExplicit} onChange={e => set("podcastExplicit", e.target.checked)} disabled={off} /> Explicit content
                                 </label>
