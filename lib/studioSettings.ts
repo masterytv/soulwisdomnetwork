@@ -94,7 +94,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     introPath: null,
     teasers: true,
     joins: DEFAULT_SECTION_JOINS,
-    finalSource: 'descript',
+    finalSource: 'editorLight',
     voiceCleanup: 'standard',
     useDrive: true,
     podcastFeed: false,
@@ -104,10 +104,25 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     podcastEmail: '',
 };
 
+// Who makes the final cut is saved as `finalCutBy` (spec 020 item E15). The Studio editor became the default then;
+// a `finalSource` saved before that is ignored, since it was only ever saved along with the rest at its old default
+// (Descript). Choosing Descript again in the settings saves it as `finalCutBy`.
+export function fromStored(saved: Record<string, unknown>): Record<string, unknown> {
+    const rest = { ...saved };
+    delete rest.finalSource;
+    delete rest.finalCutBy;
+    return saved.finalCutBy === undefined ? rest : { ...rest, finalSource: saved.finalCutBy };
+}
+
+export function toStored(settings: StudioSettings): Record<string, unknown> {
+    const { finalSource, ...rest } = settings;
+    return { ...rest, finalCutBy: finalSource };
+}
+
 // Whatever is saved, filled out with the defaults; anything that no longer fits is ignored, so
 // a bad saved value can never stop a job.
 export function withDefaults(saved: unknown): StudioSettings {
-    const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>;
+    const s = fromStored((saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>);
     const merged = {
         ...DEFAULT_SETTINGS, ...s,
         colors: { ...DEFAULT_SETTINGS.colors, ...((s.colors && typeof s.colors === 'object') ? s.colors : {}) },
