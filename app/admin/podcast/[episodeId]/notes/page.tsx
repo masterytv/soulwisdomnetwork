@@ -221,7 +221,7 @@ export default function ShowNotesPage() {
     }, []);
     // The steps follow who makes the final cut (Descript or Editor Light).
     const flow = flowFor(settings?.finalSource);
-    const lightFlow = settings?.finalSource === "editorLight";
+    const lightFlow = settings?.finalSource !== "descript";
     const next = nextStep(flow, steps);
     const nextStage = next ? stageIn(flow, next)?.id : undefined;
     const stages = flow.stages.map((s, i) => {

@@ -10,11 +10,11 @@ import {
 
 const done = (yes: boolean): StepState => ({ done: yes, failed: false, working: false, summary: '', link: null, key: 'k' });
 
-test('Descript, or nothing set: exactly the steps and stages the Studio always had', () => {
+test('Descript: exactly the steps and stages the Studio always had; nothing set is the Studio editor flow (item E15)', () => {
     assert.equal(flowFor('descript').steps, STEPS);
     assert.equal(flowFor('descript').stages, STAGES);
-    assert.equal(flowFor(undefined).steps, STEPS);
-    assert.equal(flowFor(null).stages, STAGES);
+    assert.equal(flowFor(undefined).steps, flowFor('editorLight').steps);
+    assert.equal(flowFor(null).stages, flowFor('editorLight').stages);
     assert.deepEqual(STEPS.map(([id]) => id), ['notes', 'broll', 'package', 'descript', 'final', 'thumbnail', 'youtube', 'shorts']);
 });
 
@@ -54,7 +54,7 @@ test('journey links: each part opens where it is worked on', () => {
     assert.equal(journeyHref('ep1234567890', 2, 'descript'), '/admin/podcast/ep1234567890/notes#notes');
     assert.equal(journeyHref('ep1234567890', 3, 'descript'), '/admin/podcast/ep1234567890/notes#package');
     assert.equal(journeyHref('ep1234567890', 3, 'editorLight'), '/admin/podcast/ep1234567890/notes#final');
-    assert.equal(journeyHref('ep1234567890', 3, undefined), '/admin/podcast/ep1234567890/notes#package');
+    assert.equal(journeyHref('ep1234567890', 3, undefined), '/admin/podcast/ep1234567890/notes#final');
     assert.equal(journeyHref('ep1234567890', 4, 'editorLight'), '/admin/podcast/ep1234567890/notes#thumbnail');
     assert.equal(journeyHref('ep1234567890', 5, 'editorLight'), '/admin/podcast/ep1234567890/notes#shorts');
 });

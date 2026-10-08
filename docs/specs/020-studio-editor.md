@@ -1030,7 +1030,8 @@ and outro could not be fine-tuned, and a teaser could not be added once in the e
 Tom asked (8 October 2026) for step 3 on the show notes page to read **Build edit package**, with two choices, and for
 Descript to be hidden but kept until the Studio editor is shown to be as good.
 - **Where:** with the Studio settings' "The Studio editor makes the final cut" (`finalSource: 'editorLight'`, listed first
-  now), step 3 is **Build edit package** (`components/studio/buildPackage.tsx`), and the steps are Show notes, B-roll, Build
+  now, and the default since #188: saved as `finalCutBy`, so a `finalSource` saved before at the old default is ignored),
+  step 3 is **Build edit package** (`components/studio/buildPackage.tsx`), and the steps are Show notes, B-roll, Build
   edit package, Thumbnail and upload, Shorts (`components/studio/steps.ts`). There is no Descript step and no separate
   Final cut step: the export is the final cut, shown under the two choices with its chapters and quality report
   (`FinalCut`). "Descript makes the final cut (to compare)" brings back the earlier page, unchanged.
