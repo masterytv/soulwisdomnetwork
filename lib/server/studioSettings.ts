@@ -19,6 +19,7 @@ export interface SettingsView {
     settings: StudioSettings;
     logoUrl: string | null;          // signed link to the uploaded logo, if any
     introUrl: string | null;         // signed link to the uploaded intro, if any
+    artUrl: string | null;           // signed link to the podcast feed's uploaded artwork, if any
 }
 
 const signed = (path: string | null) => path
@@ -27,8 +28,8 @@ const signed = (path: string | null) => path
 
 export async function getSettingsView(): Promise<SettingsView> {
     const settings = await getSettings();
-    const [logoUrl, introUrl] = await Promise.all([signed(settings.logoPath), signed(settings.introPath)]);
-    return { settings, logoUrl, introUrl };
+    const [logoUrl, introUrl, artUrl] = await Promise.all([signed(settings.logoPath), signed(settings.introPath), signed(settings.podcastArtPath)]);
+    return { settings, logoUrl, introUrl, artUrl };
 }
 
 // Uploaded logos and intros live under settings/ (lib/server/uploads.ts); nothing else may be named.

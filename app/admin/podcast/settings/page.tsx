@@ -19,7 +19,7 @@ import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type Studi
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
 import { VOICE_CLEANUPS, VOICE_SHORT, type VoiceCleanup } from "@/lib/voice";
-import { PODCAST_CATEGORIES } from "@/lib/podcastFeed";
+import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/podcastFeed";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
@@ -69,6 +69,10 @@ export default function StudioSettingsPage() {
     const [s, setS] = useState<StudioSettings | null>(null);
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [introUrl, setIntroUrl] = useState<string | null>(null);
+    // The podcast feed's artwork: the saved one's link, or the file just uploaded (shown before Save), and its size.
+    const [artUrl, setArtUrl] = useState<string | null>(null);
+    const [artLocal, setArtLocal] = useState<string | null>(null);
+    const [artSize, setArtSize] = useState<{ w: number; h: number } | null>(null);
     const [hostsText, setHostsText] = useState("");
     const [namesText, setNamesText] = useState("");
     const [error, setError] = useState("");
@@ -79,7 +83,7 @@ export default function StudioSettingsPage() {
     useEffect(() => {
         if (loading || !allowed) return;
         studioFetch<SettingsView>("/api/studio/settings")
-            .then(v => { setS(v.settings); setLogoUrl(v.logoUrl); setIntroUrl(v.introUrl); setHostsText(v.settings.hosts.join("\n")); setNamesText(v.settings.recurringNames.join("\n")); })
+            .then(v => { setS(v.settings); setLogoUrl(v.logoUrl); setIntroUrl(v.introUrl); setArtUrl(v.artUrl); setHostsText(v.settings.hosts.join("\n")); setNamesText(v.settings.recurringNames.join("\n")); })
             .catch(e => setError((e as Error).message));
     }, [loading, allowed]);
 
@@ -115,6 +119,8 @@ export default function StudioSettingsPage() {
             const v = await studioFetch<SettingsView>("/api/studio/settings");
             setLogoUrl(v.logoUrl);
             setIntroUrl(v.introUrl);
+            setArtUrl(v.artUrl);
+            setArtLocal(null);
             setNotice("Saved. New jobs use these settings from now on.");
             setDirty(false);
         } catch (e) {
@@ -189,7 +195,7 @@ export default function StudioSettingsPage() {
                                 <div className="flex flex-col gap-2">
                                     {FORMATS.map(f => <Choice key={f} name="format" value={f} current={s.format} label={FORMAT_LABELS[f]} onPick={() => set("format", f)} disabled={off} />)}
                                 </div>
-                                <Field label="YouTube descriptions to choose from" help="Claude writes this many, each from a different angle; you pick one on the show notes page.">
+                                <Field label="Number of YouTube descriptions to choose from" help="Claude writes this many, each from a different angle; you pick one on the show notes page.">
                                     <select value={s.descriptionChoices} onChange={e => set("descriptionChoices", Number(e.target.value))} disabled={off} className={field}>
                                         {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
                                     </select>
@@ -315,8 +321,21 @@ export default function StudioSettingsPage() {
                                 </label>
                                 <div className="flex flex-col gap-1">
                                     <span className="text-sm text-gray-200">Artwork</span>
-                                    <span className={hint}>Square, 1400 to 3000 pixels, JPEG or PNG, as Apple asks. {s.podcastArtPath ? "Uploaded." : "None yet: the logo is used."}</span>
-                                    {isAdmin && <UploadAsset kind="logo" label={s.podcastArtPath ? "Replace the artwork" : "Upload the artwork"} accept="image/png,image/jpeg" onUploaded={p => { set("podcastArtPath", p); setNotice("Artwork uploaded. Press Save to use it."); }} />}
+                                    <span className={hint}>Square, 1400 to 3000 pixels, JPEG or PNG, as Apple asks. {s.podcastArtPath ? "" : "None yet: the site's logo is used, which is too small for Apple."}</span>
+                                    {s.podcastArtPath && (artLocal ?? artUrl) && (
+                                        <div className="flex items-end gap-3">
+                                            {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived Storage link or a local file, shown as it is */}
+                                            <img src={artLocal ?? artUrl ?? undefined} alt="The podcast artwork" className="w-40 h-40 object-cover rounded border border-white/10"
+                                                onLoad={e => setArtSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
+                                            {artSize && (
+                                                <span className={artSize.w !== artSize.h || artSize.w < 1400 || artSize.w > 3000 ? "text-xs text-amber-300" : hint}>
+                                                    {artSize.w} × {artSize.h} pixels{artSize.w !== artSize.h ? ": not square" : artSize.w < 1400 ? ": too small for Apple" : artSize.w > 3000 ? ": larger than Apple takes" : ""}
+                                                    {artLocal ? <><br />Uploaded. Press Save to use it.</> : null}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                    {isAdmin && <UploadAsset kind="logo" label={s.podcastArtPath ? "Replace the artwork" : "Upload the artwork"} accept="image/png,image/jpeg" onUploaded={(p, file) => { set("podcastArtPath", p); setArtSize(null); setArtLocal(URL.createObjectURL(file)); setNotice("Artwork uploaded. Press Save to use it."); }} />}
                                 </div>
                                 <label className="flex flex-col gap-1 text-sm text-gray-200">
                                     Category
@@ -324,6 +343,15 @@ export default function StudioSettingsPage() {
                                         {PODCAST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </label>
+                                {PODCAST_SUBCATEGORIES[s.podcastCategory].length > 0 && (
+                                    <label className="flex flex-col gap-1 text-sm text-gray-200">
+                                        Subcategory
+                                        <select className={`${field} !w-auto`} value={subcategoryOf(s.podcastCategory, s.podcastSubcategory)} disabled={off} onChange={e => set("podcastSubcategory", e.target.value)}>
+                                            <option value="">None</option>
+                                            {PODCAST_SUBCATEGORIES[s.podcastCategory].map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                    </label>
+                                )}
                                 <label className="flex items-center gap-2 text-sm text-gray-200">
                                     <input type="checkbox" checked={s.podcastExplicit} onChange={e => set("podcastExplicit", e.target.checked)} disabled={off} /> Explicit content
                                 </label>
