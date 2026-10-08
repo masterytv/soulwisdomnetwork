@@ -60,10 +60,12 @@ export const StudioSettingsSchema = z.object({
     voiceCleanup: z.enum(VOICE_CLEANUPS),
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
     // The audio podcast feed (spec 019 item 5.1, lib/podcastFeed.ts): on or off, its square artwork (Cloud Storage;
-    // null uses the site's logo), Apple's category, whether it is explicit, and the owner's email apps may show.
+    // null uses the site's logo), Apple's category and subcategory (empty: none; one that is not under the category is left
+    // out of the feed), whether it is explicit, and the owner's email apps may show.
     podcastFeed: z.boolean(),
     podcastArtPath: z.string().max(300).nullable(),
     podcastCategory: z.enum(PODCAST_CATEGORIES),
+    podcastSubcategory: z.string().max(60),
     podcastExplicit: z.boolean(),
     podcastEmail: z.string().trim().max(120).refine(s => s === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), 'Use an email address, or leave it empty'),
 });
@@ -100,6 +102,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     podcastFeed: false,
     podcastArtPath: null,
     podcastCategory: 'Religion & Spirituality',
+    podcastSubcategory: 'Spirituality',
     podcastExplicit: false,
     podcastEmail: '',
 };

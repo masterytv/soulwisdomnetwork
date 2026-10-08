@@ -20,6 +20,25 @@ export const PODCAST_CATEGORIES = [
 ] as const;
 export type PodcastCategory = typeof PODCAST_CATEGORIES[number];
 
+// Apple's subcategories under each of those (Apple Podcasts' category list); a show may name one, which helps it be found.
+export const PODCAST_SUBCATEGORIES: Record<PodcastCategory, readonly string[]> = {
+    'Religion & Spirituality': ['Buddhism', 'Christianity', 'Hinduism', 'Islam', 'Judaism', 'Religion', 'Spirituality'],
+    'Society & Culture': ['Documentary', 'Personal Journals', 'Philosophy', 'Places & Travel', 'Relationships'],
+    'Health & Fitness': ['Alternative Health', 'Fitness', 'Medicine', 'Mental Health', 'Nutrition', 'Sexuality'],
+    'Education': ['Courses', 'How To', 'Language Learning', 'Self-Improvement'],
+    'Science': ['Astronomy', 'Chemistry', 'Earth Sciences', 'Life Sciences', 'Mathematics', 'Natural Sciences', 'Nature', 'Physics', 'Social Sciences'],
+    'Arts': ['Books', 'Design', 'Fashion & Beauty', 'Food', 'Performing Arts', 'Visual Arts'],
+    'Business': ['Careers', 'Entrepreneurship', 'Investing', 'Management', 'Marketing', 'Non-Profit'],
+    'Technology': [],
+    'News': ['Business News', 'Daily News', 'Entertainment News', 'News Commentary', 'Politics', 'Sports News', 'Tech News'],
+    'History': [],
+    'Kids & Family': ['Education for Kids', 'Parenting', 'Pets & Animals', 'Stories for Kids'],
+    'Leisure': ['Animation & Manga', 'Automotive', 'Aviation', 'Crafts', 'Games', 'Hobbies', 'Home & Garden', 'Video Games'],
+};
+
+// The subcategory the feed names: the one chosen when it belongs to the category, else none.
+export const subcategoryOf = (category: PodcastCategory, sub: string) => (PODCAST_SUBCATEGORIES[category].includes(sub) ? sub : '');
+
 // The chapters as ffmpeg's metadata file, which its MP3 writer turns into ID3 CHAP frames: each ends where the next
 // starts, the last at the end of the episode.
 export function chapterMetadata(title: string, chapters: { title: string; startMs: number }[], durationMs: number): string {
@@ -62,6 +81,7 @@ export interface FeedShow {
     author: string;
     email: string;                // empty: no owner email in the feed
     category: string;
+    subcategory: string;          // empty: none
     explicit: boolean;
 }
 
@@ -76,6 +96,7 @@ export function feedShow(s: StudioSettings, origin: string): FeedShow {
         author: s.hosts.join(' and ') || s.showName,
         email: s.podcastEmail,
         category: s.podcastCategory,
+        subcategory: subcategoryOf(s.podcastCategory, s.podcastSubcategory),
         explicit: s.podcastExplicit,
     };
 }
@@ -106,7 +127,9 @@ export function feedXml(show: FeedShow, items: FeedItem[]): string {
         '    <language>en</language>',
         `    <itunes:author>${xml(show.author)}</itunes:author>`,
         `    <itunes:image href="${xml(show.artUrl)}"/>`,
-        `    <itunes:category text="${xml(show.category)}"/>`,
+        show.subcategory
+            ? `    <itunes:category text="${xml(show.category)}"><itunes:category text="${xml(show.subcategory)}"/></itunes:category>`
+            : `    <itunes:category text="${xml(show.category)}"/>`,
         `    <itunes:explicit>${explicit}</itunes:explicit>`,
         '    <itunes:type>episodic</itunes:type>',
         ...(show.email ? [`    <itunes:owner><itunes:name>${xml(show.author)}</itunes:name><itunes:email>${xml(show.email)}</itunes:email></itunes:owner>`] : []),

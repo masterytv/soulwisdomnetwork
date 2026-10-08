@@ -884,7 +884,7 @@ prefer −16 LUFS.
   each episode with the approved YouTube title and description (chapters, links and credits included), the MP3 as
   its enclosure (size and duration) and the episode ID as its GUID. The show is the Studio settings' name, about,
   hosts and the new **Podcast feed** section: on or off (off by default; the feed is then a 404), artwork (square,
-  1400–3000 px), Apple category (Religion & Spirituality by default), explicit, and an optional owner email.
+  1400–3000 px), Apple category and subcategory (Religion & Spirituality › Spirituality by default; the subcategory list follows the category, and one not under it is left out), explicit, and an optional owner email.
 - **Public routes, by design:** podcast apps read without signing in, so `/podcast/feed.xml`,
   `/podcast/audio/{id}.mp3` and `/podcast/art.jpg` are site routes (not under `/api`) with no `requireRole`. They show
   only episodes put in the feed, and nothing while it is off. The MP3s and artwork stay in the private bucket

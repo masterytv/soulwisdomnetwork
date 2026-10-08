@@ -29,7 +29,13 @@ test('the feed: the show from the settings, newest first, everything escaped', (
     assert.match(xml, /<description><!\[CDATA\[Notes ]]]]><!\[CDATA\[> here]]><\/description>/);
     assert.match(xml, /<itunes:duration>61<\/itunes:duration>/);
     assert.match(xml, /<pubDate>Thu, 01 Jan 2026 00:00:00 GMT<\/pubDate>/);
-    assert.match(xml, /<itunes:category text="Religion &amp; Spirituality"\/>/);
+    assert.match(xml, /<itunes:category text="Religion &amp; Spirituality"><itunes:category text="Spirituality"\/><\/itunes:category>/);
+    // A subcategory not under the category, or none: the category alone.
+    for (const podcastSubcategory of ['Fitness', '']) {
+        assert.match(feedXml(feedShow({ ...DEFAULT_SETTINGS, podcastSubcategory }, 'https://x'), []), /<itunes:category text="Religion &amp; Spirituality"\/>/);
+    }
+    assert.match(feedXml(feedShow({ ...DEFAULT_SETTINGS, podcastCategory: 'Society & Culture', podcastSubcategory: 'Philosophy' }, 'https://x'), []),
+        /<itunes:category text="Society &amp; Culture"><itunes:category text="Philosophy"\/><\/itunes:category>/);
     assert.match(xml, /<itunes:owner><itunes:name>Daniel Endy and Tom Wood<\/itunes:name><itunes:email>tom@example.com<\/itunes:email><\/itunes:owner>/);
     assert.match(xml, /<atom:link href="https:\/\/staging\.example\.com\/podcast\/feed\.xml" rel="self"/);
     // No owner email: no owner.
