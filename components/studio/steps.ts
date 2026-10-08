@@ -82,8 +82,9 @@ export function stageStatus(steps: readonly StepId[], states: Partial<Record<Ste
 }
 
 // Who makes the final cut decides the steps; with Descript they are STEPS and STAGES
-// above, unchanged; with Editor Light there is no edit package or Descript, the edit
-// and its render happen on the show notes page, and the render is the final cut.
+// above, unchanged; with the Studio editor (Editor Light) step 3 builds the edit package for the
+// Studio editor or exports it straight away (spec 020 item E15), its render is the final cut, and
+// there is no Descript step or separate final cut step.
 export type FinalSource = "descript" | "editorLight";
 
 export type FlowStep = readonly [StepId, string];
@@ -91,11 +92,11 @@ export type FlowStep = readonly [StepId, string];
 export interface FlowStage { id: StageId; title: string; steps: readonly StepId[]; checkpoint?: string }
 export interface Flow { steps: readonly FlowStep[]; stages: readonly FlowStage[] }
 
-// Editor Light flow: no edit package or Descript; the edit and its render are the final cut.
+// Studio editor flow: the edit package is built for the Studio editor, or exported; its render is the final cut.
 const EDITOR_LIGHT_STEPS: readonly FlowStep[] = [
     ["notes", "Approve the show notes"],
     ["broll", "Generate b-roll images"],
-    ["final", "Edit and render the final cut"],
+    ["final", "Build the edit package"],
     ["thumbnail", "Pick a thumbnail and approve the episode"],
     ["youtube", "Upload to YouTube"],
     ["shorts", "Make and schedule shorts"],
@@ -104,7 +105,7 @@ const EDITOR_LIGHT_STEPS: readonly FlowStep[] = [
 const EDITOR_LIGHT_STAGES: readonly FlowStage[] = [
     { id: "notes", title: "Show notes", steps: ["notes"], checkpoint: "B" },
     { id: "broll", title: "B-roll", steps: ["broll"] },
-    { id: "final", title: "Edit and final cut", steps: ["final"] },
+    { id: "final", title: "Build edit package", steps: ["final"] },
     { id: "thumbnail", title: "Thumbnail and upload", steps: ["thumbnail", "youtube"], checkpoint: "D" },
     { id: "shorts", title: "Shorts", steps: ["shorts"], checkpoint: "E" },
 ];

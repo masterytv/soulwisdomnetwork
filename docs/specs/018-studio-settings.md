@@ -63,7 +63,8 @@ ingest processes uploads only and the Studio home hides the Drive columns.
 
 ## Editor Light as the final cut
 
-With **Editor Light makes the final cut**, a finished render also writes `episode.final`
+With **The Studio editor makes the final cut** (once "Editor Light makes the final cut"; spec 020 item E15 gives it step 3,
+Build edit package, and hides Descript), a finished render also writes `episode.final`
 (`source: 'editorLight'`):
 - It is written in the same update as `episode.editRender`, after every file is saved.
 - Its words go in the render's own folder (`final-words.json`).

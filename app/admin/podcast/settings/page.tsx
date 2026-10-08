@@ -301,10 +301,10 @@ export default function StudioSettingsPage() {
                                     <span className={hint}>For every episode&apos;s Editor Light render; each episode can choose its own in the Studio editor&apos;s Render panel.</span>
                                 </fieldset>
                                 <div className="flex flex-col gap-2">
-                                    <Choice name="final" value="descript" current={s.finalSource} label="Descript makes the final cut" disabled={off} onPick={() => set("finalSource", "descript")}
-                                        help="The edit happens in Descript and the final cut is published from there." />
-                                    <Choice name="final" value="editorLight" current={s.finalSource} label="Editor Light makes the final cut" disabled={off} onPick={() => set("finalSource", "editorLight")}
-                                        help="Edit in “Edit here instead” on the show notes page and press “Render this edit”. Thumbnails, Shorts and the YouTube upload then use that video. No Descript needed." />
+                                    <Choice name="final" value="editorLight" current={s.finalSource} label="The Studio editor makes the final cut" disabled={off} onPick={() => set("finalSource", "editorLight")}
+                                        help="Step 3 on the show notes page builds the edit package for the Studio editor, to finish there, or exports it straight away. The export is the final cut that Thumbnails, Shorts and the YouTube upload use. Descript is hidden." />
+                                    <Choice name="final" value="descript" current={s.finalSource} label="Descript makes the final cut (to compare)" disabled={off} onPick={() => set("finalSource", "descript")}
+                                        help="The earlier way, kept while the Studio editor is compared with Descript: the edit package goes to Descript, the edit happens there and the final cut is published from there." />
                                 </div>
                             </Section>
 

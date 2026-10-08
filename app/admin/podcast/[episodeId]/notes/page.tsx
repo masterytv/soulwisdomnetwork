@@ -13,6 +13,7 @@ import AuthGuard from "@/components/auth/AuthGuard";
 import { BrollImageView, useBroll } from "@/components/studio/broll";
 import { EditPackage } from "@/components/studio/editPackage";
 import { FinalCut } from "@/components/studio/finalCut";
+import { BuildPackage } from "@/components/studio/buildPackage";
 import { Shorts } from "@/components/studio/shorts";
 import { Thumbnails } from "@/components/studio/thumbnails";
 import { Youtube } from "@/components/studio/youtube";
@@ -1007,7 +1008,9 @@ export default function ShowNotesPage() {
                                     </div>
                                 </Stage>
 
-                                <Stage {...stageProps("broll")} intro="Images made by AI from the approved ideas. The edit package turns each into a clip with a slow zoom or pan, and they go to Descript with the episode, in its media bin.">
+                                <Stage {...stageProps("broll")} intro={lightFlow
+                                    ? "Images made by AI from the approved ideas. The edit package places each on the episode with a slow zoom or pan, in the Studio editor and the export."
+                                    : "Images made by AI from the approved ideas. The edit package turns each into a clip with a slow zoom or pan, and they go to Descript with the episode, in its media bin."}>
                                     {notes.broll.map((b, i) => (
                                         <div key={`${i}-${b.startMs}`} className="flex flex-col gap-1.5 border-l-2 border-sky-500/30 pl-3">
                                             <div className="flex items-center gap-2 text-xs">
@@ -1122,21 +1125,18 @@ export default function ShowNotesPage() {
                                     </Stage>
                                 )}
 
+                                {/* With the Studio editor making the final cut, step 3 builds the edit (spec 020 item E15): for the
+                                    Studio editor to finish by hand, or exported straight away; its render is the final cut, shown below
+                                    the two choices. With Descript, this is the final cut from Descript. */}
                                 <Stage {...stageProps("final")} intro={lightFlow
-                                    ? "Cut the episode here: click words to remove them, preview the cut, then render it. The render is the final cut, set to broadcast loudness, with the chapter times moved onto it."
+                                    ? "Everything for the edit, built from the approved notes: the cuts, the teasers, the intro and outro, and the b-roll. Finish it in the Studio editor, or export it as it is. The export is the final cut, set to broadcast loudness, with the chapter times moved onto it."
                                     : "When the edit in Descript is finished: the finished edit, published from Descript, set to broadcast loudness and saved to Drive, with the chapter times moved onto it."}>
                                     {sinceStage === "final" && changedSince}
-                                    {lightFlow && view && (
-                                        <Part title="Edit"
-                                            aside={<Link href={`/admin/podcast/${episodeId}/studio-editor`} className="text-sm text-amber-300 hover:underline">Open the Studio editor →</Link>}>
-                                            <EditorLightStage
-                                                episodeId={episodeId}
-                                                words={view.words}
-                                                videoUrl={view.videoUrl ?? ''}
-                                            />
-                                        </Part>
+                                    {lightFlow && !upToDate && (
+                                        <NeedsApproval what="build the edit package" approved={!!approved} busy={busy || drafting} onApprove={approve} onDiscard={discard} />
                                     )}
-                                    <FinalCut episodeId={episodeId} enabled={on} report={report} revision={revision} />
+                                    {lightFlow && <BuildPackage episodeId={episodeId} enabled={on} upToDate={upToDate} report={report} revision={revision} />}
+                                    <FinalCut episodeId={episodeId} enabled={on} report={lightFlow ? undefined : report} revision={revision} />
                                 </Stage>
 
                                 <Stage {...stageProps("thumbnail")} intro="Thumbnails drive more views than anything else, so a person always picks one. Approving the episode clears it for YouTube.">

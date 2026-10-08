@@ -39,21 +39,9 @@ import { brandOf, type StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
-import { brollLayer, layersOf, type BinItem, type Brand } from '@/lib/layers';
+import { withLayers, type BinItem, type Brand } from '@/lib/layers';
 import { firstEdit, type Teaser } from '@/lib/programme';
 import type { ProgrammeSetup } from '@/components/studio/programme';
-
-// An edit as the Studio editor works on it: with layers, the notes plan's b-roll among them.
-function withLayers(edit: EpisodeEdit, bin: BinItem[]): EpisodeEdit {
-    if (edit.layers) return edit;
-    const layers = layersOf(edit);
-    const have = new Set(layers.flatMap(l => (l.kind === 'text' ? [] : [l.media.path])));
-    for (const b of bin) {
-        if (b.source !== 'broll' || have.has(b.path) || b.startMs === undefined) continue;
-        layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));
-    }
-    return { ...edit, layers, overlays: [] };
-}
 
 // What an edit was set up with (item E10), in a line: "Set up for you: 214 filler words, 87 long pauses ...".
 function setUpNote(counts: Partial<Record<'filler' | 'repeat' | 'pause', number>>, teasers: number, broll: boolean, intro: boolean): string {
