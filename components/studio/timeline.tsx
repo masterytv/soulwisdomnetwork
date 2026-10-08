@@ -1079,11 +1079,13 @@ export function Timeline({
     const selectedLayerShown: Placed | null = shownLayers.find(l => l.id === selectedLayer) ?? shownSounds.find(s => s.id === selectedLayer) ?? null;
     const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
 
-    // Where a dragged edge lands: snapped (unless Alt, or Snap is off) or on a 10 ms step, then kept
-    // within its limits and out of heard words (unless Alt).
+    // Where a dragged edge, or the Blade, lands: snapped and kept between heard words, or, with Alt (Option) held or
+    // Snap off, exactly where the pointer is on a 10 ms step (within its limits), so a stutter inside one transcribed
+    // word ("Go-Good") can be cut.
     const place = (raw: number, alt: boolean, kept: SpokenWord[], limits: [number, number], free: [number, number], targets: number[][]) => {
-        const s = !alt && snapOn ? snapMs(raw, targets, SNAP_PX / pxPerMs) : { ms: roundToStep(raw), to: null };
-        const ms = alt ? Math.min(free[1], Math.max(free[0], s.ms)) : clampToWords(s.ms, kept, limits);
+        const loose = alt || !snapOn;
+        const s = !loose ? snapMs(raw, targets, SNAP_PX / pxPerMs) : { ms: roundToStep(raw), to: null };
+        const ms = loose ? Math.min(free[1], Math.max(free[0], s.ms)) : clampToWords(s.ms, kept, limits);
         return { ms, guide: s.to !== null && ms === s.ms ? s.to : null };
     };
 
@@ -1099,7 +1101,7 @@ export function Timeline({
         if (lane === 'v2' || lane === 'sounds') { onSelectLayer?.(null); onSeek(ms); return; }
         if (lane === 'cc') { onSelectLayer?.(null); onSelect(null); onSeek(captionAt(ms)?.fromMs ?? ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
-        // The Blade splits where it is clicked, between words unless Alt is held.
+        // The Blade splits where it is clicked, between words unless Alt (Option) is held or Snap is off.
         if (tool === 'blade') {
             if (!locked && split) {
                 const p = place(ms, e.altKey, words, [0, totalMs], [0, totalMs], targets);
@@ -1188,7 +1190,7 @@ export function Timeline({
                 if (clip.kind === 'teaser' && !locked && tool === 'select' && (lane === 'v1' || lane === 'a1')) {
                     if (clip.lengthMs * pxPerMs >= PIECE_GRAB_PX && teaserEdgeAt(axis, view, EDGE_PX / pxPerMs)) {
                         cursor = 'ew-resize';
-                        title = 'Drag to trim the teaser (it stops between words unless Alt is held)';
+                        title = 'Drag to trim the teaser (it stops between words unless Option (Alt) is held or Snap is off)';
                     } else if (lane === 'v1') {
                         cursor = 'grab';
                         title = `Teaser ${clip.index + 1}: click to see it in the preview, drag it to another place among the teasers, drag an end to trim it`;
@@ -1209,8 +1211,8 @@ export function Timeline({
                     cursor = 'ew-resize';
                     const hidden = hiddenAt(axis.pieces[end.index], end.edge);
                     e.currentTarget.title = hidden
-                        ? `${cutLabel(cuts, hidden.startMs, hidden.endMs)}. Drag the edge to bring it back or cut more (it stops between words unless Alt is held); click to choose it; double-click to bring it all back.`
-                        : 'Drag the edge in to cut more (it stops between words unless Alt is held).';
+                        ? `${cutLabel(cuts, hidden.startMs, hidden.endMs)}. Drag the edge to bring it back or cut more (it stops between words unless Option (Alt) is held or Snap is off); click to choose it; double-click to bring it all back.`
+                        : 'Drag the edge in to cut more (it stops between words unless Option (Alt) is held or Snap is off).';
                     e.currentTarget.style.cursor = cursor;
                     return;
                 }
@@ -1395,7 +1397,7 @@ export function Timeline({
             <div className="flex items-center gap-2 text-xs whitespace-nowrap overflow-hidden">
                 {(['select', 'blade'] as const).map(t => (
                     <button key={t} type="button" aria-pressed={tool === t} onClick={() => { setTool(t); setBladeAt(null); }}
-                        title={t === 'select' ? 'Select (V): pick, drag and trim' : 'Blade (B): split where you click, between words unless Alt is held'}
+                        title={t === 'select' ? 'Select (V): pick, drag and trim' : 'Blade (B): split where you click, between words unless Option (Alt) is held or Snap is off'}
                         className={tool === t
                             ? 'text-xs px-2 py-0.5 rounded border border-amber-400/60 text-amber-200 bg-amber-500/10 shrink-0'
                             : `${secondary} px-2 py-0.5 shrink-0`}>
@@ -1409,7 +1411,7 @@ export function Timeline({
                 <button aria-label="Zoom in" title="Zoom in (+)" disabled={pxPerMs >= MAX_PX_PER_MS} onClick={() => zoomBy(2)} className={`${secondary} px-2 py-0.5 shrink-0`}>+</button>
                 <button onClick={() => setView({ zoom: null, scrollPx: 0 })} title={showCuts ? 'Show the whole recording' : 'Show the whole episode'} className={`${secondary} px-2 py-0.5 shrink-0`}>Fit</button>
                 <span className="text-gray-400 w-10 shrink-0">{Math.round(pxPerMs / fit) >= 2 ? `${Math.round(pxPerMs / fit)}×` : 'whole'}</span>
-                <label className="flex items-center gap-1 text-gray-300 shrink-0" title="Snap to the playhead, word edges, cuts and splits. Hold Alt while dragging to turn it off.">
+                <label className="flex items-center gap-1 text-gray-300 shrink-0" title="On: the Blade and dragged edges snap to the playhead, word edges, cuts and splits, and stay between words. Off, or with Option (Alt) held: exactly where you point, even inside a word.">
                     <input type="checkbox" checked={snapOn} onChange={e => setSnapOn(e.target.checked)} className="accent-amber-400" /> Snap
                 </label>
                 <label className="flex items-center gap-1 text-gray-300 shrink-0"
@@ -1813,7 +1815,7 @@ export function Timeline({
                                 {/* Where the Blade would split. */}
                                 {tool === 'blade' && bladeAt !== null && !drag && (
                                     <div aria-hidden className="absolute pointer-events-none w-px bg-amber-300" style={{ left: xs(bladeAt), top: RULER_H, bottom: 0 }}>
-                                        <span className="absolute -top-0 left-1 rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap">✂ {preciseTime(bladeAt)}</span>
+                                        <span className="absolute -top-0 left-1 rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap">✂ {preciseTime(bladeAt)}{snapOn ? <span className="text-gray-400"> · between words; ⌥ or Alt for anywhere</span> : null}</span>
                                     </div>
                                 )}
 

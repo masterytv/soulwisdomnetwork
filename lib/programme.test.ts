@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, firstEdit, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, firstEdit, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 
@@ -61,6 +61,8 @@ test('the programme in order, joined as the render joins it', () => {
     ]);
     assert.equal(q.lengthMs, 71_500);
     assert.equal(q.warnings.length, 1);
+    // Each piece says which transition plays into it, for the preview; a straight cut (or one too long) is 'cut'.
+    assert.deepEqual(q.pieces.map(x => x.transition), ['cut', 'cut', 'cut', 'dissolve', 'fade']);
 
     // Nothing but the episode.
     const r = programmeOf({ teasers: [], introMs: null, outroMs: null, episodeMs: 1000, sections });
@@ -122,4 +124,11 @@ test('picking a teaser clip\'s words on the notes page', () => {
     assert.deepEqual(pickTeaserWord(ws, clip, ws[1]), { startMs: 500, endMs: 1900, text: 'two three four', speaker: 'A' });
     // Too short a clip: just the word, at least half a second.
     assert.deepEqual(pickTeaserWord(ws, { startMs: 1000, endMs: 1400 }, ws[2]).endMs - 1000, 500);
+});
+
+test('the preview\'s hand-over: the recording at a moment of the edited episode, and back (item E16)', () => {
+    const ranges = [{ startMs: 1000, endMs: 3000 }, { startMs: 10_000, endMs: 11_000 }, { startMs: 5000, endMs: 6000 }];
+    assert.deepEqual([0, 500, 2000, 2500, 3000, 3999, 9999].map(ms => recordingAt(ranges, ms)), [1000, 1500, 10_000, 10_500, 5000, 5999, 6000]);
+    assert.deepEqual([1000, 2999, 3000, 10_500, 5500, 7000].map(ms => playedAt(ranges, ms)), [0, 1999, null, 2500, 3500, null]);
+    assert.equal(recordingAt([], 100), 0);
 });
