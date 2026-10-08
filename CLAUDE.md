@@ -58,7 +58,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               which draws the sections in play order (item E11, lib/timeline.ts timelineAxis); an episode with no saved edit opens
               with one set up and saved (item E10, lib/programme.ts firstEdit: its fillers, stammers and long pauses cut,
               each one a cut that can be brought back, its teasers placed and the b-roll as layers), and the preview plays the
-              teasers, intro, episode and outro in order (components/studio/programme.tsx); on the timeline they are clips on V1
+              teasers, intro, episode and outro in order, with their transitions (components/studio/programme.tsx, item E16); on the timeline they are clips on V1
               around the episode (item E14, lib/timeline.ts withProgramme): a teaser is trimmed between words and dragged to another
               place, its "In this episode" graphic sits on V3 (renamed or taken off: the teaser's `tag`), Delete takes a teaser, the
               intro or the outro (edit.intro or outro false) out, and a section or stretch becomes a teaser (+ Teaser, or copy and

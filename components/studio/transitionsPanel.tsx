@@ -76,8 +76,8 @@ export function TransitionsPanel({ joins, splits, studio, warnings = {}, focus, 
                 <h2 className="text-sm font-semibold text-gray-200">Transitions</h2>
                 <p className={hint}>
                     A transition overlaps the two sides it joins, so the video gets shorter by its length; chapters,
-                    captions and on-screen items move with it. The preview shows the ones at splits; the render
-                    shows them all, and can look slightly different.
+                    captions and on-screen items move with it. The preview plays them all (▶ Whole video for the
+                    teasers, intro and outro); the render can look slightly different.
                 </p>
             </div>
 

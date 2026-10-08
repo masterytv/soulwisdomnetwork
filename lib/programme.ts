@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import { replaceSuggestions, suggestCuts, SUGGESTED_REASONS, type EpisodeEdit, type Silence } from './edit';
 import type { SpokenWord } from './showNotes';
-import { SECTION_JOIN_LABELS, type SectionJoin, type SectionJoins } from './transitions';
+import { SECTION_JOIN_LABELS, type SectionJoin, type SectionJoins, type TransitionKind } from './transitions';
 
 // A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker; `tag`
 // false takes the tag off that teaser (item E14).
@@ -58,8 +58,8 @@ export function firstEdit(edit: EpisodeEdit, o: { words: SpokenWord[]; silences:
 export type PieceKind = 'teaser' | 'intro' | 'episode' | 'outro';
 
 // A piece of the programme: where it starts, how long it is, and how much of it the transition from the piece before
-// overlaps (0 for a straight cut). `index` numbers the teasers.
-export interface ProgrammePiece { kind: PieceKind; index: number; atMs: number; lengthMs: number; joinMs: number }
+// overlaps (0 for a straight cut), and which transition that is ('cut' when joinMs is 0). `index` numbers the teasers.
+export interface ProgrammePiece { kind: PieceKind; index: number; atMs: number; lengthMs: number; joinMs: number; transition: TransitionKind }
 
 export interface Programme {
     pieces: ProgrammePiece[];
@@ -68,6 +68,28 @@ export interface Programme {
     episodeAtMs: number;
     // Transitions that play as straight cuts, and why.
     warnings: string[];
+}
+
+// Where the edited episode is in the recording `ms` into it, its kept stretches in play order (the preview's hand-over
+// after a transition into the episode, item E16); past the end, the last stretch's end.
+export function recordingAt(ranges: { startMs: number; endMs: number }[], ms: number): number {
+    let left = Math.max(0, ms);
+    for (const r of ranges) {
+        const len = r.endMs - r.startMs;
+        if (left < len) return r.startMs + left;
+        left -= len;
+    }
+    return ranges.length ? ranges[ranges.length - 1].endMs : 0;
+}
+
+// How far into the edited episode a moment of the recording plays; null when it is cut.
+export function playedAt(ranges: { startMs: number; endMs: number }[], srcMs: number): number | null {
+    let at = 0;
+    for (const r of ranges) {
+        if (srcMs >= r.startMs && srcMs < r.endMs) return at + srcMs - r.startMs;
+        at += r.endMs - r.startMs;
+    }
+    return null;
 }
 
 // The programme's pieces in order, joined as the render joins them (agent/src/podcast/editRender.ts `put`): the
@@ -86,7 +108,7 @@ export function programmeOf(o: { teasers: number[]; introMs: number | null; outr
             else warnings.push(`${SECTION_JOIN_LABELS[join!]}: the transition is longer than the clips around it, so it plays as a straight cut.`);
         }
         at -= joinMs;
-        pieces.push({ kind, index, atMs: at, lengthMs, joinMs });
+        pieces.push({ kind, index, atMs: at, lengthMs, joinMs, transition: joinMs ? t!.transition : 'cut' });
         at += lengthMs;
         prevLeft = lengthMs - joinMs;
     };
