@@ -7,9 +7,10 @@ import {
     alignFractions, anchorCut, brollLayer, layerFromBin, LayerSchema, layersAss, LayersSchema, layerSpan, layersOf, lookAt,
     overlayXY, pictureFilter, layerAudioFilter, placeOf, startAt, textEvents, toLayer, type ImageLayer, type TextLayer, type VideoLayer,
     isWhole, layerKind, layerName, logoBug, lowerThird, lowerThirds, marginsOf, positionOf, SITE_LOGO, titleCard, TRACK, WHOLE_EPISODE_MS,
-    type Brand,
+    type Brand, withLayers, type BinItem,
 } from './layers';
 import type { ImageOverlay, TextOverlay } from './onScreen';
+import type { EpisodeEdit } from './edit';
 
 const title: TextOverlay = {
     id: 'title-1', type: 'text', atMs: 12_000, seconds: 5, text: 'Daniel Endy', subtext: 'Host',
@@ -207,4 +208,20 @@ test('the render: a brand band and an accent second line in the ASS file', () =>
     const plain = layersAss([], null, [{ layer: { ...third, band: undefined, subColor: '#FFFFFF' }, span }])!;
     assert.match(plain, /&H50000000/);
     assert.ok(!plain.includes('\\c&H'));
+});
+
+test('withLayers: the notes plan\'s b-roll becomes layers once, and an edit with layers is left alone (item E15)', () => {
+    const bin: BinItem[] = [
+        { id: 'broll-0', kind: 'image', source: 'broll', path: 'episodes/e/broll/0.png', name: 'Sunrise', startMs: 60_000, seconds: 8, index: 0 },
+        { id: 'broll-1', kind: 'image', source: 'broll', path: 'episodes/e/broll/1.png', name: 'River', startMs: 120_000, index: 1 },
+        { id: 'up', kind: 'image', source: 'upload', path: 'episodes/e/media/x.png', name: 'Mine' },
+    ];
+    const blank: EpisodeEdit = { cuts: [], version: 0 };
+    const edit = withLayers(blank, bin);
+    assert.deepEqual(edit.layers!.map(l => l.id), ['broll-0', 'broll-1']);
+    assert.deepEqual(edit.overlays, []);
+    assert.equal((edit.layers![0] as ImageLayer).durationMs, 8000);
+    assert.equal((edit.layers![1] as ImageLayer).durationMs, 6000);
+    const kept: EpisodeEdit = { cuts: [], version: 3, layers: [] };
+    assert.equal(withLayers(kept, bin), kept);
 });

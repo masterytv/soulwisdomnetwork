@@ -150,7 +150,11 @@ images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
 the episode, teaser clips (with the "In this episode" tag burned in by `podcast/teaserBanner.ts`), b-roll and notes in `03 For Descript/<episode>`; "Send to Descript" then
 starts `podcast_descript.yml` (`agent/src/podcast/descript.ts`), which makes the Descript project through
-Descript's API with the `DESCRIPT_API_TOKEN` repo secret. Descript is the final edit (spec 005 step 9). "Get the final cut from Descript" starts
+Descript's API with the `DESCRIPT_API_TOKEN` repo secret. Descript is the final edit (spec 005 step 9) unless the Studio
+settings say "The Studio editor makes the final cut": then step 3 is **Build edit package** (spec 020 item E15,
+`components/studio/buildPackage.tsx`, `lib/server/buildEdit.ts`), with **Build for Studio editor** (sets up the edit, as the
+editor does on first opening, and opens it) and **Build and export** (the same, rendered straight away: the final cut); the
+Descript steps and the Final cut step are hidden, kept to compare. "Get the final cut from Descript" starts
 `podcast_final.yml` (`agent/src/podcast/final.ts`, `docs/specs/010-final-cut.md`), which publishes the edit through the
 same API, normalizes it to −14 LUFS, saves it to `04 Final` in Drive, and moves the chapter and quote times onto it. "Make thumbnail options" starts `podcast_thumbnails.yml` (`agent/src/podcast/thumbnails.ts`,
 `docs/specs/011-thumbnails.md`), which needs `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`; the producer picks one and

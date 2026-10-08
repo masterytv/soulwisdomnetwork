@@ -1,8 +1,9 @@
 "use client";
 
 // The final cut on the show notes page (docs/specs/010-final-cut.md): publishes the edited
-// episode from Descript, and shows it with the chapter times moved onto it. When Editor Light makes
-// the final cut, it links to the Studio editor to touch it up (spec 020).
+// episode from Descript, and shows it with the chapter times moved onto it. When the Studio editor makes
+// the final cut, it shows the export from step 3 (components/studio/buildPackage.tsx, spec 020 item E15), with a link to
+// touch it up in the Studio editor.
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -67,7 +68,7 @@ export function FinalCut({ episodeId, enabled, report, revision }: { episodeId: 
         step: "final", failed: view?.status === "failed", done: ready && !view.stale, working,
         summary: working ? LABEL[view!.status as keyof typeof LABEL] : view?.status === "failed" ? failure("Getting the final cut", view.error)
             : ready ? [view.stale ? "Out of date: get it again" : `Made ${ago(view.finishedAt)}`, view.durationSeconds ? mmss(view.durationSeconds * 1000) : "", view.loudness ? `${view.loudness.afterLufs} LUFS` : ""].filter(Boolean).join(" · ")
-                : editorLight ? "Made by “Render this edit” (Editor Light)"
+                : editorLight ? "Made by exporting the edit"
                     : view?.canStart ? "Ready when the Descript edit is finished" : "Waiting for the Descript project",
         link: view?.driveUrl ? { label: "Final cut", href: view.driveUrl } : view?.videoUrl ? { label: "Final cut", href: view.videoUrl } : null,
         key: view ? `${view.status}:${view.finishedAt}` : null, report, revision, enabled, load,
@@ -96,17 +97,15 @@ export function FinalCut({ episodeId, enabled, report, revision }: { episodeId: 
                         04 Final folder ↗
                     </a>
                 )}
-                {editorLight && (
+                {editorLight && ready && (
                     <Link href={`/admin/podcast/${episodeId}/studio-editor`} className="text-sm text-amber-300 hover:underline">
                         Touch up in the Studio editor →
                     </Link>
                 )}
             </div>
-            <p className="text-xs text-gray-400">
+            {(!editorLight || ready) && <p className="text-xs text-gray-400">
                 {editorLight
-                    ? ready
-                        ? `Made by the Editor Light render ${view.finishedAt ? ago(view.finishedAt) : ""}${view.durationSeconds ? ` · ${mmss(view.durationSeconds * 1000)}` : ""}. After more edits, use “Render this edit” again.`
-                        : "The Studio settings make the final cut from the Editor Light render: edit in “Edit here instead”, then press “Render this edit”."
+                    ? `The final cut, made ${view?.finishedAt ? ago(view.finishedAt) : ""}${view?.durationSeconds ? ` · ${mmss(view.durationSeconds * 1000)}` : ""}${view?.loudness ? ` · ${view.loudness.afterLufs} LUFS` : ""}. After more edits in the Studio editor, render there or export again.`
                     : working
                     ? "Descript renders the “Episode” timeline, then it is downloaded, set to broadcast loudness and transcribed to move the chapter times. Allow about as long as the episode; this page updates by itself and you get an email."
                     : !view?.canStart
@@ -114,11 +113,9 @@ export function FinalCut({ episodeId, enabled, report, revision }: { episodeId: 
                         : ready
                             ? `Made ${view.finishedAt ? ago(view.finishedAt) : ""}${view.durationSeconds ? ` · ${mmss(view.durationSeconds * 1000)}` : ""}${view.loudness ? ` · ${view.loudness.afterLufs} LUFS (was ${view.loudness.beforeLufs})` : ""}${view.coverage != null ? ` · ${Math.round(view.coverage * 100)}% of the original matched` : ""}. After more edits in Descript, get it again.`
                             : "When the edit in Descript is finished: renders the “Episode” timeline at 1080p, sets it to -14 LUFS (what YouTube and Spotify play at), saves it to Drive and moves the chapter and quote times onto it."}
-            </p>
-            {ready && view.stale && (
-                <p className="text-sm text-amber-300">{editorLight
-                    ? "This final cut came from an earlier edit or earlier notes. Render the edit again to match."
-                    : "This final cut came from an earlier Descript project or earlier notes. Get it again to match."}</p>
+            </p>}
+            {ready && view.stale && !editorLight && (
+                <p className="text-sm text-amber-300">This final cut came from an earlier Descript project or earlier notes. Get it again to match.</p>
             )}
             {ready && view.chapters.length > 0 && (
                 <div className="text-xs text-gray-400">
