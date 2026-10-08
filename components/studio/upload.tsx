@@ -95,7 +95,7 @@ export function UploadRecording({ onDone }: { onDone: (message: string) => void 
 }
 
 // A logo or intro on the Settings page: uploads and hands back the Storage path to save.
-export function UploadAsset({ kind, label, accept, onUploaded }: { kind: "logo" | "intro"; label: string; accept: string; onUploaded: (path: string) => void }) {
+export function UploadAsset({ kind, label, accept, onUploaded }: { kind: "logo" | "intro"; label: string; accept: string; onUploaded: (path: string, file: File) => void }) {
     const [share, setShare] = useState<number | null>(null);
     const [error, setError] = useState("");
     async function pick(file: File | undefined) {
@@ -103,7 +103,7 @@ export function UploadAsset({ kind, label, accept, onUploaded }: { kind: "logo" 
         setError("");
         setShare(0);
         try {
-            onUploaded((await uploadFile(kind, file, setShare)).path);
+            onUploaded((await uploadFile(kind, file, setShare)).path, file);
         } catch (e) {
             setError((e as Error).message);
         } finally {
