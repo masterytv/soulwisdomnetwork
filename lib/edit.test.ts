@@ -2,7 +2,7 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     keepRanges, editedTime, editedDuration, suggestCuts,
-    applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS,
+    applyToChapters, applyToQuotes, editedWords, CutsSchema, MAX_CUTS, withoutEmptyCuts,
     replaceSuggestions, sectionAt, cutSection, restoreSection, SplitsSchema, MAX_SPLITS, savedByReason, unspokenSpans,
     keptBounds, trimSection, sectionsOf, MIN_PART_MS,
     type Cut, type KeptRange,
@@ -490,8 +490,18 @@ describe('CutsSchema', () => {
     test('rounds to whole milliseconds', () => {
         assert.deepEqual(CutsSchema.parse([{ startMs: 10.4, endMs: 400.6, reason: 'pause' }]), [{ startMs: 10, endMs: 401, reason: 'pause' }]);
     });
-    test('refuses backwards, negative, unknown or extra fields, and too many cuts', () => {
-        assert.ok(!CutsSchema.safeParse([{ startMs: 500, endMs: 400, reason: 'manual' }]).success);
+    test('drops cuts that cut nothing instead of refusing the edit', () => {
+        assert.deepEqual(CutsSchema.parse([
+            { startMs: 500, endMs: 500, reason: 'manual' }, { startMs: 700.2, endMs: 700.4, reason: 'manual' },
+            { startMs: 900, endMs: 800, reason: 'manual' }, { startMs: 0, endMs: 400, reason: 'filler' },
+        ]), [{ startMs: 0, endMs: 400, reason: 'filler' }]);
+    });
+    test('withoutEmptyCuts keeps the edit as it is unless a cut is empty', () => {
+        const edit = { cuts: [{ startMs: 0, endMs: 400, reason: 'filler' as const }], version: 3 };
+        assert.equal(withoutEmptyCuts(edit), edit);
+        assert.deepEqual(withoutEmptyCuts({ ...edit, cuts: [...edit.cuts, { startMs: 50, endMs: 50.3, reason: 'manual' as const }] }), edit);
+    });
+    test('refuses negative, unknown or extra fields, and too many cuts', () => {
         assert.ok(!CutsSchema.safeParse([{ startMs: -5, endMs: 400, reason: 'manual' }]).success);
         assert.ok(!CutsSchema.safeParse([{ startMs: 0, endMs: 400, reason: 'other' }]).success);
         assert.ok(!CutsSchema.safeParse([{ startMs: 0, endMs: 400, reason: 'manual', note: 'x' }]).success);

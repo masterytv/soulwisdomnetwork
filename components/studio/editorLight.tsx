@@ -27,7 +27,7 @@ import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
 import { useAutosave } from '@/components/studio/useAutosave';
 import { mmss, type SpokenWord } from '@/lib/showNotes';
-import type { EpisodeEdit, Silence } from '@/lib/edit';
+import { withoutEmptyCuts, type EpisodeEdit, type Silence } from '@/lib/edit';
 import type { EditRenderView } from '@/lib/server/editRender';
 import { studioFetch, studioFetchBytes } from '@/lib/studioClient';
 import type { ThumbSheets } from '@/lib/thumbs';
@@ -192,7 +192,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 // No saved edit yet: set one up (item E10), and save it.
                 const setUp = data.fresh && !data.brollBlock
                     ? firstEdit(data.edit, { words: accepted, silences: data.silences ?? null, teasers: data.teasers ?? [] }) : null;
-                const opened = setUp?.edit ?? data.edit;
+                const opened = withoutEmptyCuts(setUp?.edit ?? data.edit);
                 const shown = workspace && items ? withLayers(opened, items) : opened;
                 setEdit(shown);
                 setOverlayUrls(data.overlayUrls ?? {});
@@ -273,7 +273,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     // A local copy from an earlier visit: put it back (it saves against the version it was made on), or drop it.
     const restoreDraft = () => {
         if (!localDraft) return;
-        const restored = { ...(workspace && bin ? withLayers(localDraft.value, bin) : localDraft.value), version: edit.version };
+        const restored = withoutEmptyCuts({ ...(workspace && bin ? withLayers(localDraft.value, bin) : localDraft.value), version: edit.version });
         setEdit(restored);
         change(restored);
         setLocalDraft(null);
@@ -408,7 +408,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             cutNotes={cutNotes}
             silences={silences}
             tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
-            onChange={(e) => { setEdit(e); change(e); }}
+            onChange={(next) => { const e = withoutEmptyCuts(next); setEdit(e); change(e); }}
             heading={heading}
             status={<>{saveStatus}{workspace && draftBanner}{workspace && setupBanner}</>}
             actions={workspace ? renderBar : undefined}

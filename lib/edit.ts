@@ -64,7 +64,14 @@ export const CutsSchema = z.array(z.object({
     startMs: ms,
     endMs: ms,
     reason: z.enum(['filler', 'pause', 'repeat', 'manual', 'retake', 'gap']),
-}).strict().refine(c => c.endMs > c.startMs, 'A cut must end after it starts')).max(MAX_CUTS);
+}).strict()).max(MAX_CUTS).transform(cuts => cuts.filter(c => c.endMs > c.startMs));
+
+// A cut that ends where it starts (a word the transcript gives no length, or a sliver that rounds to nothing) cuts
+// nothing: it is dropped, on saving (CutsSchema) and in the editor, rather than refusing the whole edit.
+export function withoutEmptyCuts<E extends { cuts: Cut[] }>(edit: E): E {
+    return edit.cuts.every(c => Math.round(c.endMs) > Math.round(c.startMs)) ? edit
+        : { ...edit, cuts: edit.cuts.filter(c => Math.round(c.endMs) > Math.round(c.startMs)) };
+}
 
 // Split points: whole milliseconds, each once, in order.
 export const MAX_SPLITS = 500;
