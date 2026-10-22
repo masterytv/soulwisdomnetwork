@@ -1,0 +1,8 @@
+# The staging backend (soulwisdomnetwork-staging, built from the `staging` branch; its Environment name is "staging").
+# App Hosting adds this to apphosting.yaml for that backend only: the site shows a STAGING bar and is not indexed.
+env:
+  - variable: NEXT_PUBLIC_SITE_ENV
+    value: staging
+    availability:
+      - BUILD
+      - RUNTIME

@@ -5,7 +5,10 @@ Next.js community site for the Soul Wisdom podcast, with the Podcast Studio: a p
 next, and in what order: `docs/PLANNING.md`.
 
 **Live:** https://soulwisdomcollective.com (from `main`) · **Staging:** https://staging.soulwisdomcollective.com
-(from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`.
+(from `staging`; the Podcast Studio is at /admin/podcast). Tom tests there before promoting to `main`. Two App Hosting
+backends in the one project: `soulwisdomnetwork` (live, `main`) and `soulwisdomnetwork-staging` (`staging`, Environment
+name "staging", so `apphosting.staging.yaml` adds `NEXT_PUBLIC_SITE_ENV=staging`: a STAGING bar and no search indexing).
+Staging shares the live Firestore, Storage, Auth and secrets, so what is done there is real.
 
 ## Stack
 
@@ -99,7 +102,7 @@ Project **`soulwisdomnetwork`** · Blaze · Firestore `nam5` · App Hosting `us-
 confusingly similar names. App Hosting runs the app on Cloud Run and builds from GitHub.
 Never enable Firebase Hosting, and never tick "Also set up Firebase Hosting" anywhere.
 
-Pushing to `main` triggers a build and rollout automatically. There is no deploy workflow
+Pushing to `main` (and to `staging`, for the staging backend) triggers a build and rollout automatically. There is no deploy workflow
 in CI — App Hosting connects to the repo directly. Do not add one. The `checks` workflow
 (`.github/workflows/checks.yml`) only checks pull requests into `staging` and `main`: typecheck,
 lint, tests and a build with placeholder config. It deploys nothing and uses no secrets.
