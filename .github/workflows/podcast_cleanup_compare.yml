@@ -1,6 +1,6 @@
 # The voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1; agent/src/podcast/cleanupCompare.ts):
-# one stretch of an episode as recorded, with today's clean-up, with DeepFilterNet, through Auphonic and
-# from Descript's final cut, all at −14 LUFS, named A, B, C… to hear blind. Emails the links and saves
+# one stretch of an episode as recorded, with today's clean-up, with DeepFilterNet, with Studio sound (item 3.4),
+# through Auphonic and from Descript's final cut, all at −14 LUFS, named A, B, C… to hear blind. Emails the links and saves
 # them in Drive ("Clean-up comparison"). Nothing on the episode changes. Run by hand from the Actions tab.
 
 name: Podcast Clean-up Comparison
@@ -21,7 +21,7 @@ on:
         required: false
         default: '10'
       versions:
-        description: 'Comma-separated: recorded, today, deepfilter, auphonic, descript (empty: all)'
+        description: 'Comma-separated: recorded, today, deepfilter, studio, auphonic, descript (empty: all)'
         required: false
         default: ''
 

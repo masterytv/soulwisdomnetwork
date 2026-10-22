@@ -1,22 +1,24 @@
 // Why: the voice clean-up the Editor Light render uses (docs/specs/019-editor-light-v2.md item 3.2). The
 // clean-up comparison (item 3.1) lets Tom and the producer hear three ways side by side; this makes each one
-// a choice: today's chain (the default), DeepFilterNet (free, on the runner) or Auphonic (free plan only,
-// decision D1: 2 hours of audio a month). The Studio settings choose for every episode, and an episode's
+// a choice: today's chain (the default), Studio sound (item 3.4: free, on the runner, DeepFilterNet then each voice's
+// own EQ and level, a de-esser, leveller, compressor and limiter, to stand in for Auphonic), DeepFilterNet alone, or
+// Auphonic (free plan only, decision D1: 2 hours of audio a month). The Studio settings choose for every episode, and an episode's
 // edit can choose its own. Auphonic's hours are counted here, in `studio/spending`, so a render that
 // would go over is refused before it starts; the code never buys credits.
 
 import { sequenceOf, type SequenceEdit } from './sequence';
 
-export const VOICE_CLEANUPS = ['standard', 'deepfilter', 'auphonic'] as const;
+export const VOICE_CLEANUPS = ['standard', 'studio', 'deepfilter', 'auphonic'] as const;
 export type VoiceCleanup = typeof VOICE_CLEANUPS[number];
 
 export const VOICE_LABELS: Record<VoiceCleanup, string> = {
     standard: 'Standard (ffmpeg: high-pass, noise reduction, compressor)',
+    studio: 'Studio sound (free: noise removal, each voice its own EQ and level, de-esser, leveller; adds about 8 minutes an hour)',
     deepfilter: 'DeepFilterNet (free, stronger noise removal; adds about 8 minutes an hour to the render)',
     auphonic: 'Auphonic (free plan: 2 hours of audio a month)',
 };
 
-export const VOICE_SHORT: Record<VoiceCleanup, string> = { standard: 'Standard', deepfilter: 'DeepFilterNet', auphonic: 'Auphonic' };
+export const VOICE_SHORT: Record<VoiceCleanup, string> = { standard: 'Standard', studio: 'Studio sound', deepfilter: 'DeepFilterNet', auphonic: 'Auphonic' };
 
 // The episode's own choice when it has one, else the Studio's.
 export function voiceFor(edit: { voice?: VoiceCleanup | null } | undefined, studio: VoiceCleanup): VoiceCleanup {
