@@ -16,6 +16,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { studioFinish, type Turn } from './studioSound';
 
 function ffmpeg(args: string[]): Promise<void> {
     return run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args]);
@@ -74,6 +75,8 @@ export interface DeepFilterOptions {
     workDir: string;
     durationSec: number;          // the recording's length
     pieces?: number;              // how many run side by side (default: the cores, at most 4)
+    attenLimitDb?: number;        // how far it may lower the noise (default: no limit)
+    mono?: boolean;               // the cleaned voice alone, one channel, without today's compressor (Studio sound)
 }
 
 // The recording's voice cleaned by DeepFilterNet, as 48 kHz stereo WAV at the video's times.
@@ -87,12 +90,33 @@ export async function deepFilterTrack(input: string, out: string, o: DeepFilterO
             const piece = path.join(dir, `piece${i}.wav`);
             await ffmpeg(['-ss', p.from.toFixed(6), '-t', (p.to - p.from).toFixed(6), '-i', mono, '-c:a', 'pcm_s16le', piece]);
             const done = path.join(dir, `out${i}`);
-            // -D: no delay against the input. The default attenuation limit (100 dB: none), as in the comparison.
-            await run(o.bin, ['-D', '-o', done, piece]);
+            // -D: no delay against the input. The default attenuation limit (100 dB: none), as in the comparison,
+            // unless one is given.
+            await run(o.bin, ['-D', ...(o.attenLimitDb !== undefined ? ['-a', String(o.attenLimitDb)] : []), '-o', done, piece]);
             return path.join(done, `piece${i}.wav`);
         }));
-        await ffmpeg([...outs.flatMap(f => ['-i', f]), '-filter_complex', joinGraph(parts, o.durationSec, DEEPFILTER_AFTER),
+        await ffmpeg([...outs.flatMap(f => ['-i', f]), '-filter_complex', joinGraph(parts, o.durationSec, o.mono ? 'anull' : DEEPFILTER_AFTER),
             '-map', '[out]', '-ar', '48000', '-c:a', 'pcm_s16le', out]);
+    } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+}
+
+// ─── Studio sound (spec 019 item 3.4, studioSound.ts) ────────────────────────
+
+// DeepFilterNet lowers the noise by at most this much in Studio sound: enough for a quiet room, and the voice
+// keeps its body (full removal can leave it thin and "underwater" where the noise was loud).
+export const STUDIO_ATTEN_DB = 30;
+
+// The recording's voice made into Studio sound, as 48 kHz stereo WAV at the video's times: DeepFilterNet, then each
+// speaker's EQ and level from `turns` (the transcript's, in the recording's times), then the de-esser, leveller,
+// compressor and limiter. Returns what each speaker was given, for the log.
+export async function studioSoundTrack(input: string, out: string, o: DeepFilterOptions & { turns?: Turn[] }): Promise<string> {
+    const dir = fs.mkdtempSync(path.join(o.workDir, 'studio-'));
+    try {
+        const voice = path.join(dir, 'voice.wav');
+        await deepFilterTrack(input, voice, { ...o, workDir: dir, attenLimitDb: STUDIO_ATTEN_DB, mono: true });
+        return await studioFinish(voice, out, { workDir: dir, turns: o.turns });
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -15,6 +15,7 @@ in what order to build, and how the plan fits the work already built.
 |---|---|
 | `docs/research/2026-10-05-open-source-editors.md` | What Rescript, CutScript, auto-editor, DeepFilterNet, Auphonic, Remotion, Revideo and others offer, their licences, and what was measured on a runner-like machine |
 | `docs/research/2026-10-05-free-music-and-effects.md` | Free and royalty-free music and effects sources, with terms to check by hand |
+| `docs/research/2026-10-22-auphonic-alternatives.md` | Free, open-source stand-ins for Auphonic, their licences, and the speech spectrum Studio sound (019 item 3.4) aims for |
 | `docs/specs/019-editor-light-v2.md` | **The plan and its status table**: Phases 0–5 and E. Start at its "Before you start" |
 | `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E16) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
@@ -97,6 +98,9 @@ item). So:
 12. **020 E14** (the whole video on the timeline: teasers, intro and outro as clips, the "In this episode" graphic on V3, teasers made from the episode; the Programme row gone): built, #182, at Tom's request. Part 2, picking a teaser clip's words on the notes page: built, #184.
 13. **020 E15** (step 3 is Build edit package: Build for Studio editor, or Build and export, which is the final cut; Descript and the Final cut step hidden behind the Studio setting, kept to compare): built, #186, at Tom's request.
 14. **020 E16** (the transitions around the episode, and at the video's start and end, play in the preview): built, #191, at Tom's request.
+15. **019 3.4** (Studio sound: a free stand-in for Auphonic, with each speaker's own EQ and level; research in
+    `docs/research/2026-10-22-auphonic-alternatives.md`): built, at Tom's request. Standard stays the default until it is
+    heard beside Auphonic in the comparison.
 
 ## Overlaps with work already built — decided
 

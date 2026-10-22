@@ -27,12 +27,12 @@ test('the stretch: 10 minutes from a third of the way in by default, kept inside
 test('versions: all by default, or the ones named, in the usual order', () => {
     assert.deepEqual(chooseVersions(''), [...VERSIONS]);
     assert.deepEqual(chooseVersions('deepfilter, today'), ['today', 'deepfilter']);
-    assert.throws(() => chooseVersions('today,studio'), /Unknown versions: studio/);
+    assert.throws(() => chooseVersions('today,magic'), /Unknown versions: magic/);
 });
 
 test('blind letters: one each, A onwards, the same for the same run, shuffled across runs', () => {
     const a = blindLetters([...VERSIONS], 12345);
-    assert.deepEqual([...a.values()].sort(), ['A', 'B', 'C', 'D', 'E']);
+    assert.deepEqual([...a.values()].sort(), ['A', 'B', 'C', 'D', 'E', 'F']);
     assert.deepEqual([...blindLetters([...VERSIONS], 12345)], [...a]);
     const orders = new Set(Array.from({ length: 20 }, (_, i) => { const m = blindLetters([...VERSIONS], i + 1); return VERSIONS.map(v => m.get(v)).join(''); }));
     assert.ok(orders.size > 5);
