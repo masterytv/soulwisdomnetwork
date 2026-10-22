@@ -1,6 +1,7 @@
 // The voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1): cuts a stretch of an
-// episode (10 minutes by default) and makes it up to five ways, each brought to −14 LUFS (cleanupVersions.ts):
-// as recorded, today's chain, DeepFilterNet in that chain (as the render runs it, voiceCleanup.ts), Auphonic, and Descript's Studio Sound from
+// episode (10 minutes by default) and makes it up to six ways, each brought to −14 LUFS (cleanupVersions.ts):
+// as recorded, today's chain, DeepFilterNet in that chain (as the render runs it, voiceCleanup.ts), Studio sound (item 3.4,
+// studioSound.ts, with each speaker's turns from the accepted transcript), Auphonic, and Descript's Studio Sound from
 // the same stretch of its final cut. The files are named A, B, C… so they can be heard blind, with the
 // key in its own file. They go to Cloud Storage and, when Drive is on, a "Clean-up comparison" folder
 // beside "04 Final"; an email gives the links and each one's loudness, time and cost. Read-only: nothing
@@ -19,7 +20,8 @@ import {
     answerKey, applyChain, auphonicClean, blindLetters, chainFor, chooseStretch, chooseVersions, clock, cutStretch, reportTable,
     type VersionResult,
 } from './cleanupVersions';
-import { deepFilterTrack } from './voiceCleanup';
+import { deepFilterTrack, studioSoundTrack } from './voiceCleanup';
+import { turnsOf, turnsWithin, type ReviewedLine } from './studioSound';
 import type { AuphonicHold } from '../../../lib/voice';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
@@ -83,6 +85,13 @@ async function main() {
                 const bin = process.env.DEEPFILTER_BIN;
                 if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
                 await deepFilterTrack(stretch, raw, { bin, workDir, durationSec: seconds });
+            } else if (kind === 'studio') {
+                const bin = process.env.DEEPFILTER_BIN;
+                if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
+                // Who speaks when in the stretch, so each voice gets its own EQ and level; one sound for all without it.
+                const turns = episode.review?.reviewedPath ? turnsWithin(turnsOf((JSON.parse((await bucket.file(episode.review.reviewedPath).download())[0]
+                    .toString('utf8')) as { lines: ReviewedLine[] }).lines), startSec * 1000, (startSec + seconds) * 1000) : undefined;
+                console.log(`  🎙️ studio: ${await studioSoundTrack(stretch, raw, { bin, workDir, durationSec: seconds, turns })}`);
             } else {
                 await applyChain(stretch, chainFor(kind), raw);
             }

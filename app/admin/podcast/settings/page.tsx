@@ -47,6 +47,7 @@ function Field({ label, help, children }: { label: string; help?: string; childr
 // What each voice clean-up does, beside its choice (spec 019 item 3.2).
 const VOICE_HELP: Record<VoiceCleanup, string> = {
     standard: "What the render always did: a gentle noise reduction and compressor. The quickest.",
+    studio: "Our free stand-in for Auphonic, run on the render's own computer: noise removal, then each voice measured and given its own EQ and level (fuller, less boomy, clearer), a de-esser, a leveller and a limiter. No account and no cost.",
     deepfilter: "A noise-removal model, run on the render's own computer: no account and no cost.",
     auphonic: "Sent to Auphonic, which removes noise and evens out the voices. Only on its free plan, which is used up after about two episodes a month; a render that would go over is refused.",
 };

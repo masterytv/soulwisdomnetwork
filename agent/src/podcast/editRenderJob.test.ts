@@ -311,6 +311,41 @@ test('the voice clean-up: the edit\'s own choice or the Studio\'s, given to the 
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('Studio sound is given who speaks when, from the accepted transcript; a clip is no one\'s voice (spec 019 item 3.4)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-studio-'));
+    const lines = [
+        { speaker: 'A', name: 'Tom', clip: false, start: 0, end: 4000, text: 'Hello there', words: [{ text: 'Hello', start: 0, end: 500 }] },
+        { speaker: 'C', name: 'Clip', clip: true, start: 4000, end: 9000, text: 'From a video', words: [{ text: 'From', start: 4000, end: 4300 }] },
+        { speaker: 'B', name: 'Jo', clip: false, start: 9500, end: 12000, text: 'Hi', words: [{ text: 'Hi', start: 9500, end: 9800 }] },
+    ];
+    const run = async (studio: 'standard' | 'studio') => {
+        let given: Parameters<EditRenderDeps['render']>[0] | null = null;
+        await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, broll: undefined, edit: { version: 2, cuts: [] } }),
+            download: async (p, dest) => { fs.writeFileSync(dest, p.endsWith('reviewed.json') ? JSON.stringify({ lines }) : ''); },
+            upload: async () => {},
+            saveToDrive: async () => null,
+            update: async () => {},
+            render: async opts => {
+                given = opts;
+                fs.writeFileSync(opts.out, '');
+                return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+            },
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, voiceCleanup: studio },
+            voice: { deepFilter: '/opt/deep-filter' },
+        }, path.join(dir, 'work'), '1');
+        return given!;
+    };
+    const studio = await run('studio');
+    assert.equal(studio.clean, 'studio');
+    assert.deepEqual(studio.voice?.turns, [
+        { speaker: 'A', startMs: 0, endMs: 4000 }, { speaker: '', startMs: 4000, endMs: 9000 }, { speaker: 'B', startMs: 9500, endMs: 12000 },
+    ]);
+    assert.equal((await run('standard')).voice?.turns, undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('the files for other editors are saved with the render; when they cannot be made, the render is kept with a warning (spec 019 item 4.1)', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-files-'));
     const run = async (exportEdit: EditRenderDeps['exportEdit']) => {

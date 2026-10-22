@@ -27,7 +27,8 @@ import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLaye
 import { soundFilter, soundsMix, soundSpan, type Sound } from '../../../lib/audio';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
-import { auphonicInput, deepFilterTrack, placeAt, speakerMix } from './voiceCleanup';
+import { auphonicInput, deepFilterTrack, placeAt, speakerMix, studioSoundTrack } from './voiceCleanup';
+import type { Turn } from './studioSound';
 import { auphonicClean, auphonicCreditsHours } from './cleanupVersions';
 import { auphonicSpan, hm } from '../../../lib/voice';
 import {
@@ -150,10 +151,13 @@ export async function renderEdit(opts: {
     outro?: string;
     broll?: BrollArg[];
     // The voice clean-up: 'light' is the standard chain (cleanupFilter); 'deepfilter' and 'auphonic' are spec 019
-    // item 3.2's choices (voiceCleanup.ts), each needing its part of `voice`.
-    clean?: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic';
+    // item 3.2's choices, and 'studio' item 3.4's (voiceCleanup.ts), each needing its part of `voice`.
+    clean?: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic' | 'studio';
     voice?: {
-        deepFilter?: string;                       // the deep-filter program
+        deepFilter?: string;                       // the deep-filter program (DeepFilterNet and Studio sound)
+        // Studio sound: who speaks when, in the recording's times (the accepted transcript's lines; clips played in
+        // the episode as speaker ''), so each voice gets its own EQ and level. Without them, one sound for everyone.
+        turns?: Turn[];
         // Auphonic: the key, the production's title, and a call made just before the audio is sent (the job
         // then keeps the hold on the month's free hours even if the render fails later).
         auphonic?: { apiKey: string; title: string; onSending?: () => Promise<void> };
@@ -232,15 +236,20 @@ export async function renderEdit(opts: {
             cleanedAudio = path.join(cleanDir, 'cleaned.wav');
             // DeepFilterNet's minutes and Auphonic's hours are not spent twice: a retried run finds the cleaned
             // track an earlier attempt kept (as FLAC, about half the size).
-            const keptName = `voice-${clean}-${windowKey([path.basename(opts.video), String(inMs), JSON.stringify(auphonicSpan(opts.edit, inMs, opts.words)), ...(opts.tracks ?? []).map(t => path.basename(t))], '', 0)}.flac`;
+            const keptName = `voice-${clean}-${windowKey([path.basename(opts.video), String(inMs), JSON.stringify(auphonicSpan(opts.edit, inMs, opts.words)), ...(opts.tracks ?? []).map(t => path.basename(t)),
+                ...(clean === 'studio' ? [JSON.stringify(opts.voice?.turns ?? [])] : [])], '', 0)}.flac`;
             const keptFile = path.join(cleanDir, keptName);
-            const kept = (clean === 'deepfilter' || clean === 'auphonic') && opts.store
+            const kept = (clean === 'deepfilter' || clean === 'auphonic' || clean === 'studio') && opts.store
                 && await opts.store.get(keptName, keptFile).catch(() => false);
             if (kept) await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', keptFile, '-c:a', 'pcm_s16le', cleanedAudio]);
             else if (clean === 'light' || clean === 'strong') await cleanTrack(voiceSource, cleanedAudio, clean, opts.noiseModel);
             else if (clean === 'deepfilter') {
                 if (!opts.voice?.deepFilter) throw new Error('DeepFilterNet was chosen, but its program is not on the runner (DEEPFILTER_BIN)');
                 await deepFilterTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds });
+            } else if (clean === 'studio') {
+                if (!opts.voice?.deepFilter) throw new Error('Studio sound was chosen, but DeepFilterNet is not on the runner (DEEPFILTER_BIN)');
+                const note = await studioSoundTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds, turns: opts.voice.turns });
+                console.log(`  🎙️ Studio sound: ${note}`);
             } else {
                 const a = opts.voice?.auphonic;
                 if (!a) throw new Error('Auphonic was chosen, but there is no AUPHONIC_API_KEY repo secret');
@@ -256,7 +265,7 @@ export async function renderEdit(opts: {
                 await auphonicClean(sent, back, a.apiKey, a.title);
                 await placeAt(back, span.startMs, inSeconds, cleanedAudio);
             }
-            if (!kept && (clean === 'deepfilter' || clean === 'auphonic') && opts.store) {
+            if (!kept && (clean === 'deepfilter' || clean === 'auphonic' || clean === 'studio') && opts.store) {
                 await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', cleanedAudio, '-c:a', 'flac', keptFile]);
                 await opts.store.put(keptFile, keptName).catch(error => console.warn(`⚠️ The cleaned voice was not kept for a retry: ${(error as Error).message}`));
             }
@@ -611,7 +620,7 @@ async function frameCount(file: string): Promise<number> {
 interface ParsedArgs {
     video?: string; editPath?: string; out?: string;
     teasers: string[]; intro?: string; outro?: string;
-    broll: BrollArg[]; clean: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic'; detect?: 'auphonic'; noiseModel?: string; blockMinutes?: number;
+    broll: BrollArg[]; clean: 'off' | 'light' | 'strong' | 'deepfilter' | 'auphonic' | 'studio'; detect?: 'auphonic'; noiseModel?: string; blockMinutes?: number;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -637,7 +646,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 if (require.main === module) {
     const args = parseArgs(process.argv.slice(2));
     if (!args.video || !args.editPath || !args.out) {
-        console.error('Usage: editRender.ts --video in.mp4 --edit edit.json --out out.mp4 [--teaser a.mp4] [--intro intro.mp4] [--outro outro.mp4] [--broll json] [--clean off|light|strong|deepfilter|auphonic] [--block-minutes N]');
+        console.error('Usage: editRender.ts --video in.mp4 --edit edit.json --out out.mp4 [--teaser a.mp4] [--intro intro.mp4] [--outro outro.mp4] [--broll json] [--clean off|light|strong|deepfilter|auphonic|studio] [--block-minutes N] (DeepFilterNet and Studio sound: DEEPFILTER_BIN)');
         process.exit(1);
     }
     // The edit file may also carry "words", "chapters" and "quotes" for the new times.
@@ -649,6 +658,7 @@ if (require.main === module) {
         intro: args.intro, outro: args.outro,
         broll: args.broll.length ? args.broll : undefined,
         clean: args.clean, detect: args.detect, noiseModel: args.noiseModel,
+        voice: process.env.DEEPFILTER_BIN ? { deepFilter: process.env.DEEPFILTER_BIN } : undefined,
         blockMinutes: args.blockMinutes,
         words: edit.words, chapters: edit.chapters, quotes: edit.quotes,
     }).then(r => console.log(JSON.stringify(r, null, 2)))

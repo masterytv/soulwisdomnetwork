@@ -120,6 +120,7 @@ for this work".
 | 3.1 | Voice clean-up bake-off | DeepFilterNet, Auphonic | M | High | 0.2 | Built (#155); the choice waits on Tom and the producer listening (run it from `main`) |
 | 3.2 | The winner as a Studio setting (Auphonic free tier only, D1) | DeepFilterNet or Auphonic | M | High | 3.1 | Built (#164): all three are choices, standard the default; 3.1's listening sets the default later |
 | 3.3 | One track per speaker, optional (D5) | Auphonic or ffmpeg | L | High | 3.1 | Built (#168), the ffmpeg route; a Zoom recording with separate files waits on Tom |
+| 3.4 | Studio sound: a free stand-in for Auphonic (each voice's own EQ and level, de-esser, leveller, limiter) | ffmpeg, DeepFilterNet, ANSI S3.5 | M | High | 3.2 | Built (this PR); the default waits on Tom and the producer hearing it beside Auphonic in 3.1's comparison |
 | **4** | **Render and hand-off** | | | | | |
 | 4.1 | "Open in Resolve, Premiere or Final Cut" | auto-editor | M | High | — | Built (#165); opening the files in Resolve waits on Tom (no editor app here) |
 | 4.2 | Faster, resumable render | ours (spec 015 "Next") | L | Extra | 0.2 | Built (#166): 47% less time on a 12-minute test; the real episode's time waits on `main` |
@@ -735,6 +736,60 @@ episode, D1). Tom said to go with my suggestion rather than wait for 3.1's liste
   10 ms and the mix keeps step with the recording; a real render with two tracks keeps in step (0.4 ms) with a clean
   quality report. Not checked: a real Zoom recording with separate files, and the speaker detection bonus (the
   transcript still comes from the mix).
+
+### 3.4 Studio sound: a free stand-in for Auphonic (M)
+
+**Why:** Tom asked (22 October 2026) whether free tools could replace Auphonic, run in the pipeline and as automatic
+as possible, so the voices sound even, full ("deep") and professional. The research
+(`docs/research/2026-10-22-auphonic-alternatives.md`) found no maintained open-source all-in-one; Auphonic's parts
+are a leveller, noise removal, an automatic EQ and loudness, and ffmpeg and DeepFilterNet have all of them but the
+automatic EQ. So this builds the chain, with the EQ measured per speaker.
+
+**Built:** a fourth voice choice, **Studio sound** (`voiceCleanup: 'studio'`, `lib/voice.ts`; "Studio sound" in the
+settings and the Render panel), in `agent/src/podcast/studioSound.ts` and `voiceCleanup.ts` `studioSoundTrack`:
+1. **Noise:** today's high-pass, then DeepFilterNet as in 3.2 (four pieces, `-D`), but held to **30 dB** of noise
+   reduction (`-a 30`, `STUDIO_ATTEN_DB`), so the voice keeps its body.
+2. **Each speaker's EQ (automatic):** who speaks when comes from the accepted transcript (`reviewed.json` lines; a clip
+   played in the episode is no one's). Up to 5 minutes of each speaker's longer turns, spread over the episode, are
+   measured in half-octave bands from 80 Hz to 10 kHz (each frame's spectrum made the same power, so loud moments do
+   not decide alone). That is compared with a **target**: the average speech spectrum at normal effort (ANSI S3.5-1997,
+   table 3; checked against three open-source copies) plus a broadcast "voicing" (+2 to +2.5 dB below 200 Hz for
+   warmth, −1 dB at 320–450 Hz for less mud, +1 to +1.5 dB at 2.5–5 kHz for presence: `VOICING`). The difference, at
+   the same level in the middle of speech (640 Hz–2.5 kHz), smoothed over neighbouring bands, is the EQ, within −5 to
+   +4 dB (`SPEAKER_EQ_LIMITS`). It never boosts a band the voice does not reach (15 dB short of the target: a codec's
+   or a microphone's cut-off) or where the voice is less than 10 dB above the recording's noise, and then by at most
+   half of what it stands above that (`BOOST_SNR_DB`), so leftover hiss is never what gets louder. Fifteen ffmpeg
+   `equalizer` filters, their gains fitted so their overlapping curves together meet what is wanted (`fitGains`).
+3. **Each speaker's level:** brought to the speakers' average (weighted by how long each speaks), at most ±12 dB, so a
+   quiet guest is not left to the leveller.
+4. The EQ and level **change in the pause between two speakers' turns** (`asendcmd`; where they overlap, where the next
+   begins). Speakers heard for less than 20 s, clips, and episodes without an accepted transcript get one sound measured
+   from everyone.
+5. **Then, for everyone:** `deesser` (the presence lift raises "s" sounds too), `dynaudnorm` as a slow leveller that
+   does not lift the pauses (`t=0.01`, at most 3×), `acompressor` (−18 dB, 3:1), `alimiter` at −1 dB with its
+   look-ahead compensated (`latency=true`), and the render's loudness pass as for every clean-up (−14 LUFS; the
+   podcast's MP3 −16).
+
+With speaker tracks (3.3), the mix of the tracks goes through the same chain. The cleaned voice is kept for a retry, as
+DeepFilterNet's and Auphonic's are. The comparison (3.1, `podcast_cleanup_compare.yml`) makes a Studio sound version
+too, with the stretch's turns, so it is heard blind beside Auphonic, DeepFilterNet and the rest.
+
+**Measured here** (two real speech recordings made into two "microphones": one thin like a laptop, high-passed at
+250 Hz with a 6 dB bump at 1.2 kHz; one boomy, +7 dB at 300 Hz and 8 dB quieter; over pink noise; taking turns):
+- the voices' level difference fell from 24 dB to 2 dB; the noise in the pauses from −41 to −50 dB below the speech;
+- each voice moved towards the target wherever it has sound (the thin one gained 3–7 dB at 400–500 Hz and lost 2 dB
+  of its bump; the boomy one lost 1–2 dB at 300–400 Hz, within the limits; both gained 3 dB of presence around 3 kHz),
+  and neither was boosted above where its recording stops;
+- in step with the picture to the sample (0 samples at 48 kHz, over 20 minutes in four DeepFilterNet pieces);
+- **speed:** 20 minutes took 2¼ minutes on 4 cores, so about 7–8 minutes an hour, nearly all of it DeepFilterNet.
+
+**Not checked:** how it sounds. The settings above are starting points for tuning by ear on a real episode; the
+comparison is how Tom and the producer hear it beside Auphonic. Until then Standard stays the default.
+
+**Not built, and why:** AI enhancers that rebuild the voice (ClearerVoice's MossFormer2, Resemble Enhance) could be
+added to the comparison later. They need PyTorch on the runner (about 2 GB), download their models from Hugging Face
+(not reachable from the sandbox, so untested), ClearerVoice's model licence is not stated, and both can change how a
+voice sounds; see the research.
 
 ## Phase 4 — Render and hand-off
 

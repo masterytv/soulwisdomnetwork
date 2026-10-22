@@ -32,6 +32,7 @@ import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettin
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
 import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
 import { usesTracks, type SpeakerTrack } from '../../../lib/speakerTracks';
+import { turnsOf, type ReviewedLine, type Turn } from './studioSound';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
 import type { renderEdit } from './editRender';
 import type { ExportResult } from './editExport';
@@ -99,7 +100,7 @@ export interface EditRenderPlan {
 }
 
 // The renderer's name for each voice clean-up.
-const CLEAN_FOR = { standard: 'light', deepfilter: 'deepfilter', auphonic: 'auphonic' } as const satisfies Record<VoiceCleanup, string>;
+const CLEAN_FOR = { standard: 'light', studio: 'studio', deepfilter: 'deepfilter', auphonic: 'auphonic' } as const satisfies Record<VoiceCleanup, string>;
 
 // Breathing room around a teaser clip cut here, as the edit package gives its clips.
 const CLIP_LEAD_MS = 300;
@@ -247,9 +248,12 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const tracks: string[] = [];
     for (const [i, t] of plan.tracks.entries()) tracks.push(await get(t.path, `track-${i + 1}`));
     let words: TimedWord[] | undefined;
+    let turns: Turn[] | undefined;
     if (plan.wordsPath) {
         const local = await get(plan.wordsPath, 'reviewed');
-        words = (JSON.parse(fs.readFileSync(local, 'utf8')) as { lines: { words: TimedWord[] }[] }).lines.flatMap(l => l.words);
+        const reviewed = JSON.parse(fs.readFileSync(local, 'utf8')) as { lines: (ReviewedLine & { words: TimedWord[] })[] };
+        words = reviewed.lines.flatMap(l => l.words);
+        turns = turnsOf(reviewed.lines);
     }
 
     await deps.update({ 'editRender.status': 'rendering' });
@@ -278,6 +282,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         clean: CLEAN_FOR[plan.voice],
         voice: {
             deepFilter: deps.voice?.deepFilter,
+            ...(plan.voice === 'studio' && turns ? { turns } : {}),
             ...(deps.voice?.auphonicKey ? { auphonic: { apiKey: deps.voice.auphonicKey, title: `${episode.title} (render)`, onSending: deps.voice.onAuphonicSending } } : {}),
         },
     });
