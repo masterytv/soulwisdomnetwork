@@ -130,6 +130,7 @@ export async function getRetakes(id: string): Promise<RetakesView> {
 // writes them into the edit as `suggested: true` layers).
 export async function requestHighlights(id: string) {
     const ref = episodeRef(id);
+    if ((await getSettings()).highlightDensity === 'off') throw new HttpError(409, 'Highlights are off in the Studio settings');
     await adminDb().runTransaction(async tx => {
         const episode = (await tx.get(ref)).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');

@@ -81,14 +81,19 @@ export const GET = handle<Context>(async (request, { params }) => {
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
     // Spec 021 M2: what a fresh edit's motion graphics are placed from (the editor itself has the words
-    // and the hosts); null once an edit is saved, so they are never placed twice.
-    const graphics = data.edit ? null : {
+    // and the hosts); null once an edit is saved, so they are never placed twice — and null when the
+    // Studio setting turns automatic placement off (item M5).
+    const graphics = data.edit || !settings.motionGraphics ? null : {
         title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
         show: settings.showName,
         chapters: notes?.chapters ?? [],
         hosts: settings.hosts,
     };
-    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics });
+    return Response.json({
+        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics,
+        // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
+        highlightsOff: settings.highlightDensity === 'off',
+    });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {

@@ -11,6 +11,8 @@ import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
 import { VOICE_CLEANUPS, WARMTHS } from './voice';
 import { PODCAST_CATEGORIES } from './podcastFeed';
+import { HIGHLIGHT_DENSITIES } from './highlights';
+import { HIGHLIGHT_LAYOUTS } from './reframe';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -71,6 +73,14 @@ export const StudioSettingsSchema = z.object({
     podcastSubcategory: z.string().max(60),
     podcastExplicit: z.boolean(),
     podcastEmail: z.string().trim().max(120).refine(s => s === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), 'Use an email address, or leave it empty'),
+    // Motion graphics (spec 021, Tom's D2–D4): whether fresh edits get the branded graphics placed
+    // automatically; how often Claude's highlight suggestions may appear (a ceiling — 'off' turns
+    // Suggest off); whether a built edit suggests straight away; and which layouts Claude may pick
+    // (the producer can always place any by hand).
+    motionGraphics: z.boolean(),
+    highlightDensity: z.enum(HIGHLIGHT_DENSITIES),
+    suggestOnBuild: z.boolean(),
+    highlightLayouts: z.array(z.enum(HIGHLIGHT_LAYOUTS)).max(HIGHLIGHT_LAYOUTS.length),
 });
 
 export type StudioSettings = z.infer<typeof StudioSettingsSchema>;
@@ -110,6 +120,10 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     podcastSubcategory: 'Spirituality',
     podcastExplicit: false,
     podcastEmail: '',
+    motionGraphics: true,
+    highlightDensity: 'normal',
+    suggestOnBuild: false,
+    highlightLayouts: [...HIGHLIGHT_LAYOUTS],
 };
 
 // Who makes the final cut is saved as `finalCutBy` (spec 020 item E15). The Studio editor became the default then;

@@ -230,6 +230,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [binError, setBinError] = useState('');
     // Item E10: the teasers and the Studio's intro for the timeline, and what was set up on opening a new edit.
     const [programme, setProgramme] = useState<ProgrammeSetup | null>(null);
+    // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
+    const [highlightsOff, setHighlightsOff] = useState(false);
     const [setupNote, setSetupNote] = useState('');
     // Unsaved changes found in this browser from an earlier visit (spec 019 item 2.6), and a note when
     // some were dropped because a newer save overtook them.
@@ -258,6 +260,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
                 fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro'];
                 graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[] } | null;
+                highlightsOff?: boolean;
             }>(`/api/studio/episodes/${episodeId}/edit`),
             binLoad,
         ])
@@ -265,6 +268,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 setBin(items);
                 setBrollHeld(data.brollBlock ?? null);
                 setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null });
+                setHighlightsOff(data.highlightsOff ?? false);
                 // No saved edit yet: set one up (item E10), and save it.
                 const setUp = data.fresh && !data.brollBlock
                     ? firstEdit(data.edit, { words: accepted, silences: data.silences ?? null, teasers: data.teasers ?? [] }) : null;
@@ -507,7 +511,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             tools={<>
                 <TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />
                 {/* Needs the bin, as every layers change does: saving layers without it could drop the b-roll. */}
-                {workspace && !!bin && (
+                {workspace && !!bin && !highlightsOff && (
                     <HighlightsTool episodeId={episodeId} edit={edit} unsaved={saveState !== 'saved'} onReload={reloadEdit}
                         onClear={() => {
                             const e = { ...edit, layers: layersOf(edit).filter(l => !(l.kind === 'highlight' && l.suggested)), overlays: [] };

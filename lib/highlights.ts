@@ -53,6 +53,12 @@ export type HighlightDensity = typeof HIGHLIGHT_DENSITIES[number];
 export const DENSITY_MS: Record<Exclude<HighlightDensity, 'off'>, number> = {
     light: 180_000, normal: 90_000, rich: 60_000,
 };
+export const DENSITY_LABELS: Record<HighlightDensity, string> = {
+    off: 'Off — no Suggest highlights',
+    light: 'Light — at most about one every 3 minutes',
+    normal: 'Normal — at most about one every 90 seconds (the default)',
+    rich: 'Rich — at most about one a minute',
+};
 export const MIN_GAP_MS = 45_000;             // between any two highlights, on the edited clock
 export const LOUD_GAP_MS = 2 * MIN_GAP_MS;    // between two loud ones
 export const QUIET_START_MS = 30_000;         // the episode's first 30 s stay plain
@@ -108,6 +114,9 @@ export interface PaceOptions {
     density: Exclude<HighlightDensity, 'off'>;
     // The approved notes' key quotes: a moment on one of them wins when two sit too close.
     keyQuotes?: { startMs: number; endMs: number }[];
+    // The Studio settings' allowed layouts (item M5); a kind whose layouts are all off falls back to
+    // its own full set, so the allowlist can never silence a kind entirely.
+    allowed?: readonly HighlightLayout[];
 }
 
 export interface PacedDrop { text: string; why: string }
@@ -168,12 +177,18 @@ export function paceMoments(moments: VerifiedMoment[], words: SpokenWord[], o: P
         spaced.splice(drop, 1);
     }
 
-    // Layouts: Claude's wish when it suits the kind, never twice in a row, the loud ones kept apart.
+    // Layouts: Claude's wish when it suits the kind and the settings allow it, never twice in a row,
+    // the loud ones kept apart.
     const kept: HighlightLayer[] = [];
     let prevLayout: HighlightLayout | null = null;
     let lastLoudAt = -Infinity;
+    const layoutsFor = (kind: VerifiedMoment['kind']) => {
+        const all = kind === 'quote' ? QUOTE_LAYOUTS : WORD_LAYOUTS;
+        const chosen = o.allowed ? all.filter(l => o.allowed!.includes(l)) : all;
+        return chosen.length ? chosen : all;
+    };
     for (const c of spaced) {
-        const allowed = c.kind === 'quote' ? QUOTE_LAYOUTS : WORD_LAYOUTS;
+        const allowed = layoutsFor(c.kind);
         let layout = (allowed as string[]).includes(c.layout) ? c.layout as HighlightLayout : allowed[0];
         const quiet = allowed.filter(l => !LOUD_LAYOUTS.includes(l) && l !== prevLayout);
         if (LOUD_LAYOUTS.includes(layout) && c.at - lastLoudAt < LOUD_GAP_MS) layout = quiet[0] ?? allowed[0];

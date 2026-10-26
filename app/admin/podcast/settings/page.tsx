@@ -20,6 +20,8 @@ import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TR
 import { studioFetch } from "@/lib/studioClient";
 import { VOICE_CLEANUPS, VOICE_SHORT, WARMTH_LABELS, WARMTHS, type VoiceCleanup } from "@/lib/voice";
 import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/podcastFeed";
+import { DENSITY_LABELS, HIGHLIGHT_DENSITIES } from "@/lib/highlights";
+import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS } from "@/lib/reframe";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
@@ -326,6 +328,38 @@ export default function StudioSettingsPage() {
                                     <Choice name="final" value="descript" current={s.finalSource} label="Descript makes the final cut (to compare)" disabled={off} onPick={() => set("finalSource", "descript")}
                                         help="The earlier way, kept while the Studio editor is compared with Descript: the edit package goes to Descript, the edit happens there and the final cut is published from there." />
                                 </div>
+                            </Section>
+
+                            <Section title="Motion graphics" intro="The branded templates and highlight moments (spec 021). The producer can always place any of them by hand in the Studio editor; these choices steer what happens on its own.">
+                                <label className="flex items-start gap-2 text-sm text-gray-200">
+                                    <input type="checkbox" checked={s.motionGraphics} onChange={e => set("motionGraphics", e.target.checked)} disabled={off} className="mt-1" />
+                                    <span>Place the motion graphics on new edits<span className={`block ${hint}`}>The title card, a lower third where each speaker first talks, chapter dividers, the logo bug and the end screen, placed once when an edit is first set up.</span></span>
+                                </label>
+                                <fieldset className="flex flex-col gap-2">
+                                    <legend className="text-sm font-medium text-gray-200 mb-1">Suggested highlights</legend>
+                                    {HIGHLIGHT_DENSITIES.map(d => (
+                                        <Choice key={d} name="highlightDensity" value={d} current={s.highlightDensity} label={DENSITY_LABELS[d]} disabled={off} onPick={() => set("highlightDensity", d)} />
+                                    ))}
+                                    <span className={hint}>A ceiling for &ldquo;Suggest highlights&rdquo; in the Studio editor, never a quota: Claude picks only what deserves the screen, verified word for word and paced by rule.</span>
+                                </fieldset>
+                                <label className="flex items-start gap-2 text-sm text-gray-200">
+                                    <input type="checkbox" checked={s.suggestOnBuild} onChange={e => set("suggestOnBuild", e.target.checked)} disabled={off || s.highlightDensity === "off"} className="mt-1" />
+                                    <span>Suggest highlights when the edit is built<span className={`block ${hint}`}>&ldquo;Build for Studio editor&rdquo; also starts the suggestions (about $0.50, within the daily limit).</span></span>
+                                </label>
+                                <fieldset className="flex flex-col gap-1">
+                                    <span className="text-sm text-gray-200">Layouts the suggestions may use</span>
+                                    {HIGHLIGHT_LAYOUTS.map(l => (
+                                        <label key={l} className="flex items-start gap-2 text-sm text-gray-200">
+                                            <input type="checkbox" className="mt-1" disabled={off}
+                                                checked={s.highlightLayouts.includes(l)}
+                                                onChange={e => set("highlightLayouts", e.target.checked
+                                                    ? HIGHLIGHT_LAYOUTS.filter(x => x === l || s.highlightLayouts.includes(x))
+                                                    : s.highlightLayouts.filter(x => x !== l))} />
+                                            <span>{HIGHLIGHT_LABELS[l]}</span>
+                                        </label>
+                                    ))}
+                                    <span className={hint}>With every layout of a kind unticked, suggestions of that kind use its full set rather than none.</span>
+                                </fieldset>
                             </Section>
 
                             <Section title="Podcast feed" intro="Finished episodes as an audio podcast on this site, for Apple Podcasts, Spotify and other apps (spec 019 item 5.1). Each episode goes in from its show notes page.">
