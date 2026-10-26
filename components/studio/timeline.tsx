@@ -106,7 +106,9 @@ export interface SplitControls {
 const RULER_H = 22;
 const LANE_H = 20;
 const V3_TOP = RULER_H, V2_TOP = V3_TOP + LANE_H;
-const V1_TOP = V2_TOP + LANE_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
+// The highlight lane (spec 021 item M3): a thin lane of its own just above V1.
+const HL_TOP = V2_TOP + LANE_H, HL_H = 10;
+const V1_TOP = HL_TOP + HL_H, THUMB_H = 40, BAND_H = 4, V1_H = THUMB_H + BAND_H;
 const CC_TOP = V1_TOP + V1_H + 2, CC_H = 16;
 const A1_TOP = CC_TOP + CC_H + 2, MIN_A1_H = 24;
 const HEADER_W = 112;
@@ -195,9 +197,10 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
 
     // Lane backgrounds.
     ctx.fillStyle = '#0f0922';
-    ctx.fillRect(0, V3_TOP, width, LANE_H * 2);
+    ctx.fillRect(0, V3_TOP, width, LANE_H * 2 + HL_H);
     ctx.fillStyle = 'rgba(255,255,255,0.05)';
     ctx.fillRect(0, V2_TOP, width, 1);
+    ctx.fillRect(0, HL_TOP, width, 1);
     ctx.fillStyle = '#0b0619';
     ctx.fillRect(0, V1_TOP, width, V1_H);
     ctx.fillRect(0, A1_TOP, width, a1H);
@@ -633,6 +636,7 @@ export function Timeline({
     sounds = [], onSounds, mutedTracks = [], onMutedTracks, captions: cues = NO_CUES, captionsShown = false, onCaptionsShown,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin, programme,
+    highlightIssues,
 }: {
     words: SpokenWord[];
     cuts: Cut[];
@@ -643,6 +647,7 @@ export function Timeline({
     selectedLayer?: string | null;
     onSelectLayer?: (id: string | null) => void;
     onLayers?: (layers: Layer[]) => void;   // a whole drag, as one change; missing: layers cannot be changed
+    highlightIssues?: Map<string, string>;  // spec 021 M3: why a highlight cannot stay as saved, by id
     onDropMedia?: (itemId: string, srcMs: number) => void;
     sounds?: Sound[];                       // item E7: music on A2, effects on A3
     onSounds?: (sounds: Sound[]) => void;
@@ -1035,13 +1040,20 @@ export function Timeline({
         const editedAt = timelineTime(clips, ms, true) ?? editedMs;
         let draft: Placed;
         if ('kind' in b && b.kind === 'highlight') {
-            // A highlight's anchor is always its words' moment, and its length keeps its own limits (lib/reframe.ts).
+            // A highlight's anchor is always its words' moment and its length keeps its own limits
+            // (lib/reframe.ts); its edges nudge to word boundaries, as teaser trims do (spec 021 M3).
             const clamp = (v: number) => Math.max(HIGHLIGHT_MIN_MS, Math.min(HIGHLIGHT_MAX_MS, Math.round(v)));
-            if (d.mode === 'move') draft = { ...b, anchor: { srcMs: Math.round(ms) } };
-            else if (d.mode === 'end') draft = { ...b, durationMs: clamp(editedAt - bounds.span.startMs) };
+            const nearWord = (at: number, edge: 'start' | 'end') => {
+                let best: number | null = null;
+                for (const w of words) { const v = edge === 'start' ? w.start : w.end; if (best === null || Math.abs(v - at) < Math.abs(best - at)) best = v; }
+                return best !== null && Math.abs(best - at) <= 400 ? best : at;
+            };
+            if (d.mode === 'move') draft = { ...b, anchor: { srcMs: Math.round(nearWord(ms, 'start')) } };
+            else if (d.mode === 'end') draft = { ...b, durationMs: clamp(nearWord(sourceTime(clips, editedAt) ?? b.anchor.srcMs + b.durationMs, 'end') - b.anchor.srcMs) };
             else {
                 const start = Math.min(editedAt, bounds.span.endMs - HIGHLIGHT_MIN_MS);
-                draft = { ...b, anchor: { srcMs: Math.round(sourceTime(clips, start) ?? ms) }, durationMs: clamp(bounds.span.endMs - start) };
+                const srcStart = Math.round(nearWord(sourceTime(clips, start) ?? ms, 'start'));
+                draft = { ...b, anchor: { srcMs: srcStart }, durationMs: clamp(b.anchor.srcMs + b.durationMs - srcStart) };
             }
         } else {
             const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
@@ -1686,10 +1698,13 @@ export function Timeline({
                                     // A picture on a higher track (the logo bug, item E6) is a thin strip along the top of V2, so a
                                     // whole-episode logo never covers the b-roll under it.
                                     const thin = l.kind !== 'text' && l.kind !== 'graphic' && l.kind !== 'highlight' && l.track >= TRACK.logo;
-                                    // A graphic (spec 021) sits on V3 with the text it stands beside; so does a highlight (item M3).
-                                    const [top, height] = l.kind === 'text' || l.kind === 'graphic' || l.kind === 'highlight' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
+                                    // A graphic (spec 021) sits on V3 with the text it stands beside; a highlight (item M3)
+                                    // on its own thin lane just above V1, rose, amber while it cannot be saved as it is.
+                                    const [top, height] = l.kind === 'highlight' ? [HL_TOP + 2, HL_H - 4]
+                                        : l.kind === 'text' || l.kind === 'graphic' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
                                     const isSel = l.id === selectedLayer;
-                                    const color = l.kind === 'highlight' ? 'bg-rose-400/80' : l.kind === 'graphic' ? 'bg-amber-400/80' : l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
+                                    const issue = l.kind === 'highlight' ? highlightIssues?.get(l.id) : undefined;
+                                    const color = l.kind === 'highlight' ? (issue ? 'bg-amber-400/90' : 'bg-rose-400/80') : l.kind === 'graphic' ? 'bg-amber-400/80' : l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
                                     const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
                                     return (
                                         <div
@@ -1697,13 +1712,13 @@ export function Timeline({
                                             role="button"
                                             tabIndex={-1}
                                             aria-label={`${layerKind(l)}: ${layerName(l)} at ${tickLabel(b.fromMs)}`}
-                                            title={`${layerName(l)}: drag to move, drag an end to trim`}
+                                            title={issue ? `${layerName(l)} — ${issue}` : `${layerName(l)}: drag to move, drag an end to trim`}
                                             onPointerDown={e => onLayerDown(e, l, 'move')}
                                             {...handles}
                                             className={`absolute rounded-sm ${color} ${overlaysHidden ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onLayers ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
                                             style={{ left: xs(b.fromMs), width: Math.max(4, wide(b.fromMs, b.toMs)), top, height }}
                                         >
-                                            {!thin && <span className="pointer-events-none px-1 text-[9px] leading-[12px] text-black/80 whitespace-nowrap">{layerName(l)}</span>}
+                                            {!thin && l.kind !== 'highlight' && <span className="pointer-events-none px-1 text-[9px] leading-[12px] text-black/80 whitespace-nowrap">{layerName(l)}</span>}
                                             {onLayers && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, l, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}

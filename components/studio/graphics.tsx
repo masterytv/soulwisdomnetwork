@@ -38,7 +38,7 @@ export function useGraphicTemplates(wanted: GraphicTemplate[]): Partial<Record<G
 }
 
 // The iframe is the render's 1920 × 1080, scaled to however wide the stage is drawn.
-function useStageScale(stage: React.RefObject<HTMLDivElement | null>): number {
+export function useStageScale(stage: React.RefObject<HTMLDivElement | null>): number {
     const [scale, setScale] = useState(0);
     useEffect(() => {
         const el = stage.current;
@@ -53,7 +53,7 @@ function useStageScale(stage: React.RefObject<HTMLDivElement | null>): number {
 }
 
 // One template's iframe, seeked to its own time (ms into the graphic) whenever the clock moves.
-function GraphicFrame({ doc, ms, opacity, scale }: { doc: string; ms: number; opacity: number; scale: number }) {
+export function GraphicFrame({ doc, ms, opacity, scale }: { doc: string; ms: number; opacity: number; scale: number }) {
     const frame = useRef<HTMLIFrameElement>(null);
     const at = useRef(0);
     useEffect(() => {

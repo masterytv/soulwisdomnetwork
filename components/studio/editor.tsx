@@ -41,6 +41,8 @@ import { ReversePlay, useStudioKeys } from '@/components/studio/editorKeys';
 import { editCues } from '@/lib/captions';
 import { LayersPreview } from '@/components/studio/layers';
 import { GraphicsPreview, ProgrammeGraphics } from '@/components/studio/graphics';
+import { HighlightReframe } from '@/components/studio/highlightPreview';
+import { highlightProblems } from '@/lib/reframe';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
 import { PropertiesPanel } from '@/components/studio/properties';
@@ -307,6 +309,12 @@ export function Editor({
         for (const it of media?.items ?? []) if (it.url && !urls[it.path]) urls[it.path] = it.url;
         return urls;
     }, [overlayUrls, media?.items]);
+    // Why a highlight cannot stay as saved (spec 021 M3), by id: the edit route refuses such a save, so
+    // the timeline and Properties say why first.
+    const highlightIssues = useMemo(() => highlightProblems(
+        layers.filter(l => l.kind === 'highlight'),
+        { cuts: edit.cuts, teasers: edit.teasers ?? [], durationMs: videoDuration || (words.length > 0 ? words[words.length - 1].end : 0) },
+    ), [layers, edit.cuts, edit.teasers, videoDuration, words]);
     // The whole video (item E10): teasers, intro, this episode and outro.
     const prog = useProgramme({ setup: workspace ? programme : null, edit, urls: mediaUrls, studioJoins, src: videoUrl, editedMs });
     // The Studio's logo (or the site's) for the motion graphics templates that draw it (spec 021).
@@ -1015,6 +1023,11 @@ export function Editor({
             // Scaled to fit the preview, leaving room for the play controls under it.
             ? { containerType: 'inline-size', width: 'min(100cqw, calc((100cqh - 3rem) * 16 / 9))', aspectRatio: '16 / 9', margin: '0 auto' }
             : { containerType: 'inline-size' }}>
+            {/* The highlight's backdrop sits behind the video: the video is given position relative while
+                one is up, so it paints above this (components/studio/highlightPreview.tsx). */}
+            {workspace && !overlaysHidden && (
+                <HighlightReframe plane="background" layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} />
+            )}
             <video
                 ref={videoRef}
                 src={videoUrl}
@@ -1022,6 +1035,9 @@ export function Editor({
                 controls
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
+            {workspace && !overlaysHidden && (
+                <HighlightReframe plane="graphics" layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} />
+            )}
             {workspace && reverse > 0 && (
                 <ReversePlay video={videoRef} rate={reverse} onStop={() => setReverse(0)} clips={kept} ranges={ranges} edited={playMode === 'edited'} />
             )}
@@ -1336,6 +1352,7 @@ export function Editor({
                                     video={videoRef}
                                     brand={brand}
                                     canEdit={layersEditable}
+                                    problem={selectedLayer ? highlightIssues.get(selectedLayer) : undefined}
                                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))}
                                     onRemove={removeLayer}
                                     onSeek={ms => seekToTime(ms / 1000)}
@@ -1380,6 +1397,7 @@ export function Editor({
                             clips={kept}
                             editedMs={editedMs}
                             selectedLayer={selectedLayer}
+                            highlightIssues={highlightIssues}
                             onSelectLayer={id => { openLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); } }}
                             onLayers={layersEditable ? setLayers : undefined}
                             onDropMedia={addFromBin}

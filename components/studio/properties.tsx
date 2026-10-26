@@ -65,7 +65,7 @@ export function Section({ title, children }: { title: string; children: React.Re
     );
 }
 
-export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit, onChange, onRemove, onSeek }: {
+export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit, onChange, onRemove, onSeek, problem }: {
     layer: Layer | null;
     clips: Clip[];
     editedMs: number;
@@ -75,6 +75,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
     onChange: (layer: Layer) => void;
     onRemove: (id: string) => void;
     onSeek: (ms: number) => void;
+    problem?: string;                        // spec 021 M3: why this highlight cannot be saved as it is
 }) {
     const currentMs = useVideoTime(video);
     if (!layer) {
@@ -107,6 +108,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                     <button type="button" disabled={!canEdit} className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(l.id)}>Remove</button>
                 </div>
                 <fieldset disabled={!canEdit} className="contents">
+                    {problem && <p className="text-sm text-amber-300">{problem} The edit cannot be saved until this is fixed.</p>}
                     <Section title="Highlight">
                         <select aria-label="Layout" value={l.layout} className={`${small} self-start`}
                             title="How the picture is reframed while the words show"
