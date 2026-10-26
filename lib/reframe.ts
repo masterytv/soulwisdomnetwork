@@ -46,6 +46,21 @@ export const LayoutKeyframesSchema = z.object({
     outMs: z.number().int().min(100).max(3000),
 }).strict();
 
+// What each layout's template declares as its GRAPHIC_LAYOUT, kept here so the render job and the
+// editor's preview need not open the template to know the move (agent/src/podcast/graphicsRender.test.ts
+// pins each template's declaration to this table, so they cannot drift). The numbers are the design
+// files' own: the splits pan 410 px behind their gold window, `below` lifts into the centred 76 % window,
+// `over` dims and blurs in place, `iris` never moves (its matte carries the whole close), `push` slides
+// 560 px left off the frame's edge.
+export const HIGHLIGHT_KEYFRAMES: Record<HighlightLayout, LayoutKeyframes> = {
+    splitQuote: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: -410, y: 0, scale: 1, brightness: 1, blur: 0 }, inMs: 700, outMs: 700 },
+    splitWord: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: 410, y: 0, scale: 1, brightness: 1, blur: 0 }, inMs: 700, outMs: 700 },
+    below: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: 230.4, y: 40, scale: 0.76, brightness: 1, blur: 0 }, inMs: 700, outMs: 700 },
+    over: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: 0, y: 0, scale: 1, brightness: 0.4, blur: 6 }, inMs: 700, outMs: 700 },
+    iris: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, inMs: 700, outMs: 700 },
+    push: { from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 }, to: { x: -560, y: 0, scale: 1, brightness: 1, blur: 0 }, inMs: 700, outMs: 700 },
+};
+
 // ─── the curve ───────────────────────────────────────────────────────────────
 
 // The picture curve, cubic-bezier(.65, 0, .25, 1) (System.dc.html "Picture moves").

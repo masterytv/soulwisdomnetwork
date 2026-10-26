@@ -12,10 +12,11 @@ import { spawn } from 'child_process';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { GRAPHIC_TEMPLATE_IDS, type GraphicSpec } from '../../../lib/graphics';
+import { GRAPHIC_TEMPLATE_IDS, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
 import { pictureFilter } from '../../../lib/layers';
 import { asVideoLayer } from '../../../lib/graphics';
 import { motionLowerThird } from '../../../lib/layers';
+import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LAYOUTS, LayoutKeyframesSchema } from '../../../lib/reframe';
 import { graphicClipName, graphicFrames, openTemplate, renderGraphic, seekTo } from './graphics/render';
 
 const COLORS = { background: '#140a2e', backgroundBottom: '#2a1552', accent: '#f7c65b' };
@@ -97,6 +98,47 @@ test('every template seeks: the same ms draws the same frame, in any order', { t
             let off = 0;
             for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 2) off++;
             assert.equal(off, 0, `${template}: seeking back to 340 ms must draw the same frame (${off} channel values differ by more than 2)`);
+        } finally {
+            await browser.close();
+        }
+    }
+});
+
+test('highlight templates (spec 021 M3): each declares the keyframes lib/reframe.ts holds, and its matte masks as planned', { timeout: 240_000 }, async () => {
+    const sharp = (await import('sharp')).default;
+    const alphaAt = async (png: Buffer, [x, y]: readonly [number, number]) => {
+        const raw = await sharp(png).ensureAlpha().raw().toBuffer();
+        return raw[(y * 1920 + x) * 4 + 3];
+    };
+    for (const layout of HIGHLIGHT_LAYOUTS) {
+        const fields = { words: 'The soul remembers what the mind forgets', emphasis: 'remembers', speaker: 'Maria Santos' };
+        const { browser, page } = await openTemplate(spec({ template: highlightTemplate(layout), fields, durationMs: 4000 }));
+        try {
+            // The template's declaration must be exactly the table the render's expressions and the
+            // editor's preview read — one source for the move, pinned here.
+            const declared = await page.evaluate('window.GRAPHIC_LAYOUT');
+            assert.deepEqual(LayoutKeyframesSchema.parse(declared), HIGHLIGHT_KEYFRAMES[layout], `${layout}: GRAPHIC_LAYOUT drifted from lib/reframe.ts`);
+        } finally {
+            await browser.close();
+        }
+    }
+    // The matte plane is the mask: `below` holds its rounded window (opaque inside, clear outside);
+    // `iris` is fully closed at the hold and full-frame open at the start.
+    for (const [layout, probes] of [
+        ['below', { at: 2000, opaque: [960, 450], clear: [30, 30] }],
+        ['iris', { at: 2000, clear: [960, 540], openAt0: [960, 540] }],
+    ] as const) {
+        const { browser, page } = await openTemplate({ ...spec({ template: highlightTemplate(layout), durationMs: 4000 }), mode: 'matte' });
+        try {
+            await seekTo(page, probes.at);
+            const hold = await page.screenshot({ type: 'png', omitBackground: true });
+            if ('opaque' in probes) assert.ok(await alphaAt(hold, probes.opaque) > 250, `${layout}: the matte window should be opaque at the hold`);
+            assert.ok(await alphaAt(hold, probes.clear) < 5, `${layout}: outside the window the matte must be clear at the hold`);
+            if ('openAt0' in probes) {
+                await seekTo(page, 0);
+                const start = await page.screenshot({ type: 'png', omitBackground: true });
+                assert.ok(await alphaAt(start, probes.openAt0) > 250, `${layout}: the matte starts full-frame open`);
+            }
         } finally {
             await browser.close();
         }

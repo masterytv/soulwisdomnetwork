@@ -1,0 +1,165 @@
+<!doctype html>
+<!-- Highlight: push to a side panel (docs/specs/021-motion-graphics.md, item M3), rebuilt from the design
+     reference (docs/specs/021-motion-graphics/HighlightPush.dc.html): the picture is pushed 560 px left —
+     never cropped — while a night-sky panel (780 px, gold leading hairline) sweeps in from the right with
+     "WORTH REPEATING", the quote and the speaker. Same markup, colours, type and keyframes, the review
+     loop replaced by in / hold / out (runtime.js). One file, three planes (GRAPHIC.mode): 'graphics' draws
+     the sweeping panel (opaque: it rides over the pushed picture's right edge); 'matte' is full-frame
+     white for the whole clip (the frame's own left edge crops the pushed picture); 'background' is the
+     night sky behind the moving picture. The picture's push is GRAPHIC_LAYOUT, drawn by the render and
+     the editor from lib/reframe.ts. Fields: words, emphasis (unused: the panel carries the whole quote),
+     speaker. Fonts are local files. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: push aside</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'EB Garamond'; src: url('fonts/EBGaramond-Italic-latin.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff;
+        --ink: #140a2e; --gold: #f7c65b; --gold-rgb: 247, 198, 91; --pale: #fde68a; --glow-a: #3b2382; --glow-b: #23145a; }
+.panelsky { background-color: var(--ink);
+    background-image:
+        radial-gradient(2px 2px at 20% 14%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 74% 22%, rgba(255,255,255,.6), transparent),
+        radial-gradient(2px 2px at 86% 78%, rgba(255,255,255,.6), transparent), radial-gradient(1.5px 1.5px at 30% 90%, rgba(255,255,255,.5), transparent),
+        radial-gradient(ellipse 90% 60% at 30% 45%, var(--glow-a) 0%, var(--glow-b) 45%, var(--ink) 100%); }
+.matte { position: absolute; inset: 0; background: #fff; }
+.panel { position: absolute; left: 1140px; top: 0; width: 780px; height: 1080px; }
+.hairline { position: absolute; left: 0; top: 0; width: 3px; height: 1080px; background: var(--gold); box-shadow: 0 0 30px 6px rgba(var(--gold-rgb), 0.45); }
+.panelcol { position: absolute; left: 90px; right: 80px; top: 300px; display: flex; flex-direction: column; gap: 26px; }
+.eyebrow { display: flex; align-items: center; gap: 12px; }
+.eyebrow p { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.3em; color: var(--gold); }
+blockquote { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.line { display: block; font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; line-height: 1.08; color: #ffffff; }
+.line.pale { color: var(--pale); }
+.rule { width: 140px; height: 2px; transform-origin: left center; background: var(--gold); }
+.who { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.24em; text-transform: uppercase; color: #ddd2ff; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div id="bg" class="panelsky" aria-hidden="true" style="position: absolute; inset: 0; display: none"></div>
+  <div id="matte" class="matte" aria-hidden="true" style="display: none"></div>
+  <div id="art" style="position: absolute; inset: 0; display: none">
+    <aside id="panel" class="panel">
+      <div class="panelsky" style="position: absolute; inset: 0"></div>
+      <div class="hairline" aria-hidden="true"></div>
+      <div class="panelcol">
+        <div id="eyebrow" class="eyebrow">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path id="starpath" d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+          <p>WORTH REPEATING</p>
+        </div>
+        <blockquote id="quote"></blockquote>
+        <div id="rule" class="rule" aria-hidden="true"></div>
+        <p id="who" class="who"></p>
+      </div>
+    </aside>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    // The picture slides 560 px left on the house curve, never cropped or scaled, and comes home
+    // (lib/reframe.ts reads these keyframes; the render and the editor draw the move).
+    window.GRAPHIC_LAYOUT = {
+        from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        to: { x: -560, y: 0, scale: 1, brightness: 1, blur: 0 },
+        inMs: 700, outMs: 700,
+    };
+
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const mode = g.mode || 'graphics';
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const toHex = v => `#${v.map(x => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')}`;
+    const lighten = (c, amount) => toHex(rgb(c).map(x => x + amount * 255));
+
+    const root = el('g');
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const soul = ink === '#140a2e';
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--glow-a', soul ? '#3b2382' : lighten(ink, 0.25));
+    root.style.setProperty('--glow-b', soul ? '#23145a' : lighten(ink, 0.08));
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-rgb', rgb(gold).join(', '));
+    root.style.setProperty('--pale', gold === '#f7c65b' ? '#fde68a' : lighten(gold, 0.25));
+
+    const R = window.graphicRuntime;
+    const PIC = R.PICTURE_EASE;
+
+    if (mode === 'background') {
+        el('bg').style.display = 'block';
+        window.seek(0);
+        return;
+    }
+
+    if (mode === 'matte') {
+        // The picture is pushed, never shaped: full-frame white the whole clip — the frame's left edge
+        // does the cropping. Nothing animates.
+        el('matte').style.display = 'block';
+        window.seek(0);
+        return;
+    }
+
+    el('art').style.display = 'block';
+
+    // The quote, split into up to three balanced lines (whole words); the last line pale gold. Long
+    // quotes shrink to fit the panel's 610 px column.
+    const words = (f.words || 'Curiosity over certainty.').trim().split(/\s+/).filter(Boolean);
+    const chars = words.join(' ').length;
+    const count = chars > 40 ? 3 : chars > 14 ? 2 : 1;
+    const lines = [];
+    let i = 0;
+    for (let line = 0; line < count; line++) {
+        const left = words.length - i, linesLeft = count - line;
+        let take = Math.max(1, Math.round(left / linesLeft));
+        while (take < left - (linesLeft - 1) && words.slice(i, i + take).join(' ').length < chars / count) take++;
+        lines.push(words.slice(i, i + take).join(' '));
+        i += take;
+        if (i >= words.length) break;
+    }
+    const longest = Math.max(...lines.map(l => l.length), 1);
+    const size = Math.max(40, Math.min(92, Math.floor(92 * 14 / longest)));
+    const quote = el('quote');
+    const lineEls = lines.map((text, k) => {
+        const span = document.createElement('span');
+        span.className = `line${k === lines.length - 1 && lines.length > 1 ? ' pale' : ''}`;
+        span.style.fontSize = `${size}px`;
+        span.textContent = text;
+        quote.appendChild(span);
+        return span;
+    });
+    el('who').textContent = f.speaker || '';
+    if (!f.speaker) el('who').style.display = 'none';
+    el('starpath').setAttribute('fill', gold);
+
+    // The panel sweeps in with the picture's push — the same one segment on the same curve — and sweeps
+    // back out as the picture comes home.
+    R.animate(el('panel'), { inMs: 700, outMs: 700, enter: [
+        { at: 0, transform: 'translateX(780px)', easing: PIC },
+        { at: 1, transform: 'translateX(0px)', easing: PIC },
+    ], exit: [{ at: 1, transform: 'translateX(780px)' }] });
+    // The panel's words settle once it lands, and leave just before it sweeps away.
+    const say = (node, delay) => R.animate(node, { delay, inMs: 550, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(30px)', filter: 'blur(8px)' },
+        { at: 1, opacity: 1, transform: 'translateX(0)', filter: 'blur(0px)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(0)' }] });
+    say(el('eyebrow'), 800);
+    lineEls.forEach((span, k) => say(span, 950 + k * 180));
+    R.animate(el('rule'), { delay: 1000 + lineEls.length * 180, inMs: 550, outMs: 500, enter: [
+        { at: 0, opacity: 1, transform: 'scaleX(0)', easing: 'cubic-bezier(.22,1,.36,1)' },
+        { at: 1, opacity: 1, transform: 'scaleX(1)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scaleX(1)' }] });
+    if (f.speaker) say(el('who'), 1100 + lineEls.length * 180);
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,182 @@
+<!doctype html>
+<!-- Highlight: iris close (docs/specs/021-motion-graphics.md, item M3), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/HighlightClose.dc.html): a gold oval — the logo's shape — closes on the
+     speaker to a point, a star flare bursts there, the full-screen quote shows on the starry sky, and the
+     iris reopens. Same markup, colours, type and keyframes, the review loop replaced by in / hold / out
+     (runtime.js). One file, three planes (GRAPHIC.mode): 'graphics' draws the gold ring tracking the
+     closing edge, the flare and the quote; 'matte' is the white oval the render alphamerges onto the
+     picture (full frame at 0, closed through the hold, reopening at the end); 'background' is the starry
+     sky behind everything. The picture itself never moves (GRAPHIC_LAYOUT from = to), so the matte and the
+     ring shrink from an oval that clears the frame's corners (1600 × 1141), not the design's inner oval.
+     Fields: words, emphasis (unused here: the whole quote is the point), speaker. Fonts are local files. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: iris close</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'EB Garamond'; src: url('fonts/EBGaramond-Italic-latin.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff;
+        --ink: #140a2e; --gold: #f7c65b; --gold-rgb: 247, 198, 91; --pale: #fde68a; --glow-a: #3b2382; --glow-b: #23145a; --deep: #0b0520; }
+.sky { position: absolute; inset: 0; background-color: var(--ink);
+       background-image:
+           radial-gradient(2px 2px at 8% 22%, rgba(255,255,255,.8), transparent), radial-gradient(1.5px 1.5px at 19% 71%, rgba(255,255,255,.6), transparent),
+           radial-gradient(2px 2px at 31% 12%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 44% 88%, rgba(255,255,255,.5), transparent),
+           radial-gradient(2px 2px at 63% 9%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 72% 70%, rgba(255,255,255,.6), transparent),
+           radial-gradient(2px 2px at 88% 28%, rgba(255,255,255,.8), transparent),
+           radial-gradient(ellipse 70% 62% at 50% 42%, var(--glow-a) 0%, var(--glow-b) 38%, var(--ink) 72%, var(--deep) 100%); }
+.matte { position: absolute; inset: 0; background: #fff; }
+.col { position: absolute; left: 0; right: 0; top: 270px; display: flex; flex-direction: column; align-items: center; gap: 18px; text-align: center; }
+blockquote { margin: 18px 0 0 0; display: flex; flex-direction: column; gap: 6px; }
+.line { display: block; font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; line-height: 1.1; color: #ffffff; }
+.line.pale { color: var(--pale); }
+.who { margin: 34px 0 0 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--gold); }
+.ringbox { position: absolute; left: -640px; top: -687px; width: 3200px; height: 2282px; }
+.ring { position: absolute; inset: 0; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--gold);
+        box-shadow: 0 0 40px rgba(var(--gold-rgb), 0.5); transform-origin: 50% 50%; }
+.flare { position: absolute; left: 960px; top: 454px; width: 0; height: 0; }
+.flare i { position: absolute; display: block; }
+.flare .core { left: -70px; top: -70px; width: 140px; height: 140px; border-radius: 50%;
+    background: radial-gradient(circle, #fff 0, #fff 10%, rgba(255,255,255,.6) 22%, rgba(196,181,253,.22) 48%, rgba(196,181,253,0) 70%); }
+.flare .h { left: -420px; top: -2px; width: 840px; height: 4px; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+.flare .v { left: -2px; top: -260px; width: 4px; height: 520px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div id="bg" class="sky" aria-hidden="true" style="display: none"></div>
+  <div id="matte" class="matte" aria-hidden="true" style="display: none"></div>
+  <div id="art" style="position: absolute; inset: 0; display: none">
+    <div class="col">
+      <svg id="star" aria-hidden="true" width="40" height="40" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+      <blockquote id="quote"></blockquote>
+      <p id="who" class="who"></p>
+    </div>
+    <div id="ringbox" class="ringbox" aria-hidden="true"><div id="ring" class="ring"></div></div>
+    <div id="burst" class="flare" aria-hidden="true"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    // The picture never moves: the matte carries the whole iris (lib/reframe.ts reads these keyframes).
+    window.GRAPHIC_LAYOUT = {
+        from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        to: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        inMs: 700, outMs: 700,
+    };
+
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const mode = g.mode || 'graphics';
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const toHex = v => `#${v.map(x => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')}`;
+    const lighten = (c, amount) => toHex(rgb(c).map(x => x + amount * 255));
+    const darken = (c, by) => toHex(rgb(c).map(x => x * by));
+
+    const root = el('g');
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const soul = ink === '#140a2e';
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--deep', soul ? '#0b0520' : darken(ink, 0.55));
+    root.style.setProperty('--glow-a', soul ? '#3b2382' : lighten(ink, 0.25));
+    root.style.setProperty('--glow-b', soul ? '#23145a' : lighten(ink, 0.08));
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-rgb', rgb(gold).join(', '));
+    root.style.setProperty('--pale', gold === '#f7c65b' ? '#fde68a' : lighten(gold, 0.25));
+
+    const R = window.graphicRuntime;
+    const PIC = R.PICTURE_EASE;
+    // The open oval clears the frame's corners; the closed one is a point at the design's centre (50% 42%).
+    const OPEN = 'ellipse(1600px 1141px at 50% 42%)';
+    const SHUT = 'ellipse(0px 0px at 50% 42%)';
+
+    if (mode === 'background') {
+        el('bg').style.display = 'block';
+        window.seek(0);
+        return;
+    }
+
+    if (mode === 'matte') {
+        const m = el('matte');
+        m.style.display = 'block';
+        // Full frame at 0, closing over the in part, shut through the hold, reopening over the out part —
+        // one segment each way, on the house picture curve, exactly as the ring tracks it.
+        R.animate(m, { inMs: 700, outMs: 700, enter: [
+            { at: 0, clipPath: OPEN, easing: PIC },
+            { at: 1, clipPath: SHUT, easing: PIC },
+        ], exit: [{ at: 1, clipPath: OPEN }] });
+        window.seek(0);
+        return;
+    }
+
+    el('art').style.display = 'block';
+
+    // The quote, split into up to three balanced lines (whole words); the last line pale gold. Long
+    // quotes shrink to fit the middle column.
+    const words = (f.words || 'Nobody carries the profound alone.').trim().split(/\s+/).filter(Boolean);
+    const chars = words.join(' ').length;
+    const count = chars > 60 ? 3 : chars > 26 ? 2 : 1;
+    const lines = [];
+    let i = 0;
+    for (let line = 0; line < count; line++) {
+        const left = words.length - i, linesLeft = count - line;
+        let take = Math.max(1, Math.round(left / linesLeft));
+        while (take < left - (linesLeft - 1) && words.slice(i, i + take).join(' ').length < chars / count) take++;
+        lines.push(words.slice(i, i + take).join(' '));
+        i += take;
+        if (i >= words.length) break;
+    }
+    const longest = Math.max(...lines.map(l => l.length), 1);
+    const size = Math.max(54, Math.min(108, Math.floor(108 * 28 / longest)));
+    const quote = el('quote');
+    const lineEls = lines.map((text, k) => {
+        const span = document.createElement('span');
+        span.className = `line${k === lines.length - 1 && lines.length > 1 ? ' pale' : ''}`;
+        span.style.fontSize = `${size}px`;
+        span.textContent = text;
+        quote.appendChild(span);
+        return span;
+    });
+    el('who').textContent = f.speaker || '';
+    if (!f.speaker) el('who').style.display = 'none';
+    el('star').querySelector('path').setAttribute('fill', gold);
+
+    // The ring tracks the matte's edge exactly: the same oval, the same one-segment close and reopen on
+    // the same curve; its fade lives on the wrapper so the geometry is never re-eased.
+    R.animate(el('ring'), { inMs: 700, outMs: 700, enter: [
+        { at: 0, transform: 'scale(1)', easing: PIC },
+        { at: 1, transform: 'scale(0)', easing: PIC },
+    ], exit: [{ at: 1, transform: 'scale(1)' }] });
+    R.animate(el('ringbox'), { inMs: 700, outMs: 700, enter: [
+        { at: 0, opacity: 0 },
+        { at: 0.15, opacity: 1, easing: 'linear' },
+        { at: 1, opacity: 1, easing: 'linear' },
+    ], exit: [{ at: 0.85, opacity: 1 }, { at: 1, opacity: 0 }] });
+    // The star flare bursts as the iris shuts (the design's burst, just after the close).
+    R.animate(el('burst'), { delay: 600, inMs: 900, outMs: 0, enter: [
+        { at: 0, opacity: 0, transform: 'scale(0.2) rotate(-40deg)', easing: 'cubic-bezier(.22,1,.36,1)' },
+        { at: 0.28, opacity: 1, transform: 'scale(1.3) rotate(4deg)' },
+        { at: 0.55, opacity: 0.25, transform: 'scale(0.7)' },
+        { at: 1, opacity: 0, transform: 'scale(0.5)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scale(0.5)' }] });
+    // The words rise out of a blur once the sky is clear, and leave before the iris reopens.
+    const say = (node, delay) => R.animate(node, { delay, inMs: 600, outMs: 600, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(30px)', filter: 'blur(10px)' },
+        { at: 1, opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)', filter: 'blur(6px)' }] });
+    say(el('star'), 750);
+    lineEls.forEach((span, k) => say(span, 900 + k * 220));
+    if (f.speaker) say(el('who'), 950 + lineEls.length * 220);
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

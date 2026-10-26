@@ -1,0 +1,134 @@
+<!doctype html>
+<!-- Highlight: words over the video (docs/specs/021-motion-graphics.md, item M3), rebuilt from the design
+     reference (docs/specs/021-motion-graphics/HighlightOver.dc.html): the picture stays full frame and
+     dims and blurs under a night-purple tint while the words pop on one at a time, the key word slamming
+     in very large Cinzel gold; the speaker's name beneath. The review loop is replaced by in / hold / out
+     (runtime.js). Fields: words, emphasis (the key word, somewhere in the words), speaker (hidden when
+     empty).
+
+     Three planes, told apart by GRAPHIC.mode (lib/graphics.ts): 'graphics' (default) draws the tint and
+     the words, transparent elsewhere (the dim and blur of the picture itself come from GRAPHIC_LAYOUT and
+     are drawn by the render); 'matte' is solid white the whole time — the picture is never clipped;
+     'background' paints an opaque near-black frame that is never seen behind the full-frame picture, but
+     keeps the composite defined. Fonts from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: words over</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff; }
+.deep { position: absolute; inset: 0; background: var(--deep); }
+.matte { position: absolute; inset: 0; background: #fff; }
+.tint { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 60% at 50% 50%, var(--tint-mid) 0%, var(--tint-edge) 100%); }
+.words { position: absolute; left: 80px; right: 80px; top: 0; height: 940px; display: flex; flex-wrap: wrap;
+         align-content: center; justify-content: center; align-items: baseline; row-gap: 4px; text-align: center; }
+.pop { display: inline-block; font-family: 'Outfit', sans-serif; font-weight: 800; line-height: 1.05; text-transform: uppercase; color: #ffffff; }
+.slam { display: inline-block; font-family: 'Cinzel', serif; font-weight: 700; line-height: 1.05; color: var(--gold); text-shadow: 0 0 50px var(--gold-45); }
+.who { position: absolute; left: 0; right: 0; top: 0; margin: 0; font-weight: 600; font-size: 24px; letter-spacing: 0.28em;
+       text-transform: uppercase; color: var(--gold); text-align: center; }
+/* One plane per clip: the mode class keeps only its own elements. */
+.mode-graphics .deep, .mode-graphics .matte { display: none; }
+.mode-matte .deep, .mode-matte .tint, .mode-matte .words, .mode-matte .who { display: none; }
+.mode-background .matte, .mode-background .tint, .mode-background .words, .mode-background .who { display: none; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div class="deep" aria-hidden="true"></div>
+  <div id="matte" class="matte" aria-hidden="true"></div>
+  <div id="tint" class="tint" aria-hidden="true"></div>
+  <div id="words" class="words"></div>
+  <p id="who" class="who"></p>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const mode = g.mode || 'graphics';
+
+    // The picture's movement (lib/reframe.ts draws it): no geometry — it stays full frame and the render
+    // dims and blurs it by these numbers (the design's brightness(0.38) blur(6px), held at scale 1).
+    window.GRAPHIC_LAYOUT = {
+        from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        to: { x: 0, y: 0, scale: 1, brightness: 0.4, blur: 6 },
+        inMs: 700, outMs: 700,
+    };
+
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+
+    const root = el('g');
+    root.classList.add(`mode-${mode}`);
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const inkRgb = rgb(ink), goldRgb = rgb(gold).join(',');
+    root.style.setProperty('--deep', `rgb(${inkRgb.map(x => Math.round(x * 0.45)).join(',')})`);
+    root.style.setProperty('--tint-mid', `rgba(${inkRgb.map(x => Math.min(255, Math.round(x * 2.1))).join(',')},0.35)`);
+    root.style.setProperty('--tint-edge', `rgba(${inkRgb.join(',')},0.75)`);
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-45', `rgba(${goldRgb},0.45)`);
+
+    // The words, one span each, the key word a Cinzel slam (said mid-word, the whole word slams). Sized
+    // down together while the line would not fit two rows of the frame.
+    const words = (f.words || '').trim() || 'Every experience is welcome here.';
+    const emphasis = (f.emphasis || '').trim();
+    const tokens = words.split(/\s+/);
+    let at = emphasis ? tokens.findIndex((w, i) => tokens.slice(i).join(' ').toLowerCase().startsWith(emphasis.toLowerCase())) : -1;
+    let emphasisTokens = at >= 0 ? emphasis.split(/\s+/).length : 0;
+    if (at < 0 && emphasis) {
+        at = tokens.findIndex(w => w.toLowerCase().includes(emphasis.toLowerCase()));
+        emphasisTokens = at >= 0 ? 1 : 0;
+    }
+    const size = Math.max(56, Math.min(124, Math.floor(124 * 30 / Math.max(1, words.length))));
+    el('words').style.columnGap = `${Math.round(size * 0.28)}px`;    // the design's 34px gap at 124px
+    const spans = [];
+    tokens.forEach((w, i) => {
+        if (at >= 0 && i > at && i < at + emphasisTokens) return;       // folded into the slam span
+        const slam = at >= 0 && i === at;
+        const span = document.createElement('span');
+        span.className = slam ? 'slam' : 'pop';
+        span.style.fontSize = `${Math.round(slam ? size * 1.42 : size)}px`;
+        span.textContent = slam ? tokens.slice(at, at + emphasisTokens).join(' ') : w;
+        el('words').appendChild(span);
+        spans.push({ span, slam });
+    });
+    el('who').textContent = f.speaker || '';
+    el('who').style.top = `${540 + (size + 4) * 1.6}px`;
+    if (!f.speaker) el('who').style.display = 'none';
+
+    // The design's 8 s cycle as in / hold / out: the tint rises with the picture's dim (the same house
+    // picture curve over the same 700 ms), then each word pops ~220 ms after the one before; the key word
+    // slams in with the design's overshoot; everything lifts away over the out.
+    const R = window.graphicRuntime;
+    const POP = 'cubic-bezier(.16,1,.3,1)';
+    R.animate(el('tint'), { inMs: 700, outMs: 700, enter: [
+        { at: 0, opacity: 0, easing: R.PICTURE_EASE }, { at: 1, opacity: 1, easing: R.PICTURE_EASE },
+    ], exit: [{ at: 1, opacity: 0 }] });
+    spans.forEach(({ span, slam }, k) => R.animate(span, slam ? {
+        delay: 350 + k * 150, inMs: 800, outMs: 650, enter: [
+            { at: 0, opacity: 0, transform: 'scale(1.8)', filter: 'blur(16px)', easing: POP },
+            { at: 0.64, opacity: 1, transform: 'scale(0.96)', filter: 'blur(0px)', easing: POP },
+            { at: 1, opacity: 1, transform: 'scale(1)', filter: 'blur(0px)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'scale(1.05)', filter: 'blur(6px)' }],
+    } : {
+        delay: 350 + k * 150, inMs: 600, outMs: 650, enter: [
+            { at: 0, opacity: 0, transform: 'translateY(40px) scale(1.15)', filter: 'blur(10px)', easing: POP },
+            { at: 1, opacity: 1, transform: 'translateY(0) scale(1)', filter: 'blur(0px)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'translateY(-12px)', filter: 'blur(6px)' }],
+    }));
+    if (f.speaker) R.animate(el('who'), { delay: 350 + spans.length * 150, inMs: 600, outMs: 650, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(16px)', easing: POP }, { at: 1, opacity: 1, transform: 'translateY(0)' },
+    ], exit: [{ at: 1, opacity: 0 }] });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

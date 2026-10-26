@@ -35,6 +35,8 @@ import {
     chainStarts, clipPcm, FPS, frameAt, PcmAssembler, RATE, readPcm, SAMPLES_PER_FRAME, windowContents, windowStarts,
     type PlannedPart, type PlannedPiece,
 } from './renderWindows';
+import { highlightFilter } from './graphics/reframe';
+import type { HighlightLayout, LayoutKeyframes } from '../../../lib/reframe';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -176,6 +178,12 @@ export async function renderEdit(opts: {
     // on its join (`at`: a section join's name or `split:<ms>`, lib/transitions.ts joinKey). A join that
     // is not there (the split was removed, or that section is not in this video) is skipped with a warning.
     overlays?: { file: string; durationMs: number; fromEnd?: number; at?: string; loop?: boolean }[];
+    // Highlight moments (spec 021 item M3): the episode's picture reframed for a few seconds by the
+    // template's keyframes, shaped by its matte clip over its background clip, the words clip on top
+    // (graphics/reframe.ts). `srcMs` is the highlight's moment in the recording, mapped here as b-roll is;
+    // one whose words are cut is skipped (the edit route refuses saving it, so this is only a retried
+    // render against a changed edit).
+    highlights?: { layout: HighlightLayout; keyframes: LayoutKeyframes; srcMs: number; durationMs: number; files: { background?: string; matte?: string; graphics: string } }[];
     // The accepted transcript and show-note times, when known: their new times are written
     // next to the output, so the final cut never has to be transcribed again.
     words?: { text: string; start: number; end: number }[];
@@ -416,6 +424,26 @@ export async function renderEdit(opts: {
         }
         const sounds = (opts.sounds ?? []).flatMap(s => { const span = soundSpan(s.sound, ranges, editedMs); return span ? [{ ...s, span }] : []; });
 
+        // Highlight moments (spec 021 item M3), mapped onto the edited episode as b-roll is, with the plan
+        // checks the spec asks for: words kept, not across a join, not hidden by b-roll.
+        const highlights = (opts.highlights ?? []).flatMap(h => {
+            const at = timelineTime(ranges, h.srcMs);
+            if (at === null) { onScreenWarnings.push(`A highlight at ${mmss(h.srcMs)} of the recording: its words are cut, so it was left out.`); return []; }
+            return [{ ...h, startMs: at }];
+        }).sort((a, b) => a.startMs - b.startMs);
+        for (const h of highlights) {
+            const hFrom = frameAt(h.startMs), hTo = frameAt(h.startMs + h.durationMs);
+            const r = ranges.find(c => h.srcMs >= c.startMs && h.srcMs < c.endMs);
+            if (r && h.srcMs + h.durationMs > r.endMs) onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: it crosses a cut, so its words run past what is kept.`);
+            if (parts.some(p => p.join > 0 && hFrom < p.start + p.join && hTo > p.start)
+                || pieces.some((p, k) => p.join > 0 && (k === episodePiece ? hFrom < p.join : k > episodePiece ? hTo > episodeFrames - p.join : false))) {
+                onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: a transition blends under it.`);
+            }
+            if (broll.some(b => b.startSec < (h.startMs + h.durationMs) / 1000 && b.endSec > h.startMs / 1000)) {
+                onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: b-roll plays over those seconds and hides it.`);
+            }
+        }
+
         // ── The sound, made once for the whole programme ────────────────────────
         // The voice (cleaned, or as recorded) from time 0 of the video, as raw 48 kHz stereo; the kept stretches
         // in order with a 15 ms fade at each cut and the parts crossfaded at transitions; music, effects and
@@ -533,6 +561,19 @@ export async function renderEdit(opts: {
                     const fromSec = ep.from / FPS, toSec = (ep.from + ep.frames) / FPS;
                     f += `[epc]setpts=PTS-STARTPTS+${fromSec.toFixed(6)}/TB[e0];`;
                     let v = 'e0';
+                    // The reframe first, so b-roll, captions and text stay over the reframed picture.
+                    highlights.filter(h => h.startMs / 1000 < toSec && (h.startMs + h.durationMs) / 1000 > fromSec).forEach((h, j) => {
+                        const inputs = {
+                            graphics: add([], h.files.graphics),
+                            ...(h.files.matte ? { matte: add([], h.files.matte) } : {}),
+                            ...(h.files.background ? { background: add([], h.files.background) } : {}),
+                        };
+                        f += highlightFilter(v, `hl${j}`, {
+                            layout: h.layout, keyframes: h.keyframes, startSec: h.startMs / 1000, durationMs: h.durationMs,
+                            inputs, windowFromSec: fromSec, windowToSec: toSec, tag: `h${j}`,
+                        });
+                        v = `hl${j}`;
+                    });
                     broll.filter(b => b.startSec < toSec && b.endSec > fromSec).forEach((b, j) => {
                         const n = add([], b.file);
                         f += `[${n}:v]setpts=PTS-STARTPTS+${b.startSec}/TB,format=yuv420p,fade=t=in:st=${b.startSec.toFixed(3)}:d=0.5:alpha=1,fade=t=out:st=${(b.endSec - 0.5).toFixed(3)}:d=0.5:alpha=1[br${j}];`;

@@ -21,8 +21,10 @@ import { fontFile, runtimeJs, templateHtml } from './files';
 const ORIGIN = 'http://graphics.internal';
 
 // What names a clip in the cache (episodes/<id>/graphics/<name>): the same spec draws the same clip.
+// `logoKey` is in the name so a changed Studio logo redraws, and `mode` so a highlight's three planes
+// (spec 021 item M3) are three clips.
 export function graphicClipName(spec: GraphicSpec): string {
-    const text = [templateHtml(spec.template), runtimeJs(), JSON.stringify([spec.fields, spec.colors, spec.durationMs, spec.width, spec.height])].join('\u0000');
+    const text = [templateHtml(spec.template), runtimeJs(), JSON.stringify([spec.fields, spec.colors, spec.durationMs, spec.width, spec.height, spec.logoKey ?? null, spec.mode ?? 'graphics'])].join('\u0000');
     return `${spec.template}-${createHash('sha256').update(text).digest('hex').slice(0, 16)}.mov`;
 }
 
@@ -66,6 +68,7 @@ export async function openTemplate(spec: GraphicSpec, logoFile?: string) {
         });
         await page.addInitScript(`window.GRAPHIC = ${JSON.stringify({
             fields: spec.fields, colors: spec.colors, durationMs: spec.durationMs, width: spec.width, height: spec.height, logo: 'logo.png',
+            mode: spec.mode ?? 'graphics',
         }).replace(/</g, '\\u003c')};`);
         await page.goto(`${ORIGIN}/template.html`);
         await page.waitForFunction('typeof window.seek === "function"');
