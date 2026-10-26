@@ -223,6 +223,20 @@ export function keyIdeaAdditions(layers: Layer[], ideas: MomentsPayload['keyIdea
 export const suggestedCount = (layers: Layer[]) =>
     layers.filter(l => l.kind === 'highlight' && l.suggested).length;
 
+// A suggestion stays a suggestion only until the producer touches it: any change to a suggested
+// highlight (a drag, a trim, new words in Properties) drops the mark, so the next run never moves or
+// replaces it. The editor runs every layers update through this.
+export function touchSuggested(before: Layer[], after: Layer[]): Layer[] {
+    const prev = new Map(before.map(l => [l.id, l]));
+    const bare = (l: HighlightLayer) => { const c = { ...l }; delete c.suggested; return c; };
+    return after.map(l => {
+        if (l.kind !== 'highlight' || !l.suggested) return l;
+        const was = prev.get(l.id);
+        if (!was || was.kind !== 'highlight') return l;
+        return JSON.stringify(bare(l)) === JSON.stringify(bare(was)) ? l : bare(l);
+    });
+}
+
 // Everything a run adds to the edit's layers, in one place (the job writes this in a transaction):
 // the paced highlights merged in, descriptors onto empty guest lower thirds, key ideas as graphics.
 export function applySuggestions(layers: Layer[], r: {

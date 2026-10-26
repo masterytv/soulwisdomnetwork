@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     DENSITY_MS, fillDescriptors, keyIdeaAdditions, mergeSuggested, MIN_GAP_MS, MomentsPayloadSchema,
-    paceMoments, suggestedCount, verifyMoments, type Moment, type VerifiedMoment,
+    paceMoments, suggestedCount, touchSuggested, verifyMoments, type Moment,
 } from './highlights';
 import { highlight, motionKeyIdea, motionLowerThird } from './layers';
 import type { SpokenWord } from './showNotes';
@@ -142,4 +142,18 @@ test('descriptors fill only empty guest lower thirds; key ideas never double a t
         { term: 'Presence', definition: 'Being here.', startMs: 9000 },
     ]);
     assert.deepEqual(added.map(a => (a.template === 'keyIdea' ? a.fields.term : '')), ['Presence']);
+});
+
+test('a touched suggestion stops being one; an untouched one keeps its mark', () => {
+    const a = { ...highlight(100_000, 'below', 'first words', '', 'Ana'), suggested: true };
+    const b = { ...highlight(200_000, 'push', 'second words', '', 'Ana'), suggested: true };
+    const theirs = highlight(300_000, 'iris', 'their own', '', 'Ana');
+    const moved = { ...a, anchor: { srcMs: 105_000 } };
+    const out = touchSuggested([a, b, theirs], [moved, b, theirs]);
+    assert.equal((out[0] as typeof a).suggested, undefined, 'the moved one loses its mark');
+    assert.equal((out[1] as typeof b).suggested, true, 'the untouched one keeps it');
+    assert.equal(suggestedCount(out), 1);
+    // A layer not seen before (pasted, added) is left as it is.
+    const fresh = { ...highlight(400_000, 'over', 'fresh', '', 'Ana'), suggested: true };
+    assert.equal((touchSuggested([a], [fresh])[0] as typeof fresh).suggested, true);
 });

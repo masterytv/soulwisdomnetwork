@@ -43,6 +43,7 @@ import { LayersPreview } from '@/components/studio/layers';
 import { GraphicsPreview, ProgrammeGraphics } from '@/components/studio/graphics';
 import { HighlightReframe } from '@/components/studio/highlightPreview';
 import { highlightProblems } from '@/lib/reframe';
+import { touchSuggested } from '@/lib/highlights';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
 import { PropertiesPanel } from '@/components/studio/properties';
@@ -302,7 +303,9 @@ export function Editor({
     // them as layers for good. Links to their files come from the edit and the bin.
     const layers = useMemo(() => layersOf(edit), [edit]);
     const setLayers = useCallback((next: Layer[]) => {
-        if (layersEditable) updateEdit(prev => ({ ...prev, layers: next, overlays: [] }));
+        // A suggested highlight the producer changes stops being a suggestion (spec 021 M4): every
+        // layers update — Properties, timeline drags, the keys — passes through here.
+        if (layersEditable) updateEdit(prev => ({ ...prev, layers: touchSuggested(layersOf(prev), next), overlays: [] }));
     }, [layersEditable, updateEdit]);
     const mediaUrls = useMemo(() => {
         const urls: Record<string, string> = { ...overlayUrls };
