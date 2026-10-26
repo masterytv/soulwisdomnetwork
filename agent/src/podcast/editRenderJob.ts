@@ -27,7 +27,7 @@ import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
 import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type HighlightLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
 import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
-import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
+import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LABELS } from '../../../lib/reframe';
 import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';
 import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
@@ -71,7 +71,11 @@ export interface EditRenderDeps {
     // just before the audio goes to Auphonic.
     voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
     // The files that open the edit in Resolve, Premiere or Final Cut (spec 019 item 4.1, editExport.ts); left out, none are made.
-    exportEdit?: (o: { video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string }) => Promise<ExportResult>;
+    exportEdit?: (o: {
+        video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string;
+        // Spec 021 M5: the highlights as timeline markers, and the drawn motion clips beside the cuts.
+        markers?: { srcMs: number; name: string }[]; graphics?: { local: string; name: string }[];
+    }) => Promise<ExportResult>;
     // Motion graphics (spec 021, agent/src/podcast/graphics/render.ts): names a clip by what draws it,
     // and draws it in headless Chromium (`logoFile`: the Studio's logo for templates that draw it). Left
     // out (no Chromium on the runner), graphic layers are skipped with a warning and the teaser tags fall
@@ -265,6 +269,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const graphicWarnings: string[] = [];
     const overlays: NonNullable<Parameters<typeof renderEdit>[0]['overlays']> = [];
     const highlights: NonNullable<Parameters<typeof renderEdit>[0]['highlights']> = [];
+    // The motion graphic layers' drawn clips, for the editor hand-off (spec 021 M5): one file each,
+    // named template-hash as the cache names them.
+    const exportClips = new Map<string, string>();
+    // Time spent actually drawing graphic clips this run, for the Usage page (spec 021 M5).
+    let graphicsMs = 0;
     // The starlight joins this edit plays (lib/transitions.ts): the Studio's or the edit's at sections,
     // and the edit's own at splits that are there.
     const starlight = [
@@ -281,7 +290,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         let logoFile = deps.logoTrimmed && fs.existsSync(deps.logoTrimmed) ? deps.logoTrimmed : undefined;
         if (settings.logoPath) logoFile = await get(settings.logoPath, 'studio-logo').catch(() => logoFile);
         const logoKey = logoFile ? createHash('sha256').update(fs.readFileSync(logoFile)).digest('hex').slice(0, 16) : undefined;
-        // One clip per spec, drawn once and kept in Storage.
+        // One clip per spec, drawn once and kept in Storage. The time spent actually drawing goes to
+        // the Usage page (spec 021 M5, editRender.graphicsSeconds); a cached clip costs nothing.
         const drawClip = async (spec: GraphicSpec): Promise<{ local: string; storagePath: string }> => {
             const clipName = graphics.name(spec);
             const storagePath = `episodes/${episodeId}/graphics/${clipName}`;
@@ -289,7 +299,9 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             if (fs.existsSync(local)) return { local, storagePath };
             if (deps.exists && await deps.exists(storagePath)) await deps.download(storagePath, local);
             else {
+                const begun = Date.now();
                 await graphics.draw(spec, local, logoFile);
+                graphicsMs += Date.now() - begun;
                 await deps.upload(local, storagePath, 'video/quicktime');
             }
             return { local, storagePath };
@@ -297,6 +309,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         for (const g of plan.graphics) {
             const spec = graphicSpec(g, settings.colors, logoKey);
             const { local, storagePath } = await drawClip(spec);
+            exportClips.set(path.basename(local), local);
             if (episodeAnchored(g.anchor)) {
                 pictures.push({ layer: asVideoLayer(g, storagePath), file: local, loop: spec.durationMs < g.durationMs });
             } else {
@@ -433,10 +446,18 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             const clips = sequenceOf(plan.edit, Math.round(report.inputSeconds * 1000), words).clips;
             const made = await deps.exportEdit({
                 video, name: episode.drive?.fileName || path.basename(plan.video), title: safeName(episode.title), clips, words, workDir,
+                // Spec 021 M5: each highlight as a marker where it sits; the drawn graphic clips as files.
+                ...(plan.highlights.length ? { markers: plan.highlights.map(h => ({
+                    srcMs: h.anchor.srcMs,
+                    name: `${HIGHLIGHT_LABELS[h.layout]}: ${h.words.length > 60 ? `${h.words.slice(0, 57)}…` : h.words}`,
+                })) } : {}),
+                ...(exportClips.size ? { graphics: [...exportClips].map(([name, local]) => ({ local, name })) } : {}),
             });
             exportWarnings.push(...made.warnings);
             for (const f of made.files) {
-                const storagePath = `${prefix}/edit-files/${f.kind}${path.extname(f.name)}`;
+                const storagePath = f.kind === 'graphicClip'
+                    ? `${prefix}/edit-files/${path.basename(f.local)}`
+                    : `${prefix}/edit-files/${f.kind}${path.extname(f.name)}`;
                 await deps.upload(f.local, storagePath, f.contentType);
                 const saved = await deps.saveToDrive(f.local, f.name, f.contentType, `${safeName(episode.title)} (for other editors)`);
                 exports.push({ kind: f.kind, name: f.name, path: storagePath, driveUrl: saved ? `https://drive.google.com/file/d/${saved.fileId}/view` : null });
@@ -454,6 +475,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         cuts: report.cuts,
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
+        graphicsSeconds: Math.round(graphicsMs / 1000),
         editVersion: plan.edit.version,
         warnings: [...plan.warnings, ...soundWarnings, ...graphicWarnings, ...(report.warnings ?? []), ...exportWarnings],
         qc: report.qc,
@@ -559,4 +581,4 @@ async function asFinalCut(prefix: string, episode: Episode, plan: EditRenderPlan
 
 export type EditRenderResult = Required<Pick<EpisodeEditRender,
     'videoPath' | 'wordsPath' | 'captionsPath' | 'chaptersPath' | 'driveFileId' | 'driveUrl' | 'folderUrl'
-    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits' | 'exports'>>;
+    | 'durationSeconds' | 'cuts' | 'timeSavedSeconds' | 'renderSeconds' | 'graphicsSeconds' | 'editVersion' | 'warnings' | 'qc' | 'credits' | 'exports'>>;

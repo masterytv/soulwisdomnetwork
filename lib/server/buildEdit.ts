@@ -18,6 +18,7 @@ import { acceptedWords } from './notes';
 import { HttpError } from './staff';
 import { getSettings } from './studioSettings';
 import { requestEditRender } from './editRender';
+import { requestHighlights } from './claudeEdits';
 
 export interface BuildView {
     edited: boolean;                  // the episode has a saved edit (built here or in the editor)
@@ -78,14 +79,17 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
         const blank: EpisodeEdit = { cuts: [], version: 0 };
         const setUp = firstEdit(blank, { words, silences, teasers });
         const edit = withLayers(setUp.edit, bin);
-        // The motion graphics (spec 021 M2, on by default): placed once, with the b-roll, on a fresh edit.
-        edit.layers = [...(edit.layers ?? []), ...motionGraphics({
-            title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
-            show: settings.showName,
-            words,
-            chapters: notes?.chapters ?? [],
-            hosts: settings.hosts,
-        })];
+        // The motion graphics (spec 021 M2, on by default — the Studio setting turns them off, item M5):
+        // placed once, with the b-roll, on a fresh edit.
+        if (settings.motionGraphics) {
+            edit.layers = [...(edit.layers ?? []), ...motionGraphics({
+                title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
+                show: settings.showName,
+                words,
+                chapters: notes?.chapters ?? [],
+                hosts: settings.hosts,
+            })];
+        }
         await adminDb().runTransaction(async tx => {
             const now = (await tx.get(ref)).data() as Episode | undefined;
             // Someone opened the editor meanwhile, which set up and saved its own: that one stays.
@@ -103,6 +107,11 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
                 broll: (edit.layers ?? []).filter(l => l.id.startsWith('broll-')).length, rendering: false,
             };
         });
+        // "Suggest highlights when the edit is built" (spec 021, Tom's D3 chose off by default): started
+        // best-effort — a build never fails because the suggestion run could not start.
+        if (result.built && settings.suggestOnBuild && settings.highlightDensity !== 'off') {
+            await requestHighlights(id).catch(error => console.warn(`Highlights were not suggested with the build: ${(error as Error).message}`));
+        }
     }
     if (render) {
         await requestEditRender(id);

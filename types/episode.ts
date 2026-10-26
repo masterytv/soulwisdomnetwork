@@ -231,6 +231,7 @@ export interface EpisodeEditRender {
     cuts?: number;
     timeSavedSeconds?: number;
     renderSeconds?: number;
+    graphicsSeconds?: number;             // of the render, drawing the motion graphics' clips (spec 021 M5); cached clips cost nothing
     warnings?: string[];
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
@@ -238,7 +239,7 @@ export interface EpisodeEditRender {
     tracks?: number;                      // the speaker tracks its voice was made from (spec 019 item 3.3); 0 or missing: the recording's sound
     // Files that open the edit's cuts in another editor (spec 019 item 4.1), in the render's folder: kind is
     // resolve, premiere, finalcut, captions (.srt on their timeline) or constantRate (the recording's copy they name).
-    exports?: { kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate'; name: string; path: string; driveUrl: string | null }[];
+    exports?: { kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate' | 'graphicClip'; name: string; path: string; driveUrl: string | null }[];
     auphonicHold?: string | null;         // its hold on Auphonic's free hours (lib/server/spending.ts), given back if it fails before sending
 }
 

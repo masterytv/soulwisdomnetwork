@@ -28,13 +28,14 @@ export interface SuggestedHighlights {
     usd: number;
 }
 
-// Asks Claude for the moments, verifies and paces them. The density is the Studio's setting once M5
-// adds it; until then Tom's D4 answer, Normal — a ceiling, never a quota.
+// Asks Claude for the moments, verifies and paces them, by the Studio settings' density and allowed
+// layouts (item M5) — a ceiling, never a quota.
 export async function suggestHighlights(
     client: Anthropic, episode: Episode, settings: StudioSettings,
     download: (storagePath: string) => Promise<Buffer>,
-    density: Exclude<HighlightDensity, 'off'> = 'normal',
 ): Promise<SuggestedHighlights> {
+    const density: HighlightDensity = settings.highlightDensity;
+    if (density === 'off') throw new Error('Highlights are off in the Studio settings');
     const reviewedPath = episode.review?.reviewedPath;
     if (!reviewedPath) throw new Error('Accept the transcript first');
     const edit = episode.edit;
@@ -56,6 +57,7 @@ export async function suggestHighlights(
     const { verified, unverified } = verifyMoments(parsed.moments, words);
     const { kept, dropped } = paceMoments(verified, words, {
         cuts: edit.cuts, teasers: edit.teasers ?? [], durationMs, density, keyQuotes,
+        allowed: settings.highlightLayouts,
     });
     return {
         highlights: kept, descriptors: parsed.descriptors, keyIdeas: parsed.keyIdeas,
