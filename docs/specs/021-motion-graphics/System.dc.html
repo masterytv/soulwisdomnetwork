@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Motion kit</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=EB+Garamond:ital,wght@1,400;1,500&amp;family=Outfit:wght@400;500;600;800;900&amp;display=swap">
+<style>
+body{margin:0}
+.root{position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#140a2e}
+.dotmove{animation:dotmove 2.4s cubic-bezier(.22,1,.36,1) infinite both}
+.still .dotmove{animation:none}
+@keyframes dotmove{0%,10%{transform:translateX(0)}60%,100%{transform:translateX(200px)}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px; box-sizing: border-box; padding: 90px 110px; display: flex; flex-direction: column; gap: 56px; background: radial-gradient(ellipse 60% 70% at 85% 0%, #2f1c6b 0%, #140a2e 60%)">
+  <header style="display: flex; align-items: flex-end; justify-content: space-between; gap: 40px">
+    <div style="display: flex; flex-direction: column; gap: 14px">
+      <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.3em; color: #f7c65b">SOUL WISDOM COLLECTIVE</p>
+      <h1 style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 64px; letter-spacing: 0.02em; color: #ffffff">Motion Kit · Starlight &amp; Wings</h1>
+    </div>
+    <p style="margin: 0; max-width: 560px; font-family: 'EB Garamond', serif; font-style: italic; font-size: 30px; line-height: 1.35; color: #ddd2ff; text-align: right">The star blooms first; everything else follows its light.</p>
+  </header>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 64px; flex-grow: 1">
+    <section style="display: flex; flex-direction: column; gap: 18px">
+      <h2 style="margin: 0 0 6px 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.28em; color: #f7c65b">COLOUR</h2>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #140a2e; border: 1px solid rgba(255,255,255,0.3); flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Night · #140A2E</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">Grounds and lower-third bands</p></div></div>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #2a1552; flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Aubergine · #2A1552</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">The sky's middle tone</p></div></div>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #4a2f9c; flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Glow · #4A2F9C</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">Light behind the star</p></div></div>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #f7c65b; flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Celestial Gold · #F7C65B</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">Eyebrows, rules, the star</p></div></div>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #fde68a; flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Pale Gold · #FDE68A</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">A highlighted second line</p></div></div>
+      <div style="display: flex; align-items: center; gap: 18px"><span style="width: 64px; height: 64px; border-radius: 6px; background: #ddd2ff; flex-shrink: 0"></span><div><p style="margin: 0; font-size: 24px; font-weight: 600">Lavender · #DDD2FF</p><p style="margin: 4px 0 0 0; font-size: 19px; color: #c4b5fd">Supporting text on Night</p></div></div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 30px">
+      <h2 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.28em; color: #f7c65b">TYPE</h2>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 26px; border-bottom: 1px solid rgba(247,198,91,0.25)">
+        <p style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 60px; line-height: 1.1; color: #ffffff">Cinzel</p>
+        <p style="margin: 0; font-size: 21px; line-height: 1.45; color: #ddd2ff">Titles, names, chapters. Carved capitals that echo the logo's lettering.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 26px; border-bottom: 1px solid rgba(247,198,91,0.25)">
+        <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 56px; line-height: 1.1; color: #ffffff">Outfit</p>
+        <p style="margin: 0; font-size: 21px; line-height: 1.45; color: #ddd2ff">Eyebrows, labels, captions. The site's heading font and the Shorts font, already in the render.</p>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <p style="margin: 0; font-family: 'EB Garamond', serif; font-style: italic; font-size: 60px; line-height: 1.1; color: #ffffff">EB Garamond</p>
+        <p style="margin: 0; font-size: 21px; line-height: 1.45; color: #ddd2ff">Quotes and "with [Guest]". Already installed on the render runner.</p>
+      </div>
+    </section>
+
+    <section style="display: flex; flex-direction: column; gap: 22px">
+      <h2 style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.28em; color: #f7c65b">MOTION</h2>
+      <div style="position: relative; height: 150px; border-radius: 8px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1)">
+        <svg aria-hidden="true" width="200" height="100" viewBox="0 0 300 110" preserveAspectRatio="none" style="position: absolute; left: 24px; top: 22px"><path d="M0 110 C66 0 108 0 300 0" fill="none" stroke="#f7c65b" stroke-width="3"></path><path d="M0 110 L300 0" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1" stroke-dasharray="4 6"></path></svg>
+        <div style="position: absolute; left: 24px; bottom: 16px; width: 200px; height: 0">
+          <svg aria-hidden="true" class="dotmove" width="18" height="18" viewBox="0 0 24 24" style="position: absolute; left: -9px; top: -9px"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#ffffff"></path></svg>
+        </div>
+        <p style="position: absolute; right: 22px; top: 22px; margin: 0; font-size: 19px; line-height: 1.5; color: #ddd2ff; text-align: right">Ease in<br><span style="color: #ffffff; font-weight: 600">cubic-bezier(.22, 1, .36, 1)</span><br>500–700 ms</p>
+      </div>
+      <dl style="margin: 0; display: grid; grid-template-columns: 200px minmax(0, 1fr); row-gap: 14px; column-gap: 16px; font-size: 21px; line-height: 1.35">
+        <dt style="color: #f7c65b; font-weight: 600">Enter</dt><dd style="margin: 0; color: #ffffff">Rise 28 px from a 10 px blur</dd>
+        <dt style="color: #f7c65b; font-weight: 600">Exit</dt><dd style="margin: 0; color: #ffffff">Fade 400 ms, no bounce</dd>
+        <dt style="color: #f7c65b; font-weight: 600">Stagger</dt><dd style="margin: 0; color: #ffffff">150–250 ms between parts</dd>
+        <dt style="color: #f7c65b; font-weight: 600">Holds</dt><dd style="margin: 0; color: #ffffff">Title 4 s · lower third 5 s · quote 6 s · end screen 20 s</dd>
+        <dt style="color: #f7c65b; font-weight: 600">Safe area</dt><dd style="margin: 0; color: #ffffff">90 px sides; lower thirds 120 px up; teaser tag above the progress bar</dd>
+      </dl>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

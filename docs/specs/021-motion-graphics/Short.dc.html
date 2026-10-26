@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shorts overlay</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800;900&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:6s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#1d1714}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.drop{animation-name:drop}.rise{animation-name:rise}.draw{animation-name:draw}
+.k{display:inline-block;animation:karaoke 3s infinite both}
+.k1{animation-delay:0s}.k2{animation-delay:.5s}.k3{animation-delay:1s}.k4{animation-delay:1.5s}.k5{animation-delay:2s}
+.t1{animation-delay:.2s}.t2{animation-delay:.4s}.t3{animation-delay:.7s}
+.still .a,.still .k{animation:none!important}
+.still .k3{color:#f7c65b;transform:scale(1.08)}
+@keyframes drop{0%{opacity:0;transform:translateY(-24px)}8%,92%{opacity:1;transform:none}98%,100%{opacity:0}}
+@keyframes rise{0%{opacity:0;transform:translateY(30px);filter:blur(8px)}10%,92%{opacity:1;transform:none;filter:blur(0)}98%,100%{opacity:0}}
+@keyframes draw{0%{transform:scaleX(0)}12%,92%{transform:scaleX(1);opacity:1}98%,100%{opacity:0}}
+@keyframes karaoke{0%{color:#ffffff;transform:none}3%,15%{color:#f7c65b;transform:scale(1.08)}19%,100%{color:#ffffff;transform:none}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1080px; height: 1920px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 52%, #7a6655 0%, #4a3d33 50%, #1d1714 100%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 380px; top: 720px; width: 320px; height: 380px; border-radius: 50%; background: #17120f; opacity: 0.5; filter: blur(30px)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 180px; top: 1050px; width: 720px; height: 900px; border-radius: 48% 48% 0 0; background: #17120f; opacity: 0.5; filter: blur(34px)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 1080px; height: 720px; background: linear-gradient(180deg, rgba(20,10,46,0.95) 0%, rgba(20,10,46,0.82) 55%, rgba(20,10,46,0) 100%)"></div>
+  <p aria-hidden="true" style="position: absolute; left: 0; right: 0; top: 860px; margin: 0; text-align: center; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[VERTICAL CLIP]</p>
+
+  <div class="a drop" style="position: absolute; left: 0; right: 0; top: 150px; display: flex; justify-content: center; align-items: center; gap: 12px">
+    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+    <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 26px; letter-spacing: 0.3em; color: #f7c65b">SOUL WISDOM COLLECTIVE</p>
+  </div>
+  <h1 class="a rise t1" style="position: absolute; left: 80px; right: 80px; top: 240px; margin: 0; text-align: center; font-family: 'Cinzel', serif; font-weight: 600; font-size: 78px; line-height: 1.12; letter-spacing: 0.01em; color: #ffffff">What happens when the <span style="color: #f7c65b">heart stops?</span></h1>
+  <div aria-hidden="true" class="a draw t2" style="position: absolute; left: 440px; top: 530px; width: 200px; height: 2px; background: linear-gradient(90deg, rgba(247,198,91,0), #f7c65b, rgba(247,198,91,0))"></div>
+
+  <p style="position: absolute; left: 70px; right: 150px; top: 1180px; margin: 0; text-align: center; font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 80px; line-height: 1.15; color: #ffffff; text-shadow: 0 4px 0 #140a2e, 0 0 24px rgba(20,10,46,0.9), 3px 3px 0 #140a2e, -3px -3px 0 #140a2e, 3px -3px 0 #140a2e, -3px 3px 0 #140a2e"><span class="k k1">Nobody</span> <span class="k k2">carries</span> <span class="k k3">the</span> <span class="k k4">profound</span> <span class="k k5">alone.</span></p>
+
+  <div class="a rise t3" style="position: absolute; left: 70px; top: 1470px; display: flex; align-items: center; gap: 14px; padding: 14px 24px; border-radius: 6px; background: rgba(20, 10, 46, 0.86)">
+    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+    <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 30px; color: #ffffff">[Guest Name]</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1080,"height":1920}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

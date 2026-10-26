@@ -79,7 +79,10 @@ function LayerVideo({ layer, url, span, nowMs, playing }: { layer: Extract<Layer
     return <video ref={ref} src={url} playsInline preload="auto" className="block w-full h-auto" />;
 }
 
-interface Drag { id: string; kind: 'move' | 'resize'; x0: number; y0: number; base: Layer; draft: Layer; moved: boolean }
+// Every layer this preview draws itself: graphics (spec 021) play in their own iframes (graphics.tsx).
+type DrawnLayer = Exclude<Layer, { kind: 'graphic' }>;
+
+interface Drag { id: string; kind: 'move' | 'resize'; x0: number; y0: number; base: DrawnLayer; draft: DrawnLayer; moved: boolean }
 
 export function LayersPreview({ layers, clips, editedMs, video, urls, selected, onSelect, onChange }: {
     layers: Layer[];
@@ -98,7 +101,8 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
     const setDrag = (d: Drag | null) => { dragRef.current = d; setDragState(d); };
     const nowMs = timelineTime(clips, srcMs, true) ?? editedMs;
 
-    const shown = layers.map(l => (drag?.id === l.id ? drag.draft : l))
+    const shown = layers.filter((l): l is DrawnLayer => l.kind !== 'graphic')
+        .map(l => (drag?.id === l.id ? drag.draft : l))
         .map(l => ({ l, span: layerSpan(l, clips, editedMs) }))
         .flatMap(({ l, span }) => {
             const look = span ? lookAt(l, span, nowMs) : null;
@@ -107,7 +111,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
         .sort((a, b) => a.l.track - b.l.track || a.span.startMs - b.span.startMs);
     if (!shown.length) return null;
 
-    const begin = (e: React.PointerEvent, l: Layer, kind: Drag['kind']) => {
+    const begin = (e: React.PointerEvent, l: DrawnLayer, kind: Drag['kind']) => {
         if (e.button !== 0) return;
         e.stopPropagation();
         e.preventDefault();
@@ -122,7 +126,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
         const moved = d.moved || Math.abs(e.clientX - d.x0) + Math.abs(e.clientY - d.y0) >= 3;
         if (!moved) return;
         const b = d.base;
-        let draft: Layer;
+        let draft: DrawnLayer;
         if (d.kind === 'move') {
             draft = { ...b, place: { ...b.place, x: snap(b.place.x + dx, GUIDES_X, !e.altKey), y: snap(b.place.y + dy, GUIDES_Y, !e.altKey) } };
         } else {

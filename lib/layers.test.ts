@@ -148,7 +148,7 @@ test('the bin: a picture, the logo, b-roll and video each get a sensible layer; 
     assert.deepEqual(placeOf('middle', 90, 80), { x: 0.5, y: 0.5, align: 5 });
 });
 
-const brand: Brand = { font: 'Outfit Black', colors: { background: '#140a2e', accent: '#f7c65b' }, hosts: ['Daniel Endy'] };
+const brand: Brand = { font: 'Outfit Black', colors: { background: '#140a2e', backgroundBottom: '#2a1552', accent: '#f7c65b' }, hosts: ['Daniel Endy'] };
 
 test('elements: a title card and a lower third in the brand, at the nine positions', () => {
     const card = titleCard(3000, brand);

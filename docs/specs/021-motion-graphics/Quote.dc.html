@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pull quote</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,500;1,400;1,500&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:9s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#140a2e}
+.sky{background-color:#140a2e;background-image:radial-gradient(2px 2px at 9% 16%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 27% 83%,rgba(255,255,255,.5),transparent),radial-gradient(2px 2px at 58% 10%,rgba(255,255,255,.6),transparent),radial-gradient(1.5px 1.5px at 76% 79%,rgba(255,255,255,.5),transparent),radial-gradient(2px 2px at 92% 24%,rgba(255,255,255,.7),transparent),radial-gradient(ellipse 80% 70% at 30% 40%,#2f1c6b 0%,#1c0f45 45%,#120828 100%)}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.mark{animation-name:mark}.line{animation-name:line}.draw{animation-name:draw}.fade{animation-name:fade}.drift{animation-name:drift;animation-timing-function:ease-in-out}
+.l1{animation-delay:.35s}.l2{animation-delay:1.05s}.l3{animation-delay:1.6s}.l4{animation-delay:1.85s}
+.still .a{animation:none!important}
+@keyframes mark{0%{opacity:0;transform:translateY(-30px) scale(1.2)}10%,86%{opacity:1;transform:none}95%,100%{opacity:0}}
+@keyframes line{0%{opacity:0;transform:translateY(34px);filter:blur(12px)}12%,84%{opacity:1;transform:none;filter:blur(0)}94%,100%{opacity:0;transform:translateY(-8px);filter:blur(6px)}}
+@keyframes draw{0%{transform:scaleX(0)}12%,84%{transform:scaleX(1);opacity:1}94%,100%{transform:scaleX(1);opacity:0}}
+@keyframes fade{0%{opacity:0}12%,84%{opacity:1}94%,100%{opacity:0}}
+@keyframes drift{0%,100%{transform:translate(0,0)}50%{transform:translate(-40px,20px)}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div class="sky a drift" style="position: absolute; inset: -60px"></div>
+  <div aria-hidden="true" style="position: absolute; right: -260px; top: 120px; width: 900px; height: 900px; border-radius: 50%; border: 1px solid rgba(247, 198, 91, 0.18)"></div>
+  <div aria-hidden="true" style="position: absolute; right: -160px; top: 220px; width: 700px; height: 700px; border-radius: 50%; border: 1px solid rgba(247, 198, 91, 0.12)"></div>
+
+  <div style="position: absolute; left: 200px; top: 230px; width: 1400px; display: flex; flex-direction: column; gap: 0">
+    <span aria-hidden="true" class="a mark" style="display: block; height: 170px; font-family: 'EB Garamond', serif; font-weight: 500; font-size: 340px; line-height: 0.9; color: #f7c65b">“</span>
+    <blockquote style="margin: 0; display: flex; flex-direction: column; gap: 6px">
+      <span class="a line l1" style="display: block; font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 104px; line-height: 1.12; color: #ffffff">We hold beliefs lightly</span>
+      <span class="a line l2" style="display: block; font-family: 'EB Garamond', serif; font-style: italic; font-weight: 400; font-size: 104px; line-height: 1.12; color: #fde68a">and people gently.</span>
+    </blockquote>
+    <div aria-hidden="true" class="a draw l3" style="margin-top: 56px; width: 220px; height: 2px; transform-origin: left center; background: #f7c65b"></div>
+    <p class="a fade l4" style="margin: 26px 0 0 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.28em; color: #cdbfff">SOUL WISDOM COLLECTIVE · WHAT WE HOLD TO</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

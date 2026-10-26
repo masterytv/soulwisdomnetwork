@@ -37,6 +37,10 @@ it here when it ships.
 ## Studio
 
 - **Shorts cover-frame slider**: pick the frame YouTube shows for each short.
+- **The Shorts motion overlay** (`short`, spec 021 D5 — Tom: "later, but don't forget shorts"):
+  the branded 1080×1920 overlay with word-by-word captions from `Short.dc.html`
+  (`docs/specs/021-motion-graphics/`), rendered into the Shorts in place of today's ffmpeg
+  captions once spec 021's template renderer is in and Shorts work comes around again.
 
 ## Community site
 

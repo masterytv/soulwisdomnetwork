@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lower thirds: hosts and logo bug</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:7s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#0d0a12}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.wipe{animation-name:wipe}.spin{animation-name:spin}.slide{animation-name:slide}.fade{animation-name:fade}.bug{animation-name:bug;animation-duration:9s}
+.t1{animation-delay:.15s}.t2{animation-delay:.3s}.t3{animation-delay:.45s}.b0{animation-delay:.5s}.b1{animation-delay:.65s}.b2{animation-delay:.8s}.b3{animation-delay:.95s}
+.still .a{animation:none!important}
+@keyframes wipe{0%{clip-path:inset(0 100% 0 0);opacity:1}11%,82%{clip-path:inset(0 0 0 0);opacity:1}92%,100%{clip-path:inset(0 0 0 0);opacity:0}}
+@keyframes spin{0%{opacity:0;transform:scale(0) rotate(-180deg)}10%{opacity:1;transform:scale(1.25) rotate(10deg)}15%,82%{opacity:1;transform:none}90%,100%{opacity:0;transform:scale(.4) rotate(90deg)}}
+@keyframes slide{0%{opacity:0;transform:translateX(-28px)}12%,82%{opacity:1;transform:none}91%,100%{opacity:0;transform:translateX(-12px)}}
+@keyframes fade{0%{opacity:0;transform:translateY(8px)}12%,82%{opacity:1;transform:none}91%,100%{opacity:0}}
+@keyframes bug{0%,100%{filter:brightness(1) drop-shadow(0 0 0 rgba(247,198,91,0))}8%{filter:brightness(1.35) drop-shadow(0 0 18px rgba(247,198,91,.6))}18%{filter:brightness(1) drop-shadow(0 0 0 rgba(247,198,91,0))}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div aria-hidden="true" style="position: absolute; left: 0; top: 0; width: 956px; height: 1080px; background: radial-gradient(ellipse 60% 60% at 50% 42%, #6f5d4f 0%, #3f342c 50%, #1c1714 100%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 964px; top: 0; width: 956px; height: 1080px; background: radial-gradient(ellipse 60% 60% at 50% 42%, #55606b 0%, #333b44 50%, #15191e 100%)"></div>
+  <p aria-hidden="true" style="position: absolute; left: 60px; top: 60px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[HOST CAMERA 1]</p>
+  <p aria-hidden="true" style="position: absolute; left: 1024px; top: 60px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[HOST CAMERA 2]</p>
+
+  <img class="a bug" src="../../../public/logo-trimmed.png" alt="Soul Wisdom Collective" style="position: absolute; right: 60px; top: 48px; width: 150px; height: 107px; opacity: 0.9">
+
+  <div style="position: absolute; left: 60px; top: 870px; display: flex; align-items: flex-start; gap: 18px">
+    <div aria-hidden="true" class="a wipe" style="position: absolute; left: -16px; top: -16px; width: 700px; height: 150px; background: linear-gradient(90deg, rgba(20,10,46,0.94) 0%, rgba(20,10,46,0.86) 60%, rgba(20,10,46,0) 100%)"></div>
+    <svg class="a spin t1" aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" style="position: relative; margin-top: 8px; flex-shrink: 0"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 10px">
+      <h2 class="a slide t2" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 44px; line-height: 1.05; letter-spacing: 0.03em; color: #ffffff">Daniel Endy</h2>
+      <p class="a fade t3" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.24em; color: #f7c65b">HOST</p>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 1024px; top: 870px; display: flex; align-items: flex-start; gap: 18px">
+    <div aria-hidden="true" class="a wipe b0" style="position: absolute; left: -16px; top: -16px; width: 700px; height: 150px; background: linear-gradient(90deg, rgba(20,10,46,0.94) 0%, rgba(20,10,46,0.86) 60%, rgba(20,10,46,0) 100%)"></div>
+    <svg class="a spin b1" aria-hidden="true" width="32" height="32" viewBox="0 0 24 24" style="position: relative; margin-top: 8px; flex-shrink: 0"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 10px">
+      <h2 class="a slide b2" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 44px; line-height: 1.05; letter-spacing: 0.03em; color: #ffffff">Tom Wood</h2>
+      <p class="a fade b3" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.24em; color: #f7c65b">HOST</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

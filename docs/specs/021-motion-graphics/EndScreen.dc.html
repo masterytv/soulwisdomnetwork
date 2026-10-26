@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>End screen</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:10s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#140a2e}
+.sky{background-color:#140a2e;background-image:radial-gradient(2px 2px at 7% 12%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 22% 88%,rgba(255,255,255,.5),transparent),radial-gradient(2px 2px at 48% 7%,rgba(255,255,255,.6),transparent),radial-gradient(1.5px 1.5px at 51% 61%,rgba(255,255,255,.5),transparent),radial-gradient(2px 2px at 96% 50%,rgba(255,255,255,.7),transparent),radial-gradient(ellipse 60% 80% at 22% 45%,#3b2382 0%,#23145a 40%,#140a2e 75%,#0b0520 100%)}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.rise{animation-name:rise}.slot{animation-name:slot}.glint{animation-name:glint;animation-timing-function:ease-in-out}.ringin{animation-name:ringin}
+.t1{animation-delay:.2s}.t2{animation-delay:.4s}.t3{animation-delay:.6s}.t4{animation-delay:.8s}.t5{animation-delay:1s}
+.still .a{animation:none!important}
+.still .glint{opacity:0}
+@keyframes rise{0%{opacity:0;transform:translateY(24px);filter:blur(8px)}8%,90%{opacity:1;transform:none;filter:blur(0)}97%,100%{opacity:0}}
+@keyframes slot{0%{opacity:0;transform:translateX(60px) scale(.97)}9%,90%{opacity:1;transform:none}97%,100%{opacity:0}}
+@keyframes glint{0%,20%{transform:translateX(-120%) skewX(-18deg)}34%,100%{transform:translateX(320%) skewX(-18deg)}}
+@keyframes ringin{0%{opacity:0;transform:scale(.6) rotate(-90deg)}10%,90%{opacity:1;transform:none}97%,100%{opacity:0}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div class="sky" style="position: absolute; inset: 0"></div>
+
+  <div style="position: absolute; left: 140px; top: 130px; width: 760px; display: flex; flex-direction: column; gap: 26px">
+    <img class="a rise" src="../../../public/logo-trimmed.png" alt="Soul Wisdom Collective" style="width: 230px; height: 164px">
+    <h2 class="a rise t1" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 84px; line-height: 1.05; letter-spacing: 0.02em; color: #ffffff">Keep Exploring</h2>
+    <p class="a rise t2" style="margin: 0; max-width: 640px; font-family: 'Outfit', sans-serif; font-weight: 400; font-size: 32px; line-height: 1.45; color: #ddd2ff">Subscribe and turn on notifications so you never miss a conversation.</p>
+  </div>
+
+  <div class="a ringin t3" style="position: absolute; left: 140px; top: 650px; width: 210px; height: 210px; border-radius: 50%; box-sizing: border-box; border: 2px dashed rgba(247, 198, 91, 0.75); display: flex; align-items: center; justify-content: center">
+    <span style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.18em; color: #f7c65b; text-align: center; line-height: 1.4">SUBSCRIBE<br>ELEMENT</span>
+  </div>
+  <div class="a rise t4" style="position: absolute; left: 390px; top: 708px; display: flex; flex-direction: column; gap: 8px">
+    <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.24em; color: #f7c65b">AWAKEN · EMPOWER · TRANSFORM</p>
+    <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 500; font-size: 28px; color: #ffffff">soulwisdomcollective.com</p>
+  </div>
+
+  <div class="a slot t2" style="position: absolute; left: 1100px; top: 140px; width: 680px; height: 383px; box-sizing: border-box; border: 2px dashed rgba(247, 198, 91, 0.6); border-radius: 6px; background: rgba(20, 10, 46, 0.55); overflow: hidden; display: flex; align-items: center; justify-content: center">
+    <div aria-hidden="true" class="a glint t3" style="position: absolute; left: 0; top: 0; width: 30%; height: 100%; background: linear-gradient(90deg, rgba(253,230,138,0), rgba(253,230,138,0.18), rgba(253,230,138,0))"></div>
+    <span style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.18em; color: #f7c65b">BEST FOR VIEWER · VIDEO ELEMENT</span>
+  </div>
+  <div class="a slot t4" style="position: absolute; left: 1100px; top: 560px; width: 680px; height: 383px; box-sizing: border-box; border: 2px dashed rgba(247, 198, 91, 0.6); border-radius: 6px; background: rgba(20, 10, 46, 0.55); overflow: hidden; display: flex; align-items: center; justify-content: center">
+    <div aria-hidden="true" class="a glint t5" style="position: absolute; left: 0; top: 0; width: 30%; height: 100%; background: linear-gradient(90deg, rgba(253,230,138,0), rgba(253,230,138,0.18), rgba(253,230,138,0))"></div>
+    <span style="font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.18em; color: #f7c65b">MOST RECENT UPLOAD · VIDEO ELEMENT</span>
+  </div>
+
+  <p class="a rise t5" style="position: absolute; left: 140px; bottom: 70px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 400; font-size: 24px; color: #c4b5fd">Full episodes, transcripts and the Soul Wisdom community</p>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>
