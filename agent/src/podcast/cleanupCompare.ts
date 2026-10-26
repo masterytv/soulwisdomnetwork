@@ -1,6 +1,6 @@
 // The voice clean-up bake-off (docs/specs/019-editor-light-v2.md item 3.1): cuts a stretch of an
-// episode (10 minutes by default) and makes it up to six ways, each brought to −14 LUFS (cleanupVersions.ts):
-// as recorded, today's chain, DeepFilterNet in that chain (as the render runs it, voiceCleanup.ts), Studio sound (item 3.4,
+// episode (10 minutes by default) and makes it up to eight ways, each brought to −14 LUFS (cleanupVersions.ts):
+// as recorded, today's chain, DeepFilterNet in that chain (as the render runs it, voiceCleanup.ts), Studio sound with no, gentle and rich warmth (item 3.4,
 // studioSound.ts, with each speaker's turns from the accepted transcript), Auphonic, and Descript's Studio Sound from
 // the same stretch of its final cut. The files are named A, B, C… so they can be heard blind, with the
 // key in its own file. They go to Cloud Storage and, when Drive is on, a "Clean-up comparison" folder
@@ -20,8 +20,9 @@ import {
     answerKey, applyChain, auphonicClean, blindLetters, chainFor, chooseStretch, chooseVersions, clock, cutStretch, reportTable,
     type VersionResult,
 } from './cleanupVersions';
-import { deepFilterTrack, studioSoundTrack } from './voiceCleanup';
-import { turnsOf, turnsWithin, type ReviewedLine } from './studioSound';
+import { deepFilterTrack, studioVoice } from './voiceCleanup';
+import { WARMTH_DB } from '../../../lib/voice';
+import { studioFinish, turnsOf, turnsWithin, type ReviewedLine, type Turn } from './studioSound';
 import type { AuphonicHold } from '../../../lib/voice';
 import { loadAlert } from './config';
 import { createDrive, ensureFolder, parentOf, putFile } from './drive';
@@ -65,11 +66,13 @@ async function main() {
     await cutStretch(await link(sourcePath), startSec, seconds, stretch);
 
     const results: VersionResult[] = [];
+    // Studio sound's versions share one DeepFilterNet pass and one reading of the turns (each one's time includes the pass).
+    let studio: { voice: string; turns?: Turn[]; seconds: number } | null = null;
     for (const kind of kinds) {
         const letter = letters.get(kind)!;
         const raw = path.join(workDir, `${kind}.raw.${kind === 'auphonic' ? 'flac' : 'wav'}`);
         const file = path.join(workDir, `${letter}.m4a`);
-        const t0 = Date.now();
+        let t0 = Date.now();
         try {
             let cost = 'runner time only';
             if (kind === 'auphonic') {
@@ -85,13 +88,21 @@ async function main() {
                 const bin = process.env.DEEPFILTER_BIN;
                 if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
                 await deepFilterTrack(stretch, raw, { bin, workDir, durationSec: seconds });
-            } else if (kind === 'studio') {
-                const bin = process.env.DEEPFILTER_BIN;
-                if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
-                // Who speaks when in the stretch, so each voice gets its own EQ and level; one sound for all without it.
-                const turns = episode.review?.reviewedPath ? turnsWithin(turnsOf((JSON.parse((await bucket.file(episode.review.reviewedPath).download())[0]
-                    .toString('utf8')) as { lines: ReviewedLine[] }).lines), startSec * 1000, (startSec + seconds) * 1000) : undefined;
-                console.log(`  🎙️ studio: ${await studioSoundTrack(stretch, raw, { bin, workDir, durationSec: seconds, turns })}`);
+            } else if (kind === 'studio' || kind === 'studio-gentle' || kind === 'studio-rich') {
+                if (!studio) {
+                    const bin = process.env.DEEPFILTER_BIN;
+                    if (!bin) throw new Error('no deep-filter program (DEEPFILTER_BIN)');
+                    // Who speaks when in the stretch, so each voice gets its own EQ and level; one sound for all without it.
+                    const turns = episode.review?.reviewedPath ? turnsWithin(turnsOf((JSON.parse((await bucket.file(episode.review.reviewedPath).download())[0]
+                        .toString('utf8')) as { lines: ReviewedLine[] }).lines), startSec * 1000, (startSec + seconds) * 1000) : undefined;
+                    const voice = path.join(workDir, 'studio-voice.wav');
+                    await studioVoice(stretch, voice, { bin, workDir, durationSec: seconds });
+                    studio = { voice, turns, seconds: (Date.now() - t0) / 1000 };
+                }
+                const warmthDb = WARMTH_DB[kind === 'studio-gentle' ? 'gentle' : kind === 'studio-rich' ? 'rich' : 'off'];
+                const t1 = Date.now();
+                console.log(`  🎙️ ${kind}: ${await studioFinish(studio.voice, raw, { workDir, turns: studio.turns, warmthDb })}`);
+                t0 = t1 - studio.seconds * 1000;   // its time: the shared pass and its own finish
             } else {
                 await applyChain(stretch, chainFor(kind), raw);
             }

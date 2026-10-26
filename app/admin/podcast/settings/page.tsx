@@ -18,7 +18,7 @@ import { useAuth } from "@/context/AuthContext";
 import { DEFAULT_SETTINGS, FORMAT_LABELS, FORMATS, KEYTERM_WORDS_MAX, type StudioSettings } from "@/lib/studioSettings";
 import { JOIN_LENGTHS, SECTION_JOIN_LABELS, SECTION_JOINS, TRANSITION_LABELS, TRANSITIONS, type TransitionKind } from "@/lib/transitions";
 import { studioFetch } from "@/lib/studioClient";
-import { VOICE_CLEANUPS, VOICE_SHORT, type VoiceCleanup } from "@/lib/voice";
+import { VOICE_CLEANUPS, VOICE_SHORT, WARMTH_LABELS, WARMTHS, type VoiceCleanup } from "@/lib/voice";
 import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/podcastFeed";
 import type { SettingsView } from "@/lib/server/studioSettings";
 
@@ -309,6 +309,16 @@ export default function StudioSettingsPage() {
                                             help={VOICE_HELP[v]} />
                                     ))}
                                     <span className={hint}>For every episode&apos;s Editor Light render; each episode can choose its own in the Studio editor&apos;s Render panel.</span>
+                                </fieldset>
+                                <fieldset className="flex flex-col gap-2">
+                                    <legend className="text-sm font-medium text-gray-200 mb-1">Warmth (Studio sound)</legend>
+                                    {WARMTHS.map(w => (
+                                        <Choice key={w} name="warmth" value={w} current={s.voiceWarmth} label={WARMTH_LABELS[w]} disabled={off} onPick={() => set("voiceWarmth", w)} />
+                                    ))}
+                                    <span className={hint}>
+                                        Makes voices sound a little lower and fuller: more body below about 220 Hz and a little less edge around 4 kHz,
+                                        by EQ, so no one&apos;s pitch changes. Only with Studio sound; the clean-up comparison makes all three to hear side by side.
+                                    </span>
                                 </fieldset>
                                 <div className="flex flex-col gap-2">
                                     <Choice name="final" value="editorLight" current={s.finalSource} label="The Studio editor makes the final cut" disabled={off} onPick={() => set("finalSource", "editorLight")}

@@ -108,15 +108,20 @@ export async function deepFilterTrack(input: string, out: string, o: DeepFilterO
 // keeps its body (full removal can leave it thin and "underwater" where the noise was loud).
 export const STUDIO_ATTEN_DB = 30;
 
+// Studio sound's first part: the recording's voice through DeepFilterNet, one channel (studioFinish does the rest).
+export function studioVoice(input: string, out: string, o: DeepFilterOptions) {
+    return deepFilterTrack(input, out, { ...o, attenLimitDb: STUDIO_ATTEN_DB, mono: true });
+}
+
 // The recording's voice made into Studio sound, as 48 kHz stereo WAV at the video's times: DeepFilterNet, then each
-// speaker's EQ and level from `turns` (the transcript's, in the recording's times), then the de-esser, leveller,
-// compressor and limiter. Returns what each speaker was given, for the log.
-export async function studioSoundTrack(input: string, out: string, o: DeepFilterOptions & { turns?: Turn[] }): Promise<string> {
+// speaker's EQ and level from `turns` (the transcript's, in the recording's times), the warmth (dB), then the de-esser,
+// leveller, compressor and limiter. Returns what each speaker was given, for the log.
+export async function studioSoundTrack(input: string, out: string, o: DeepFilterOptions & { turns?: Turn[]; warmthDb?: number }): Promise<string> {
     const dir = fs.mkdtempSync(path.join(o.workDir, 'studio-'));
     try {
         const voice = path.join(dir, 'voice.wav');
-        await deepFilterTrack(input, voice, { ...o, workDir: dir, attenLimitDb: STUDIO_ATTEN_DB, mono: true });
-        return await studioFinish(voice, out, { workDir: dir, turns: o.turns });
+        await studioVoice(input, voice, { ...o, workDir: dir });
+        return await studioFinish(voice, out, { workDir: dir, turns: o.turns, warmthDb: o.warmthDb });
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }

@@ -339,10 +339,12 @@ test('Studio sound is given who speaks when, from the accepted transcript; a cli
     };
     const studio = await run('studio');
     assert.equal(studio.clean, 'studio');
+    assert.equal(studio.voice?.warmthDb, 0);
     assert.deepEqual(studio.voice?.turns, [
         { speaker: 'A', startMs: 0, endMs: 4000 }, { speaker: '', startMs: 4000, endMs: 9000 }, { speaker: 'B', startMs: 9500, endMs: 12000 },
     ]);
     assert.equal((await run('standard')).voice?.turns, undefined);
+    assert.equal((await run('standard')).voice?.warmthDb, undefined);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 

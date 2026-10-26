@@ -32,7 +32,7 @@ test('versions: all by default, or the ones named, in the usual order', () => {
 
 test('blind letters: one each, A onwards, the same for the same run, shuffled across runs', () => {
     const a = blindLetters([...VERSIONS], 12345);
-    assert.deepEqual([...a.values()].sort(), ['A', 'B', 'C', 'D', 'E', 'F']);
+    assert.deepEqual([...a.values()].sort(), ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']);
     assert.deepEqual([...blindLetters([...VERSIONS], 12345)], [...a]);
     const orders = new Set(Array.from({ length: 20 }, (_, i) => { const m = blindLetters([...VERSIONS], i + 1); return VERSIONS.map(v => m.get(v)).join(''); }));
     assert.ok(orders.size > 5);

@@ -9,7 +9,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { cleanupFilter } from './editRender';
 
-export const VERSIONS = ['recorded', 'today', 'deepfilter', 'studio', 'auphonic', 'descript'] as const;
+export const VERSIONS = ['recorded', 'today', 'deepfilter', 'studio', 'studio-gentle', 'studio-rich', 'auphonic', 'descript'] as const;
 export type VersionKind = typeof VERSIONS[number];
 
 export const VERSION_LABELS: Record<VersionKind, string> = {
@@ -17,6 +17,8 @@ export const VERSION_LABELS: Record<VersionKind, string> = {
     today: "Today's clean-up (highpass, afftdn, compressor)",
     deepfilter: 'DeepFilterNet in the same chain, instead of afftdn',
     studio: "Studio sound (free: DeepFilterNet, then each voice's own EQ and level, de-esser, leveller, compressor, limiter)",
+    'studio-gentle': 'Studio sound with Gentle warmth (+1.5 dB of body below 220 Hz, a little less edge at 4 kHz)',
+    'studio-rich': 'Studio sound with Rich warmth (+3 dB of body below 220 Hz, less edge at 4 kHz)',
     auphonic: 'Auphonic (denoise and leveller)',
     descript: "Descript's Studio Sound (the same stretch of its final cut)",
 };
