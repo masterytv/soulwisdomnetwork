@@ -207,11 +207,15 @@ the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
   editor preview plays the template in a sandboxed iframe, the render overlays its clip as a
   video layer. Rendering runs only once promoted to `main` (jobs run from `main`); staging can
   test the editor side.
-- **M2 built** (branch `claude/spec-021-m2`): every Part A template rebuilt from the design
+- **M2 built and merged** (PR #213): every Part A template rebuilt from the design
   files, the full `graphic` layer (per-template fields; the end screen on a `fromEnd`
   programme anchor), automatic placement on fresh edits (server and editor), the looped logo
   bug, the motion teaser tag over cut teasers (ASS fallback without Chromium), the `starlight`
   transition (no overlap; the drawn clip covers the cut), and the programme-clock preview.
-  The spec's M2 section carries the particulars M3 needs.
-- **M3 next** (Extra effort): Part B — the highlight layer, the reframe render for all six
-  layouts inside the window encode, the editor preview and Properties.
+- **M3 built** (branch `claude/spec-021-m3`, at Extra effort): Part B — the `highlight` layer
+  with its route-enforced rules, the six layouts' templates drawn in three planes (words,
+  matte, backdrop), the reframe inside the window encode by the shared 16-segment easing
+  table, and the editor's preview (the `<video>` element itself reframed), rose timeline lane
+  and word-snapped drags. The spec's M3 section carries the particulars M4 needs.
+- **M4 next**: `mode: highlights` — Claude suggests the moments, verified and paced in code
+  (`lib/highlights.ts`), with Suggest/Clear in the editor and its cost in `spending.ts`.

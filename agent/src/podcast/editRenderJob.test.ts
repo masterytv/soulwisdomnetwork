@@ -14,7 +14,8 @@ import { renderEdit } from './editRender';
 import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
 import { probeDuration } from './media';
-import { logoBug, motionEndScreen, motionLogoBug, motionLowerThird, SITE_LOGO } from '../../../lib/layers';
+import { highlight, logoBug, motionEndScreen, motionLogoBug, motionLowerThird, SITE_LOGO } from '../../../lib/layers';
+import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
 import { EMPTY_LICENCE, newSound, type LicenceCheck } from '../../../lib/audio';
 
 const ID = 'testEpisode123';
@@ -601,4 +602,42 @@ test('motion graphics M2: the end screen and starlight go to the programme, the 
     assert.deepEqual(drawn.map(d => [d.template, d.logo]), [['logoBug', true], ['endScreen', true], ['starlight', true], ['teaserTag', true]]);
     assert.equal(drawn[0].durationMs, 12_000);
     assert.deepEqual(tagged, ['teaser-cut-1.mp4']);
+});
+
+test('highlights M3: the planes each layout needs are drawn by mode and routed to the render (spec 021)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-m3-'));
+    const drawn: { template: string; mode?: string; durationMs: number }[] = [];
+    let given: { highlights?: Parameters<typeof renderEdit>[0]['highlights'] } = {};
+    const split = highlight(5000, 'splitQuote', 'The soul remembers', '', 'Ana');
+    const over = highlight(20_000, 'over', 'What the mind forgets', 'forgets', 'Dan');
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: {
+            version: 1, cuts: [], layers: [split, over],
+        } }),
+        download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async () => {},
+        render: async opts => {
+            given = { highlights: opts.highlights };
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, intro: 'none' },
+        graphics: { name: spec => `${spec.template}-${spec.mode ?? 'graphics'}.mov`, draw: async (spec, out) => { drawn.push({ template: spec.template, mode: spec.mode, durationMs: spec.durationMs }); fs.writeFileSync(out, ''); } },
+    }, path.join(dir, 'work'), '4');
+    fs.rmSync(dir, { recursive: true, force: true });
+    // splitQuote draws all three planes; over draws only its words.
+    assert.deepEqual(drawn.map(d => [d.template, d.mode]), [
+        ['highlightSplitQuote', 'graphics'], ['highlightSplitQuote', 'matte'], ['highlightSplitQuote', 'background'],
+        ['highlightOver', 'graphics'],
+    ]);
+    assert.ok(drawn.every(d => d.durationMs === 4000));
+    const hs = given.highlights ?? [];
+    assert.equal(hs.length, 2);
+    assert.deepEqual([hs[0].layout, hs[0].srcMs, hs[0].durationMs], ['splitQuote', 5000, 4000]);
+    assert.deepEqual(hs[0].keyframes, HIGHLIGHT_KEYFRAMES.splitQuote);
+    assert.ok(hs[0].files.matte && hs[0].files.background && hs[0].files.graphics);
+    assert.deepEqual([hs[1].layout, hs[1].files.matte, hs[1].files.background], ['over', undefined, undefined]);
 });

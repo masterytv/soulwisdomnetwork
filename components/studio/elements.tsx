@@ -9,7 +9,7 @@
 
 import { newText } from "@/lib/onScreen";
 import {
-    lowerThird, lowerThirds, logoBug, motionChapter, motionEndScreen, motionKeyIdea, motionLogoBug, motionLogoSting,
+    highlight, lowerThird, lowerThirds, logoBug, motionChapter, motionEndScreen, motionKeyIdea, motionLogoBug, motionLogoSting,
     motionLowerThird, motionPullQuote, motionTitleCard, titleCard, toLayer, type Brand, type GraphicLayer, type Layer,
 } from "@/lib/layers";
 import type { BinItem } from "@/lib/layers";
@@ -105,6 +105,29 @@ export function ElementsPanel({ words, layers, brand, logo, video, canEdit, onAd
             {motionRow({ template: "logoBug", align: "items-start justify-end p-1.5", what: "The logo top right with a slow glint, for the whole episode.", make: () => [motionLogoBug()] })}
             {motionRow({ template: "endScreen", sampleText: "End", what: "The 20 s end screen over the programme's last seconds, with the spaces YouTube's own elements fill.", make: () => [motionEndScreen()] })}
             {motionRow({ template: "logoSting", align: "items-center justify-center", what: "A short logo reveal; the spec offers the outro's start.", make: () => [motionLogoSting(currentMs)], atPlayhead: true })}
+
+            {(() => {
+                // A highlight (spec 021 M3): the picture itself reframed for a few seconds while the words
+                // said there show. It starts on the next word; the layout and words change in Properties.
+                const next = words.filter(w => w.start >= currentMs).slice(0, 8);
+                const said = next.map(w => w.text).join(" ");
+                return (
+                    <div className={row}>
+                        <Sample align="items-center justify-start p-1">
+                            <span aria-hidden className="h-[70%] w-1/2 rounded-[2px] border" style={{ borderColor: accent }} />
+                            <Star accent={accent} size="0.6em" />
+                        </Sample>
+                        <div className="flex flex-col gap-1 min-w-0">
+                            <span className="text-sm text-gray-200">Highlight</span>
+                            <span className={hint}>The picture slides into a gold window (or dims, closes, is pushed aside) while the words said at the playhead show; it cannot sit on a cut, a teaser or another highlight.</span>
+                            <button type="button" disabled={!canEdit} className={`${secondary} self-start px-2 py-0.5`}
+                                onClick={() => onAdd([highlight(Math.round(next[0]?.start ?? currentMs), "splitQuote", said || "The words said here", "", next[0]?.speaker ?? "")])}>
+                                + Highlight at {at}
+                            </button>
+                        </div>
+                    </div>
+                );
+            })()}
 
             <div className={row}>
                 <Sample align="items-center justify-center">

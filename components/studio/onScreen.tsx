@@ -114,7 +114,7 @@ export function OnScreenPreview({ cues, clips, edit, video, studio }: {
 
 const KIND_CLASS: Record<Layer["kind"], string> = {
     text: "bg-violet-500/20 text-violet-200", image: "bg-sky-500/20 text-sky-200", video: "bg-emerald-500/20 text-emerald-200",
-    graphic: "bg-amber-500/20 text-amber-200",
+    graphic: "bg-amber-500/20 text-amber-200", highlight: "bg-rose-500/20 text-rose-200",
 };
 export const kindClass = (l: Layer) => KIND_CLASS[l.kind];
 
@@ -149,7 +149,7 @@ export function OnScreenPanel({ layers, clips, editedMs, selected, canEdit, onOp
                         <span className="truncate grow" title={layerName(l)}>{layerName(l)}</span>
                         {anchorCut(l, clips) && <span className="text-amber-300 shrink-0" title="Its moment is cut, so it shows at the next kept moment">cut</span>}
                         <button type="button" className={`${secondary} px-2 py-0.5 shrink-0`} title="Jump there"
-                            onClick={e => { e.stopPropagation(); if (span) onSeek(sourceTime(clips, span.startMs + Math.min(400, l.in.durationMs) + 50) ?? 0); }}>
+                            onClick={e => { e.stopPropagation(); if (span) onSeek(sourceTime(clips, span.startMs + Math.min(400, l.kind === "highlight" ? 0 : l.in.durationMs) + 50) ?? 0); }}>
                             {span ? mmss(span.startMs) : "after the end"}
                         </button>
                         <span className="shrink-0 tabular-nums w-14 text-right">{isWhole(l) ? "to the end" : `${l.durationMs / 1000} s`}</span>

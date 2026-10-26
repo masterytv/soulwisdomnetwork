@@ -11,6 +11,7 @@
 
 import { FRAME } from './onScreen';
 import type { GraphicAnchor, GraphicLayer, Span, VideoLayer } from './layers';
+import type { HighlightLayout } from './reframe';
 
 // The templates (spec 021 Part A). `durationMs` is the hold the design gives each one; the producer can
 // change it on the layer. A whole-episode graphic (the logo bug) is drawn once as a `loopMs` clip and
@@ -31,6 +32,14 @@ export const GRAPHIC_TEMPLATES = {
     // The starlight wipe is a transition, not a layer (lib/transitions.ts): drawn by the same machinery
     // and overlaid centred on the join, so it is never in the layer schema or the Elements panel.
     starlight: { label: 'Starlight', durationMs: 1000, fullScreen: true, element: false },
+    // Part B's highlight layouts (item M3): drawn per highlight layer by the render job, in three planes
+    // (`GraphicSpec.mode`), never offered as elements — the highlight layer (lib/reframe.ts) places them.
+    highlightSplitQuote: { label: 'Split: quote beside', durationMs: 6000, fullScreen: false, element: false },
+    highlightSplitWord: { label: 'Split: stressed word', durationMs: 3000, fullScreen: false, element: false },
+    highlightBelow: { label: 'Line below', durationMs: 6000, fullScreen: false, element: false },
+    highlightOver: { label: 'Words over', durationMs: 3000, fullScreen: false, element: false },
+    highlightIris: { label: 'Iris close', durationMs: 6000, fullScreen: false, element: false },
+    highlightPush: { label: 'Push aside', durationMs: 6000, fullScreen: false, element: false },
 } as const satisfies Record<string, TemplateInfo>;
 export type GraphicTemplate = keyof typeof GRAPHIC_TEMPLATES;
 export const GRAPHIC_TEMPLATE_IDS = Object.keys(GRAPHIC_TEMPLATES) as GraphicTemplate[];
@@ -49,6 +58,13 @@ export const drawnMs = (template: GraphicTemplate, durationMs: number) => {
 // own look. The derived tones follow thumbnailCanvas.ts applyPalette.
 export interface GraphicColors { background: string; backgroundBottom: string; accent: string }
 
+// A highlight template draws three planes, told apart by `GRAPHIC.mode` (spec 021 item M3): its words
+// and frame art with alpha ('graphics', the default every other template draws), the window's shape as
+// solid white where the episode's picture shows ('matte', applied with alphamerge so ffmpeg never draws
+// a rounded corner), and the full-frame backdrop behind the moved picture ('background').
+export const GRAPHIC_MODES = ['graphics', 'matte', 'background'] as const;
+export type GraphicMode = typeof GRAPHIC_MODES[number];
+
 // What a template reads from `window.GRAPHIC`. `logo` is where the Studio's logo can be fetched from
 // (the renderer serves it from a local file, the editor passes a link); null for templates without it,
 // or when none is set and the site's is used by URL.
@@ -59,6 +75,7 @@ export interface GraphicData {
     width: number;
     height: number;
     logo: string | null;
+    mode?: GraphicMode;
 }
 
 // What one clip is drawn from — and so what names it in the cache: the same spec draws the same clip.
@@ -77,6 +94,11 @@ export function graphicSpec(layer: GraphicLayer, colors: GraphicColors, logoKey?
         ...(logoKey ? { logoKey } : {}),
     };
 }
+
+// The template that draws a highlight layout's planes (spec 021 item M3): lib/reframe.ts names the
+// layouts, this names their files.
+export const highlightTemplate = (layout: HighlightLayout): GraphicTemplate =>
+    `highlight${layout[0].toUpperCase()}${layout.slice(1)}` as GraphicTemplate;
 
 // Whether a graphic sits on the edited episode's clock (srcMs or atMs, like every layer: lib/layers.ts
 // layerSpan) or on the programme's (fromEnd: the end screen over the outro's last seconds).

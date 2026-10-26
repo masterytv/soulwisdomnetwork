@@ -1,0 +1,164 @@
+<!doctype html>
+<!-- Highlight: line below (docs/specs/021-motion-graphics.md, item M3), rebuilt from the design
+     reference (docs/specs/021-motion-graphics/HighlightBelow.dc.html): the episode's picture lifts and
+     shrinks to 76 % inside a rounded window with a gold hairline, the line said appears under it like a
+     caption with the key word turning gold, the speaker's name beneath; a still night sky behind. The
+     review loop is replaced by in / hold / out (runtime.js). Fields: words, emphasis (the key word,
+     somewhere in the words), speaker (hidden when empty).
+
+     Three planes, told apart by GRAPHIC.mode (lib/graphics.ts): 'graphics' (default) draws the hairline
+     and the words, transparent elsewhere; 'matte' draws the window as solid white — full frame easing to
+     the rounded 76 % window, in step with the picture (the same transform the design gives the footage),
+     so its alpha is the picture's mask; 'background' paints the still sky the picture lifts over.
+     The picture's own movement is declared as window.GRAPHIC_LAYOUT and drawn by the render from
+     lib/reframe.ts — this file never shows the footage. Fonts from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: line below</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'EB Garamond'; src: url('fonts/EBGaramond-Italic-latin.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff;
+        --gold: #f7c65b; }
+.sky { position: absolute; inset: 0; background-color: var(--ink);
+       background-image:
+           radial-gradient(2px 2px at 6% 30%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 94% 22%, rgba(255,255,255,.6), transparent),
+           radial-gradient(2px 2px at 9% 88%, rgba(255,255,255,.6), transparent), radial-gradient(1.5px 1.5px at 91% 80%, rgba(255,255,255,.5), transparent),
+           radial-gradient(ellipse 70% 40% at 50% 100%, var(--glow-a) 0%, var(--glow-b) 45%, var(--ink) 100%); }
+/* The window: the same transform and clip the design gives the lifted footage, as a white matte. */
+.matte { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 50% 0; background: #fff; }
+.frame { position: absolute; left: 230px; top: 40px; width: 1460px; height: 821px; box-sizing: border-box;
+         border-radius: 21px; border: 1.5px solid var(--gold-70); }
+.caption { position: absolute; left: 0; right: 0; top: 896px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.line { margin: 0; max-width: 1760px; font-family: 'EB Garamond', serif; font-style: italic; line-height: 1.1; color: #ffffff; text-align: center; }
+.say { display: inline-block; }
+.glow { display: inline-block; color: var(--gold); text-shadow: 0 0 30px var(--gold-50); }
+.who { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.26em; text-transform: uppercase; color: var(--gold); }
+/* One plane per clip: the mode class keeps only its own elements. */
+.mode-graphics .sky, .mode-graphics .matte { display: none; }
+.mode-matte .sky, .mode-matte .frame, .mode-matte .caption { display: none; }
+.mode-background .matte, .mode-background .frame, .mode-background .caption { display: none; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div class="sky" aria-hidden="true"></div>
+  <div id="matte" class="matte" aria-hidden="true"></div>
+  <div id="frame" class="frame" aria-hidden="true"></div>
+  <div class="caption">
+    <p id="line" class="line"></p>
+    <p id="who" class="who"></p>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const mode = g.mode || 'graphics';
+
+    // The picture's movement (lib/reframe.ts draws it): the design's translateY(40px) scale(0.76) about
+    // the top centre is, about the top-left corner, x = (1920 − 1920·0.76) / 2, y = 40.
+    window.GRAPHIC_LAYOUT = {
+        from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        to: { x: 230.4, y: 40, scale: 0.76, brightness: 1, blur: 0 },
+        inMs: 700, outMs: 700,
+    };
+
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const toHex = v => `#${v.map(x => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')}`;
+    const lighten = (c, amount) => toHex(rgb(c).map(x => x + amount * 255));
+
+    const root = el('g');
+    root.classList.add(`mode-${mode}`);
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const [glowA, glowB] = ink === '#140a2e' ? ['#3b2382', '#23145a'] : [lighten(ink, 0.25), lighten(ink, 0.08)];
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--glow-a', glowA);
+    root.style.setProperty('--glow-b', glowB);
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-70', `rgba(${rgb(gold).join(',')},0.7)`);
+    root.style.setProperty('--gold-50', `rgba(${rgb(gold).join(',')},0.5)`);
+
+    // The line, with the key word in gold: two staggered halves, split at a word boundary, the key word
+    // wrapped wherever it is said (first match, whole words, any case). Long lines shrink to fit.
+    const words = (f.words || '').trim() || 'We hold beliefs lightly and people gently.';
+    const emphasis = (f.emphasis || '').trim();
+    const size = Math.max(40, Math.min(64, Math.floor(64 * 46 / Math.max(1, words.length))));
+    el('line').style.fontSize = `${size}px`;
+    const tokens = words.split(/\s+/);
+    let at = emphasis ? tokens.findIndex((w, i) => tokens.slice(i).join(' ').toLowerCase().startsWith(emphasis.toLowerCase())) : -1;
+    let emphasisTokens = at >= 0 ? emphasis.split(/\s+/).length : 0;
+    // Said mid-word ("member" in "remembers"): the whole word turns gold.
+    if (at < 0 && emphasis) {
+        at = tokens.findIndex(w => w.toLowerCase().includes(emphasis.toLowerCase()));
+        emphasisTokens = at >= 0 ? 1 : 0;
+    }
+    const half = Math.ceil(tokens.length / 2);
+    const chunk = (list, cls) => {
+        if (!list.length) return null;
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = list.join(' ');
+        el('line').appendChild(span);
+        return span;
+    };
+    const say = [];
+    if (at >= 0) {
+        say.push(chunk(tokens.slice(0, at), 'say'));
+        const wrap = document.createElement('span');
+        wrap.className = 'say';
+        const glowEl = document.createElement('span');
+        glowEl.className = 'glow';
+        glowEl.textContent = tokens.slice(at, at + emphasisTokens).join(' ');
+        wrap.appendChild(glowEl);
+        el('line').appendChild(wrap);
+        say.push(wrap);
+        say.push(chunk(tokens.slice(at + emphasisTokens), 'say'));
+    } else {
+        say.push(chunk(tokens.slice(0, half), 'say'));
+        say.push(chunk(tokens.slice(half), 'say'));
+    }
+    const parts = say.filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i++) parts[i].appendChild(document.createTextNode(' '));
+    el('who').textContent = f.speaker || '';
+    if (!f.speaker) el('who').style.display = 'none';
+
+    // The design's 9 s cycle as in / hold / out. The matte moves exactly as the picture does: the house
+    // picture curve over the same 700 ms (runtime squeezes both the same way), so the mask never slips
+    // off the footage. The hairline fades up once the window has nearly settled; the caption's halves
+    // rise one after the other; the key word turns gold last.
+    const R = window.graphicRuntime;
+    const P = R.PICTURE_EASE;
+    R.animate(el('matte'), { inMs: 700, outMs: 700, enter: [
+        { at: 0, transform: 'translateY(0px) scale(1)', clipPath: 'inset(0px round 0px)', easing: P },
+        { at: 1, transform: 'translateY(40px) scale(0.76)', clipPath: 'inset(0px round 28px)', easing: P },
+    ], exit: [{ at: 1, transform: 'translateY(0px) scale(1)', clipPath: 'inset(0px round 0px)' }] });
+    R.animate(el('frame'), { delay: 450, inMs: 500, outMs: 750, enter: [
+        { at: 0, opacity: 0 }, { at: 1, opacity: 1 },
+    ], exit: [{ at: 1, opacity: 0 }] });
+    parts.forEach((span, k) => R.animate(span, { delay: 350 + k * 350, inMs: 700, outMs: 900, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(22px)', filter: 'blur(8px)', easing: 'cubic-bezier(.22,1,.36,1)' },
+        { at: 1, opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' },
+    ], exit: [{ at: 1, opacity: 0, filter: 'blur(4px)' }] }));
+    const glowSpan = document.querySelector('.glow');
+    if (glowSpan) R.animate(glowSpan, { delay: 1000, inMs: 550, outMs: 900, enter: [
+        { at: 0, color: '#ffffff', textShadow: '0 0 30px rgba(0,0,0,0)', easing: 'ease-out' },
+        { at: 1, color: gold, textShadow: `0 0 30px rgba(${rgb(gold).join(',')},0.5)` },
+    ], exit: [{ at: 1, color: gold }] });
+    if (f.speaker) R.animate(el('who'), { delay: 1000, inMs: 700, outMs: 900, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(12px)' }, { at: 1, opacity: 1, transform: 'translateY(0)' },
+    ], exit: [{ at: 1, opacity: 0 }] });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

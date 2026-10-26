@@ -16,6 +16,7 @@ import {
     type Brand, type Edge, type Layer, type LayerTransition, type Motion,
 } from "@/lib/layers";
 import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES } from "@/lib/graphics";
+import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS, HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS, type HighlightLayout } from "@/lib/reframe";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
 import { field, hint, secondary } from "@/components/studio/ui";
 import { useVideoTime } from "@/components/studio/useVideoTime";
@@ -64,7 +65,7 @@ export function Section({ title, children }: { title: string; children: React.Re
     );
 }
 
-export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit, onChange, onRemove, onSeek }: {
+export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit, onChange, onRemove, onSeek, problem }: {
     layer: Layer | null;
     clips: Clip[];
     editedMs: number;
@@ -74,6 +75,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
     onChange: (layer: Layer) => void;
     onRemove: (id: string) => void;
     onSeek: (ms: number) => void;
+    problem?: string;                        // spec 021 M3: why this highlight cannot be saved as it is
 }) {
     const currentMs = useVideoTime(video);
     if (!layer) {
@@ -91,6 +93,61 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
     const pos = positionOf(l);
     const [mh, mv] = marginsOf(l);
     const pinned = "atMs" in l.anchor;
+
+    // A highlight (spec 021 item M3) reframes the episode's own picture: no position, width, opacity or
+    // edges of its own — the layout's keyframes move the picture, and the template draws the words.
+    if (l.kind === "highlight") {
+        const emphasisOutside = l.emphasis !== "" && !l.words.toLowerCase().includes(l.emphasis.toLowerCase());
+        return (
+            <section aria-label="Properties" className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-sm font-semibold text-gray-200">Properties</h2>
+                    <span className={`px-1.5 py-0.5 rounded text-xs ${kindClass(l)}`}>{layerKind(l)}</span>
+                    <span className="text-xs text-gray-300 truncate max-w-[14rem]" title={layerName(l)}>{layerName(l)}</span>
+                    <span className="grow" />
+                    <button type="button" disabled={!canEdit} className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(l.id)}>Remove</button>
+                </div>
+                <fieldset disabled={!canEdit} className="contents">
+                    {problem && <p className="text-sm text-amber-300">{problem} The edit cannot be saved until this is fixed.</p>}
+                    <Section title="Highlight">
+                        <select aria-label="Layout" value={l.layout} className={`${small} self-start`}
+                            title="How the picture is reframed while the words show"
+                            onChange={e => set({ layout: e.target.value as HighlightLayout })}>
+                            {HIGHLIGHT_LAYOUTS.map(k => <option key={k} value={k}>{HIGHLIGHT_LABELS[k]}</option>)}
+                        </select>
+                        <input value={l.words} maxLength={500} aria-label="Words" onChange={e => set({ words: e.target.value })}
+                            className={field} placeholder="The words said at this moment, word for word" />
+                        <input value={l.emphasis} maxLength={80} aria-label="Stressed word" onChange={e => set({ emphasis: e.target.value })}
+                            className={field} placeholder="The stressed word (optional)" />
+                        {emphasisOutside && <p className="text-amber-300">The stressed word must be among the words, or this cannot be saved.</p>}
+                        <input value={l.speaker} maxLength={200} aria-label="Speaker" onChange={e => set({ speaker: e.target.value })}
+                            className={field} placeholder="Who says it" />
+                        <p className={hint}>The picture itself is reframed for these seconds (spec 021). A highlight cannot sit on cut words or a teaser, or overlap another highlight.</p>
+                    </Section>
+                    <Section title="Time">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span>Starts at</span>
+                            <button type="button" className={`${secondary} px-2 py-0.5`} title="Jump there"
+                                onClick={() => { if (span) onSeek(sourceTime(clips, span.startMs + 50) ?? 0); }}>
+                                {span ? mmss(span.startMs) : "after the end"}
+                            </button>
+                            <button type="button" className={`${secondary} px-2 py-0.5`} title="Start it where the playhead is"
+                                onClick={() => set({ anchor: { srcMs: Math.round(sourceTime(clips, nowEdited) ?? 0) } })}>
+                                Start at {mmss(nowEdited)}
+                            </button>
+                        </div>
+                        <label className="flex items-center gap-1">
+                            for
+                            <NumberField label="Seconds on screen" value={l.durationMs / 1000} min={HIGHLIGHT_MIN_MS / 1000} max={HIGHLIGHT_MAX_MS / 1000} step={0.5}
+                                onChange={v => set({ durationMs: Math.round(v * 1000) })} />
+                            s
+                        </label>
+                        {anchorCut(l, clips) && <p className="text-amber-300">Its words are cut: bring them back, or move the highlight, before saving.</p>}
+                    </Section>
+                </fieldset>
+            </section>
+        );
+    }
 
     return (
         <section aria-label="Properties" className="flex flex-col gap-4">
