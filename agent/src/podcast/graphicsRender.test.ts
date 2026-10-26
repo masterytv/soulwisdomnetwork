@@ -16,7 +16,7 @@ import { GRAPHIC_TEMPLATE_IDS, type GraphicSpec } from '../../../lib/graphics';
 import { pictureFilter } from '../../../lib/layers';
 import { asVideoLayer } from '../../../lib/graphics';
 import { motionLowerThird } from '../../../lib/layers';
-import { graphicClipName, graphicFrames, openTemplate, renderGraphic } from './graphics/render';
+import { graphicClipName, graphicFrames, openTemplate, renderGraphic, seekTo } from './graphics/render';
 
 const COLORS = { background: '#140a2e', backgroundBottom: '#2a1552', accent: '#f7c65b' };
 const spec = (over: Partial<GraphicSpec> = {}): GraphicSpec => ({
@@ -73,18 +73,30 @@ test('a 2 s clip: ProRes 4444 with alpha, 60 frames, 1920 × 1080; too long is r
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('every template seeks: the same ms draws the same frame, in any order', { timeout: 120_000 }, async () => {
+test('every template seeks: the same ms draws the same frame, in any order', { timeout: 180_000 }, async () => {
+    // Pixels, not PNG bytes: the GPU rasteriser wobbles mid-transform antialiasing by ±1 between
+    // otherwise identical paints, which is noise, not state. The contract is that seeking back gives
+    // the same frame within that wobble, while different moments move real pixels.
+    const sharp = (await import('sharp')).default;
+    const raw = (png: Buffer) => sharp(png).ensureAlpha().raw().toBuffer();
     for (const template of GRAPHIC_TEMPLATE_IDS) {
         const { browser, page } = await openTemplate(spec({ template }));
         try {
             const shot = async (ms: number) => {
-                await page.evaluate(m => window.seek(m), ms);
-                return createHash('sha256').update(await page.screenshot({ type: 'png', omitBackground: true })).digest('hex');
+                await seekTo(page, ms);
+                return raw(await page.screenshot({ type: 'png', omitBackground: true }));
             };
-            const at900 = await shot(900);
-            const at1700 = await shot(1700);
-            assert.notEqual(at900, at1700, `${template}: 900 ms and 1700 ms should differ`);
-            assert.equal(await shot(900), at900, `${template}: seeking back to 900 ms must draw the same frame`);
+            // Mid-enter against the quiet middle: moments every template draws differently (the logo
+            // bug's only motion is its glint, which peaks at 17 % of the clip and rests by 45 %).
+            const a = await shot(340);
+            const mid = await shot(900);
+            let moved = 0;
+            for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - mid[i]) > 2) moved++;
+            assert.ok(moved > 500, `${template}: 340 ms and 900 ms should differ (${moved} channel values moved)`);
+            const b = await shot(340);
+            let off = 0;
+            for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 2) off++;
+            assert.equal(off, 0, `${template}: seeking back to 340 ms must draw the same frame (${off} channel values differ by more than 2)`);
         } finally {
             await browser.close();
         }

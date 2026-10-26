@@ -28,6 +28,24 @@ export function graphicClipName(spec: GraphicSpec): string {
 
 export const graphicFrames = (durationMs: number) => Math.max(1, Math.round(durationMs * FPS / 1000));
 
+// Seeks the open template and waits for the compositor to commit the frame: transform and opacity
+// animations run on Chromium's compositor thread, so a screenshot straight after seek() can capture
+// the frame before it. Two animation frames see the commit through; the timeout covers a headless
+// scheduler with no frame pending.
+export async function seekTo(page: import('playwright').Page, ms: number): Promise<void> {
+    // A string, not a function: tsx's transform decorates nested functions with helpers (__name)
+    // that do not exist inside the page.
+    await page.evaluate(`(function (m) {
+        window.seek(m);
+        return new Promise(function (resolve) {
+            var done = false;
+            function finish() { if (!done) { done = true; resolve(); } }
+            requestAnimationFrame(function () { requestAnimationFrame(finish); });
+            setTimeout(finish, 50);
+        });
+    })(${JSON.stringify(ms)})`);
+}
+
 // The template open in headless Chromium with GRAPHIC injected and the fonts loaded, ready to seek and
 // screenshot. The caller must close the browser; the tests use it to check a template's contract.
 // `logoFile`: the Studio's logo on disk for templates that draw it (GRAPHIC.logo); the repository's
@@ -78,7 +96,7 @@ export async function renderGraphic(spec: GraphicSpec, out: string, logoFile?: s
         let failed: Error | null = null;
         ffmpeg.stdin.on('error', (e: Error) => { failed = e; });
         for (let i = 0; i < frames; i++) {
-            await page.evaluate(ms => window.seek(ms), i * 1000 / FPS);
+            await seekTo(page, i * 1000 / FPS);
             const png = await page.screenshot({ type: 'png', omitBackground: true });
             if (failed) break;
             if (!ffmpeg.stdin.write(png)) {
