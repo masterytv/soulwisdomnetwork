@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
     BANDS, BandMeter, chainResponse, commandsFor, fft, fitGains, peakResponseDb, quantile, SPEAKER_EQ_LIMITS, speakerSounds,
-    studioChain, switchPoints, targetDb, turnsOf, turnsWithin, wantedEq, WavReader,
+    studioChain, switchPoints, targetDb, turnsOf, turnsWithin, wantedEq, warmthFilter, WavReader,
 } from './studioSound';
 import { studioSoundTrack } from './voiceCleanup';
 
@@ -184,6 +184,33 @@ test('Studio sound evens out two speakers and keeps the voice where it was (a st
             if (s > best) { best = s; lag = L; }
         }
         assert.ok(Math.abs(lag) <= 1, `${at} s: ${lag} samples late`);
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('warmth: more body below 220 Hz and a little less edge at 4 kHz, and nothing when off (Tom, 22 October 2026)', () => {
+    const sound = { speaker: 'A', gains: BANDS.map(() => 0), volumeDb: 0 };
+    assert.equal(warmthFilter(0), '');
+    assert.ok(!studioChain(sound, null).includes('lowshelf'));
+    assert.match(studioChain(sound, null, 3), /volume=1\.0000,lowshelf=f=220:t=q:w=0\.7:g=3,equalizer=f=4000:t=o:w=1\.5:g=-1\.5,deesser=/);
+    // Measured on pink noise: each band's level with the warmth less without it.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'warmth-'));
+    const bandDb = (db: number) => {
+        const out = path.join(dir, `w${db}.wav`);
+        ff(['-f', 'lavfi', '-i', 'anoisesrc=c=pink:a=0.1:d=20:r=48000:s=3', '-af', `${warmthFilter(db)}anull`, '-ac', '1', '-c:a', 'pcm_s16le', out]);
+        const r = new WavReader(out);
+        const m = new BandMeter(48000);
+        m.add(r.read(0, r.length), () => true);
+        r.close();
+        return m.powerBands();
+    };
+    const flat = bandDb(0);
+    for (const [db, low] of [[1.5, [1, 2]], [3, [2.2, 3.5]]] as const) {
+        const d = bandDb(db).map((x, i) => x - flat[i]);
+        const at = (f: number) => d[BANDS.indexOf(f)];
+        assert.ok(at(113) >= low[0] && at(113) <= low[1], `${db} dB: ${at(113).toFixed(2)} at 113 Hz`);
+        assert.ok(Math.abs(at(1280)) < 0.4, `${db} dB: ${at(1280).toFixed(2)} at 1.3 kHz`);
+        assert.ok(at(3620) < -db / 4 && at(3620) > -db, `${db} dB: ${at(3620).toFixed(2)} at 3.6 kHz`);
     }
     fs.rmSync(dir, { recursive: true, force: true });
 });

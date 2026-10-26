@@ -30,7 +30,7 @@ import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '..
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
-import { voiceFor, type VoiceCleanup } from '../../../lib/voice';
+import { voiceFor, WARMTH_DB, type VoiceCleanup } from '../../../lib/voice';
 import { usesTracks, type SpeakerTrack } from '../../../lib/speakerTracks';
 import { turnsOf, type ReviewedLine, type Turn } from './studioSound';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
@@ -95,6 +95,7 @@ export interface EditRenderPlan {
     sections: SectionJoins;              // the transitions between the video's sections
     sounds: Sound[];                     // music and effects (spec 020 item E7)
     voice: VoiceCleanup;                 // the voice clean-up (spec 019 item 3.2)
+    warmthDb: number;                    // Studio sound's warmth (item 3.4), from the Studio settings
     tracks: SpeakerTrack[];              // the speaker tracks the voice is made from (spec 019 item 3.3); empty: the recording's sound
     warnings: string[];
 }
@@ -166,6 +167,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         sections: sectionJoins(edit.joins, settings.joins),
         sounds: edit.audio ?? [],
         voice: voiceFor(edit, settings.voiceCleanup),
+        warmthDb: WARMTH_DB[settings.voiceWarmth],
         tracks: usesTracks(episode.media?.speakerTracks, edit) ? episode.media!.speakerTracks! : [],
         warnings,
     };
@@ -282,7 +284,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         clean: CLEAN_FOR[plan.voice],
         voice: {
             deepFilter: deps.voice?.deepFilter,
-            ...(plan.voice === 'studio' && turns ? { turns } : {}),
+            ...(plan.voice === 'studio' ? { warmthDb: plan.warmthDb, ...(turns ? { turns } : {}) } : {}),
             ...(deps.voice?.auphonicKey ? { auphonic: { apiKey: deps.voice.auphonicKey, title: `${episode.title} (render)`, onSending: deps.voice.onAuphonicSending } } : {}),
         },
     });

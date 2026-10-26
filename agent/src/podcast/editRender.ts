@@ -158,6 +158,7 @@ export async function renderEdit(opts: {
         // Studio sound: who speaks when, in the recording's times (the accepted transcript's lines; clips played in
         // the episode as speaker ''), so each voice gets its own EQ and level. Without them, one sound for everyone.
         turns?: Turn[];
+        warmthDb?: number;                         // Studio sound's warmth (lib/voice.ts WARMTH_DB)
         // Auphonic: the key, the production's title, and a call made just before the audio is sent (the job
         // then keeps the hold on the month's free hours even if the render fails later).
         auphonic?: { apiKey: string; title: string; onSending?: () => Promise<void> };
@@ -237,7 +238,7 @@ export async function renderEdit(opts: {
             // DeepFilterNet's minutes and Auphonic's hours are not spent twice: a retried run finds the cleaned
             // track an earlier attempt kept (as FLAC, about half the size).
             const keptName = `voice-${clean}-${windowKey([path.basename(opts.video), String(inMs), JSON.stringify(auphonicSpan(opts.edit, inMs, opts.words)), ...(opts.tracks ?? []).map(t => path.basename(t)),
-                ...(clean === 'studio' ? [JSON.stringify(opts.voice?.turns ?? [])] : [])], '', 0)}.flac`;
+                ...(clean === 'studio' ? [JSON.stringify(opts.voice?.turns ?? []), `warmth ${opts.voice?.warmthDb ?? 0}`] : [])], '', 0)}.flac`;
             const keptFile = path.join(cleanDir, keptName);
             const kept = (clean === 'deepfilter' || clean === 'auphonic' || clean === 'studio') && opts.store
                 && await opts.store.get(keptName, keptFile).catch(() => false);
@@ -248,7 +249,7 @@ export async function renderEdit(opts: {
                 await deepFilterTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds });
             } else if (clean === 'studio') {
                 if (!opts.voice?.deepFilter) throw new Error('Studio sound was chosen, but DeepFilterNet is not on the runner (DEEPFILTER_BIN)');
-                const note = await studioSoundTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds, turns: opts.voice.turns });
+                const note = await studioSoundTrack(voiceSource, cleanedAudio, { bin: opts.voice.deepFilter, workDir: cleanDir, durationSec: inSeconds, turns: opts.voice.turns, warmthDb: opts.voice.warmthDb });
                 console.log(`  🎙️ Studio sound: ${note}`);
             } else {
                 const a = opts.voice?.auphonic;

@@ -15,6 +15,9 @@ test('the episode\'s own choice, else the Studio\'s; standard unless chosen', ()
     assert.equal(withDefaults({ voiceCleanup: 'studio-sound' }).voiceCleanup, 'standard');
     assert.equal(withDefaults({ voiceCleanup: 'deepfilter' }).voiceCleanup, 'deepfilter');
     assert.equal(withDefaults({ voiceCleanup: 'studio' }).voiceCleanup, 'studio');
+    assert.equal(withDefaults({}).voiceWarmth, 'off');
+    assert.equal(withDefaults({ voiceWarmth: 'rich' }).voiceWarmth, 'rich');
+    assert.equal(withDefaults({ voiceWarmth: 'hot' }).voiceWarmth, 'off');
 });
 
 test('Auphonic is sent only the stretch the edit keeps, with a margin', () => {

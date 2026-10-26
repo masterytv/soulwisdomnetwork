@@ -783,6 +783,14 @@ too, with the stretch's turns, so it is heard blind beside Auphonic, DeepFilterN
 - in step with the picture to the sample (0 samples at 48 kHz, over 20 minutes in four DeepFilterNet pieces);
 - **speed:** 20 minutes took 2¼ minutes on 4 cores, so about 7–8 minutes an hour, nearly all of it DeepFilterNet.
 
+**Warmth (22 October 2026):** in the first comparison Tom and the producer could not tell the versions apart, and Tom asked
+for voices "a little lower, with more warmth, 10–20% more". Studio settings → **Warmth (Studio sound)**: Off (the default),
+Gentle or Rich (`voiceWarmth`, `lib/voice.ts` `WARMTH_DB`: +1.5 or +3 dB). It adds a low shelf at 220 Hz of that much and
+takes half of it off around 4 kHz, after each speaker's EQ (`warmthFilter`), so voices sound lower and fuller without their
+pitch changing (pitch-shifting would make people sound unlike themselves). Measured on pink noise: Gentle +1.5 dB and Rich
++3 dB at 113 Hz, nothing at 1.3 kHz, a little less at 3.6 kHz. The comparison makes `studio`, `studio-gentle` and `studio-rich`
+from one DeepFilterNet pass.
+
 **Not checked:** how it sounds. The settings above are starting points for tuning by ear on a real episode; the
 comparison is how Tom and the producer hear it beside Auphonic. Until then Standard stays the default.
 
