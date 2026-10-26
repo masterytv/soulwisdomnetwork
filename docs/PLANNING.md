@@ -101,6 +101,8 @@ item). So:
 15. **019 3.4** (Studio sound: a free stand-in for Auphonic, with each speaker's own EQ and level; research in
     `docs/research/2026-10-22-auphonic-alternatives.md`): built, at Tom's request. Standard stays the default until it is
     heard beside Auphonic in the comparison.
+16. **Spec 021** (motion graphics: branded templates and highlight moments, `docs/specs/021-motion-graphics.md`):
+    planned 26 October 2026 at Tom's request. M1 → M5 in order, one PR each; decisions D1–D6 at the end of the spec.
 
 ## Overlaps with work already built — decided
 

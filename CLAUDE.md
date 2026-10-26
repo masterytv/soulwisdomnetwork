@@ -77,7 +77,7 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
+docs/specs/   numbered specs, 001-021 (021 motion graphics, its design reference in docs/specs/021-motion-graphics/); docs/BACKLOG.md lists features agreed for later;
               019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
 docs/research/ dated research reports behind the specs

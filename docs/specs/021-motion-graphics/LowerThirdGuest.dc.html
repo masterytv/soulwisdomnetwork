@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lower third: guest</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:7s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#2a2420}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.wipe{animation-name:wipe}.spin{animation-name:spin}.slide{animation-name:slide}.draw{animation-name:draw}.fade{animation-name:fade}
+.t1{animation-delay:.2s}.t2{animation-delay:.35s}.t3{animation-delay:.55s}.t4{animation-delay:.7s}
+.still .a{animation:none!important}
+@keyframes wipe{0%{clip-path:inset(0 100% 0 0);opacity:1}11%,82%{clip-path:inset(0 0 0 0);opacity:1}92%,100%{clip-path:inset(0 0 0 0);opacity:0}}
+@keyframes spin{0%{opacity:0;transform:scale(0) rotate(-180deg)}10%{opacity:1;transform:scale(1.25) rotate(10deg)}15%,82%{opacity:1;transform:scale(1) rotate(0)}90%,100%{opacity:0;transform:scale(.4) rotate(90deg)}}
+@keyframes slide{0%{opacity:0;transform:translateX(-36px)}12%,82%{opacity:1;transform:none}91%,100%{opacity:0;transform:translateX(-16px)}}
+@keyframes draw{0%{transform:scaleX(0)}12%,82%{transform:scaleX(1);opacity:1}91%,100%{transform:scaleX(1);opacity:0}}
+@keyframes fade{0%{opacity:0;transform:translateY(10px)}12%,82%{opacity:1;transform:none}91%,100%{opacity:0}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(ellipse 60% 70% at 62% 40%, #7a6655 0%, #4a3d33 45%, #221c18 100%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 1000px; top: 230px; width: 300px; height: 360px; border-radius: 50%; background: #1d1714; opacity: 0.55; filter: blur(30px)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 820px; top: 560px; width: 660px; height: 620px; border-radius: 48% 48% 0 0; background: #1d1714; opacity: 0.55; filter: blur(34px)"></div>
+  <p aria-hidden="true" style="position: absolute; right: 90px; top: 70px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[INTERVIEW FOOTAGE]</p>
+
+  <div style="position: absolute; left: 90px; top: 770px; display: flex; align-items: flex-start; gap: 26px">
+    <div aria-hidden="true" class="a wipe" style="position: absolute; left: -24px; top: -20px; width: 1080px; height: 210px; background: linear-gradient(90deg, rgba(20,10,46,0.94) 0%, rgba(20,10,46,0.88) 58%, rgba(20,10,46,0) 100%)"></div>
+    <svg class="a spin t1" aria-hidden="true" width="44" height="44" viewBox="0 0 24 24" style="position: relative; margin-top: 12px; flex-shrink: 0"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+    <div style="position: relative; display: flex; flex-direction: column; gap: 14px">
+      <h2 class="a slide t2" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 60px; line-height: 1.05; letter-spacing: 0.03em; color: #ffffff">[Guest Name]</h2>
+      <div class="a draw t3" style="width: 100%; min-width: 520px; height: 2px; transform-origin: left center; background: linear-gradient(90deg, #f7c65b, rgba(247,198,91,0))"></div>
+      <p class="a fade t4" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 500; font-size: 25px; letter-spacing: 0.16em; text-transform: uppercase; color: #f7c65b">[Descriptor, e.g. author · researcher]</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>
