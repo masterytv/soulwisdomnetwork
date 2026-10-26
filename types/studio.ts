@@ -288,3 +288,16 @@ export interface ShortsView {
     warnings: string[];
     finishedAt: number | null;
 }
+
+// The highlights run's state for the editor (spec 021 item M4); the suggestions themselves are the
+// edit's `suggested: true` highlight layers.
+export interface HighlightsView {
+    status: 'queued' | 'working' | 'ready' | 'failed' | null;
+    error: string | null;
+    suggested: number;
+    unverified: number;
+    dropped: number;
+    descriptorsFilled: number;
+    keyIdeas: number;
+    generatedAt: number | null;
+}

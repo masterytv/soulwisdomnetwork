@@ -205,6 +205,8 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                                 className={field} placeholder="The idea's name" />
                             <input value={l.fields.definition} maxLength={200} aria-label="Definition" onChange={e => set({ fields: { ...l.fields, definition: e.target.value } })}
                                 className={field} placeholder="One plain sentence" />
+                            {/* Key ideas can come from "Suggest highlights" (spec 021 M4), where the definition is Claude's. */}
+                            <p className={hint}>A suggested definition is Claude&apos;s words: check it before publishing.</p>
                         </>)}
                         {(l.template === "logoBug" || l.template === "endScreen" || l.template === "logoSting") && (
                             <p className={hint}>No words of its own: it draws the Studio&apos;s logo and colours.</p>

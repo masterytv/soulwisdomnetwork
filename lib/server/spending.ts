@@ -27,6 +27,7 @@ export const ESTIMATE_USD = {
     extras: 0.1,          // Claude's social posts and follow-up email
     translation: 0.4,     // Claude translates one language's captions, title and description (Part I)
     retakes: 0.5,         // Claude reads the accepted transcript for a tighter edit (Part I; spec 019 item 1.3 widened it)
+    highlights: 0.5,      // Claude reads the accepted transcript for highlight moments (spec 021 M4); like retakes, the transcript is the bulk — measure on a real episode and tighten
 };
 
 interface Reservation { id: string; at: number; usd: number; what: string }

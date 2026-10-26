@@ -35,11 +35,12 @@ import type { TimelineMedia } from '@/components/studio/timeline';
 import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
+import { suggestedCount } from '@/lib/highlights';
 import { brandOf, DEFAULT_BRAND, type StudioSettings } from '@/lib/studioSettings';
-import type { RetakesView, WordFixResult } from '@/types/studio';
+import type { HighlightsView, RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
-import { motionGraphics, withLayers, type BinItem, type Brand } from '@/lib/layers';
+import { layersOf, motionGraphics, withLayers, type BinItem, type Brand } from '@/lib/layers';
 import { firstEdit, type Teaser } from '@/lib/programme';
 import type { ProgrammeSetup } from '@/components/studio/programme';
 
@@ -104,6 +105,78 @@ function TightenTool({ episodeId, edit, onAdd, onNotes }: {
             {view?.status === 'ready' && fresh.length > 0 && <span className={small}>{kindCounts(fresh)}</span>}
             {view?.status === 'ready' && view.found.length === 0 && <span className={small}>Claude found nothing to tighten.</span>}
             {view?.status === 'failed' && <span className="text-sm text-red-300">Tighter edit: {view.error}</span>}
+            {error && <span className="text-sm text-red-300">{error}</span>}
+        </>
+    );
+}
+
+// "Suggest highlights" in the toolbar (spec 021 item M4): Claude reads the transcript for quotable
+// lines and stressed words; the job writes them into the SAVED edit as `suggested: true` layers, so
+// when it finishes this editor pulls the fresh edit in (or, with unsaved changes open, says to save or
+// discard first — a save would be refused anyway, since the job moved the version on). Clear removes
+// what is still only suggested; a suggestion the producer touched stays (lib/highlights.ts).
+function HighlightsTool({ episodeId, edit, unsaved, onClear, onReload }: {
+    episodeId: string; edit: EpisodeEdit; unsaved: boolean; onClear: () => void; onReload: () => Promise<void>;
+}) {
+    const [view, setView] = useState<HighlightsView | null>(null);
+    const [error, setError] = useState('');
+    const [stale, setStale] = useState(false);   // the run finished while unsaved changes were open
+    // When a run this editor watched turns ready, bring the suggestions in (decided as each poll lands,
+    // with the latest unsaved state and reload from refs, so the poll timer never restarts).
+    const wasRunning = useRef(false);
+    const unsavedRef = useRef(unsaved);
+    useEffect(() => { unsavedRef.current = unsaved; }, [unsaved]);
+    const onReloadRef = useRef(onReload);
+    useEffect(() => { onReloadRef.current = onReload; }, [onReload]);
+    const load = useCallback(() => {
+        studioFetch<HighlightsView>(`/api/studio/episodes/${episodeId}/highlights`).then(v => {
+            setView(v);
+            if (v.status === 'queued' || v.status === 'working') { wasRunning.current = true; return; }
+            if (!wasRunning.current || v.status !== 'ready') return;
+            wasRunning.current = false;
+            if (unsavedRef.current) setStale(true);
+            else onReloadRef.current().catch(e => setError((e as Error).message));
+        }).catch(e => setError((e as Error).message));
+    }, [episodeId]);
+    useEffect(() => { load(); }, [load]);
+    const running = view?.status === 'queued' || view?.status === 'working';
+    useEffect(() => {
+        if (!running) return;
+        const timer = setInterval(load, 10_000);
+        return () => clearInterval(timer);
+    }, [running, load]);
+    const start = async () => {
+        setError('');
+        setStale(false);
+        try {
+            await studioFetch(`/api/studio/episodes/${episodeId}/highlights`, { method: 'POST' });
+            load();
+        } catch (e) {
+            setError((e as Error).message);
+        }
+    };
+    const suggested = suggestedCount(layersOf(edit));
+    const counts = view?.status === 'ready'
+        ? [`${view.suggested} highlight${view.suggested === 1 ? '' : 's'} suggested`,
+            ...(view.unverified ? [`${view.unverified} not found word for word`] : []),
+            ...(view.dropped ? [`${view.dropped} paced out`] : [])].join(' · ')
+        : '';
+    return (
+        <>
+            <button type="button" onClick={() => void start()} disabled={running} className={secondary}
+                title="Claude reads the transcript for quotable lines and stressed words; verified word for word and paced by rule, they land on the timeline as suggestions (up to about $0.50)">
+                {running ? 'Claude is picking highlights…' : view?.status === 'ready' ? 'Suggest highlights again' : 'Suggest highlights'}
+            </button>
+            {suggested > 0 && (
+                <button type="button" className={secondary} onClick={onClear} title="Removes the highlights still marked as suggestions; any you changed stay">
+                    Clear {suggested} suggested
+                </button>
+            )}
+            {stale && view?.status === 'ready' && (
+                <span className="text-sm text-amber-300">{view.suggested} highlights suggested — save or discard your changes, then reload to see them.</span>
+            )}
+            {!stale && counts && <span className={small}>{counts}</span>}
+            {view?.status === 'failed' && <span className="text-sm text-red-300">Highlights: {view.error}</span>}
             {error && <span className="text-sm text-red-300">{error}</span>}
         </>
     );
@@ -222,6 +295,19 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             })
             .catch(() => { setLoaded(true); });
     }, [episodeId, reset, change, draftKey, workspace, accepted]);
+
+    // The saved edit again, after the highlights job wrote into it (spec 021 M4): the fresh layers and
+    // version replace what is open, and any local copy of the old version is dropped so it cannot
+    // resurrect over the suggestions.
+    const reloadEdit = useCallback(async () => {
+        const data = await studioFetch<{ edit: EpisodeEdit; overlayUrls?: Record<string, string> }>(`/api/studio/episodes/${episodeId}/edit`);
+        const opened = withoutEmptyCuts(data.edit);
+        setEdit(workspace && bin ? withLayers(opened, bin) : opened);
+        setOverlayUrls(data.overlayUrls ?? {});
+        reset(data.edit.version);
+        localDrafts.clear(draftKey);
+        setLocalDraft(null);
+    }, [episodeId, workspace, bin, reset, draftKey]);
 
     // The Studio editor's timeline media, made at ingest: thumbnail links, then the waveform's peaks.
     // Either may be missing on an episode the ingest catch-up has not reached yet.
@@ -418,7 +504,18 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             overlayUrls={overlayUrls}
             cutNotes={cutNotes}
             silences={silences}
-            tools={<TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />}
+            tools={<>
+                <TightenTool episodeId={episodeId} edit={edit} onAdd={e => { setEdit(e); change(e); }} onNotes={setCutNotes} />
+                {/* Needs the bin, as every layers change does: saving layers without it could drop the b-roll. */}
+                {workspace && !!bin && (
+                    <HighlightsTool episodeId={episodeId} edit={edit} unsaved={saveState !== 'saved'} onReload={reloadEdit}
+                        onClear={() => {
+                            const e = { ...edit, layers: layersOf(edit).filter(l => !(l.kind === 'highlight' && l.suggested)), overlays: [] };
+                            setEdit(e);
+                            change(e);
+                        }} />
+                )}
+            </>}
             onChange={(next) => { const e = withoutEmptyCuts(next); setEdit(e); change(e); }}
             heading={heading}
             status={<>{saveStatus}{workspace && draftBanner}{workspace && setupBanner}</>}
