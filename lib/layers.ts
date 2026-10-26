@@ -13,6 +13,7 @@
 
 import { z } from 'zod';
 import { editedTime, type KeptRange } from './edit';
+import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES } from './graphics';
 import {
     ALIGN, assRgba, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, POSITIONS, SIZE_NAMES, styleLine, TEXT_SIZES,
     type CaptionStyle, type FontName, type Overlay, type Position,
@@ -107,25 +108,46 @@ export const TextLayerSchema = z.object({
     subColor: hex.optional(),                     // the second line's colour; absent: as the first
     element: z.enum(['title', 'lowerThird']).optional(),
 });
-export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema]);
+// A motion graphic (docs/specs/021-motion-graphics.md): a branded template drawn over the picture, with
+// its fields checked per template (each ≤ 200 characters, trimmed). Its in and out are the template's own
+// motion, so the edges stay 'none'; it covers the whole frame, so it has no place or width. M1 builds
+// `lowerThird` (a guest's name and descriptor, or the compact host variant); M2 adds the rest.
+const noEdge = z.object({ transition: z.literal('none'), durationMs: z.literal(0) }).strict();
+const field200 = z.string().trim().max(200);
+export const GraphicLayerSchema = z.object({
+    id,
+    track: z.number().int().min(2).max(9),
+    anchor: AnchorSchema,
+    durationMs: z.number().int().min(LAYER_MIN_MS).max(GRAPHIC_MAX_MS),
+    opacity: z.number().min(0).max(1),
+    in: noEdge,
+    out: noEdge,
+    kind: z.literal('graphic'),
+    template: z.literal('lowerThird'),
+    fields: z.object({ name: field200, descriptor: field200, variant: z.enum(['guest', 'host']) }).strict(),
+});
+export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema, GraphicLayerSchema]);
 export type ImageLayer = z.infer<typeof ImageLayerSchema>;
 export type VideoLayer = z.infer<typeof VideoLayerSchema>;
 export type TextLayer = z.infer<typeof TextLayerSchema>;
+export type GraphicLayer = z.infer<typeof GraphicLayerSchema>;
 export type PictureLayer = ImageLayer | VideoLayer;
 export type Layer = z.infer<typeof LayerSchema>;
 export const LayersSchema = z.array(LayerSchema).max(LAYERS_MAX)
     .refine(ls => new Set(ls.map(l => l.id)).size === ls.length, 'Two layers have the same id');
 
-export const isPicture = (l: Layer): l is PictureLayer => l.kind !== 'text';
+export const isPicture = (l: Layer): l is PictureLayer => l.kind === 'image' || l.kind === 'video';
 
-// What a layer is, in words: its element, or its kind.
+// What a layer is, in words: its element, its template, or its kind.
 export function layerKind(l: Layer): string {
+    if (l.kind === 'graphic') return GRAPHIC_TEMPLATES[l.template].label;
     if (l.kind !== 'video' && l.element) return ELEMENT_LABELS[l.element];
     return l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture';
 }
 
 // A layer's name in the panels and on the timeline: what it says, or its file's name.
 export function layerName(l: Layer): string {
+    if (l.kind === 'graphic') return l.fields.name || GRAPHIC_TEMPLATES[l.template].label;
     if (l.kind === 'text') return l.subtext ? `${l.text} · ${l.subtext}` : l.text;
     return l.media.name;
 }
@@ -143,12 +165,14 @@ export function placeOf(position: Position, mh: number, mv: number): Place {
 // from the sides and 80 from the top or bottom (a lower third 120, clear of the captions), pictures 60,
 // and none for a picture as wide as the frame.
 export function marginsOf(l: Layer): [number, number] {
+    if (l.kind === 'graphic') return [0, 0];                 // the whole frame: the template places itself
     if (l.kind === 'text') return [90, l.element === 'lowerThird' ? 120 : 80];
     return l.w >= 1 ? [0, 0] : [60, 60];
 }
 
 // Which of the nine positions a layer is at, or "custom" once dragged or typed somewhere else.
 export function positionOf(l: Layer): Position | 'custom' {
+    if (l.kind === 'graphic') return 'custom';               // no place of its own: it covers the frame
     const [mh, mv] = marginsOf(l);
     const hit = POSITIONS.find(p => {
         const q = placeOf(p, mh, mv);
@@ -457,7 +481,7 @@ export function layerFromBin(item: BinItem, srcMs: number): PictureLayer | null 
 // colour for bands and its accent for what stands out, and the hosts, whose lower thirds say "Host".
 export interface Brand {
     font: FontName;
-    colors: { background: string; accent: string };
+    colors: { background: string; backgroundBottom: string; accent: string };
     hosts: string[];
 }
 
@@ -499,6 +523,18 @@ export function lowerThirds(words: { speaker: string; start: number }[], layers:
         .map(([speaker, start], i) => ({ ...lowerThird(start, speaker, hosts.has(speaker.trim().toLowerCase()) ? 'Host' : '', brand), id: newId(`l${i}`) }));
 }
 
+// A motion lower third (spec 021 M1, lib/graphics.ts): the branded template, drawn by the render and
+// played by the preview; the editor's Elements panel adds one at the playhead. Hosts get the compact
+// variant, labelled HOST, as the design has them.
+export function motionLowerThird(srcMs: number, name: string, host: boolean): GraphicLayer {
+    return {
+        id: newId('m'), kind: 'graphic', template: 'lowerThird', track: TRACK.text,
+        anchor: { srcMs: Math.max(0, Math.round(srcMs)) }, durationMs: GRAPHIC_TEMPLATES.lowerThird.durationMs,
+        opacity: 1, in: { transition: 'none', durationMs: 0 }, out: { transition: 'none', durationMs: 0 },
+        fields: { name: name.slice(0, 200) || 'Name', descriptor: host ? 'HOST' : '', variant: host ? 'host' : 'guest' },
+    };
+}
+
 // The logo bug: the Studio's logo small in the top right, a little see-through, for the whole episode
 // (pinned at its start, so it never moves with cuts).
 export function logoBug(logo: { path: string; name: string }): ImageLayer {
@@ -514,7 +550,7 @@ export function logoBug(logo: { path: string; name: string }): ImageLayer {
 export function withLayers<E extends { layers?: Layer[]; overlays?: Overlay[] }>(edit: E, bin: BinItem[]): E {
     if (edit.layers) return edit;
     const layers = layersOf(edit);
-    const have = new Set(layers.flatMap(l => (l.kind === 'text' ? [] : [l.media.path])));
+    const have = new Set(layers.flatMap(l => (isPicture(l) ? [l.media.path] : [])));
     for (const b of bin) {
         if (b.source !== 'broll' || have.has(b.path) || b.startMs === undefined) continue;
         layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));

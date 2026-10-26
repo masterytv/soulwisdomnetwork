@@ -48,6 +48,14 @@ jobs:
         done
         exit 1
 
+
+    # The graphics renderer's tests (spec 021) draw templates in headless Chromium, as the render job does.
+    # No --with-deps: that would be another apt call on the mirror that already makes the ffmpeg step
+    # flaky, and GitHub's ubuntu runner image ships the browser's system libraries.
+    - name: Install Chromium for the graphics renderer
+      run: npx playwright install chromium
+
+
     - name: Typecheck
       run: npx tsc --noEmit
 

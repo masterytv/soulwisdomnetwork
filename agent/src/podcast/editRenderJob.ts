@@ -25,7 +25,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
-import { layersOf, SITE_LOGO, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { asVideoLayer, graphicSpec, type GraphicSpec } from '../../../lib/graphics';
 import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
@@ -68,6 +69,10 @@ export interface EditRenderDeps {
     voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
     // The files that open the edit in Resolve, Premiere or Final Cut (spec 019 item 4.1, editExport.ts); left out, none are made.
     exportEdit?: (o: { video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string }) => Promise<ExportResult>;
+    // Motion graphics (spec 021 M1, agent/src/podcast/graphics/render.ts): names a clip by what draws it,
+    // and draws it in headless Chromium. Left out (no Chromium on the runner), graphic layers are skipped
+    // with a warning.
+    graphics?: { name: (spec: GraphicSpec) => string; draw: (spec: GraphicSpec, out: string) => Promise<unknown> };
 }
 
 export interface EditRenderPlan {
@@ -89,6 +94,8 @@ export interface EditRenderPlan {
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
     // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
+    // Motion graphics (spec 021): drawn into clips before the render, then overlaid as video layers.
+    graphics: GraphicLayer[];
     wordsPath: string | null;            // reviewed transcript, Storage path
     chapters: { title: string; startMs: number }[];
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
@@ -158,8 +165,9 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         onScreen: {
             captions: wordsPath ? captions : null,
             texts: layersOf(edit).filter((l): l is TextLayer => l.kind === 'text'),
-            pictures: layersOf(edit).filter((l): l is PictureLayer => l.kind !== 'text'),
+            pictures: layersOf(edit).filter(isPicture),
         },
+        graphics: layersOf(edit).filter((l): l is GraphicLayer => l.kind === 'graphic'),
         wordsPath,
         chapters: notes?.chapters ?? [],
         quotes: (notes?.quotes ?? []).filter(q => q.endMs > q.startMs)
@@ -229,6 +237,27 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             continue;
         }
         pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
+    }
+    // Motion graphics (spec 021 M1): each graphic layer's clip, drawn by its template in headless Chromium
+    // into ProRes 4444 with alpha, and kept in Storage under a name made from everything that drew it — a
+    // re-render only draws what changed. The clip then goes to the renderer as a silent video layer.
+    const graphicWarnings: string[] = [];
+    if (plan.graphics.length && !deps.graphics) {
+        graphicWarnings.push('Motion graphics were not drawn: the graphics renderer is not on this runner.');
+    } else if (plan.graphics.length && deps.graphics) {
+        for (const g of plan.graphics) {
+            const spec = graphicSpec(g, settings.colors);
+            const clipName = deps.graphics.name(spec);
+            const storagePath = `episodes/${episodeId}/graphics/${clipName}`;
+            const local = path.join(workDir, clipName);
+            if (deps.exists && await deps.exists(storagePath)) await deps.download(storagePath, local);
+            else {
+                await deps.graphics.draw(spec, local);
+                await deps.upload(local, storagePath, 'video/quicktime');
+            }
+            pictures.push({ layer: asVideoLayer(g, storagePath), file: local });
+        }
+        pictures.sort((a, b) => a.layer.track - b.layer.track);
     }
     // Each sound's file. A show library file plays only while its licence is checked (an admin can take a
     // check back after the sound was placed); the others are left out, with a warning.
@@ -344,7 +373,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         timeSavedSeconds: report.timeSavedSeconds,
         renderSeconds: report.renderSeconds,
         editVersion: plan.edit.version,
-        warnings: [...plan.warnings, ...soundWarnings, ...(report.warnings ?? []), ...exportWarnings],
+        warnings: [...plan.warnings, ...soundWarnings, ...graphicWarnings, ...(report.warnings ?? []), ...exportWarnings],
         qc: report.qc,
         credits,
         exports,

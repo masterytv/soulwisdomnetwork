@@ -1673,10 +1673,11 @@ export function Timeline({
                                     if (!b || !shown(b.fromMs, b.toMs)) return null;
                                     // A picture on a higher track (the logo bug, item E6) is a thin strip along the top of V2, so a
                                     // whole-episode logo never covers the b-roll under it.
-                                    const thin = l.kind !== 'text' && l.track >= TRACK.logo;
-                                    const [top, height] = l.kind === 'text' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
+                                    const thin = l.kind !== 'text' && l.kind !== 'graphic' && l.track >= TRACK.logo;
+                                    // A graphic (spec 021) sits on V3 with the text it stands beside.
+                                    const [top, height] = l.kind === 'text' || l.kind === 'graphic' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
                                     const isSel = l.id === selectedLayer;
-                                    const color = l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
+                                    const color = l.kind === 'graphic' ? 'bg-amber-400/80' : l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
                                     const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
                                     return (
                                         <div

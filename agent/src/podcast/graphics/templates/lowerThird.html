@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- The lower third (docs/specs/021-motion-graphics.md, item M1), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/LowerThirdGuest.dc.html and LowerThirdHosts.dc.html): the gold star
+     spins in on a wiped band, the name slides in, a rule draws and the descriptor fades up; hosts get the
+     compact variant. Same markup, colours, type and keyframes as the design, with the review loop replaced
+     by the in / hold / out timing in runtime.js. Fields: name, descriptor, variant ('guest' or 'host').
+     The background is transparent: the render screenshots it over nothing and the preview sits it over the
+     video. Fonts come from local files only (lib/graphics.ts; never the network). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Lower third</title>
+<style>
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', sans-serif; color: #fff;
+        --ink-rgb: 20, 10, 46; --gold: #f7c65b; }
+.block { position: absolute; left: 90px; top: 770px; display: flex; align-items: flex-start; gap: 26px; }
+.band { position: absolute; left: -24px; top: -20px; width: 1080px; height: 210px;
+        background: linear-gradient(90deg, rgba(var(--ink-rgb), 0.94) 0%, rgba(var(--ink-rgb), 0.88) 58%, rgba(var(--ink-rgb), 0) 100%); }
+.star { position: relative; width: 44px; height: 44px; margin-top: 12px; flex-shrink: 0; }
+.star path { fill: var(--gold); }
+.col { position: relative; display: flex; flex-direction: column; gap: 14px; }
+.name { margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 60px; line-height: 1.05; letter-spacing: 0.03em; color: #ffffff; }
+.rule { width: 100%; min-width: 520px; height: 2px; transform-origin: left center; background: linear-gradient(90deg, var(--gold), transparent); }
+.desc { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 500; font-size: 25px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); }
+/* The compact host variant (LowerThirdHosts.dc.html): smaller, no rule, the HOST label. */
+.host .block { top: 826px; gap: 18px; }
+.host .band { left: -16px; top: -16px; width: 700px; height: 150px; }
+.host .star { width: 32px; height: 32px; margin-top: 8px; }
+.host .col { gap: 10px; }
+.host .name { font-size: 44px; }
+.host .rule { display: none; }
+.host .desc { font-weight: 600; font-size: 20px; letter-spacing: 0.24em; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div class="block">
+    <div id="band" class="band" aria-hidden="true"></div>
+    <svg id="star" class="star" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z"></path></svg>
+    <div class="col">
+      <h2 id="name" class="name"></h2>
+      <div id="rule" class="rule" aria-hidden="true"></div>
+      <p id="desc" class="desc"></p>
+    </div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const host = f.variant === 'host';
+    const rgb = hex => { const n = parseInt(hex.slice(1), 16); return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`; };
+    const el = id => document.getElementById(id);
+
+    const root = el('g');
+    root.classList.toggle('host', host);
+    if (/^#[0-9a-fA-F]{6}$/.test(colors.background || '')) root.style.setProperty('--ink-rgb', rgb(colors.background));
+    if (/^#[0-9a-fA-F]{6}$/.test(colors.accent || '')) root.style.setProperty('--gold', colors.accent);
+    el('name').textContent = f.name || '';
+    el('desc').textContent = f.descriptor || '';
+    if (!f.descriptor) el('desc').style.display = 'none';
+
+    // The design's cycle, as in / hold / out: the band wipes on over 770 ms, the star, name, rule and
+    // descriptor follow 150–250 ms apart; everything fades over the last 400 ms.
+    const R = window.graphicRuntime;
+    const delay = host ? { star: 150, name: 300, desc: 450, rule: 0 } : { star: 200, name: 350, rule: 550, desc: 700 };
+    R.animate(el('band'), { inMs: 770, outMs: 400, enter: [
+        { at: 0, clipPath: 'inset(0 100% 0 0)', opacity: 1 }, { at: 1, clipPath: 'inset(0 0 0 0)', opacity: 1 },
+    ], exit: [{ at: 1, clipPath: 'inset(0 0 0 0)', opacity: 0 }] });
+    R.animate(el('star'), { delay: delay.star, inMs: 1050, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: 'scale(0) rotate(-180deg)' },
+        { at: 0.67, opacity: 1, transform: 'scale(1.25) rotate(10deg)' },
+        { at: 1, opacity: 1, transform: 'scale(1) rotate(0deg)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scale(0.4) rotate(90deg)' }] });
+    R.animate(el('name'), { delay: delay.name, inMs: 840, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: `translateX(${host ? -28 : -36}px)` }, { at: 1, opacity: 1, transform: 'translateX(0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: `translateX(${host ? -12 : -16}px)` }] });
+    if (!host) {
+        R.animate(el('rule'), { delay: delay.rule, inMs: 840, outMs: 400, enter: [
+            { at: 0, opacity: 1, transform: 'scaleX(0)' }, { at: 1, opacity: 1, transform: 'scaleX(1)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'scaleX(1)' }] });
+    }
+    R.animate(el('desc'), { delay: delay.desc, inMs: 840, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(10px)' }, { at: 1, opacity: 1, transform: 'translateY(0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)' }] });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

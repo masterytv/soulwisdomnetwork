@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chapter divider</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:7s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#140a2e}
+.sky{background-color:#140a2e;background-image:radial-gradient(2px 2px at 12% 14%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 41% 88%,rgba(255,255,255,.5),transparent),radial-gradient(2px 2px at 66% 12%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 88% 71%,rgba(255,255,255,.6),transparent),radial-gradient(1.5px 1.5px at 53% 52%,rgba(255,255,255,.4),transparent),radial-gradient(circle at 82% 23%,#4a2f9c 0%,#23145a 28%,#140a2e 58%,#0b0520 100%)}
+.flare{position:absolute;left:0;top:0;width:0;height:0}
+.flare i{position:absolute;display:block}
+.flare .core{left:-60px;top:-60px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,#fff 0,#fff 10%,rgba(255,255,255,.6) 22%,rgba(196,181,253,.22) 48%,rgba(196,181,253,0) 70%)}
+.flare .h{left:-260px;top:-2px;width:520px;height:3px;background:linear-gradient(90deg,rgba(255,255,255,0),#fff 50%,rgba(255,255,255,0))}
+.flare .v{left:-1.5px;top:-200px;width:3px;height:400px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 50%,rgba(255,255,255,0))}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.num{animation-name:num}.rise{animation-name:rise}.bloom{animation-name:bloom}.arc{animation-name:arc}.dot{animation-name:dot}
+.t1{animation-delay:.3s}.t2{animation-delay:.5s}.t3{animation-delay:.8s}
+.still .a{animation:none!important}
+@keyframes num{0%{opacity:0;transform:translateX(-60px);letter-spacing:.3em}14%,84%{opacity:1;transform:none;letter-spacing:.02em}94%,100%{opacity:0}}
+@keyframes rise{0%{opacity:0;transform:translateY(26px);filter:blur(8px)}13%,84%{opacity:1;transform:none;filter:blur(0)}94%,100%{opacity:0}}
+@keyframes bloom{0%{opacity:0;transform:scale(.2) rotate(-30deg)}10%{opacity:1;transform:scale(1.2)}18%,84%{opacity:1;transform:none}94%,100%{opacity:0;transform:scale(.5)}}
+@keyframes arc{0%{opacity:0;transform:rotate(-14deg)}18%,84%{opacity:1;transform:none}94%,100%{opacity:0}}
+@keyframes dot{0%{transform:scale(0)}12%,86%{transform:scale(1)}96%,100%{transform:scale(0)}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div class="sky" style="position: absolute; inset: 0"></div>
+  <div aria-hidden="true" class="a arc" style="position: absolute; left: 1260px; top: -70px; width: 640px; height: 640px; border-radius: 50%; border-top: 2px solid rgba(247, 198, 91, 0.5); border-right: 2px solid rgba(247, 198, 91, 0.12); transform-origin: 320px 320px"></div>
+  <div aria-hidden="true" class="a arc t1" style="position: absolute; left: 1180px; top: -150px; width: 800px; height: 800px; border-radius: 50%; border-top: 1px solid rgba(247, 198, 91, 0.28); border-left: 1px solid rgba(247, 198, 91, 0.08); transform-origin: 400px 400px"></div>
+  <div aria-hidden="true" style="position: absolute; left: 1580px; top: 250px; width: 0; height: 0">
+    <div class="flare a bloom t1"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+  </div>
+
+  <div style="position: absolute; left: 160px; top: 280px; display: flex; align-items: center; gap: 56px">
+    <span aria-hidden="true" class="a num" style="font-family: 'Cinzel', serif; font-weight: 700; font-size: 380px; line-height: 1; color: transparent; -webkit-text-stroke: 2px #f7c65b">II</span>
+    <div style="display: flex; flex-direction: column; gap: 22px">
+      <p class="a rise t1" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 26px; letter-spacing: 0.34em; color: #f7c65b">CHAPTER TWO</p>
+      <h2 class="a rise t2" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 110px; line-height: 1.02; letter-spacing: 0.02em; color: #ffffff">Coming Back</h2>
+      <p class="a rise t3" style="margin: 0; max-width: 620px; font-family: 'Outfit', sans-serif; font-weight: 400; font-size: 32px; line-height: 1.4; color: #d6caff">[One line on what this part of the conversation explores]</p>
+    </div>
+  </div>
+
+  <div aria-label="Chapter 2 of 5" role="img" style="position: absolute; left: 160px; bottom: 110px; display: flex; align-items: center; gap: 18px">
+    <span class="a dot" style="width: 10px; height: 10px; border-radius: 50%; background: rgba(247,198,91,0.45)"></span>
+    <span class="a dot t1" style="width: 56px; height: 10px; border-radius: 5px; background: #f7c65b"></span>
+    <span class="a dot t2" style="width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.3)"></span>
+    <span class="a dot t2" style="width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.3)"></span>
+    <span class="a dot t3" style="width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.3)"></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

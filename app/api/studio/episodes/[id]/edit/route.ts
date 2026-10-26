@@ -53,7 +53,8 @@ export const GET = handle<Context>(async (request, { params }) => {
     // Links to every picture the layers (or the overlays they grew from) use, so the editor can show them.
     const overlayUrls: Record<string, string> = {};
     for (const l of layersOf(edit)) {
-        if (l.kind === 'text' || overlayUrls[l.media.path]) continue;
+        // A graphic (spec 021) has no file: the preview fetches its template from /api/studio/graphics.
+        if (l.kind === 'text' || l.kind === 'graphic' || overlayUrls[l.media.path]) continue;
         if (l.media.path === SITE_LOGO) { overlayUrls[l.media.path] = SITE_LOGO_URL; continue; }
         const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[l.media.path] = url;
@@ -180,12 +181,12 @@ export const PUT = handle<Context>(async (request, { params }) => {
     // A picture is checked once, when it first appears on the edit: an overlay upload must be a real PNG
     // or JPEG uploaded through the Studio (lib/server/uploads.ts); any other file must be in the episode's
     // media bin.
-    const pictures = layers ? layers.flatMap(l => l.kind === 'text' ? [] : [l.media.path])
+    const pictures = layers ? layers.flatMap(l => l.kind === 'text' || l.kind === 'graphic' ? [] : [l.media.path])
         : overlays ? overlays.flatMap(o => o.type === 'image' ? [o.path] : []) : [];
     if (pictures.length) {
         const episode = (await ref.get()).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
-        const saved = new Set(layersOf(episode.edit ?? { cuts: [], version: 0 }).flatMap(l => l.kind === 'text' ? [] : [l.media.path]));
+        const saved = new Set(layersOf(episode.edit ?? { cuts: [], version: 0 }).flatMap(l => l.kind === 'text' || l.kind === 'graphic' ? [] : [l.media.path]));
         let bin: Set<string> | null = null;
         for (const path of new Set(pictures)) {
             if (saved.has(path)) continue;

@@ -262,7 +262,7 @@ export function thumbnailsSystemPrompt(s: StudioSettings): string {
 // The look of the Studio editor's titles, lower thirds and logo bug (spec 020 item E6): the captions' font,
 // the brand's colours, and the hosts.
 export function brandOf(s: Pick<StudioSettings, 'captionStyle' | 'colors' | 'hosts'>): Brand {
-    return { font: s.captionStyle.font, colors: { background: s.colors.background, accent: s.colors.accent }, hosts: s.hosts };
+    return { font: s.captionStyle.font, colors: { ...s.colors }, hosts: s.hosts };
 }
 export const DEFAULT_BRAND = brandOf(DEFAULT_SETTINGS);
 

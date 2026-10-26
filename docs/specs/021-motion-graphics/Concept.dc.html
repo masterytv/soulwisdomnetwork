@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Key idea callout</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:9s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#221c18}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.card{animation-name:card}.rise{animation-name:rise}.draw{animation-name:draw}.tick{animation-name:tick}
+.t1{animation-delay:.3s}.t2{animation-delay:.45s}.t3{animation-delay:.65s}.t4{animation-delay:.85s}
+.still .a{animation:none!important}
+@keyframes card{0%{opacity:0;transform:translateX(80px);clip-path:inset(0 0 0 100%)}10%,86%{opacity:1;transform:none;clip-path:inset(0 0 0 0)}95%,100%{opacity:0;transform:translateX(30px);clip-path:inset(0 0 0 0)}}
+@keyframes rise{0%{opacity:0;transform:translateY(16px)}11%,86%{opacity:1;transform:none}95%,100%{opacity:0}}
+@keyframes draw{0%{transform:scaleX(0)}12%,86%{transform:scaleX(1);opacity:1}95%,100%{transform:scaleX(1);opacity:0}}
+@keyframes tick{0%{opacity:0;transform:scale(1.6)}10%,86%{opacity:1;transform:none}95%,100%{opacity:0}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(ellipse 55% 70% at 34% 42%, #7a6655 0%, #4a3d33 45%, #221c18 100%)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 430px; top: 220px; width: 300px; height: 360px; border-radius: 50%; background: #1d1714; opacity: 0.5; filter: blur(30px)"></div>
+  <div aria-hidden="true" style="position: absolute; left: 250px; top: 550px; width: 660px; height: 620px; border-radius: 48% 48% 0 0; background: #1d1714; opacity: 0.5; filter: blur(34px)"></div>
+  <p aria-hidden="true" style="position: absolute; left: 90px; top: 70px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[INTERVIEW FOOTAGE]</p>
+
+  <aside class="a card" style="position: absolute; right: 110px; top: 210px; width: 680px; box-sizing: border-box; padding: 56px 60px 60px 60px; background: rgba(20, 10, 46, 0.88); backdrop-filter: blur(14px); display: flex; flex-direction: column; gap: 22px">
+    <div aria-hidden="true" class="a tick t1" style="position: absolute; left: 14px; top: 14px; width: 36px; height: 36px; border-left: 2px solid #f7c65b; border-top: 2px solid #f7c65b"></div>
+    <div aria-hidden="true" class="a tick t1" style="position: absolute; right: 14px; top: 14px; width: 36px; height: 36px; border-right: 2px solid #f7c65b; border-top: 2px solid #f7c65b"></div>
+    <div aria-hidden="true" class="a tick t1" style="position: absolute; left: 14px; bottom: 14px; width: 36px; height: 36px; border-left: 2px solid #f7c65b; border-bottom: 2px solid #f7c65b"></div>
+    <div aria-hidden="true" class="a tick t1" style="position: absolute; right: 14px; bottom: 14px; width: 36px; height: 36px; border-right: 2px solid #f7c65b; border-bottom: 2px solid #f7c65b"></div>
+
+    <div class="a rise t1" style="display: flex; align-items: center; gap: 12px">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+      <p style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.3em; color: #f7c65b">KEY IDEA</p>
+    </div>
+    <h2 class="a rise t2" style="margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 58px; line-height: 1.1; letter-spacing: 0.02em; color: #ffffff">Near-Death Experience <span style="color: #f7c65b; font-size: 40px">(NDE)</span></h2>
+    <div aria-hidden="true" class="a draw t3" style="width: 120px; height: 2px; transform-origin: left center; background: #f7c65b"></div>
+    <p class="a rise t4" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 400; font-size: 31px; line-height: 1.45; color: #ece6ff">A vivid experience some people report when close to death — often a sense of leaving the body, a light, and a deep peace.</p>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

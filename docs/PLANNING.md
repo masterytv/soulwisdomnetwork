@@ -19,6 +19,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/specs/019-editor-light-v2.md` | **The plan and its status table**: Phases 0–5 and E. Start at its "Before you start" |
 | `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E16) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
+| `docs/specs/021-motion-graphics.md` | Motion graphics: branded templates and highlight moments (items M1–M5; the design in `docs/specs/021-motion-graphics/`) |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
 ## Decisions so far
@@ -191,3 +192,20 @@ the plan could be checked against it.
   because the render tests run ffmpeg.
 - **On the timeline, overlays are markers only:** they can't yet be dragged or trimmed there, only
   edited in the On screen panel (E5).
+
+## Spec 021: motion graphics (26 October 2026)
+
+Spec 021 follows 020: branded motion templates (Part A) and highlight moments that reframe the
+picture (Part B), built M1 → M5, each its own PR into `staging`, at the model effort its "Order
+and effort" table names. Tom answered its decisions D1–D6 on 26 October 2026 (recorded in the
+spec): motion graphics on by default, the moving templates are the look (the ASS ones stay as
+"Simple"), highlights on "Suggest highlights" at Normal density — a ceiling, not a quota — and
+the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
+
+- **M1 built** (PR #211): the graphics renderer (Playwright + ProRes 4444 clips, cached in
+  Storage), Cinzel, the workflows' Chromium step, and `lowerThird` end to end — the editor
+  preview plays the template in a sandboxed iframe, the render overlays its clip as a video
+  layer. The graphic layer kind exists, restricted to `lowerThird`. Rendering runs only once
+  this is on `main` (jobs run from `main`); staging can test the editor side.
+- **M2 next**: the other Part A templates, the full `graphic` layer, automatic placement
+  (D1-answer naming: automatic placement uses the motion templates), the `starlight` transition.
