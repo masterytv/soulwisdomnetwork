@@ -15,6 +15,7 @@ import {
     MOTION_LABELS, MOTIONS, placeOf, positionOf, startAt, WHOLE_EPISODE_MS,
     type Brand, type Edge, type Layer, type LayerTransition, type Motion,
 } from "@/lib/layers";
+import { GRAPHIC_MAX_MS } from "@/lib/graphics";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
 import { field, hint, secondary } from "@/components/studio/ui";
 import { useVideoTime } from "@/components/studio/useVideoTime";
@@ -101,6 +102,25 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                 <button type="button" disabled={!canEdit} className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(l.id)}>Remove</button>
             </div>
             <fieldset disabled={!canEdit} className="contents">
+                {l.kind === "graphic" && (
+                    <Section title="Lower third">
+                        <input value={l.fields.name} maxLength={200} aria-label="Name" onChange={e => set({ fields: { ...l.fields, name: e.target.value } })}
+                            className={field} placeholder="Name" />
+                        <input value={l.fields.descriptor} maxLength={200} aria-label="Descriptor" onChange={e => set({ fields: { ...l.fields, descriptor: e.target.value } })}
+                            className={field} placeholder={l.fields.variant === "host" ? "HOST" : "Descriptor, e.g. author · researcher"} />
+                        <select aria-label="Variant" value={l.fields.variant} className={`${small} self-start`}
+                            title="Guests get the full lower third with the drawn rule; hosts the compact one"
+                            onChange={e => {
+                                const host = e.target.value === "host";
+                                const descriptor = host && !l.fields.descriptor ? "HOST" : !host && l.fields.descriptor === "HOST" ? "" : l.fields.descriptor;
+                                set({ fields: { ...l.fields, variant: host ? "host" : "guest", descriptor } });
+                            }}>
+                            <option value="guest">Guest</option>
+                            <option value="host">Host (compact)</option>
+                        </select>
+                        <p className={hint}>Drawn by the template in the Studio&apos;s colours; it places and fades itself (spec 021).</p>
+                    </Section>
+                )}
                 {l.kind === "text" && (
                     <Section title="Text">
                         <input value={l.text} maxLength={200} aria-label="Text" onChange={e => set({ text: e.target.value })} className={field} placeholder="Text" />
@@ -146,15 +166,19 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                         </button>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                        <label className="flex items-center gap-1">
-                            <input type="checkbox" checked={isWhole(l)} aria-label="To the end of the episode"
-                                onChange={e => set({ durationMs: e.target.checked ? WHOLE_EPISODE_MS : Math.max(LAYER_MIN_MS, Math.min(10_000, span ? span.endMs - span.startMs : 5000)) })} />
-                            To the end of the episode
-                        </label>
+                        {/* A graphic is drawn frame by frame, so its length is capped (lib/graphics.ts). */}
+                        {l.kind !== "graphic" && (
+                            <label className="flex items-center gap-1">
+                                <input type="checkbox" checked={isWhole(l)} aria-label="To the end of the episode"
+                                    onChange={e => set({ durationMs: e.target.checked ? WHOLE_EPISODE_MS : Math.max(LAYER_MIN_MS, Math.min(10_000, span ? span.endMs - span.startMs : 5000)) })} />
+                                To the end of the episode
+                            </label>
+                        )}
                         {!isWhole(l) && (
                             <label className="flex items-center gap-1">
                                 for
-                                <NumberField label="Seconds on screen" value={l.durationMs / 1000} min={LAYER_MIN_MS / 1000} max={86_399} step={0.5}
+                                <NumberField label="Seconds on screen" value={l.durationMs / 1000} min={LAYER_MIN_MS / 1000}
+                                    max={l.kind === "graphic" ? GRAPHIC_MAX_MS / 1000 : 86_399} step={0.5}
                                     onChange={v => set({ durationMs: Math.round(v * 1000) })} />
                                 s
                             </label>
@@ -172,6 +196,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                     {anchorCut(l, clips) && <p className="text-amber-300">Its moment is cut, so it shows at the next kept moment.</p>}
                 </Section>
 
+                {l.kind !== "graphic" && (
                 <Section title="Position and size">
                     <div className="flex items-start gap-3">
                         <div role="group" aria-label="Position" className="grid grid-cols-3 gap-0.5 rounded border border-white/10 p-0.5 shrink-0" style={{ width: 72, aspectRatio: "16 / 9" }}>
@@ -208,6 +233,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                         </label>
                     )}
                 </Section>
+                )}
 
                 <Section title="Look">
                     <label className="flex items-center gap-2">
@@ -215,8 +241,9 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                         <input type="range" min={5} max={100} value={Math.round(l.opacity * 100)} aria-label="Opacity" onChange={e => set({ opacity: Number(e.target.value) / 100 })} />
                         {Math.round(l.opacity * 100)}%
                     </label>
-                    <EdgeFields label="In" edge={l.in} onChange={e => set({ in: e })} />
-                    <EdgeFields label="Out" edge={l.out} onChange={e => set({ out: e })} />
+                    {/* A graphic's in and out are the template's own motion (spec 021), so its edges stay off. */}
+                    {l.kind !== "graphic" && <EdgeFields label="In" edge={l.in} onChange={e => set({ in: e })} />}
+                    {l.kind !== "graphic" && <EdgeFields label="Out" edge={l.out} onChange={e => set({ out: e })} />}
                     {l.kind === "image" && (
                         <label className="flex items-center gap-2" title="A slow zoom or pan, as the b-roll has; it fills a 16:9 box">
                             Motion

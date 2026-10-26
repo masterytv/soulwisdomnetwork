@@ -39,6 +39,13 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcastAudioRun.ts, podcast_audio.yml), GitHub Actions only; the feed is lib/podcastFeed.ts and lib/server/podcast.ts
               podcast/shorts.ts — spec 005 step 14 (Shorts from picked key quotes: titles, draw with ffmpeg + podcast/shortsRender.ts,
               schedule on YouTube), GitHub Actions only; fonts for the burned-in text in agent/assets/fonts
+              podcast/graphics/ — motion graphics (docs/specs/021-motion-graphics.md): templates/ are plain HTML pages
+              (in/hold/out motion and window.seek in templates/runtime.js) drawn by render.ts in headless Chromium
+              (Playwright, pinned in package.json; the workflows install its Chromium) into ProRes 4444 clips with alpha,
+              cached in Storage (episodes/<id>/graphics/) and overlaid by the render as video layers; the shared contract
+              (templates, fields, colours, the graphic layer → video layer mapping) is lib/graphics.ts, the layer schema in
+              lib/layers.ts, the editor's preview components/studio/graphics.tsx (a sandboxed iframe of the same HTML,
+              served by /api/studio/graphics/[template] with fonts inlined); Cinzel is in agent/assets/fonts (OFL)
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
               its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
               teasers, intro, outro, b-roll, voice cleanup (standard, Studio sound, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,

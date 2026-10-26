@@ -6,7 +6,7 @@
 // spec 018), added at the playhead and then changed in the Properties panel.
 
 import { newText } from "@/lib/onScreen";
-import { lowerThird, lowerThirds, logoBug, titleCard, toLayer, type Brand, type Layer } from "@/lib/layers";
+import { lowerThird, lowerThirds, logoBug, motionLowerThird, titleCard, toLayer, type Brand, type Layer } from "@/lib/layers";
 import type { BinItem } from "@/lib/layers";
 import type { SpokenWord } from "@/lib/showNotes";
 import { hint, secondary } from "@/components/studio/ui";
@@ -58,6 +58,25 @@ export function ElementsPanel({ words, layers, brand, logo, video, canEdit, onAd
                     <span className={hint}>Centred, in the accent colour, for 4 s.</span>
                     <button type="button" disabled={!canEdit} className={`${secondary} self-start px-2 py-0.5`}
                         onClick={() => onAdd([titleCard(currentMs, brand)])}>+ Title card at {at}</button>
+                </div>
+            </div>
+
+            <div className={row}>
+                <Sample align="items-end justify-start p-1.5">
+                    <span aria-hidden className="flex items-center gap-[2cqw]" style={{ color: "#fff", fontSize: "11cqw", lineHeight: 1.1 }}>
+                        <svg width="0.8em" height="0.8em" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                            <path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill={brand.colors.accent} />
+                        </svg>
+                        <span style={{ fontFamily: "serif", letterSpacing: "0.03em" }}>Name</span>
+                    </span>
+                </Sample>
+                <div className="flex flex-col gap-1 min-w-0">
+                    <span className="text-sm text-gray-200">Lower third (motion)</span>
+                    <span className={hint}>The branded template (spec 021): the star spins in, the name slides in Cinzel, a rule draws. Name and descriptor in Properties.</span>
+                    <div className="flex flex-wrap gap-1">
+                        <button type="button" disabled={!canEdit} className={`${secondary} px-2 py-0.5`}
+                            onClick={() => onAdd([motionLowerThird(currentMs, speakers[0] ?? "", false)])}>+ Motion lower third at {at}</button>
+                    </div>
                 </div>
             </div>
 

@@ -14,7 +14,7 @@ import { renderEdit } from './editRender';
 import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
 import { probeDuration } from './media';
-import { logoBug, SITE_LOGO } from '../../../lib/layers';
+import { logoBug, motionLowerThird, SITE_LOGO } from '../../../lib/layers';
 import { EMPTY_LICENCE, newSound, type LicenceCheck } from '../../../lib/audio';
 
 const ID = 'testEpisode123';
@@ -507,5 +507,50 @@ test('the edit\'s own teasers are cut exactly, with the "In this episode" tag un
         settings: { ...DEFAULT_SETTINGS, intro: 'none' },
     }, path.join(dir, 'work'), '1');
     assert.deepEqual(cut, [{ start: 1, tag: { speaker: 'Ana' } }, { start: 5, tag: undefined }]);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('motion graphics: drawn once and kept in Storage; a kept clip is fetched, not drawn; no renderer warns (spec 021 M1)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-graphics-'));
+    const graphic = { ...motionLowerThird(1000, 'Maria Santos', false), id: 'm1' };
+    const fakeRender: EditRenderDeps['render'] = async opts => {
+        given = (opts.onScreen?.pictures ?? []).map(p => ({ id: p.layer.id, path: p.layer.media.path, file: p.file }));
+        fs.writeFileSync(opts.out, '');
+        return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+    };
+    let given: { id: string; path: string; file: string }[] = [];
+    const run = async (over: Partial<EditRenderDeps>, kept: boolean) => {
+        const drawn: string[] = [];
+        const uploads: string[] = [];
+        const downloads: string[] = [];
+        const result = await runEditRender(ID, {
+            getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], layers: [graphic] } }),
+            download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+            upload: async (_local, p) => { uploads.push(p); },
+            saveToDrive: async () => null,
+            update: async () => {},
+            exists: async p => kept && p.includes('/graphics/'),
+            render: fakeRender,
+            now: () => 'NOW',
+            settings: { ...DEFAULT_SETTINGS, intro: 'none' },
+            graphics: { name: () => 'lowerThird-abc123.mov', draw: async (_spec, out) => { drawn.push(out); fs.writeFileSync(out, ''); } },
+            ...over,
+        }, path.join(dir, `work-${kept}-${Math.random().toString(36).slice(2)}`), '1');
+        return { drawn, uploads, downloads, result };
+    };
+    const clipPath = `episodes/${ID}/graphics/lowerThird-abc123.mov`;
+    // Not kept yet: drawn and uploaded, then overlaid as a silent video layer across the frame.
+    const fresh = await run({}, false);
+    assert.equal(fresh.drawn.length, 1);
+    assert.ok(fresh.uploads.includes(clipPath));
+    assert.deepEqual(given.map(g => [g.id, g.path]), [['m1-clip', clipPath]]);
+    // Kept from an earlier render: fetched, never drawn again.
+    const kept = await run({}, true);
+    assert.deepEqual(kept.drawn, []);
+    assert.ok(kept.downloads.includes(clipPath));
+    assert.ok(!kept.uploads.includes(clipPath));
+    // No graphics renderer on the runner: the render still finishes, with a warning.
+    const without = await run({ graphics: undefined }, false);
+    assert.ok(without.result.warnings.some(w => /graphics renderer/.test(w)), without.result.warnings.join(' | '));
     fs.rmSync(dir, { recursive: true, force: true });
 });

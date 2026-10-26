@@ -86,7 +86,7 @@ test('elements in a render: a lower third on a brand band, the logo bug over ful
         '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', video]);
     ffmpeg(['-f', 'lavfi', '-i', 'color=c=0x0000ff:s=640x360', '-frames:v', '1', blue]);
     ffmpeg(['-f', 'lavfi', '-i', 'color=c=0xff0000:s=512x512', '-frames:v', '1', red]);
-    const brand = { font: 'Outfit Black' as const, colors: { background: '#140a2e', accent: '#f7c65b' }, hosts: [] };
+    const brand = { font: 'Outfit Black' as const, colors: { background: '#140a2e', backgroundBottom: '#2a1552', accent: '#f7c65b' }, hosts: [] };
     const third = { ...lowerThird(500, 'Ana Example', 'Author', brand), in: { transition: 'none' as const, durationMs: 0 } };
     // B-roll over the whole frame at 3-6 s, still; the logo bug listed first, drawn above it all the same.
     const broll = { ...brollLayer({ index: 0, startMs: 3000, durationSeconds: 3, path: 'x' }), motion: 'none' as const };

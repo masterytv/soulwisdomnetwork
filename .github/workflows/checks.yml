@@ -48,6 +48,10 @@ jobs:
         done
         exit 1
 
+    # The graphics renderer's tests (spec 021) draw templates in headless Chromium, as the render job does.
+    - name: Install Chromium for the graphics renderer
+      run: npx playwright install --with-deps chromium
+
     - name: Typecheck
       run: npx tsc --noEmit
 

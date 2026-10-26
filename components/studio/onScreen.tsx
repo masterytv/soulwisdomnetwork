@@ -114,6 +114,7 @@ export function OnScreenPreview({ cues, clips, edit, video, studio }: {
 
 const KIND_CLASS: Record<Layer["kind"], string> = {
     text: "bg-violet-500/20 text-violet-200", image: "bg-sky-500/20 text-sky-200", video: "bg-emerald-500/20 text-emerald-200",
+    graphic: "bg-amber-500/20 text-amber-200",
 };
 export const kindClass = (l: Layer) => KIND_CLASS[l.kind];
 

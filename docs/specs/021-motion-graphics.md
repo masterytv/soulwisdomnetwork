@@ -1,8 +1,10 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** Planned. Decisions D1–D6 (end of this page) wait for Tom; the defaults written there are what
-gets built if he has not answered.
+**Status:** In progress. **M1 is built** (PR #211: the renderer, Cinzel, the workflow's Chromium step, and
+`lowerThird` end to end — the graphic layer kind restricted to that one template, the editor preview's
+sandboxed iframe, and the render overlaying the clip as a video layer). Tom answered D1–D6 on 26 October
+2026; his answers are recorded at the end of this page. M2 is next.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -86,6 +88,20 @@ and **stressed words** (a word or short phrase, 1.5–4 s: `splitWord`, `over`).
 ## How it works
 
 ### M1 — the graphics renderer
+
+**Built** (PR #211). As specced, with these particulars the next items build on: the graphic layer kind of
+M2 came in early, restricted to `lowerThird` (`lib/layers.ts` GraphicLayerSchema; fields `name`,
+`descriptor`, `variant: guest|host`; its length capped at 60 s, `GRAPHIC_MAX_MS`, because a clip is drawn
+frame by frame — M2's whole-episode logo bug loops a short clip instead). The shared contract is
+`lib/graphics.ts`; the templates' in/hold/out and `window.seek` live in
+`agent/src/podcast/graphics/templates/runtime.js`; the renderer (`graphics/render.ts`) serves the template
+and fonts over an intercepted origin, and `graphicClipName` names the Storage cache
+(`episodes/<id>/graphics/<template>-<hash>.mov`, checked by the job before drawing). The editor fetches each
+template once from `/api/studio/graphics/[template]` (runtime and fonts inlined; the route reads the files
+from the repo at request time — if that ever fails on App Hosting, inline the template as a TS string) and
+mounts it in a sandboxed iframe (`components/studio/graphics.tsx`), seeking by postMessage. Cinzel is
+`agent/assets/fonts/Cinzel-latin.woff2` (OFL beside it); templates also use the site's
+`app/fonts/Outfit-latin.woff2`. `checks.yml` installs Chromium too, because the tests draw.
 
 **Templates are plain HTML pages** in `agent/src/podcast/graphics/templates/<id>.html` (rebuilt from the
 design reference: same markup, styles and keyframes; no `<x-dc>`, no `support.js`). Each one:
@@ -243,18 +259,22 @@ Each item is one PR, promotable on its own (jobs only run from `main`).
 - Pacing: fixtures for spacing, the layout rotation, teasers and cuts excluded, density targets.
 - Verification: a moment whose words aren't in the transcript is dropped.
 
-## Decisions for Tom
+## Decisions for Tom — answered 26 October 2026
 
-- **D1** Keep the simple ASS title card and lower third beside the new templates? **Default: yes**, as
-  "Simple"; the automatic placement uses the new ones.
-- **D2** Motion graphics on for every new episode? **Default: on.**
-- **D3** Highlights placed automatically when the edit is built, or only on "Suggest highlights"? **Default: on
-  "Suggest highlights"** until a few episodes have been judged.
-- **D4** Default density. **Default: Normal** (about one every 90 s).
-- **D5** The Shorts overlay (`short`): in this spec or with Shorts later? **Default: later**; the template exists.
+- **D1** Keep the simple ASS title card and lower third beside the new templates? **Tom:** build moving
+  title cards, the "In this episode" card and the rest in the style of these motion graphics, and keep the
+  movement professional. So the moving templates are the show's look and the automatic placement uses them;
+  the ASS ones stay available as "Simple" but are not the default anywhere.
+- **D2** Motion graphics on for every new episode? **Tom: yes, on by default.**
+- **D3** Highlights placed automatically when the edit is built, or only on "Suggest highlights"?
+  **Tom: on "Suggest highlights".**
+- **D4** Default density. **Tom: Normal — but don't force motion where it isn't helpful.** The pacing rules
+  treat the density as a ceiling to aim under, never a quota: a stretch with no strong moment stays plain.
+- **D5** The Shorts overlay (`short`): in this spec or with Shorts later? **Tom: later — but don't forget
+  it.** docs/BACKLOG.md carries it so it survives this spec closing.
 - **D6** Descriptors and key-idea definitions are Claude's words. Show them for approval before they can be
-  rendered, or just mark them? **Default: marked "check before publishing"** in the editor, and the render's
-  quality report lists them.
+  rendered, or just mark them? **Tom: the default** — marked "check before publishing" in the editor, and
+  the render's quality report lists them.
 
 ## Out of scope
 
