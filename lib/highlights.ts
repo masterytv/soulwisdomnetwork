@@ -74,6 +74,7 @@ export interface VerifiedMoment {
     speaker: string;               // the transcript's speaker
     startMs: number;               // the highlight's span: first word − 200 ms … last word + 600 ms,
     endMs: number;                 // clamped to the kind's length
+    layout: string;                // Claude's wish, carried along; pacing may change it
 }
 
 // Every moment found word for word near its claimed time, snapped to its words; the texts that were
@@ -92,7 +93,7 @@ export function verifyMoments(moments: Moment[], words: SpokenWord[]): { verifie
         verified.push({
             kind: m.kind, text, speaker: found.speaker || m.speaker,
             emphasis: m.emphasis && text.toLowerCase().includes(m.emphasis.toLowerCase()) ? m.emphasis : '',
-            startMs, endMs,
+            startMs, endMs, layout: m.layout,
         });
     }
     return { verified, unverified };
@@ -107,8 +108,6 @@ export interface PaceOptions {
     density: Exclude<HighlightDensity, 'off'>;
     // The approved notes' key quotes: a moment on one of them wins when two sit too close.
     keyQuotes?: { startMs: number; endMs: number }[];
-    // Claude's layout wish per moment, same order as `moments`; invalid ones fall to the kind's first.
-    layouts?: string[];
 }
 
 export interface PacedDrop { text: string; why: string }
@@ -125,9 +124,9 @@ export function paceMoments(moments: VerifiedMoment[], words: SpokenWord[], o: P
         (o.keyQuotes ?? []).some(q => m.startMs < q.endMs && m.endMs > q.startMs);
 
     // Each moment judged on its own, with its place on the edited clock.
-    type Candidate = VerifiedMoment & { at: number; quote: boolean; layout: string };
+    type Candidate = VerifiedMoment & { at: number; quote: boolean };
     const candidates: Candidate[] = [];
-    for (const [i, m] of moments.entries()) {
+    for (const m of moments) {
         const range = ranges.find(r => m.startMs >= r.startMs && m.startMs < r.endMs);
         if (!range || m.endMs > range.endMs) { dropped.push({ text: m.text, why: 'its words are cut' }); continue; }
         if (o.teasers.some(t => m.startMs < t.endMs && m.endMs > t.startMs)) { dropped.push({ text: m.text, why: 'it sits on a teaser' }); continue; }
@@ -136,7 +135,7 @@ export function paceMoments(moments: VerifiedMoment[], words: SpokenWord[], o: P
         if (at < QUIET_START_MS) { dropped.push({ text: m.text, why: 'inside the episode\'s first 30 s' }); continue; }
         const speakers = new Set(words.filter(w => w.start < m.endMs && w.end > m.startMs).map(w => w.speaker).filter(Boolean));
         if (speakers.size > 1) { dropped.push({ text: m.text, why: 'two people speak there' }); continue; }
-        candidates.push({ ...m, at, quote: onKeyQuote(m), layout: o.layouts?.[i] ?? '' });
+        candidates.push({ ...m, at, quote: onKeyQuote(m) });
     }
     candidates.sort((a, b) => a.at - b.at);
 
@@ -223,3 +222,50 @@ export function keyIdeaAdditions(layers: Layer[], ideas: MomentsPayload['keyIdea
 // How many of the edit's highlights are still suggestions — the editor's count and Clear button.
 export const suggestedCount = (layers: Layer[]) =>
     layers.filter(l => l.kind === 'highlight' && l.suggested).length;
+
+// Everything a run adds to the edit's layers, in one place (the job writes this in a transaction):
+// the paced highlights merged in, descriptors onto empty guest lower thirds, key ideas as graphics.
+export function applySuggestions(layers: Layer[], r: {
+    highlights: HighlightLayer[]; descriptors: MomentsPayload['descriptors']; keyIdeas: MomentsPayload['keyIdeas'];
+}): { layers: Layer[]; suggested: number; descriptorsFilled: number; keyIdeasAdded: number } {
+    const merged = mergeSuggested(layers, r.highlights);
+    const filled = fillDescriptors(merged, r.descriptors);
+    const descriptorsFilled = filled.filter((l, i) => l !== merged[i]).length;
+    const ideas = keyIdeaAdditions(filled, r.keyIdeas);
+    return { layers: [...filled, ...ideas], suggested: suggestedCount(filled), descriptorsFilled, keyIdeasAdded: ideas.length };
+}
+
+// ─── what the job says to Claude (the prompts live here so they are testable and read beside the
+//     rules that check the answer) ──────────────────────────────────────────────────────────────
+
+export function highlightsSystemPrompt(producer = ''): string {
+    return [
+        'You read a podcast transcript and pick the moments worth stressing on screen: for a few seconds the ' +
+        'speaker\'s picture is reframed and the words they are saying appear beside or over them. Pick two kinds:',
+        '- quote: one or two sentences worth reading as they are heard — an insight, a turn of phrase, a line that lands. ' +
+        'Said by one person, three to twelve seconds.',
+        '- word: one stressed word or a very short phrase (at most four words) that carries a sentence — give the full ' +
+        'sentence as `text` and the stressed word in `emphasis` (it must appear inside `text`).',
+        'Rules: `text` must be the transcript\'s words exactly, word for word, from one speaker. `startMs` and `endMs` are ' +
+        'the moment\'s place, taken from the line numbers shown (each line starts with its time in milliseconds). ' +
+        'Spread the moments across the whole conversation; nothing from its first half-minute. Fewer is better than ' +
+        'forced: pick only what genuinely deserves the screen. When a passage you would pick matches one of the listed ' +
+        'key quotes, prefer it word for word.',
+        'For each moment, suggest a `layout`: for quotes, splitQuote (picture slides left, quote builds beside it), ' +
+        'below (picture lifts, the line sits under it like a caption), iris (a gold oval closes on the speaker and the ' +
+        'quote fills the sky), push (the picture is pushed aside by a panel saying WORTH REPEATING); for words, ' +
+        'splitWord (the stressed word huge beside the picture) or over (the words pop over the dimmed picture). ' +
+        'The edit may change your layout to keep variety.',
+        'Also give: `descriptors` — for each guest (never a host), one line of at most forty characters for their lower ' +
+        'third, drawn only from what is actually said about them (for example "Author · Researcher"); and `keyIdeas` — ' +
+        'at most three terms the conversation names and explains, each with a one-sentence plain definition in your own ' +
+        'words (they will be checked by a person before publishing).',
+        producer ? `The producer says: ${producer}` : '',
+    ].filter(Boolean).join('\n');
+}
+
+export function highlightsUserMessage(lines: { name: string; words: { text: string; start: number }[] }[], keyQuotes: string[], maxMoments: number): string {
+    const transcript = `<transcript>\n${lines.map(l => `${l.words[0]?.start ?? 0}\t${l.name}: ${l.words.map(w => w.text).join(' ')}`).join('\n')}\n</transcript>`;
+    const quotes = keyQuotes.length ? `\n\n<key_quotes>\n${keyQuotes.join('\n')}\n</key_quotes>` : '';
+    return `${transcript}${quotes}\n\nPick at most ${maxMoments} moments, with the descriptors and key ideas.`;
+}

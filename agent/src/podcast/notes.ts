@@ -33,18 +33,18 @@ initializeApp({ credential: cert(serviceAccount), storageBucket: storageBucket()
 const ref = getFirestore().collection('episodes').doc(episodeId);
 let approved = false;   // never overwrite approved notes, even to record a failure
 // What this run was started for (podcast_notes.yml's mode input): never guessed from the episode.
-const MODES = ['notes', 'extras', 'translations', 'retakes'] as const;
+const MODES = ['notes', 'extras', 'translations', 'retakes', 'highlights'] as const;
 const mode = (process.env.NOTES_MODE || 'notes') as typeof MODES[number];
 if (!MODES.includes(mode)) throw new Error(`Not a notes job: ${mode}`);
 const extrasRun = mode === 'extras';   // so the catch handler knows which failure to record
-// Translations and retakes (Part I) record their own failure on their own record.
-const sideRun = mode === 'translations' || mode === 'retakes';
+// Translations, retakes (Part I) and highlights (spec 021 M4) record failures on their own record.
+const sideRun = mode === 'translations' || mode === 'retakes' || mode === 'highlights';
 
 async function main() {
     const episode = (await ref.get()).data() as Episode | undefined;
     if (!episode) throw new Error(`Episode ${episodeId} not found`);
     if (extrasRun) return runExtras(episode);
-    if (sideRun) return runSideJob(episode, mode as 'translations' | 'retakes');
+    if (sideRun) return runSideJob(episode, mode as 'translations' | 'retakes' | 'highlights');
     const reviewedPath = episode.review?.reviewedPath;
     if (episode.status !== 'speakers_confirmed' || !reviewedPath) {
         throw new Error('The transcript has not been accepted yet');
@@ -129,15 +129,15 @@ async function runExtras(episode: Episode) {
     });
 }
 
-// One of Part I's jobs, the one this run was started for: caption translations or finding retakes.
-// A failure is recorded on its own record and emailed; the run then ends as failed so it shows in
-// GitHub Actions. The notes are never touched.
-async function runSideJob(episode: Episode, only: 'translations' | 'retakes') {
+// One of the editor's jobs, the one this run was started for: caption translations, finding retakes
+// (Part I) or suggesting highlight moments (spec 021 M4). A failure is recorded on its own record and
+// emailed; the run then ends as failed so it shows in GitHub Actions. The notes are never touched.
+async function runSideJob(episode: Episode, only: 'translations' | 'retakes' | 'highlights') {
     const client = new Anthropic({ apiKey: required('ANTHROPIC_API_KEY') });
     const settings = await loadSettings(getFirestore());
     const bucket = getStorage().bucket();
     const download = async (path: string) => (await bucket.file(path).download())[0];
-    const jobs: { key: 'translations' | 'retakes'; label: string; run: () => Promise<Record<string, unknown>> }[] = [];
+    const jobs: { key: typeof only; label: string; run: () => Promise<Record<string, unknown>> }[] = [];
     if (only === 'translations') jobs.push({ key: 'translations', label: 'Caption translations', run: async () => {
         const { tracks, finalAt, usd } = await translateCaptions(client, episodeId, episode, settings, {
             download,
@@ -149,6 +149,32 @@ async function runSideJob(episode: Episode, only: 'translations' | 'retakes') {
         const { found, notFound, protectedCount, usd } = await findRetakes(client, episode, settings, download);
         console.log(`✂️ ${found.length} suggestions (${notFound} not found word for word, ${protectedCount} on a quote or teaser)`);
         return { 'retakes.found': found, 'retakes.notFound': notFound, 'retakes.protectedCount': protectedCount, cost: { item: 'retakes', usd } };
+    } });
+    if (only === 'highlights') jobs.push({ key: 'highlights', label: 'Suggesting highlight moments', run: async () => {
+        const { suggestHighlights } = await import('./highlights');
+        const { applySuggestions } = await import('../../../lib/highlights');
+        const result = await suggestHighlights(client, episode, settings, download);
+        // Into the edit, atomically against one changing under us: fresh suggestions replace the ones
+        // still marked suggested, never a highlight the producer touched; the version bump tells an open
+        // editor to reload rather than silently overwrite.
+        const counts = await getFirestore().runTransaction(async tx => {
+            const ep = (await tx.get(ref)).data() as Episode | undefined;
+            if (!ep?.edit) throw new Error('Open the Studio editor first (or Build for Studio editor): it sets up and saves the first edit');
+            const applied = applySuggestions(ep.edit.layers ?? [], result);
+            tx.update(ref, {
+                'edit.layers': applied.layers, 'edit.overlays': [],
+                'edit.version': (ep.edit.version ?? 0) + 1,
+                'edit.updatedAt': new Date().toISOString(), 'edit.updatedBy': 'highlights',
+            });
+            return applied;
+        });
+        console.log(`✨ ${counts.suggested} highlights suggested (${result.unverified.length} not found word for word, ${result.dropped.length} paced out), ${counts.descriptorsFilled} descriptors, ${counts.keyIdeasAdded} key ideas`);
+        for (const d of result.dropped) console.log(`   · dropped: ${d.why} — "${d.text.slice(0, 80)}"`);
+        return {
+            'highlights.suggested': counts.suggested, 'highlights.unverified': result.unverified.length,
+            'highlights.dropped': result.dropped.length, 'highlights.descriptorsFilled': counts.descriptorsFilled,
+            'highlights.keyIdeas': counts.keyIdeasAdded, cost: { item: 'highlights', usd: result.usd },
+        };
     } });
     let failed = false;
     for (const job of jobs) {

@@ -76,13 +76,13 @@ test('pacing drops cut words, teasers, the first 30 s and crosstalk, with reason
 });
 
 test('pacing keeps 45 s gaps (key quotes win), the density ceiling, and spreads layouts', () => {
+    const layouts = ['iris', 'iris', 'iris', 'splitQuote', 'splitQuote', 'below', 'push'];
     const { verified } = verifyMoments(
-        [100_000, 130_000, 300_000, 500_000, 700_000, 900_000, 1_100_000].map(at => moment(at)), words);
+        [100_000, 130_000, 300_000, 500_000, 700_000, 900_000, 1_100_000].map((at, i) => moment(at, { layout: layouts[i] })), words);
     const { kept, dropped } = paceMoments(verified, words, {
         ...opts,
         // The 130 s moment sits on a key quote, so it beats the 100 s one 30 s before it.
         keyQuotes: [{ startMs: 128_000, endMs: 140_000 }],
-        layouts: ['iris', 'iris', 'iris', 'splitQuote', 'splitQuote', 'below', 'push'],
     });
     assert.ok(kept.every((h, i) => i === 0 || true));
     assert.ok(!kept.some(h => h.anchor.srcMs === 99_800), 'the non-quote neighbour should give way');

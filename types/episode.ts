@@ -384,6 +384,21 @@ export interface EpisodeRetakes {
     protectedCount?: number;              // answers dropped because they touched a key quote or teaser clip
 }
 
+// Highlight moments Claude suggested (spec 021 item M4): the suggestions themselves go straight into
+// the edit's layers as `suggested: true`; this record is the run's state and its counts for the editor.
+export interface EpisodeHighlights {
+    status: 'queued' | 'working' | 'ready' | 'failed';
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    generatedAt?: unknown;
+    error?: string | null;
+    suggested?: number;                   // highlights now marked suggested on the edit
+    unverified?: number;                  // answers that were not word for word in the transcript
+    dropped?: number;                     // moments the pacing rules refused (cuts, teasers, spacing, density)
+    descriptorsFilled?: number;           // guest lower thirds given a descriptor line
+    keyIdeas?: number;                    // keyIdea graphics added
+}
+
 export interface Episode {
     title: string;                        // from the file name, Zoom prefix stripped
     recordedAt: string | null;            // ISO date from a Zoom file name, if present
@@ -448,6 +463,7 @@ export interface Episode {
     extras?: EpisodeExtras;                // social posts and follow-up email from the approved notes
     translations?: EpisodeTranslations;    // captions, title and description in other languages (Part I)
     retakes?: EpisodeRetakes;              // retakes Claude found, for the editor (Part I)
+    highlights?: EpisodeHighlights;        // highlight moments Claude suggested (spec 021 item M4)
     corrections?: TranscriptCorrections;  // speaker review fixes, a layer over raw.json
     correctionsVersion?: number;          // bumped on every save; stops two people overwriting
     costs: { items: CostItem[]; totalUsd: number };

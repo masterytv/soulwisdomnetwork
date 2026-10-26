@@ -3,8 +3,9 @@
 # tab with the episode ID (the Drive file ID shown in the Studio URL).
 # mode "notes" (the default) drafts the show notes; "extras" writes the social posts and
 # follow-up email from the approved notes; "translations" translates the captions and "retakes"
-# suggests a tighter edit for the editor (Part I; retakes and more since spec 019 item 1.3). The mode is passed explicitly so a queued run never
-# guesses from the episode's state which of the two it was started for.
+# suggests a tighter edit for the editor (Part I; retakes and more since spec 019 item 1.3);
+# "highlights" suggests highlight moments into the edit (spec 021 item M4). The mode is passed
+# explicitly so a queued run never guesses from the episode's state which it was started for.
 
 name: Podcast Show Notes
 # The episode ID in the run name ties each run to its episode on the Usage page (lib/server/usage.ts).
@@ -17,11 +18,11 @@ on:
         description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
         required: true
       mode:
-        description: 'notes (draft the show notes), extras (social posts and follow-up email), translations or retakes'
+        description: 'notes (draft the show notes), extras (social posts and follow-up email), translations, retakes or highlights'
         required: false
         default: notes
         type: choice
-        options: [notes, extras, translations, retakes]
+        options: [notes, extras, translations, retakes, highlights]
 
 # One run per episode and mode at a time; a second request waits. Per mode, because GitHub keeps
 # only one waiting run per group, and an extras request must never replace a waiting notes one.
