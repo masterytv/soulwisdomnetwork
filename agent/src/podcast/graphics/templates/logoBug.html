@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- The logo bug (docs/specs/021-motion-graphics.md, M2), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/LowerThirdHosts.dc.html, the img.bug): the Studio's logo small in the
+     top right with a slow gold glint. Its clip is drawn once for GRAPHIC.durationMs (the render job draws
+     12 s) and looped for the whole episode, so the glint repeats inside the clip (two passes) and the
+     first and last frames are identical — no in or out at the clip's edges, or the loop would pop.
+     Fields: none. The logo comes from GRAPHIC.logo; the background is transparent. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Logo bug</title>
+<style>
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+.bug { position: absolute; right: 60px; top: 48px; width: 150px; opacity: 0.9; }
+</style>
+</head>
+<body>
+<div class="root">
+  <img id="bug" class="bug" alt="">
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const colors = g.colors || {};
+    const rgb = hex => { const n = parseInt(hex.slice(1), 16); return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`; };
+    const gold = /^#[0-9a-fA-F]{6}$/.test(colors.accent || '') ? colors.accent : '#f7c65b';
+
+    const bug = document.getElementById('bug');
+    if (g.logo) bug.src = g.logo;
+
+    // The design's glint (LowerThirdHosts: brightness 1 → 1.35 with an 18 px gold drop-shadow → 1, over
+    // 0–18% of a 9 s cycle), twice across the clip, flat at both edges so the loop is seamless. The whole
+    // length is one enter part (outMs 0): the keyframes' `at` fractions are of the clip itself.
+    const flat = `brightness(1) drop-shadow(0 0 0 rgba(${rgb(gold)}, 0))`;
+    const lit = `brightness(1.35) drop-shadow(0 0 18px rgba(${rgb(gold)}, 0.6))`;
+    const glint = at => [
+        { at: at - 0.06, filter: flat, easing: 'ease-in-out' },
+        { at, filter: lit, easing: 'ease-in-out' },
+        { at: at + 0.075, filter: flat },
+    ];
+    window.graphicRuntime.animate(bug, {
+        inMs: Math.max(1, (g.durationMs || 12_000) - 1), outMs: 0,
+        enter: [{ at: 0, filter: flat }, ...glint(0.17), ...glint(0.67), { at: 1, filter: flat }],
+        exit: [],
+    });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

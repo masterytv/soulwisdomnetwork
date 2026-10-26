@@ -21,7 +21,7 @@ import { graphicClipName, renderGraphic } from './graphics/render';
 import { makeEditExports } from './editExport';
 import { runEditRender } from './editRenderJob';
 import { withRetry } from './errors';
-import { cutClip } from './media';
+import { cutClip, overlayClip } from './media';
 import { teaserAss } from './teaserBanner';
 import { FONTS_DIR } from './shortsRender';
 import { describeError, failureSubject, sendEmail } from './notify';
@@ -80,8 +80,11 @@ async function main() {
         removeFolder: async prefix => { await bucket.deleteFiles({ prefix: `${prefix}/` }); },
         exists: async storagePath => (await bucket.file(storagePath).exists())[0],
         render: renderEdit,
-        // Motion graphics (spec 021 M1): drawn with the Chromium the workflow installs.
+        // Motion graphics (spec 021): drawn with the Chromium the workflow installs; the site's trimmed
+        // logo stands in when the Studio has none, and the motion teaser tag is laid over each cut teaser.
         graphics: { name: graphicClipName, draw: renderGraphic },
+        logoTrimmed: path.resolve('public/logo-trimmed.png'),
+        overlayClip,
         // The files for Resolve, Premiere and Final Cut (spec 019 item 4.1), with the auto-editor the workflow downloads.
         ...(process.env.AUTO_EDITOR_BIN ? { exportEdit: o => makeEditExports({ ...o, bin: process.env.AUTO_EDITOR_BIN! }) } : {}),
         now: () => FieldValue.serverTimestamp(),

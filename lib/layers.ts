@@ -13,7 +13,7 @@
 
 import { z } from 'zod';
 import { editedTime, type KeptRange } from './edit';
-import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES } from './graphics';
+import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES, type GraphicTemplate } from './graphics';
 import {
     ALIGN, assRgba, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, POSITIONS, SIZE_NAMES, styleLine, TEXT_SIZES,
     type CaptionStyle, type FontName, type Overlay, type Position,
@@ -110,22 +110,37 @@ export const TextLayerSchema = z.object({
 });
 // A motion graphic (docs/specs/021-motion-graphics.md): a branded template drawn over the picture, with
 // its fields checked per template (each ≤ 200 characters, trimmed). Its in and out are the template's own
-// motion, so the edges stay 'none'; it covers the whole frame, so it has no place or width. M1 builds
-// `lowerThird` (a guest's name and descriptor, or the compact host variant); M2 adds the rest.
+// motion, so the edges stay 'none'; it covers the whole frame, so it has no place or width. Most sit on
+// the edited episode's clock like every layer; the end screen sits `fromEnd` ms before the programme's
+// end, over the outro (lib/graphics.ts programmeWindow). Only the logo bug may run the whole episode
+// (its clip is drawn short and looped); everything else is drawn frame by frame, so its length is capped.
 const noEdge = z.object({ transition: z.literal('none'), durationMs: z.literal(0) }).strict();
 const field200 = z.string().trim().max(200);
-export const GraphicLayerSchema = z.object({
+export const GraphicAnchorSchema = z.union([...AnchorSchema.options, z.object({ fromEnd: ms }).strict()]);
+export type GraphicAnchor = z.infer<typeof GraphicAnchorSchema>;
+const graphicOf = <T extends GraphicTemplate, F extends z.ZodRawShape>(template: T, fields: F) => z.object({
     id,
     track: z.number().int().min(2).max(9),
-    anchor: AnchorSchema,
-    durationMs: z.number().int().min(LAYER_MIN_MS).max(GRAPHIC_MAX_MS),
+    anchor: GraphicAnchorSchema,
+    durationMs: z.number().int().min(LAYER_MIN_MS).max('loopMs' in GRAPHIC_TEMPLATES[template] ? 24 * 3600_000 : GRAPHIC_MAX_MS),
     opacity: z.number().min(0).max(1),
     in: noEdge,
     out: noEdge,
     kind: z.literal('graphic'),
-    template: z.literal('lowerThird'),
-    fields: z.object({ name: field200, descriptor: field200, variant: z.enum(['guest', 'host']) }).strict(),
+    template: z.literal(template),
+    fields: z.object(fields).strict(),
 });
+export const GraphicLayerSchema = z.discriminatedUnion('template', [
+    graphicOf('titleCard', { title: field200, guest: field200, show: field200 }),
+    graphicOf('lowerThird', { name: field200, descriptor: field200, variant: z.enum(['guest', 'host']) }),
+    graphicOf('logoBug', {}),
+    graphicOf('teaserTag', { speaker: field200 }),
+    graphicOf('chapter', { number: field200, title: field200 }),
+    graphicOf('pullQuote', { quote: field200, speaker: field200 }),
+    graphicOf('keyIdea', { term: field200, definition: field200 }),
+    graphicOf('endScreen', {}),
+    graphicOf('logoSting', {}),
+]);
 export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema, GraphicLayerSchema]);
 export type ImageLayer = z.infer<typeof ImageLayerSchema>;
 export type VideoLayer = z.infer<typeof VideoLayerSchema>;
@@ -147,7 +162,14 @@ export function layerKind(l: Layer): string {
 
 // A layer's name in the panels and on the timeline: what it says, or its file's name.
 export function layerName(l: Layer): string {
-    if (l.kind === 'graphic') return l.fields.name || GRAPHIC_TEMPLATES[l.template].label;
+    if (l.kind === 'graphic') {
+        const name = l.template === 'lowerThird' ? l.fields.name
+            : l.template === 'titleCard' || l.template === 'chapter' ? l.fields.title
+            : l.template === 'pullQuote' ? l.fields.quote
+            : l.template === 'keyIdea' ? l.fields.term
+            : l.template === 'teaserTag' ? l.fields.speaker : '';
+        return name || GRAPHIC_TEMPLATES[l.template].label;
+    }
     if (l.kind === 'text') return l.subtext ? `${l.text} · ${l.subtext}` : l.text;
     return l.media.name;
 }
@@ -227,19 +249,23 @@ export interface Span { startMs: number; endMs: number }
 // When a layer is up in the edited episode: from where its moment of the recording lands (the next kept
 // moment when that was cut) or its pinned time, for its length, ending with the episode at the latest.
 // Null when it would start after the end.
-export function layerSpan(layer: { anchor: Anchor; durationMs: number }, ranges: KeptRange[], editedMs: number): Span | null {
+export function layerSpan(layer: { anchor: Anchor | GraphicAnchor; durationMs: number }, ranges: KeptRange[], editedMs: number): Span | null {
+    // A programme-anchored graphic (fromEnd, spec 021) is not on the episode's clock: lib/graphics.ts programmeWindow.
+    if ('fromEnd' in layer.anchor) return null;
     const startMs = 'srcMs' in layer.anchor ? editedTime(layer.anchor.srcMs, ranges, true) : layer.anchor.atMs;
     if (startMs === null || startMs >= editedMs) return null;
     return { startMs, endMs: Math.min(editedMs, startMs + layer.durationMs) };
 }
 
 // Whether a layer's own moment was cut (it then shows at the next kept moment): flagged, never deleted.
-export const anchorCut = (layer: { anchor: Anchor }, ranges: KeptRange[]) =>
+export const anchorCut = (layer: { anchor: Anchor | GraphicAnchor }, ranges: KeptRange[]) =>
     'srcMs' in layer.anchor && editedTime(layer.anchor.srcMs, ranges) === null;
 
 // Moving a layer (or a sound): to a new start in the edited episode, keeping how it is anchored (`sourceAt`
-// maps an edited time back to the recording, sourceTime in lib/sequence.ts).
-export function startAt<L extends { anchor: Anchor }>(layer: L, editedMs: number, sourceAt: (atMs: number) => number | null): L {
+// maps an edited time back to the recording, sourceTime in lib/sequence.ts). A programme-anchored graphic
+// (fromEnd) keeps its place at the end.
+export function startAt<L extends { anchor: Anchor | GraphicAnchor }>(layer: L, editedMs: number, sourceAt: (atMs: number) => number | null): L {
+    if ('fromEnd' in layer.anchor) return layer;
     if ('atMs' in layer.anchor) return { ...layer, anchor: { atMs: Math.max(0, Math.round(editedMs)) } };
     const src = sourceAt(Math.max(0, editedMs));
     return src === null ? layer : { ...layer, anchor: { srcMs: Math.round(src) } };
@@ -443,11 +469,13 @@ const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.flo
 
 // A copy of a layer or a sound, pasted at the playhead (item E8): a new id, and the original's kind of anchor,
 // on the moment of the recording at the playhead (`srcMs`) or at its time in the edited video (`atMs`).
-export function pasteAt<T extends { id: string; anchor: Anchor }>(item: T, srcMs: number, atMs: number): T {
+export function pasteAt<T extends { id: string; anchor: Anchor | GraphicAnchor }>(item: T, srcMs: number, atMs: number): T {
     return {
         ...structuredClone(item),
         id: newId(item.id.charAt(0) || 'p'),
-        anchor: 'atMs' in item.anchor ? { atMs: Math.max(0, Math.round(atMs)) } : { srcMs: Math.max(0, Math.round(srcMs)) },
+        // A programme-anchored graphic (fromEnd) pastes where it lives: at the end.
+        anchor: 'fromEnd' in item.anchor ? item.anchor
+            : 'atMs' in item.anchor ? { atMs: Math.max(0, Math.round(atMs)) } : { srcMs: Math.max(0, Math.round(srcMs)) },
     };
 }
 
@@ -523,16 +551,87 @@ export function lowerThirds(words: { speaker: string; start: number }[], layers:
         .map(([speaker, start], i) => ({ ...lowerThird(start, speaker, hosts.has(speaker.trim().toLowerCase()) ? 'Host' : '', brand), id: newId(`l${i}`) }));
 }
 
-// A motion lower third (spec 021 M1, lib/graphics.ts): the branded template, drawn by the render and
-// played by the preview; the editor's Elements panel adds one at the playhead. Hosts get the compact
-// variant, labelled HOST, as the design has them.
+// The motion graphics as elements (spec 021, lib/graphics.ts): each branded template, drawn by the render
+// and played by the preview, added at the playhead in the Elements panel or placed automatically when the
+// edit is first set up (M2). What is common to all of them:
+const graphicBase = (template: GraphicTemplate, anchor: GraphicAnchor) => ({
+    id: newId('m'), kind: 'graphic' as const, template, track: TRACK.text, anchor,
+    durationMs: GRAPHIC_TEMPLATES[template].durationMs, opacity: 1,
+    in: { transition: 'none', durationMs: 0 } as const, out: { transition: 'none', durationMs: 0 } as const,
+});
+const at = (srcMs: number) => ({ srcMs: Math.max(0, Math.round(srcMs)) });
+const f = (s: string) => s.trim().slice(0, 200);
+
+// A lower third: hosts get the compact variant, labelled HOST, as the design has them.
 export function motionLowerThird(srcMs: number, name: string, host: boolean): GraphicLayer {
     return {
-        id: newId('m'), kind: 'graphic', template: 'lowerThird', track: TRACK.text,
-        anchor: { srcMs: Math.max(0, Math.round(srcMs)) }, durationMs: GRAPHIC_TEMPLATES.lowerThird.durationMs,
-        opacity: 1, in: { transition: 'none', durationMs: 0 }, out: { transition: 'none', durationMs: 0 },
-        fields: { name: name.slice(0, 200) || 'Name', descriptor: host ? 'HOST' : '', variant: host ? 'host' : 'guest' },
+        ...graphicBase('lowerThird', at(srcMs)), template: 'lowerThird',
+        fields: { name: f(name) || 'Name', descriptor: host ? 'HOST' : '', variant: host ? 'host' : 'guest' },
     };
+}
+
+// The title card: the star blooms, the title in Cinzel, "with [Guest]"; at the episode's start. `show`
+// is the eyebrow line (the Studio settings' show name).
+export function motionTitleCard(title: string, guest: string, show = ''): GraphicLayer {
+    return { ...graphicBase('titleCard', { atMs: 0 }), template: 'titleCard', fields: { title: f(title) || 'The episode', guest: f(guest), show: f(show) } };
+}
+
+// A chapter divider: the numeral, "CHAPTER TWO", the title.
+export function motionChapter(srcMs: number, number: number, title: string): GraphicLayer {
+    return { ...graphicBase('chapter', at(srcMs)), template: 'chapter', fields: { number: String(Math.max(1, Math.round(number))), title: f(title) } };
+}
+
+// The logo bug: pinned at the episode's start for the whole episode, on the logo's own track; its short
+// clip is drawn once and looped (lib/graphics.ts drawnMs).
+export function motionLogoBug(): GraphicLayer {
+    return { ...graphicBase('logoBug', { atMs: 0 }), template: 'logoBug', track: TRACK.logo, durationMs: WHOLE_EPISODE_MS, fields: {} };
+}
+
+// The end screen: the programme's last 20 s (over the outro, or the episode when there is none), with
+// spaces for YouTube's video elements and subscribe button.
+export function motionEndScreen(): GraphicLayer {
+    const durationMs = GRAPHIC_TEMPLATES.endScreen.durationMs;
+    return { ...graphicBase('endScreen', { fromEnd: durationMs }), template: 'endScreen', fields: {} };
+}
+
+// A full-screen pull quote, line by line.
+export function motionPullQuote(srcMs: number, quote: string, speaker: string): GraphicLayer {
+    return { ...graphicBase('pullQuote', at(srcMs)), template: 'pullQuote', fields: { quote: f(quote) || 'The quote', speaker: f(speaker) } };
+}
+
+// A key idea side card: the term and its one-line definition.
+export function motionKeyIdea(srcMs: number, term: string, definition: string): GraphicLayer {
+    return { ...graphicBase('keyIdea', at(srcMs)), template: 'keyIdea', fields: { term: f(term) || 'The idea', definition: f(definition) } };
+}
+
+// The logo sting: a short logo reveal, wherever it is placed (the spec offers the outro's start).
+export function motionLogoSting(srcMs: number): GraphicLayer {
+    return { ...graphicBase('logoSting', at(srcMs)), template: 'logoSting', fields: {} };
+}
+
+// The motion graphics an edit is first set up with (spec 021 M2; Tom's D2: on for every new episode):
+// the title card from the approved notes' chosen title and the first speaker who is not a host, a motion
+// lower third where each speaker first talks (hosts compact), a chapter divider at each approved chapter
+// after the first, the logo bug, and the end screen over the programme's last 20 s. Only for an episode
+// with no saved edit, like the teasers and b-roll (lib/programme.ts firstEdit, lib/layers.ts withLayers).
+export function motionGraphics(o: {
+    title: string;
+    show: string;
+    words: { speaker: string; start: number }[];
+    chapters: { title: string; startMs: number }[];
+    hosts: string[];
+}): GraphicLayer[] {
+    const hosts = new Set(o.hosts.map(h => h.trim().toLowerCase()));
+    const first = new Map<string, number>();
+    for (const w of o.words) if (w.speaker && !first.has(w.speaker)) first.set(w.speaker, w.start);
+    const guest = [...first.keys()].find(s => !hosts.has(s.trim().toLowerCase())) ?? '';
+    return [
+        motionTitleCard(o.title, guest, o.show),
+        ...[...first].map(([speaker, start]) => motionLowerThird(start, speaker, hosts.has(speaker.trim().toLowerCase()))),
+        ...o.chapters.slice(1).map((c, i) => motionChapter(c.startMs, i + 2, c.title)),
+        motionLogoBug(),
+        motionEndScreen(),
+    ];
 }
 
 // The logo bug: the Studio's logo small in the top right, a little see-through, for the whole episode

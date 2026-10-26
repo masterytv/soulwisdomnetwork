@@ -78,7 +78,15 @@ export const GET = handle<Context>(async (request, { params }) => {
         : intro ? await adminBucket().file(intro.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null) : null;
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
-    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio });
+    // Spec 021 M2: what a fresh edit's motion graphics are placed from (the editor itself has the words
+    // and the hosts); null once an edit is saved, so they are never placed twice.
+    const graphics = data.edit ? null : {
+        title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
+        show: settings.showName,
+        chapters: notes?.chapters ?? [],
+        hosts: settings.hosts,
+    };
+    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {

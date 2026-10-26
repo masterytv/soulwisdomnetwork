@@ -26,7 +26,8 @@ import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
 import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
-import { asVideoLayer, graphicSpec, type GraphicSpec } from '../../../lib/graphics';
+import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, type GraphicSpec } from '../../../lib/graphics';
+import { createHash } from 'crypto';
 import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
@@ -69,10 +70,15 @@ export interface EditRenderDeps {
     voice?: { deepFilter?: string; auphonicKey?: string; onAuphonicSending?: () => Promise<void> };
     // The files that open the edit in Resolve, Premiere or Final Cut (spec 019 item 4.1, editExport.ts); left out, none are made.
     exportEdit?: (o: { video: string; name: string; title: string; clips: Clip[]; words?: TimedWord[]; workDir: string }) => Promise<ExportResult>;
-    // Motion graphics (spec 021 M1, agent/src/podcast/graphics/render.ts): names a clip by what draws it,
-    // and draws it in headless Chromium. Left out (no Chromium on the runner), graphic layers are skipped
-    // with a warning.
-    graphics?: { name: (spec: GraphicSpec) => string; draw: (spec: GraphicSpec, out: string) => Promise<unknown> };
+    // Motion graphics (spec 021, agent/src/podcast/graphics/render.ts): names a clip by what draws it,
+    // and draws it in headless Chromium (`logoFile`: the Studio's logo for templates that draw it). Left
+    // out (no Chromium on the runner), graphic layers are skipped with a warning and the teaser tags fall
+    // back to the ASS banner.
+    graphics?: { name: (spec: GraphicSpec) => string; draw: (spec: GraphicSpec, out: string, logoFile?: string) => Promise<unknown> };
+    // The site's trimmed logo in the repository (public/logo-trimmed.png), when the Studio has none of its own.
+    logoTrimmed?: string;
+    // Lays a clip with alpha over a video, full frame, keeping the video's sound: the motion teaser tag.
+    overlayClip?: (input: string, overlay: string, out: string) => Promise<void>;
 }
 
 export interface EditRenderPlan {
@@ -210,11 +216,19 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const video = await get(plan.video, 'source');
     const teasers: string[] = [];
     for (const [i, t] of plan.teasers.entries()) teasers.push(await get(t, `teaser-${i + 1}`));
+    // The edit's own teasers get the motion "In this episode" tag (spec 021: teaserTag.html, overlaid
+    // below once the graphics are drawn); without a graphics renderer, the ASS banner as before.
+    const motionTags = plan.exact && !!deps.graphics && !!deps.overlayClip;
+    const tagLater: { index: number; speaker: string; lengthMs: number }[] = [];
     if (plan.teaserClips.length && deps.cutClip) {
         for (const [i, c] of plan.teaserClips.entries()) {
             const out = path.join(workDir, `teaser-cut-${i + 1}.mp4`);
             // A teaser whose tag was taken off in the Studio editor (item E14) is cut plainly.
-            if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, c.tag === false ? undefined : { speaker: c.speaker ?? '' });
+            const tag = plan.exact && c.tag !== false;
+            if (plan.exact && tag && motionTags) {
+                await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000);
+                tagLater.push({ index: teasers.length, speaker: c.speaker ?? '', lengthMs: c.endMs - c.startMs });
+            } else if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, tag ? { speaker: c.speaker ?? '' } : undefined);
             else {
                 const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
                 await deps.cutClip(video, out, start / 1000, (c.endMs + CLIP_TAIL_MS - start) / 1000);
@@ -230,7 +244,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
-    const pictures: { layer: PictureLayer; file: string }[] = [];
+    const pictures: { layer: PictureLayer; file: string; loop?: boolean }[] = [];
     for (const [i, l] of plan.onScreen.pictures.entries()) {
         if (l.media.path === SITE_LOGO) {
             if (deps.siteLogo && fs.existsSync(deps.siteLogo)) pictures.push({ layer: l, file: deps.siteLogo });
@@ -238,26 +252,66 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         }
         pictures.push({ layer: l, file: await get(l.media.path, `layer-${i + 1}`) });
     }
-    // Motion graphics (spec 021 M1): each graphic layer's clip, drawn by its template in headless Chromium
-    // into ProRes 4444 with alpha, and kept in Storage under a name made from everything that drew it — a
-    // re-render only draws what changed. The clip then goes to the renderer as a silent video layer.
+    // Motion graphics (spec 021): each clip is drawn by its template in headless Chromium into ProRes 4444
+    // with alpha, and kept in Storage under a name made from everything that drew it — a re-render only
+    // draws what changed. Episode-anchored graphics go to the renderer as silent video layers (looped when
+    // their clip is shorter than the layer: the whole-episode logo bug); the end screen and the starlight
+    // clips are overlaid on the programme's own clock (renderEdit's `overlays`).
     const graphicWarnings: string[] = [];
-    if (plan.graphics.length && !deps.graphics) {
+    const overlays: NonNullable<Parameters<typeof renderEdit>[0]['overlays']> = [];
+    // The starlight joins this edit plays (lib/transitions.ts): the Studio's or the edit's at sections,
+    // and the edit's own at splits that are there.
+    const starlight = [
+        ...Object.entries(plan.sections).flatMap(([at, t]) => (t.transition === 'starlight' ? [{ key: at, durationMs: t.durationMs }] : [])),
+        ...(plan.edit.joins ?? []).flatMap(j => (typeof j.at === 'object' && j.transition === 'starlight' && (plan.edit.splits ?? []).includes(j.at.atSplit)
+            ? [{ key: `split:${j.at.atSplit}`, durationMs: j.durationMs }] : [])),
+    ];
+    const wantGraphics = plan.graphics.length > 0 || starlight.length > 0;
+    if (wantGraphics && !deps.graphics) {
         graphicWarnings.push('Motion graphics were not drawn: the graphics renderer is not on this runner.');
-    } else if (plan.graphics.length && deps.graphics) {
-        for (const g of plan.graphics) {
-            const spec = graphicSpec(g, settings.colors);
-            const clipName = deps.graphics.name(spec);
+    } else if (deps.graphics) {
+        const graphics = deps.graphics;
+        // The Studio's logo for the templates that draw it, and its hash, so a changed logo redraws them.
+        let logoFile = deps.logoTrimmed && fs.existsSync(deps.logoTrimmed) ? deps.logoTrimmed : undefined;
+        if (settings.logoPath) logoFile = await get(settings.logoPath, 'studio-logo').catch(() => logoFile);
+        const logoKey = logoFile ? createHash('sha256').update(fs.readFileSync(logoFile)).digest('hex').slice(0, 16) : undefined;
+        // One clip per spec, drawn once and kept in Storage.
+        const drawClip = async (spec: GraphicSpec): Promise<{ local: string; storagePath: string }> => {
+            const clipName = graphics.name(spec);
             const storagePath = `episodes/${episodeId}/graphics/${clipName}`;
             const local = path.join(workDir, clipName);
+            if (fs.existsSync(local)) return { local, storagePath };
             if (deps.exists && await deps.exists(storagePath)) await deps.download(storagePath, local);
             else {
-                await deps.graphics.draw(spec, local);
+                await graphics.draw(spec, local, logoFile);
                 await deps.upload(local, storagePath, 'video/quicktime');
             }
-            pictures.push({ layer: asVideoLayer(g, storagePath), file: local });
+            return { local, storagePath };
+        };
+        for (const g of plan.graphics) {
+            const spec = graphicSpec(g, settings.colors, logoKey);
+            const { local, storagePath } = await drawClip(spec);
+            if (episodeAnchored(g.anchor)) {
+                pictures.push({ layer: asVideoLayer(g, storagePath), file: local, loop: spec.durationMs < g.durationMs });
+            } else {
+                overlays.push({ file: local, durationMs: Math.min(g.durationMs, spec.durationMs), fromEnd: g.anchor.fromEnd });
+            }
         }
         pictures.sort((a, b) => a.layer.track - b.layer.track);
+        for (const s of starlight) {
+            const { local } = await drawClip({ template: 'starlight', fields: {}, colors: settings.colors, durationMs: s.durationMs, width: 1920, height: 1080 });
+            overlays.push({ file: local, durationMs: s.durationMs, at: s.key });
+        }
+        // The motion "In this episode" tag onto each cut teaser, its progress line spanning the clip.
+        for (const t of tagLater) {
+            const { local } = await drawClip({
+                template: 'teaserTag', fields: { speaker: t.speaker }, colors: settings.colors,
+                durationMs: Math.max(1000, Math.min(t.lengthMs, GRAPHIC_MAX_MS)), width: 1920, height: 1080,
+            });
+            const tagged = teasers[t.index].replace(/\.mp4$/, '-tagged.mp4');
+            await deps.overlayClip!(teasers[t.index], local, tagged);
+            teasers[t.index] = tagged;
+        }
     }
     // Each sound's file. A show library file plays only while its licence is checked (an admin can take a
     // check back after the sound was placed); the others are left out, with a warning.
@@ -299,6 +353,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
+        ...(overlays.length ? { overlays } : {}),
         ...(sounds.length ? { sounds } : {}),
         ...(deps.exists ? { store: {
             get: async (name: string, local: string) => {

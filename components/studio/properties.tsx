@@ -15,7 +15,7 @@ import {
     MOTION_LABELS, MOTIONS, placeOf, positionOf, startAt, WHOLE_EPISODE_MS,
     type Brand, type Edge, type Layer, type LayerTransition, type Motion,
 } from "@/lib/layers";
-import { GRAPHIC_MAX_MS } from "@/lib/graphics";
+import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES } from "@/lib/graphics";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
 import { field, hint, secondary } from "@/components/studio/ui";
 import { useVideoTime } from "@/components/studio/useVideoTime";
@@ -103,21 +103,55 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
             </div>
             <fieldset disabled={!canEdit} className="contents">
                 {l.kind === "graphic" && (
-                    <Section title="Lower third">
-                        <input value={l.fields.name} maxLength={200} aria-label="Name" onChange={e => set({ fields: { ...l.fields, name: e.target.value } })}
-                            className={field} placeholder="Name" />
-                        <input value={l.fields.descriptor} maxLength={200} aria-label="Descriptor" onChange={e => set({ fields: { ...l.fields, descriptor: e.target.value } })}
-                            className={field} placeholder={l.fields.variant === "host" ? "HOST" : "Descriptor, e.g. author · researcher"} />
-                        <select aria-label="Variant" value={l.fields.variant} className={`${small} self-start`}
-                            title="Guests get the full lower third with the drawn rule; hosts the compact one"
-                            onChange={e => {
-                                const host = e.target.value === "host";
-                                const descriptor = host && !l.fields.descriptor ? "HOST" : !host && l.fields.descriptor === "HOST" ? "" : l.fields.descriptor;
-                                set({ fields: { ...l.fields, variant: host ? "host" : "guest", descriptor } });
-                            }}>
-                            <option value="guest">Guest</option>
-                            <option value="host">Host (compact)</option>
-                        </select>
+                    <Section title={GRAPHIC_TEMPLATES[l.template].label}>
+                        {l.template === "lowerThird" && (<>
+                            <input value={l.fields.name} maxLength={200} aria-label="Name" onChange={e => set({ fields: { ...l.fields, name: e.target.value } })}
+                                className={field} placeholder="Name" />
+                            <input value={l.fields.descriptor} maxLength={200} aria-label="Descriptor" onChange={e => set({ fields: { ...l.fields, descriptor: e.target.value } })}
+                                className={field} placeholder={l.fields.variant === "host" ? "HOST" : "Descriptor, e.g. author · researcher"} />
+                            <select aria-label="Variant" value={l.fields.variant} className={`${small} self-start`}
+                                title="Guests get the full lower third with the drawn rule; hosts the compact one"
+                                onChange={e => {
+                                    const host = e.target.value === "host";
+                                    const descriptor = host && !l.fields.descriptor ? "HOST" : !host && l.fields.descriptor === "HOST" ? "" : l.fields.descriptor;
+                                    set({ fields: { ...l.fields, variant: host ? "host" : "guest", descriptor } });
+                                }}>
+                                <option value="guest">Guest</option>
+                                <option value="host">Host (compact)</option>
+                            </select>
+                        </>)}
+                        {l.template === "titleCard" && (<>
+                            <input value={l.fields.title} maxLength={200} aria-label="Title" onChange={e => set({ fields: { ...l.fields, title: e.target.value } })}
+                                className={field} placeholder="The episode's title" />
+                            <input value={l.fields.guest} maxLength={200} aria-label="Guest" onChange={e => set({ fields: { ...l.fields, guest: e.target.value } })}
+                                className={field} placeholder="Guest — the “with …” line (empty hides it)" />
+                            <input value={l.fields.show} maxLength={200} aria-label="Show name" onChange={e => set({ fields: { ...l.fields, show: e.target.value } })}
+                                className={field} placeholder="The show's name over the title" />
+                        </>)}
+                        {l.template === "chapter" && (<>
+                            <label className="flex items-center gap-1">
+                                Chapter
+                                <NumberField label="Chapter number" value={Number(l.fields.number) || 1} min={1} max={99}
+                                    onChange={v => set({ fields: { ...l.fields, number: String(Math.round(v)) } })} />
+                            </label>
+                            <input value={l.fields.title} maxLength={200} aria-label="Chapter title" onChange={e => set({ fields: { ...l.fields, title: e.target.value } })}
+                                className={field} placeholder="The chapter's title" />
+                        </>)}
+                        {l.template === "pullQuote" && (<>
+                            <input value={l.fields.quote} maxLength={200} aria-label="Quote" onChange={e => set({ fields: { ...l.fields, quote: e.target.value } })}
+                                className={field} placeholder="The quote, word for word" />
+                            <input value={l.fields.speaker} maxLength={200} aria-label="Speaker" onChange={e => set({ fields: { ...l.fields, speaker: e.target.value } })}
+                                className={field} placeholder="Who said it (the line under the quote)" />
+                        </>)}
+                        {l.template === "keyIdea" && (<>
+                            <input value={l.fields.term} maxLength={200} aria-label="Term" onChange={e => set({ fields: { ...l.fields, term: e.target.value } })}
+                                className={field} placeholder="The idea's name" />
+                            <input value={l.fields.definition} maxLength={200} aria-label="Definition" onChange={e => set({ fields: { ...l.fields, definition: e.target.value } })}
+                                className={field} placeholder="One plain sentence" />
+                        </>)}
+                        {(l.template === "logoBug" || l.template === "endScreen" || l.template === "logoSting") && (
+                            <p className={hint}>No words of its own: it draws the Studio&apos;s logo and colours.</p>
+                        )}
                         <p className={hint}>Drawn by the template in the Studio&apos;s colours; it places and fades itself (spec 021).</p>
                     </Section>
                 )}
@@ -153,6 +187,12 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                     </Section>
                 )}
 
+                {"fromEnd" in l.anchor ? (
+                    <Section title="Time">
+                        {/* The end screen sits against the programme's end (lib/graphics.ts programmeWindow). */}
+                        <p className={hint}>Over the video&apos;s last {Math.round(l.durationMs / 1000)} s — on the outro when there is one, wherever the video ends.</p>
+                    </Section>
+                ) : (
                 <Section title="Time">
                     <div className="flex flex-wrap items-center gap-2">
                         <span>Starts at</span>
@@ -195,6 +235,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                     </select>
                     {anchorCut(l, clips) && <p className="text-amber-300">Its moment is cut, so it shows at the next kept moment.</p>}
                 </Section>
+                )}
 
                 {l.kind !== "graphic" && (
                 <Section title="Position and size">

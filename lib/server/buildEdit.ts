@@ -9,7 +9,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import type { Episode } from '@/types/episode';
 import { SilencesFileSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
-import { withLayers } from '@/lib/layers';
+import { motionGraphics, withLayers } from '@/lib/layers';
 import { firstEdit, teasersFromNotes } from '@/lib/programme';
 import { brollBlock } from '@/lib/brollGate';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -78,6 +78,14 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
         const blank: EpisodeEdit = { cuts: [], version: 0 };
         const setUp = firstEdit(blank, { words, silences, teasers });
         const edit = withLayers(setUp.edit, bin);
+        // The motion graphics (spec 021 M2, on by default): placed once, with the b-roll, on a fresh edit.
+        edit.layers = [...(edit.layers ?? []), ...motionGraphics({
+            title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
+            show: settings.showName,
+            words,
+            chapters: notes?.chapters ?? [],
+            hosts: settings.hosts,
+        })];
         await adminDb().runTransaction(async tx => {
             const now = (await tx.get(ref)).data() as Episode | undefined;
             // Someone opened the editor meanwhile, which set up and saved its own: that one stays.

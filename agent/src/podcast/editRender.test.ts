@@ -451,3 +451,54 @@ test('moved sections play in their new order, picture and sound together (spec 0
     assert.deepEqual(words.map(w => [w.text, Math.round(w.start / 100) * 100]), [['blue', 1000], ['red', 4000]]);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('motion graphics on the programme (spec 021 M2): fromEnd rides the end, starlight covers its join, a short clip loops', { timeout: 300_000 }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-graphics-'));
+    const alphaClip = async (file: string, colour: string, seconds: number) => {
+        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
+            '-i', `color=c=${colour}:s=1920x1080:r=30:d=${seconds},format=rgba`,
+            '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', file]);
+    };
+    const av = async (file: string, colour: string, seconds: number) => {
+        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+            '-f', 'lavfi', '-i', `color=c=${colour}:s=640x360:r=30:d=${seconds}`,
+            '-f', 'lavfi', '-i', `sine=frequency=440:sample_rate=48000:duration=${seconds}`,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', file]);
+    };
+    const video = path.join(dir, 'in.mp4'), outro = path.join(dir, 'outro.mp4');
+    const endScreen = path.join(dir, 'end.mov'), star = path.join(dir, 'star.mov'), loopClip = path.join(dir, 'loop.mov');
+    await av(video, 'blue', 8);
+    await av(outro, 'green', 3);
+    await alphaClip(endScreen, 'red', 2);
+    await alphaClip(star, 'yellow', 1);
+    await alphaClip(loopClip, 'magenta', 0.5);
+    const out = path.join(dir, 'out.mp4');
+    // An 11 s programme: 8 s episode then a 3 s outro, joined by starlight; the "end screen" over the
+    // last 2 s; a half-second clip looped as a video layer over the episode's first 3 s.
+    const layer = {
+        id: 'g1', kind: 'video' as const, track: 3, anchor: { atMs: 0 }, durationMs: 3000,
+        place: { x: 0, y: 0, align: 7 }, opacity: 1, in: { transition: 'none' as const, durationMs: 0 },
+        out: { transition: 'none' as const, durationMs: 0 }, media: { path: 'episodes/abcdefghij/graphics/x.mov', name: 'loop' },
+        w: 1, trimInMs: 0, volumeDb: null,
+    };
+    await renderEdit({
+        video, edit: { cuts: [], version: 1 }, out, outro, clean: 'off',
+        sections: { ...Object.fromEntries(['start', 'betweenTeasers', 'afterTeasers', 'afterIntro', 'end'].map(k => [k, { transition: 'cut' as const, durationMs: 500 }])), beforeOutro: { transition: 'starlight' as const, durationMs: 1000 } } as never,
+        onScreen: { captions: null, texts: [], pictures: [{ layer, file: loopClip, loop: true }] },
+        overlays: [
+            { file: endScreen, durationMs: 2000, fromEnd: 2000 },
+            { file: star, durationMs: 1000, at: 'beforeOutro' },
+        ],
+    });
+    const probe = await probeStreams(out);
+    assert.ok(Math.abs(probe.duration - 11) < 0.2, `11 s expected, got ${probe.duration}`);
+    const magenta = await frameColour(out, 1.5);     // the looped clip, well past its half-second length
+    assert.ok(magenta[0] > 200 && magenta[2] > 200 && magenta[1] < 80, `looped clip at 1.5 s, got ${magenta}`);
+    const joined = await frameColour(out, 8.0);      // the starlight clip centred on the 8 s join
+    assert.ok(joined[0] > 200 && joined[1] > 200 && joined[2] < 80, `starlight at the join, got ${joined}`);
+    const outroClear = await frameColour(out, 8.8);  // the outro, clear of both overlays
+    assert.ok(outroClear[1] > 120 && outroClear[0] < 80, `outro clear at 8.8 s, got ${outroClear}`);
+    const end = await frameColour(out, 10.0);        // the end screen, 2 s before the end
+    assert.ok(end[0] > 200 && end[1] < 80 && end[2] < 80, `end screen at 10 s, got ${end}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

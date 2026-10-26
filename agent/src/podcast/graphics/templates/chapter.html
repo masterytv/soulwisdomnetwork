@@ -1,0 +1,117 @@
+<!doctype html>
+<!-- The chapter divider (docs/specs/021-motion-graphics.md, item M2), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/Chapter.dc.html): the outlined roman numeral slides in as its
+     letter-spacing settles, "CHAPTER TWO" and the title rise, arcs turn and the flare blooms top right.
+     Same markup, colours, type and keyframes, the review loop replaced by in / hold / out (runtime.js).
+     Fields: number ("2" becomes II and TWO, 1-12; else the digits), title. The design's one-line
+     description and chapter-progress dots need words and a count no field carries, so they are left out.
+     Full screen: the sky is painted. Fonts come from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chapter divider</title>
+<style>
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff; --gold: #f7c65b; }
+.sky { position: absolute; inset: 0; background-color: var(--ink);
+       background-image:
+           radial-gradient(2px 2px at 12% 14%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 41% 88%, rgba(255,255,255,.5), transparent),
+           radial-gradient(2px 2px at 66% 12%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 88% 71%, rgba(255,255,255,.6), transparent),
+           radial-gradient(1.5px 1.5px at 53% 52%, rgba(255,255,255,.4), transparent),
+           radial-gradient(circle at 82% 23%, var(--glow-a) 0%, var(--glow-b) 28%, var(--ink) 58%, var(--deep) 100%); }
+.arc1 { position: absolute; left: 1260px; top: -70px; width: 640px; height: 640px; border-radius: 50%;
+        border-top: 2px solid var(--gold-50); border-right: 2px solid var(--gold-12); transform-origin: 320px 320px; }
+.arc2 { position: absolute; left: 1180px; top: -150px; width: 800px; height: 800px; border-radius: 50%;
+        border-top: 1px solid var(--gold-28); border-left: 1px solid var(--gold-08); transform-origin: 400px 400px; }
+.flare { position: absolute; left: 1580px; top: 250px; width: 0; height: 0; }
+.flare i { position: absolute; display: block; }
+.flare .core { left: -60px; top: -60px; width: 120px; height: 120px; border-radius: 50%; background: radial-gradient(circle, #fff 0, #fff 10%, rgba(255,255,255,.6) 22%, rgba(196,181,253,.22) 48%, rgba(196,181,253,0) 70%); }
+.flare .h { left: -260px; top: -2px; width: 520px; height: 3px; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+.flare .v { left: -1.5px; top: -200px; width: 3px; height: 400px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+.row { position: absolute; left: 160px; top: 280px; display: flex; align-items: center; gap: 56px; }
+.num { font-family: 'Cinzel', serif; font-weight: 700; font-size: 380px; line-height: 1; color: transparent; -webkit-text-stroke: 2px var(--gold); }
+.col { display: flex; flex-direction: column; gap: 22px; }
+.eyebrow { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 26px; letter-spacing: 0.34em; color: var(--gold); }
+.title { margin: 0; max-width: 1100px; font-family: 'Cinzel', serif; font-weight: 600; font-size: 110px; line-height: 1.02; letter-spacing: 0.02em; color: #ffffff; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div class="sky" aria-hidden="true"></div>
+  <div id="arc1" class="arc1" aria-hidden="true"></div>
+  <div id="arc2" class="arc2" aria-hidden="true"></div>
+  <div id="flare" class="flare" aria-hidden="true"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+  <div class="row">
+    <span id="num" class="num" aria-hidden="true"></span>
+    <div class="col">
+      <p id="eyebrow" class="eyebrow"></p>
+      <h2 id="title" class="title"></h2>
+    </div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const toHex = v => `#${v.map(x => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')}`;
+    const lighten = (c, amount) => toHex(rgb(c).map(x => x + amount * 255));
+    const darken = (c, by) => toHex(rgb(c).map(x => x * by));
+
+    const root = el('g');
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const [glowA, glowB] = ink === '#140a2e' ? ['#4a2f9c', '#23145a'] : [lighten(ink, 0.25), lighten(ink, 0.08)];
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--deep', ink === '#140a2e' ? '#0b0520' : darken(ink, 0.55));
+    root.style.setProperty('--glow-a', glowA);
+    root.style.setProperty('--glow-b', glowB);
+    root.style.setProperty('--gold', gold);
+    for (const [name, a] of [['50', 0.5], ['28', 0.28], ['12', 0.12], ['08', 0.08]]) {
+        root.style.setProperty(`--gold-${name}`, `rgba(${rgb(gold).join(',')},${a})`);
+    }
+
+    // "2" becomes the numeral II and the word TWO, as the design letters them; past twelve, the digits.
+    const n = Math.max(1, Math.round(Number(f.number) || 1));
+    const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    const WORDS = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE', 'TEN', 'ELEVEN', 'TWELVE'];
+    el('num').textContent = n <= 12 ? ROMAN[n - 1] : String(n);
+    el('eyebrow').textContent = `CHAPTER ${n <= 12 ? WORDS[n - 1] : n}`;
+    el('title').textContent = f.title || '';
+
+    // The design's 7 s cycle as in / hold / out: the arcs turn in, the flare blooms, the numeral slides
+    // in as its letter-spacing settles, the chapter line and title rise; a half-second fade out.
+    const R = window.graphicRuntime;
+    const arc = (id, delay) => R.animate(el(id), { delay, inMs: 1260, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'rotate(-14deg)' }, { at: 1, opacity: 1, transform: 'rotate(0deg)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'rotate(0deg)' }] });
+    arc('arc1', 0);
+    arc('arc2', 300);
+    R.animate(el('flare'), { delay: 300, inMs: 1260, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'scale(0.2) rotate(-30deg)' },
+        { at: 0.56, opacity: 1, transform: 'scale(1.2) rotate(0deg)' },
+        { at: 1, opacity: 1, transform: 'scale(1) rotate(0deg)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scale(0.5) rotate(0deg)' }] });
+    R.animate(el('num'), { inMs: 980, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(-60px)', letterSpacing: '0.3em' },
+        { at: 1, opacity: 1, transform: 'translateX(0)', letterSpacing: '0.02em' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(0)', letterSpacing: '0.02em' }] });
+    const rise = (id, delay) => R.animate(el(id), { delay, inMs: 910, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(26px)', filter: 'blur(8px)' },
+        { at: 1, opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)', filter: 'blur(0px)' }] });
+    rise('eyebrow', 300);
+    rise('title', 500);
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

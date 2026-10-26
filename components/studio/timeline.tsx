@@ -33,7 +33,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Captions, CaptionsOff, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, moveSection, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
-import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type Layer } from '@/lib/layers';
+import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type GraphicAnchor, type Layer } from '@/lib/layers';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
@@ -596,7 +596,7 @@ const soundsH = SOUND_LANES.length * LANE_H;
 
 // Where a layer is on the timeline, which is drawn in the recording's time: from where it starts in the
 // edited episode to where it ends, mapped back to the recording (null when it starts after the end).
-function layerBounds(l: { anchor: Anchor; durationMs: number }, clips: Clip[], editedMs: number) {
+function layerBounds(l: { anchor: Anchor | GraphicAnchor; durationMs: number }, clips: Clip[], editedMs: number) {
     const span = layerSpan(l, clips, editedMs);
     if (!span) return null;
     const from = sourceTime(clips, span.startMs) ?? ('srcMs' in l.anchor ? l.anchor.srcMs : 0);

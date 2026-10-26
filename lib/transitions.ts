@@ -13,6 +13,10 @@ export const TRANSITIONS = [
     'slideLeft', 'slideRight', 'slideUp', 'slideDown',
     'softLeft', 'softRight', 'softUp', 'softDown',
     'circleOpen', 'circleClose', 'zoomIn', 'blur',
+    // The starlight wipe (spec 021): not an xfade — the clips meet in a straight cut with the drawn
+    // starlight clip (agent/src/podcast/graphics/templates/starlight.html) overlaid centred on the join,
+    // covering the frame at its middle, so the cut happens under it.
+    'starlight',
 ] as const;
 export type TransitionKind = typeof TRANSITIONS[number];
 
@@ -22,10 +26,12 @@ export const TRANSITION_LABELS: Record<TransitionKind, string> = {
     slideLeft: 'Slide left', slideRight: 'Slide right', slideUp: 'Slide up', slideDown: 'Slide down',
     softLeft: 'Soft wipe left', softRight: 'Soft wipe right', softUp: 'Soft wipe up', softDown: 'Soft wipe down',
     circleOpen: 'Circle open', circleClose: 'Circle close', zoomIn: 'Zoom in', blur: 'Blur',
+    starlight: 'Starlight',
 };
 
 // ffmpeg's own names (xfade). Its "dissolve" is a grainy pixel effect, so the smooth one is "fade".
-export const XFADE: Record<Exclude<TransitionKind, 'cut'>, string> = {
+// Starlight has no xfade: the cut is straight and the clip covers it (XFADE[t] is then undefined).
+export const XFADE: Record<Exclude<TransitionKind, 'cut' | 'starlight'>, string> & { starlight?: undefined } = {
     dissolve: 'fade', fade: 'fadeblack', fadeWhite: 'fadewhite', grain: 'dissolve',
     wipeLeft: 'wipeleft', wipeRight: 'wiperight', wipeUp: 'wipeup', wipeDown: 'wipedown',
     slideLeft: 'slideleft', slideRight: 'slideright', slideUp: 'slideup', slideDown: 'slidedown',

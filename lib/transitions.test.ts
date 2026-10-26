@@ -8,9 +8,11 @@ import {
     TRANSITION_LABELS, TRANSITIONS, XFADE, type Join,
 } from './transitions';
 
-test('every kind has a label and, but for Cut, an ffmpeg name; Dissolve is ffmpeg\'s smooth fade', () => {
+test('every kind has a label and, but for Cut and Starlight, an ffmpeg name; Dissolve is ffmpeg\'s smooth fade', () => {
     for (const t of TRANSITIONS) assert.ok(TRANSITION_LABELS[t]);
-    for (const t of TRANSITIONS.filter(t => t !== 'cut')) assert.ok(XFADE[t as Exclude<typeof t, 'cut'>]);
+    // Starlight (spec 021) is not an xfade: a straight cut under the drawn clip.
+    for (const t of TRANSITIONS.filter(t => t !== 'cut' && t !== 'starlight')) assert.ok(XFADE[t as Exclude<typeof t, 'cut' | 'starlight'>]);
+    assert.equal(XFADE.starlight, undefined);
     assert.equal(XFADE.dissolve, 'fade');
     assert.equal(XFADE.fade, 'fadeblack');
     assert.equal(TRANSITIONS[0], 'cut');
