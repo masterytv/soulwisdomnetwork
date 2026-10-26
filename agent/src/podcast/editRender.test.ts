@@ -10,6 +10,7 @@ import { execFileSync, spawn } from 'child_process';
 import * as os from 'os';
 import { keepRanges, editedDuration, editedTime, type Cut, type EpisodeEdit } from '../../../lib/edit';
 import { playOrder, sequenceLength } from '../../../lib/sequence';
+import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
 import { chainPieces, FPS, frameAt, framesOf, renderEdit } from './editRender';
 import { spawnSync } from 'child_process';
 
@@ -500,5 +501,87 @@ test('motion graphics on the programme (spec 021 M2): fromEnd rides the end, sta
     assert.ok(outroClear[1] > 120 && outroClear[0] < 80, `outro clear at 8.8 s, got ${outroClear}`);
     const end = await frameColour(out, 10.0);        // the end screen, 2 s before the end
     assert.ok(end[0] > 200 && end[1] < 80 && end[2] < 80, `end screen at 10 s, got ${end}`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// One pixel of one frame, as [r, g, b] — the reframe probes need a spot, not the frame's average.
+function pixelAt(file: string, seconds: number, x: number, y: number): Promise<number[]> {
+    return new Promise((resolve, reject) => {
+        const child = spawn('ffmpeg', ['-v', 'error', '-ss', String(seconds), '-i', file, '-frames:v', '1',
+            '-vf', `format=rgb24,crop=1:1:${x}:${y}`, '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { stdio: ['ignore', 'pipe', 'inherit'] });
+        const chunks: Buffer[] = [];
+        child.stdout.on('data', d => chunks.push(d));
+        child.on('error', reject);
+        child.on('close', () => resolve([...Buffer.concat(chunks)].slice(0, 3)));
+    });
+}
+
+test('highlights (spec 021 M3): the picture pans, shrinks and dims by the keyframes, shaped by the matte, over the background, across window joins', { timeout: 300_000 }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'render-reframe-'));
+    // A plane clip from a colour source: `box` on clear pads it to the frame, else it fills the frame.
+    const prores = async (file: string, colour: string, seconds: number, box?: { w: number; h: number; x: number; y: number }) => {
+        const src = box ? `color=c=${colour}:s=${box.w}x${box.h}:r=30:d=${seconds},format=rgba,pad=1920:1080:${box.x}:${box.y}:black@0`
+            : `color=c=${colour}:s=1920x1080:r=30:d=${seconds},format=rgba`;
+        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', src,
+            '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le', file]);
+    };
+    // The episode: yellow on the left, red on the right, so a moved picture shows as the boundary moving.
+    const video = path.join(dir, 'in.mp4');
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
+        '-f', 'lavfi', '-i', 'color=c=red:s=1920x1080:r=30:d=12',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=12',
+        '-vf', 'drawbox=x=0:y=0:w=960:h=1080:color=yellow:t=fill',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', video]);
+    // Stub plane clips: a white window on clear (the matte), a green backdrop, a magenta box (the words).
+    const matte1 = path.join(dir, 'matte1.mov'), matte2 = path.join(dir, 'matte2.mov');
+    const bg = path.join(dir, 'bg.mov'), gfxBox = path.join(dir, 'gfx1.mov'), gfxNone = path.join(dir, 'gfx2.mov');
+    await prores(matte1, 'white', 3, { w: 860, h: 800, x: 110, y: 140 });
+    await prores(matte2, 'white', 2, { w: 1459, h: 821, x: 230, y: 40 });
+    await prores(bg, 'green', 3);
+    await prores(gfxBox, 'magenta', 3, { w: 100, h: 100, x: 1700, y: 100 });
+    await prores(gfxNone, 'black@0', 2);
+
+    // The first 2 s cut; three highlights on the kept stretch, their windows straddled by 3 s render windows.
+    const cuts: Cut[] = [{ startMs: 0, endMs: 2000, reason: 'manual' }];
+    const edit: EpisodeEdit = { cuts, version: 1 };
+    const at = (srcMs: number) => {
+        const t = editedTime(srcMs, keepRanges(12_000, cuts));
+        assert.ok(t !== null);
+        return t / 1000;
+    };
+    const out = path.join(dir, 'out.mp4');
+    await renderEdit({
+        video, edit, out, clean: 'off', blockMinutes: 0.05,
+        highlights: [
+            { layout: 'splitQuote', keyframes: HIGHLIGHT_KEYFRAMES.splitQuote, srcMs: 3000, durationMs: 3000, files: { graphics: gfxBox, matte: matte1, background: bg } },
+            { layout: 'below', keyframes: HIGHLIGHT_KEYFRAMES.below, srcMs: 6500, durationMs: 2000, files: { graphics: gfxNone, matte: matte2, background: bg } },
+            { layout: 'over', keyframes: HIGHLIGHT_KEYFRAMES.over, srcMs: 9000, durationMs: 2000, files: { graphics: gfxNone } },
+        ],
+    });
+
+    const near = (px: number[], want: [number, number, number], slack = 60) =>
+        px.length === 3 && px.every((v, i) => Math.abs(v - want[i]) <= slack);
+    // Before any highlight: the source as it is.
+    assert.ok(near(await pixelAt(out, 0.5, 500, 540), [255, 255, 0]), `plain yellow at 0.5 s, got ${await pixelAt(out, 0.5, 500, 540)}`);
+    // splitQuote's hold (1.5 s in): outside the window the backdrop; inside, the picture panned 410 left
+    // (source 1010 is red); the words clip on top.
+    const hold1 = at(3000) + 1.5;
+    assert.ok(near(await pixelAt(out, hold1, 40, 540), [0, 128, 0]), `backdrop beside the window, got ${await pixelAt(out, hold1, 40, 540)}`);
+    assert.ok(near(await pixelAt(out, hold1, 600, 500), [255, 0, 0]), `the picture panned left inside the window, got ${await pixelAt(out, hold1, 600, 500)}`);
+    assert.ok(near(await pixelAt(out, hold1, 1750, 150), [255, 0, 255]), `the words clip on top, got ${await pixelAt(out, hold1, 1750, 150)}`);
+    // Mid-ease (a third of the way in): the boundary has left 960 but not yet reached the hold's 550.
+    const midIn = at(3000) + 0.35;
+    assert.ok(near(await pixelAt(out, midIn, 930, 500), [255, 0, 0]), `at mid-ease the pan is under way, got ${await pixelAt(out, midIn, 930, 500)}`);
+    // below's hold: the picture at 76 % inside its window; the backdrop around it.
+    const hold2 = at(6500) + 1.0;
+    assert.ok(near(await pixelAt(out, hold2, 100, 1000), [0, 128, 0]), `backdrop around the shrunk picture, got ${await pixelAt(out, hold2, 100, 1000)}`);
+    assert.ok(near(await pixelAt(out, hold2, 300, 500), [255, 255, 0]), `the shrunk picture's left is still yellow, got ${await pixelAt(out, hold2, 300, 500)}`);
+    assert.ok(near(await pixelAt(out, hold2, 1500, 500), [255, 0, 0]), `the shrunk picture's right is red, got ${await pixelAt(out, hold2, 1500, 500)}`);
+    // over's hold: the same frame, dimmed to 0.4.
+    const hold3 = at(9000) + 1.0;
+    const dim = await pixelAt(out, hold3, 1400, 540);
+    assert.ok(dim[0] > 60 && dim[0] < 160 && dim[2] < 60, `the dimmed picture at the hold, got ${dim}`);
+    // After the last highlight: bright again.
+    assert.ok(near(await pixelAt(out, at(9000) + 2.5, 1400, 540), [255, 0, 0]), `bright red after, got ${await pixelAt(out, at(9000) + 2.5, 1400, 540)}`);
     fs.rmSync(dir, { recursive: true, force: true });
 });

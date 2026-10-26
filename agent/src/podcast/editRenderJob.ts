@@ -25,8 +25,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
-import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
-import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, type GraphicSpec } from '../../../lib/graphics';
+import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type HighlightLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
+import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
+import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
+import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';
 import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
@@ -102,6 +104,8 @@ export interface EditRenderPlan {
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
     // Motion graphics (spec 021): drawn into clips before the render, then overlaid as video layers.
     graphics: GraphicLayer[];
+    // Highlight moments (spec 021 item M3): the picture reframed by each one's template planes.
+    highlights: HighlightLayer[];
     wordsPath: string | null;            // reviewed transcript, Storage path
     chapters: { title: string; startMs: number }[];
     quotes: { text: string; speaker: string; startMs: number; endMs: number }[];
@@ -174,6 +178,7 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
             pictures: layersOf(edit).filter(isPicture),
         },
         graphics: layersOf(edit).filter((l): l is GraphicLayer => l.kind === 'graphic'),
+        highlights: layersOf(edit).filter((l): l is HighlightLayer => l.kind === 'highlight'),
         wordsPath,
         chapters: notes?.chapters ?? [],
         quotes: (notes?.quotes ?? []).filter(q => q.endMs > q.startMs)
@@ -259,6 +264,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // clips are overlaid on the programme's own clock (renderEdit's `overlays`).
     const graphicWarnings: string[] = [];
     const overlays: NonNullable<Parameters<typeof renderEdit>[0]['overlays']> = [];
+    const highlights: NonNullable<Parameters<typeof renderEdit>[0]['highlights']> = [];
     // The starlight joins this edit plays (lib/transitions.ts): the Studio's or the edit's at sections,
     // and the edit's own at splits that are there.
     const starlight = [
@@ -266,7 +272,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...(plan.edit.joins ?? []).flatMap(j => (typeof j.at === 'object' && j.transition === 'starlight' && (plan.edit.splits ?? []).includes(j.at.atSplit)
             ? [{ key: `split:${j.at.atSplit}`, durationMs: j.durationMs }] : [])),
     ];
-    const wantGraphics = plan.graphics.length > 0 || starlight.length > 0;
+    const wantGraphics = plan.graphics.length > 0 || plan.highlights.length > 0 || starlight.length > 0;
     if (wantGraphics && !deps.graphics) {
         graphicWarnings.push('Motion graphics were not drawn: the graphics renderer is not on this runner.');
     } else if (deps.graphics) {
@@ -301,6 +307,26 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         for (const s of starlight) {
             const { local } = await drawClip({ template: 'starlight', fields: {}, colors: settings.colors, durationMs: s.durationMs, width: 1920, height: 1080 });
             overlays.push({ file: local, durationMs: s.durationMs, at: s.key });
+        }
+        // Highlight moments (spec 021 item M3): the planes each layout needs, one clip apiece — the words
+        // ('graphics'), the window's mask ('matte') and the backdrop ('background') — for the reframe
+        // inside the window encode. The logo plays no part, so the clips survive a logo change.
+        for (const h of plan.highlights) {
+            const planes = HIGHLIGHT_PLANES[h.layout];
+            const fields = { words: h.words, emphasis: h.emphasis, speaker: h.speaker };
+            const draw = async (mode: 'graphics' | 'matte' | 'background') => (await drawClip({
+                template: highlightTemplate(h.layout), fields, colors: settings.colors,
+                durationMs: h.durationMs, width: 1920, height: 1080, mode,
+            })).local;
+            highlights.push({
+                layout: h.layout, keyframes: HIGHLIGHT_KEYFRAMES[h.layout],
+                srcMs: h.anchor.srcMs, durationMs: h.durationMs,
+                files: {
+                    graphics: await draw('graphics'),
+                    ...(planes.matte ? { matte: await draw('matte') } : {}),
+                    ...(planes.background ? { background: await draw('background') } : {}),
+                },
+            });
         }
         // The motion "In this episode" tag onto each cut teaser, its progress line spanning the clip.
         for (const t of tagLater) {
@@ -354,6 +380,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         words, chapters: plan.chapters, quotes: plan.quotes,
         sections: plan.sections,
         ...(overlays.length ? { overlays } : {}),
+        ...(highlights.length ? { highlights } : {}),
         ...(sounds.length ? { sounds } : {}),
         ...(deps.exists ? { store: {
             get: async (name: string, local: string) => {

@@ -47,7 +47,7 @@ export function progressExpr(timeExpr: string, k: Pick<LayoutKeyframes, 'inMs' |
         const seg = `${table[i]}+(${table[i + 1]}-${table[i]})*(ld(0)*${steps}-${i})`;
         expr = `if(lt(ld(0),${(i + 1) / steps}),${seg},${expr})`;
     }
-    return `st(0,${x})*0+${expr}`;
+    return `(st(0,${x})*0+${expr})`;     // parenthesized: callers multiply it
 }
 
 // A number eased between `from` and `to` by the progress expression.
