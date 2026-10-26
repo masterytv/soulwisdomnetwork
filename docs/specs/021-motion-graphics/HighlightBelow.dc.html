@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: quote under the video</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@1,400;1,500&amp;family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:9s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#140a2e}
+.sky{background-color:#140a2e;background-image:radial-gradient(2px 2px at 6% 30%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 94% 22%,rgba(255,255,255,.6),transparent),radial-gradient(2px 2px at 9% 88%,rgba(255,255,255,.6),transparent),radial-gradient(1.5px 1.5px at 91% 80%,rgba(255,255,255,.5),transparent),radial-gradient(ellipse 70% 40% at 50% 100%,#3b2382 0%,#23145a 45%,#140a2e 100%)}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.65,0,.25,1)}
+.lift{animation-name:lift}.frame{animation-name:frame}.say{animation-name:say;animation-timing-function:cubic-bezier(.22,1,.36,1)}.glow{animation-name:glow;animation-timing-function:ease-out}
+.t1{animation-delay:.35s}.t2{animation-delay:.7s}.t3{animation-delay:1s}
+.still .a{animation:none!important}
+.still .glow{color:#f7c65b;text-shadow:0 0 30px rgba(247,198,91,.5)}
+@keyframes lift{0%,8%{transform:translateY(0) scale(1);clip-path:inset(0px 0px 0px 0px round 0px)}20%,76%{transform:translateY(40px) scale(.76);clip-path:inset(0px 0px 0px 0px round 28px)}88%,100%{transform:translateY(0) scale(1);clip-path:inset(0px 0px 0px 0px round 0px)}}
+@keyframes frame{0%,16%{opacity:0}22%,74%{opacity:1}80%,100%{opacity:0}}
+@keyframes say{0%,19%{opacity:0;transform:translateY(22px);filter:blur(8px)}27%,73%{opacity:1;transform:none;filter:blur(0)}80%,100%{opacity:0;filter:blur(4px)}}
+@keyframes glow{0%,30%{color:#ffffff;text-shadow:none}36%,73%{color:#f7c65b;text-shadow:0 0 30px rgba(247,198,91,.5)}80%,100%{color:#f7c65b;opacity:0}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div class="sky" style="position: absolute; inset: 0"></div>
+
+  <div aria-hidden="true" class="a lift" style="position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; transform-origin: 50% 0; transform: translateY(40px) scale(0.76); clip-path: inset(0px 0px 0px 0px round 28px); background: radial-gradient(ellipse 60% 70% at 50% 40%, #7a6655 0%, #4a3d33 45%, #221c18 100%)">
+    <div style="position: absolute; left: 810px; top: 230px; width: 300px; height: 360px; border-radius: 50%; background: #1d1714; opacity: 0.55; filter: blur(30px)"></div>
+    <div style="position: absolute; left: 630px; top: 560px; width: 660px; height: 620px; border-radius: 48% 48% 0 0; background: #1d1714; opacity: 0.55; filter: blur(34px)"></div>
+    <p style="position: absolute; left: 0; right: 0; top: 120px; margin: 0; text-align: center; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 26px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[SPEAKER FOOTAGE]</p>
+  </div>
+  <div aria-hidden="true" class="a frame" style="position: absolute; left: 230px; top: 40px; width: 1460px; height: 821px; box-sizing: border-box; border-radius: 21px; border: 1.5px solid rgba(247, 198, 91, 0.7)"></div>
+
+  <div style="position: absolute; left: 0; right: 0; top: 896px; display: flex; flex-direction: column; align-items: center; gap: 10px">
+    <p style="margin: 0; font-family: 'EB Garamond', serif; font-style: italic; font-size: 64px; line-height: 1.1; color: #ffffff; text-align: center"><span class="a say" style="display: inline-block">We hold beliefs lightly</span> <span class="a say t1" style="display: inline-block">and people <span class="a glow t2" style="display: inline-block">gently.</span></span></p>
+    <p class="a say t3" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 20px; letter-spacing: 0.26em; text-transform: uppercase; color: #f7c65b">[Speaker Name]</p>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Starlight transition</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;800&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:3.2s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#000}
+.panelsky{background-color:#140a2e;background-image:radial-gradient(2px 2px at 14% 30%,rgba(255,255,255,.8),transparent),radial-gradient(1.5px 1.5px at 33% 72%,rgba(255,255,255,.6),transparent),radial-gradient(2px 2px at 52% 18%,rgba(255,255,255,.7),transparent),radial-gradient(1.5px 1.5px at 71% 61%,rgba(255,255,255,.6),transparent),radial-gradient(2px 2px at 86% 36%,rgba(255,255,255,.8),transparent),linear-gradient(90deg,rgba(20,10,46,0) 0%,#140a2e 9%,#23145a 60%,#3b2382 92%,#4a2f9c 100%)}
+.flare{position:absolute;left:0;top:0;width:0;height:0}
+.flare i{position:absolute;display:block}
+.flare .core{left:-80px;top:-80px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,#fff 0,#fff 10%,rgba(255,255,255,.6) 22%,rgba(247,198,91,.25) 48%,rgba(247,198,91,0) 70%)}
+.flare .h{left:-300px;top:-2px;width:600px;height:4px;background:linear-gradient(90deg,rgba(255,255,255,0),#fff 50%,rgba(255,255,255,0))}
+.flare .v{left:-2px;top:-560px;width:4px;height:1120px;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 50%,rgba(255,255,255,0))}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both}
+.travel{animation-name:travel;animation-timing-function:cubic-bezier(.65,0,.35,1)}
+.cut{animation-name:cut;animation-timing-function:linear}
+.still .a{animation:none!important}
+.still .cut{opacity:0}
+@keyframes travel{0%,14%{transform:translateX(-2300px)}62%,100%{transform:translateX(1960px)}}
+@keyframes cut{0%,37.9%{opacity:0}38%,95%{opacity:1}95.1%,100%{opacity:0}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: linear-gradient(135deg, #6b5747, #2c2420); display: flex; align-items: center; justify-content: center">
+    <span style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 64px; letter-spacing: 0.3em; color: rgba(255,255,255,0.6)">SCENE A</span>
+  </div>
+  <div aria-hidden="true" class="a cut" style="position: absolute; inset: 0; background: linear-gradient(135deg, #3a4a5e, #161c26); display: flex; align-items: center; justify-content: center">
+    <span style="font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 64px; letter-spacing: 0.3em; color: rgba(255,255,255,0.6)">SCENE B</span>
+  </div>
+  <div aria-hidden="true" class="a travel" style="position: absolute; left: 0; top: 0; width: 2200px; height: 1080px; transform: translateX(-1050px)">
+    <div class="panelsky" style="position: absolute; inset: 0"></div>
+    <div style="position: absolute; right: 0; top: 0; width: 6px; height: 1080px; background: #f7c65b; box-shadow: 0 0 40px 10px rgba(247, 198, 91, 0.55), 0 0 140px 40px rgba(247, 198, 91, 0.2)"></div>
+    <div style="position: absolute; right: 3px; top: 540px; width: 0; height: 0">
+      <div class="flare"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>

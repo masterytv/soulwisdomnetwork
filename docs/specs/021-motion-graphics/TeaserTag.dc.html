@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In this episode tag</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;800;900&amp;display=swap">
+<style>
+body{margin:0}
+.root{--cyc:6s;position:relative;overflow:hidden;font-family:'Outfit',system-ui,sans-serif;color:#fff;background:#1a1612}
+.a{animation-duration:var(--cyc);animation-iteration-count:infinite;animation-fill-mode:both;animation-timing-function:cubic-bezier(.22,1,.36,1)}
+.pop{animation-name:pop}.slide{animation-name:slide}.pulse{animation-name:pulse;animation-duration:1.6s;animation-timing-function:ease-out}.fill{animation-name:fill;animation-timing-function:linear}
+.t1{animation-delay:.2s}.t2{animation-delay:.35s}
+.still .a{animation:none!important}
+.still .pulse{opacity:0}
+.still .fill{transform:scaleX(.42)}
+@keyframes pop{0%{opacity:0;transform:translateY(24px) scale(.96)}9%,86%{opacity:1;transform:none}95%,100%{opacity:0;transform:translateY(10px)}}
+@keyframes slide{0%{opacity:0;transform:translateX(-20px)}11%,86%{opacity:1;transform:none}95%,100%{opacity:0}}
+@keyframes pulse{0%{opacity:.9;transform:scale(.6)}100%{opacity:0;transform:scale(2.4)}}
+@keyframes fill{0%,6%{transform:scaleX(0)}92%,100%{transform:scaleX(1)}}
+</style>
+</helmet>
+<div class="{{cls}}" style="width: 1920px; height: 1080px">
+  <div aria-hidden="true" style="position: absolute; inset: 0; background: radial-gradient(ellipse 55% 65% at 55% 42%, #7b6a5a 0%, #4b3f35 45%, #1a1612 100%)"></div>
+  <p aria-hidden="true" style="position: absolute; right: 90px; top: 70px; margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 22px; letter-spacing: 0.2em; color: rgba(255,255,255,0.7)">[TEASER CLIP]</p>
+
+  <div class="a pop" style="position: absolute; left: 80px; top: 806px; width: 600px; box-sizing: border-box; padding: 30px 40px 34px 40px; border-radius: 8px; background: rgba(20, 10, 46, 0.9); border: 1px solid rgba(247, 198, 91, 0.35); box-shadow: 0 20px 60px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 14px; overflow: hidden">
+    <div style="display: flex; align-items: center; gap: 16px">
+      <div aria-hidden="true" style="position: relative; width: 26px; height: 26px; flex-shrink: 0">
+        <div class="a pulse" style="position: absolute; inset: 0; border-radius: 50%; border: 2px solid #f7c65b"></div>
+        <svg width="26" height="26" viewBox="0 0 24 24" style="position: absolute; inset: 0"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z" fill="#f7c65b"></path></svg>
+      </div>
+      <p class="a slide t1" style="margin: 0; font-family: 'Outfit', sans-serif; font-weight: 900; font-size: 34px; letter-spacing: 0.2em; color: #f7c65b">IN THIS EPISODE</p>
+    </div>
+    <p class="a slide t2" style="margin: 0 0 0 42px; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 36px; color: #ffffff">[Speaker Name]</p>
+    <div aria-hidden="true" style="position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.14)">
+      <div class="a fill" style="width: 100%; height: 4px; transform-origin: left center; background: linear-gradient(90deg, #f7c65b, #fde68a)"></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"motion":{"editor":"enum","options":["Loop","Still"],"default":"Loop","section":"Motion"},"$preview":{"width":1920,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const still = (this.props.motion ?? 'Loop') === 'Still';
+    return { cls: still ? 'root still' : 'root' };
+  }
+}
+</script>
+</body>
+</html>
