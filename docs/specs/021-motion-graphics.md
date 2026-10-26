@@ -1,10 +1,10 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** In progress. **M1, M2 and M3 are built and merged** (PRs #211, #213 and #216). **M4 is
-built** (the branch `claude/spec-021-m4`): Claude picks the moments, everything checkable checked and
-paced in code, with Suggest/Clear in the editor — particulars in the M4 section below. Tom answered
-D1–D6 on 26 October 2026; his answers are recorded at the end of this page. M5 is next.
+**Status:** Built. **M1–M4 are merged** (PRs #211, #213, #216 and #217) and **M5 is built** (the
+branch `claude/spec-021-m5`): the Studio settings, the Usage page's drawing time and the hand-off
+export — particulars in the M5 section below. Tom answered D1–D6 on 26 October 2026; his answers are
+recorded at the end of this page. The Shorts overlay (D5, "later") is in `docs/BACKLOG.md`.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -293,6 +293,19 @@ real episode and tighten**. The run's state and counts live on `episode.highligh
 - **Usage page:** graphics drawing time per render.
 - **Hand-off export** (019 item 4.1): graphic clips export as files beside the cuts; highlights export as markers
   (the reframe itself can't be expressed in an XML timeline).
+
+**Built.** The Studio settings (spec 018 pattern, nothing saved before them changes behaviour):
+`motionGraphics` (D2, on) gates the automatic placement on fresh edits in both Build for Studio editor
+and the editor's first open (through the edit route's `graphics` payload); `highlightDensity` (D4,
+Normal) is read by the suggestions job, with Off refusing the run and hiding Suggest highlights
+(`highlightsOff` on the edit GET); `suggestOnBuild` (D3, off) starts the suggestions with a fresh
+build, best-effort; `highlightLayouts` narrows what the pacing may pick, a kind with nothing left
+falling back to its full set. The render clocks real drawing time (cached clips cost nothing) onto
+`editRender.graphicsSeconds`, shown under the Usage page's machine time. The hand-off export carries
+each drawn graphic clip as a file (`graphicClip`, named by the cache's template-hash) and each
+highlight as a marker at its place on the exported timeline — sequence markers in the FCP7 XML for
+Resolve and Premiere, a marker inside the covering `asset-clip` on its source clock for Final Cut; a
+file auto-editor writes in an unrecognised shape is left unmarked rather than corrupted.
 
 ## Order and effort
 

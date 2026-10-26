@@ -217,10 +217,12 @@ the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
   matte, backdrop), the reframe inside the window encode by the shared 16-segment easing
   table, and the editor's preview (the `<video>` element itself reframed), rose timeline lane
   and word-snapped drags.
-- **M4 built** (branch `claude/spec-021-m4`): `mode: highlights` — Claude suggests the
+- **M4 built and merged** (PR #217): `mode: highlights` — Claude suggests the
   moments; verification and pacing are code with tests (`lib/highlights.ts`); the job writes
   suggestions into the saved edit (`suggested: true`, never over a touched one) and the editor
-  gains Suggest/Clear; cost in `spending.ts` ($0.50, to be measured on a real episode). The
-  spec's M4 section carries the particulars M5 needs.
-- **M5 next**: the Studio settings (motion graphics on/off, highlight density, suggest-on-build,
-  the layout allowlist), graphics time on the Usage page, and hand-off export markers.
+  gains Suggest/Clear; cost in `spending.ts` ($0.50, to be measured on a real episode).
+- **M5 built** (branch `claude/spec-021-m5`): the Studio settings (motion graphics on/off,
+  highlight density with Off, suggest-on-build, the layout allowlist), the render's drawing
+  time on the Usage page, and the hand-off export carrying graphic clips as files and
+  highlights as markers. **Spec 021 is complete**; what waits is the Shorts overlay
+  (`docs/BACKLOG.md`) and measuring the highlights run's real cost on an episode.
