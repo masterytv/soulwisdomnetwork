@@ -48,7 +48,9 @@ test('the files name the recording only, written plainly or as a file URL', () =
     assert.equal(nameOnly('<name>Zoom Ep 4</name>', dir), '<name>Zoom Ep 4</name>');
 });
 
-// Stands in for auto-editor: reads the v3 timeline and writes the media path as it does (FCP7: plain; FCPXML: a file URL).
+// Stands in for auto-editor: reads the v3 timeline and writes the media path and the timeline's shape as
+// it does (FCP7: one <sequence>, paths plain; FCPXML: <asset-clip>s in a spine with rational seconds, the
+// path a file URL) — checked against the real 31.7.2 binary while building this and the markers (M5).
 function standIn(dir: string) {
     const bin = path.join(dir, 'auto-editor');
     fs.writeFileSync(bin, `#!/usr/bin/env node
@@ -57,9 +59,12 @@ const [timeline, , kind, , out] = process.argv.slice(2);
 const t = JSON.parse(fs.readFileSync(timeline, 'utf8'));
 const src = t.v[0][0].src.replace(/&/g, '&amp;');
 const clips = t.v[0].map(c => c.start + ':' + c.offset + ':' + c.dur).join(',');
+const [n, d] = t.timebase.split('/').map(Number);
+const rat = f => (f * (d || 1)) + '/' + n + 's';
+const spine = t.v[0].map(c => '<asset-clip ref="r2" offset="' + rat(c.start) + '" start="' + rat(c.offset) + '" duration="' + rat(c.dur) + '"/>').join('');
 fs.writeFileSync(out, kind.startsWith('final-cut-pro')
-    ? '<fcpxml timebase="' + t.timebase + '" clips="' + clips + '"><media-rep src="file://' + encodeURI(t.v[0][0].src) + '"/></fcpxml>'
-    : '<xmeml kind="' + kind + '" clips="' + clips + '"><pathurl>' + src + '</pathurl></xmeml>');
+    ? '<fcpxml timebase="' + t.timebase + '" clips="' + clips + '"><media-rep src="file://' + encodeURI(t.v[0][0].src) + '"/><spine>' + spine + '</spine></fcpxml>'
+    : '<xmeml kind="' + kind + '" clips="' + clips + '"><sequence><media><pathurl>' + src + '</pathurl></media></sequence></xmeml>');
 `);
     fs.chmodSync(bin, 0o755);
     return bin;
@@ -80,18 +85,37 @@ test('the editor files and their captions; a variable frame rate gets a constant
     const clips = [{ startMs: 0, endMs: 1000, atMs: 0 }, { startMs: 3000, endMs: 5000, atMs: 1000 }];
     const words = [{ text: 'kept', start: 200, end: 600 }, { text: 'cut', start: 1500, end: 1900 }, { text: 'later', start: 3500, end: 3900 }];
 
-    const a = await makeEditExports({ video: steady, name: 'GMT Zoom Ep 4 & Co.mp4', title: 'Ep 4', clips, words, workDir: path.join(dir, 'a'), bin });
-    assert.deepEqual(a.files.map(f => f.kind), ['resolve', 'premiere', 'finalcut', 'captions']);
-    assert.deepEqual(a.warnings, []);
+    // A graphic clip rides along as a file; the highlights become markers — one sits on cut words.
+    const clip = path.join(dir, 'lowerThird-1a2b3c4d.mov');
+    fs.writeFileSync(clip, 'mov');
+    const a = await makeEditExports({
+        video: steady, name: 'GMT Zoom Ep 4 & Co.mp4', title: 'Ep 4', clips, words, workDir: path.join(dir, 'a'), bin,
+        markers: [
+            { srcMs: 3500, name: 'Iris close: the soul remembers' },
+            { srcMs: 1500, name: 'Words over: these words are cut' },
+        ],
+        graphics: [{ local: clip, name: 'lowerThird-1a2b3c4d.mov' }],
+    });
+    assert.deepEqual(a.files.map(f => f.kind), ['resolve', 'premiere', 'finalcut', 'graphicClip', 'captions']);
+    assert.equal(a.warnings.length, 1);
+    assert.match(a.warnings[0], /their words are cut.*these words are cut/);
     assert.equal(a.frameRate.rate, '30000/1001');
     const resolve = fs.readFileSync(a.files[0].local, 'utf8');
     assert.match(resolve, /kind="resolve-fcp7" clips="0:0:30,30:90:60"/);
     assert.match(resolve, /<pathurl>GMT Zoom Ep 4 &amp; Co\.mp4<\/pathurl>/);
-    assert.match(fs.readFileSync(a.files[2].local, 'utf8'), /src="file:\/\/\/GMT%20Zoom%20Ep%204%20&%20Co\.mp4"/);
+    // 3.5 s of the recording is frame 105, inside the stretch that starts at source frame 90, timeline 30:
+    // a sequence marker at timeline frame 45.
+    assert.match(resolve, /<marker><comment><\/comment><name>Iris close: the soul remembers<\/name><in>45<\/in><out>-1<\/out><\/marker><\/sequence>/);
+    assert.ok(!resolve.includes('these words are cut'));
+    const fcpxml = fs.readFileSync(a.files[2].local, 'utf8');
+    assert.match(fcpxml, /src="file:\/\/\/GMT%20Zoom%20Ep%204%20&%20Co\.mp4"/);
+    // Inside the covering clip, on its source clock: clip start 90 + (45 − 30) = frame 105.
+    assert.match(fcpxml, /<asset-clip ref="r2" offset="30030\/30000s" start="90090\/30000s" duration="60060\/30000s"><marker start="105105\/30000s" duration="1001\/30000s" value="Iris close: the soul remembers"\/><\/asset-clip>/);
     assert.equal(a.files[1].name, 'Ep 4 - Premiere Pro.xml');
+    assert.deepEqual([a.files[3].name, a.files[3].local, a.files[3].contentType], ['Ep 4 - lowerThird-1a2b3c4d.mov', clip, 'video/quicktime']);
     // The captions are on the exported timeline, in its whole frames: "later" (3.5 s in the recording) is 1.5 s in,
     // less the 2 ms the frames moved its stretch's start (3 s is frame 89.91, so 90: 3.003 s).
-    const srt = fs.readFileSync(a.files[3].local, 'utf8');
+    const srt = fs.readFileSync(a.files[4].local, 'utf8');
     assert.match(srt, /kept/);
     assert.ok(!/cut/.test(srt));
     assert.match(srt, /00:00:01,498 --> /);

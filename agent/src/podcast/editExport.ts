@@ -124,7 +124,7 @@ export const EXPORTS = [
 ] as const;
 
 export interface ExportFile {
-    kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate';
+    kind: 'resolve' | 'premiere' | 'finalcut' | 'captions' | 'constantRate' | 'graphicClip';
     local: string;
     name: string;                 // what it is called in Drive and when downloaded
     contentType: string;
@@ -132,10 +132,85 @@ export interface ExportFile {
 
 export interface ExportResult { files: ExportFile[]; warnings: string[]; frameRate: FrameRate }
 
+// ─── Markers (spec 021 item M5) ──────────────────────────────────────────────
+// A highlight cannot be an XML timeline (the reframe is the render's), so it rides along as a marker
+// at its place on the exported timeline. One whose words are cut has no place and is left out.
+
+export interface ExportMarker { srcMs: number; name: string }
+
+// Each marker's frame on the exported timeline: its frame in the recording, carried through the kept
+// stretch that holds it. Returns what could be placed and the names of what could not.
+export function markerFrames(markers: ExportMarker[], frames: FrameClip[], fps: number): { placed: { frame: number; name: string }[]; dropped: string[] } {
+    const placed: { frame: number; name: string }[] = [];
+    const dropped: string[] = [];
+    for (const m of markers) {
+        const srcFrame = Math.round(m.srcMs * fps / 1000);
+        const clip = frames.find(f => srcFrame >= f.inFrame && srcFrame < f.outFrame);
+        if (!clip) { dropped.push(m.name); continue; }
+        placed.push({ frame: clip.atFrame + (srcFrame - clip.inFrame), name: m.name });
+    }
+    return { placed: placed.sort((a, b) => a.frame - b.frame), dropped };
+}
+
+const escapeXml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// Sequence markers into an FCP7 XML (Resolve and Premiere both read them): <marker> children of the
+// one <sequence>, which the DTD puts after its media. Null when the file has no sequence to carry them.
+export function fcp7WithMarkers(xml: string, placed: { frame: number; name: string }[]): string | null {
+    const at = xml.lastIndexOf('</sequence>');
+    if (at < 0) return null;
+    const markers = placed.map(m => `<marker><comment></comment><name>${escapeXml(m.name)}</name><in>${m.frame}</in><out>-1</out></marker>`).join('');
+    return xml.slice(0, at) + markers + xml.slice(at);
+}
+
+// A frame count as FCPXML's rational seconds at the timeline's rate (frame F at n/d fps is F·d/n s).
+export const fcpxmlTime = (frames: number, rate: string) => {
+    const [n, d] = rate.split('/').map(Number);
+    return `${frames * (d || 1)}/${n}s`;
+};
+
+const rationalFrames = (attr: string, rate: string): number => {
+    const [n, d] = rate.split('/').map(Number);
+    const m = /^(\d+)\/(\d+)s$/.exec(attr);
+    const seconds = m ? Number(m[1]) / Number(m[2]) : Number(attr.replace(/s$/, ''));
+    return Math.round(seconds * n / (d || 1));
+};
+
+// Markers into an FCPXML: a <marker> belongs inside the clip that covers its moment, its start on the
+// clip's own source clock (the clip's `start` plus how far into the clip the marker sits). Null when no
+// clip covers a marker the way auto-editor writes them, so a changed format never corrupts the file.
+export function fcpxmlWithMarkers(xml: string, placed: { frame: number; name: string }[], rate: string): string | null {
+    let out = xml;
+    for (const m of [...placed].reverse()) {
+        const clips = [...out.matchAll(/<asset-clip\b[^>]*?(\/>|>)/g)];
+        const covering = clips.find(c => {
+            const attr = (name: string) => new RegExp(`\\b${name}="([^"]+)"`).exec(c[0])?.[1];
+            const offset = attr('offset'), duration = attr('duration');
+            if (!offset || !duration) return false;
+            const from = rationalFrames(offset, rate);
+            return m.frame >= from && m.frame < from + rationalFrames(duration, rate);
+        });
+        if (!covering || covering.index === undefined) return null;
+        const attr = (name: string) => new RegExp(`\\b${name}="([^"]+)"`).exec(covering[0])?.[1];
+        const offset = rationalFrames(attr('offset')!, rate);
+        const start = attr('start') ? rationalFrames(attr('start')!, rate) : 0;
+        const marker = `<marker start="${fcpxmlTime(start + (m.frame - offset), rate)}" duration="${fcpxmlTime(1, rate)}" value="${escapeXml(m.name)}"/>`;
+        const tag = covering[0];
+        const replaced = tag.endsWith('/>')
+            ? `${tag.slice(0, -2)}>${marker}</asset-clip>`
+            : `${tag}${marker}`;
+        out = out.slice(0, covering.index) + replaced + out.slice(covering.index + tag.length);
+    }
+    return out;
+}
+
 // Writes the three editor files, the captions for their timeline, and (for a variable frame rate) the
-// constant-frame-rate copy they then name. `name` is the recording's original file name; `title` names the files.
+// constant-frame-rate copy they then name. `name` is the recording's original file name; `title` names the
+// files. `markers` are the highlights, placed on the timeline (spec 021 M5: the reframe itself cannot be
+// an XML timeline); `graphics` are the drawn motion clips, passed through beside the cuts.
 export async function makeEditExports(o: {
     video: string; name: string; title: string; clips: Clip[]; words?: { text: string; start: number; end: number }[];
+    markers?: ExportMarker[]; graphics?: { local: string; name: string }[];
     workDir: string; bin: string;
 }): Promise<ExportResult> {
     const dir = path.resolve(o.workDir, 'edit-files');
@@ -162,6 +237,9 @@ export async function makeEditExports(o: {
 
     const frames = framesOf(o.clips, frameRate.fps);
     if (!frames.length) throw new Error('Nothing is kept in this edit');
+    // The highlights as markers on the exported timeline; one on cut words has no place there.
+    const { placed, dropped } = markerFrames(o.markers ?? [], frames, frameRate.fps);
+    if (dropped.length) warnings.push(`Not on the exported timeline (their words are cut): ${dropped.join('; ')}.`);
     const timeline = path.join(dir, 'timeline.v3');
     fs.writeFileSync(timeline, JSON.stringify(v3Timeline(frames, media, info, frameRate.rate)));
     for (const e of EXPORTS) {
@@ -169,8 +247,18 @@ export async function makeEditExports(o: {
         const out = path.join(dir, `${e.kind}${ext}`);
         await run(o.bin, [timeline, '--export', e.arg, '-o', out]);
         if (!fs.existsSync(out)) throw new Error(`auto-editor made no ${e.label} file`);
-        fs.writeFileSync(out, nameOnly(fs.readFileSync(out, 'utf8'), dir));
+        let xml = nameOnly(fs.readFileSync(out, 'utf8'), dir);
+        if (placed.length) {
+            const marked = e.kind === 'finalcut' ? fcpxmlWithMarkers(xml, placed, frameRate.rate) : fcp7WithMarkers(xml, placed);
+            if (marked === null) warnings.push(`The highlight markers did not fit the ${e.label} file the way auto-editor writes it, so it has none.`);
+            else xml = marked;
+        }
+        fs.writeFileSync(out, xml);
         files.push({ kind: e.kind, local: out, name: `${o.title} - ${e.suffix}`, contentType: 'application/xml' });
+    }
+    // The drawn motion graphic clips, beside the cuts, so the editor app has them to lay back over.
+    for (const g of o.graphics ?? []) {
+        files.push({ kind: 'graphicClip', local: g.local, name: `${o.title} - ${g.name}`, contentType: 'video/quicktime' });
     }
     if (o.words?.length) {
         const srt = path.join(dir, 'captions.srt');
