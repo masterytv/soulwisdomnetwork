@@ -1,10 +1,11 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** In progress. **M1 is built and merged** (PR #211). **M2 is built** (the branch
-`claude/spec-021-m2`): every Part A template, the full graphic layer, automatic placement, the motion
-teaser tag and the starlight transition — particulars in the M2 section below. Tom answered D1–D6 on
-26 October 2026; his answers are recorded at the end of this page. M3 is next, at Extra effort.
+**Status:** In progress. **M1 and M2 are built and merged** (PRs #211 and #213). **M3 is built** (the
+branch `claude/spec-021-m3`): the highlight layer and its rules, the six layouts' templates in three
+planes, the reframe inside the window encode, and the editor's preview, lane and Properties —
+particulars in the M3 section below. Tom answered D1–D6 on 26 October 2026; his answers are recorded
+at the end of this page. M4 is next.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -197,11 +198,12 @@ window encode (spec 019 item 4.2, `renderWindows.ts`):
 
 1. **Background:** a still drawn by the template (the sky), looped for the span.
 2. **The picture:** the episode's frames for the span, moved by **keyframes the template declares**:
-   `window.GRAPHIC_LAYOUT = { from: Box, to: Box, inMs, outMs, ease }`, where a `Box` is
-   `{ x, y, scale, crop: {l,t,r,b}, radius, shape: 'rect' | 'ellipse', brightness, blur }`. The renderer turns
-   them into ffmpeg expressions over `t` (`crop`, `scale` with `eval=frame`, `overlay` x/y, `eq` brightness)
-   using the same cubic-bezier, approximated by a short lookup table if needed; tests compare the expression
-   to the curve at sampled times.
+   `window.GRAPHIC_LAYOUT = { from: Box, to: Box, inMs, outMs }`, where a `Box` is
+   `{ x, y, scale, brightness, blur }` — no crop, radius or shape: the picture is only ever scaled and
+   moved, and every shape is the matte's, so the render's frames keep one size. The renderer turns the
+   keyframes into ffmpeg expressions over `t` (`scale` with `eval=frame` — probed to work under `overlay`
+   on ffmpeg 6.1 — and `overlay` x/y) through the house curve as a 16-segment piecewise table
+   (`lib/reframe.ts easeSegments`); tests compare the expression to the curve at sampled times.
 3. **The mask:** the window's shape (rounded rectangle, or the closing oval for `iris`) is drawn by the template
    as a **matte clip** (white shape on black, same timing) and applied with `alphamerge`, so ffmpeg never has to
    draw rounded corners. `over`'s blur is a crossfade between the sharp picture and a `boxblur`red copy, by the
@@ -215,6 +217,28 @@ plan check: every highlight inside the programme, not across a join, words kept.
 `transform` and `clip-path`, driven by `useVideoTime`) and plays the template's iframe over it. The
 Properties panel switches the layout, edits the words and the emphasised word, and nudges the start and end
 to word boundaries (as teaser trims do, `pickTeaserWord`).
+
+**Built.** As specced, with these particulars M4+ builds on. The one source for the movement is
+`lib/reframe.ts`: `HIGHLIGHT_KEYFRAMES` holds each template's declared `GRAPHIC_LAYOUT` (pinned by
+`agent/src/podcast/graphicsRender.test.ts`, so a template cannot drift from what the render and the
+preview compute), and `easeSegments()` is the 16-segment table of cubic-bezier(.65, 0, .25, 1) that the
+render's expressions (`agent/src/podcast/graphics/reframe.ts progressExpr`), the preview's CSS
+(`boxAt`/`boxStyle`) and the tests all read. The splits are pure 410 px pans and `push` a 560 px pan
+(the design files never scale them); `below` is the one scaling layout (0.76); `iris` never moves the
+picture (its matte carries the whole close); `over` is drawn as a linear alpha crossfade to a dimmed,
+blurred copy over the same squeezed in/out — the one visible-motion approximation, invisible in a blur
+fade. `HIGHLIGHT_PLANES` (graphics/reframe.ts) says which plane clips each layout draws: `over` only its
+words, `push` words and backdrop, the rest all three; visible = picture alpha × matte alpha, so a
+one-pixel ease drift can never leave a fringe. The clip cache name now carries `mode` and the logo's
+hash. A highlight straddling a render-window join is trimmed in absolute episode seconds, so both windows
+draw their own frames of the move seamlessly (tested at 3 s windows). The edit route refuses a save whose
+highlight sits on cut words or a teaser or overlaps another (`highlightProblems`); the render warns (QC)
+when words are cut on a stale edit, a transition blends under one, or b-roll hides one. In the editor the
+preview reframes the `<video>` element itself and approximates the matte as an animated `clip-path`
+(`components/studio/highlightPreview.tsx` — the matte clip stays the render's truth); highlights live on
+a thin rose lane just above V1 (amber, with the reason, while the route would refuse them), drag edges
+nudge to word boundaries, and Elements' "+ Highlight" starts on the next word with the eight words said
+there.
 
 ### M4 — Claude picks the moments
 

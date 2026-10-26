@@ -45,7 +45,11 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               cached in Storage (episodes/<id>/graphics/) and overlaid by the render as video layers; the shared contract
               (templates, fields, colours, the graphic layer → video layer mapping) is lib/graphics.ts, the layer schema in
               lib/layers.ts, the editor's preview components/studio/graphics.tsx (a sandboxed iframe of the same HTML,
-              served by /api/studio/graphics/[template] with fonts inlined); Cinzel is in agent/assets/fonts (OFL)
+              served by /api/studio/graphics/[template] with fonts inlined); Cinzel is in agent/assets/fonts (OFL);
+              highlight moments (spec 021 Part B) reframe the episode's own picture: their movement, limits and rules
+              are lib/reframe.ts (one easing table for the render's ffmpeg expressions in podcast/graphics/reframe.ts,
+              the preview components/studio/highlightPreview.tsx, and the tests), each layout's template drawing three
+              planes (words, matte, backdrop) told apart by GRAPHIC.mode
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
               its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
               teasers, intro, outro, b-roll, voice cleanup (standard, Studio sound, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
