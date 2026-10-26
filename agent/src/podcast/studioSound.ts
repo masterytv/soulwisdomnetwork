@@ -213,12 +213,18 @@ export const STUDIO_AFTER = [
     'alimiter=limit=0.891:attack=5:release=50:level=false:latency=true',
 ].join(',');
 
+// The warmth asked for (dB, 0 for none; lib/voice.ts WARMTH_DB): a low shelf adding that much body below about 220 Hz,
+// and half of it taken off around 4 kHz, so the voice sounds lower and softer without its pitch changing.
+export function warmthFilter(db: number): string {
+    return db > 0 ? `lowshelf=f=220:t=q:w=0.7:g=${db},equalizer=f=4000:t=o:w=1.5:g=${-db / 2},` : '';
+}
+
 // The filter chain for the cleaned voice: the first speaker's EQ and level to start with, the commands to switch
-// (a file, when there is more than one sound), then STUDIO_AFTER, as two channels.
-export function studioChain(first: SpeakerSound, commandsFile: string | null): string {
+// (a file, when there is more than one sound), the warmth, then STUDIO_AFTER, as two channels.
+export function studioChain(first: SpeakerSound, commandsFile: string | null, warmthDb = 0): string {
     const cmd = commandsFile ? `asendcmd=f=${commandsFile.replace(/[\\:',;[\]]/g, c => `\\${c}`)},` : '';
     const eq = first.gains.map((g, i) => `equalizer@eq${i}=f=${BANDS[i]}:t=o:w=${BAND_WIDTH_OCTAVES}:g=${g}`).join(',');
-    return `${cmd}${eq},volume@lvl=volume=${dbToGain(first.volumeDb)},${STUDIO_AFTER},pan=stereo|c0=c0|c1=c0`;
+    return `${cmd}${eq},volume@lvl=volume=${dbToGain(first.volumeDb)},${warmthFilter(warmthDb)}${STUDIO_AFTER},pan=stereo|c0=c0|c1=c0`;
 }
 
 // ─── measuring a voice ─────────────────────────────────────────────────────
@@ -433,7 +439,7 @@ function ffmpeg(args: string[]): Promise<void> {
 
 // The rest of Studio sound, on `voice` (DeepFilterNet's mono WAV at the recording's times): measures the speakers,
 // writes the switch commands, and makes `out` (48 kHz stereo WAV). Returns what was set, for the log.
-export async function studioFinish(voice: string, out: string, o: { workDir: string; turns?: Turn[] }): Promise<string> {
+export async function studioFinish(voice: string, out: string, o: { workDir: string; turns?: Turn[]; warmthDb?: number }): Promise<string> {
     const { profiles, everyone } = measureVoices(voice, o.turns ?? []);
     const sounds = speakerSounds([...profiles, everyone]);
     const all = sounds[sounds.length - 1];
@@ -448,7 +454,7 @@ export async function studioFinish(voice: string, out: string, o: { workDir: str
         file = path.join(o.workDir, 'studio-sound.cmd');
         fs.writeFileSync(file, commandsFor(points, sounds));
     }
-    await ffmpeg(['-i', voice, '-af', studioChain(first, file), '-ar', '48000', '-c:a', 'pcm_s16le', out]);
+    await ffmpeg(['-i', voice, '-af', studioChain(first, file, o.warmthDb), '-ar', '48000', '-c:a', 'pcm_s16le', out]);
     const describe = (s: SpeakerSound) => `${s.speaker || 'everyone'}: ${s.volumeDb >= 0 ? '+' : ''}${s.volumeDb} dB, EQ ${s.gains.map((g, i) => `${BANDS[i]}:${g}`).filter((_, i) => s.gains[i]).join(' ')}`;
     return (own.length ? own : [all]).map(describe).join('; ');
 }

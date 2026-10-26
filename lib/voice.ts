@@ -20,6 +20,14 @@ export const VOICE_LABELS: Record<VoiceCleanup, string> = {
 
 export const VOICE_SHORT: Record<VoiceCleanup, string> = { standard: 'Standard', studio: 'Studio sound', deepfilter: 'DeepFilterNet', auphonic: 'Auphonic' };
 
+// Studio sound's warmth (spec 019 item 3.4, asked for by Tom on 22 October 2026: voices "a little lower, with more
+// warmth, 10–20% more"): more body below about 220 Hz and a little less edge around 4 kHz, by EQ, never by changing
+// the pitch, so each voice still sounds like its owner. The Studio settings choose it.
+export const WARMTHS = ['off', 'gentle', 'rich'] as const;
+export type Warmth = typeof WARMTHS[number];
+export const WARMTH_DB: Record<Warmth, number> = { off: 0, gentle: 1.5, rich: 3 };
+export const WARMTH_LABELS: Record<Warmth, string> = { off: 'Off', gentle: 'Gentle (+1.5 dB of body)', rich: 'Rich (+3 dB of body)' };
+
 // The episode's own choice when it has one, else the Studio's.
 export function voiceFor(edit: { voice?: VoiceCleanup | null } | undefined, studio: VoiceCleanup): VoiceCleanup {
     return edit?.voice ?? studio;

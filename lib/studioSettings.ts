@@ -9,7 +9,7 @@ import { CaptionStyleSchema, DEFAULT_CAPTION_STYLE } from './onScreen';
 import type { Brand } from './layers';
 import { LANGUAGE_CODES, LANGUAGES_MAX } from './translate';
 import { DEFAULT_SECTION_JOINS, SECTION_JOINS, SectionJoinsSchema, TransitionSchema } from './transitions';
-import { VOICE_CLEANUPS } from './voice';
+import { VOICE_CLEANUPS, WARMTHS } from './voice';
 import { PODCAST_CATEGORIES } from './podcastFeed';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
@@ -60,6 +60,7 @@ export const StudioSettingsSchema = z.object({
     finalSource: z.enum(['descript', 'editorLight']),
     // The Editor Light render's voice clean-up (spec 019 item 3.2, lib/voice.ts); an episode can choose its own.
     voiceCleanup: z.enum(VOICE_CLEANUPS),
+    voiceWarmth: z.enum(WARMTHS),                 // Studio sound's warmth (spec 019 item 3.4)
     useDrive: z.boolean(),                        // recordings also come in through Google Drive
     // The audio podcast feed (spec 019 item 5.1, lib/podcastFeed.ts): on or off, its square artwork (Cloud Storage;
     // null uses the site's logo), Apple's category and subcategory (empty: none; one that is not under the category is left
@@ -101,6 +102,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     joins: DEFAULT_SECTION_JOINS,
     finalSource: 'editorLight',
     voiceCleanup: 'standard',
+    voiceWarmth: 'off',
     useDrive: true,
     podcastFeed: false,
     podcastArtPath: null,

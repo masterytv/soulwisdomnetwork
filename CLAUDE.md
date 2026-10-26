@@ -27,7 +27,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               the prompt and call are in podcast/notesDraft.ts, shared with podcast/compareNotes.ts
               (podcast_notes_compare.yml: side-by-side models/efforts, read-only, run by hand)
               podcast/cleanupCompare.ts — the voice clean-up bake-off (spec 019 item 3.1; podcast_cleanup_compare.yml,
-              run by hand, read-only): one stretch as recorded, today's chain, DeepFilterNet, Studio sound, Auphonic and Descript, heard blind
+              run by hand, read-only): one stretch as recorded, today's chain, DeepFilterNet, Studio sound (no, gentle and rich warmth), Auphonic and Descript, heard blind
               podcast/broll.ts — spec 005 step 7 (b-roll images), GitHub Actions only
               podcast/package.ts — spec 005 step 8 part 1 (edit package for Descript), GitHub Actions only
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
@@ -43,7 +43,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
               teasers, intro, outro, b-roll, voice cleanup (standard, Studio sound, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
               spec 019 item 3.2; Studio sound, item 3.4, is the free stand-in for Auphonic in podcast/studioSound.ts: DeepFilterNet,
-              then each speaker's own EQ and level measured from the transcript's turns, de-esser, leveller, compressor, limiter), on-screen text, images and captions, then a quality report, and files that open its cuts in
+              then each speaker's own EQ and level measured from the transcript's turns, the settings' warmth, de-esser, leveller, compressor, limiter), on-screen text, images and captions, then a quality report, and files that open its cuts in
               Resolve, Premiere or Final Cut (podcast/editExport.ts with the pinned auto-editor binary, item 4.1)
               (podcast/renderQc.ts, also run by final.ts; spec 019 item 0.2); podcast_edit_render.yml runs editRenderRun.ts, GitHub
               Actions only. The editor is components/studio/editor.tsx (full page, the Studio editor of spec 020:

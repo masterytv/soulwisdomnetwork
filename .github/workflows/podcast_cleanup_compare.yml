@@ -21,7 +21,7 @@ on:
         required: false
         default: '10'
       versions:
-        description: 'Comma-separated: recorded, today, deepfilter, studio, auphonic, descript (empty: all)'
+        description: 'Comma-separated: recorded, today, deepfilter, studio, studio-gentle, studio-rich, auphonic, descript (empty: all)'
         required: false
         default: ''
 
