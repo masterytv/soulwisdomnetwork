@@ -1,11 +1,10 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** In progress. **M1 and M2 are built and merged** (PRs #211 and #213). **M3 is built** (the
-branch `claude/spec-021-m3`): the highlight layer and its rules, the six layouts' templates in three
-planes, the reframe inside the window encode, and the editor's preview, lane and Properties —
-particulars in the M3 section below. Tom answered D1–D6 on 26 October 2026; his answers are recorded
-at the end of this page. M4 is next.
+**Status:** In progress. **M1, M2 and M3 are built and merged** (PRs #211, #213 and #216). **M4 is
+built** (the branch `claude/spec-021-m4`): Claude picks the moments, everything checkable checked and
+paced in code, with Suggest/Clear in the editor — particulars in the M4 section below. Tom answered
+D1–D6 on 26 October 2026; his answers are recorded at the end of this page. M5 is next.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -270,6 +269,22 @@ cut, the teasers), and asks Claude for:
   suggested highlights**.
 - **Cost:** add `highlights` to `ESTIMATE_USD` in `lib/server/spending.ts` (measure on a real episode; the
   transcript is the bulk, as for retakes) and record the real cost on the episode.
+
+**Built.** As specced, with these particulars M5 builds on. The rules live in `lib/highlights.ts` with
+tests, the job in `agent/src/podcast/highlights.ts` (mode `highlights` of `podcast_notes.yml`, run like
+retakes), the prompts beside the rules that check the answers. Claude's picks are verified with the
+same `locate` that anchors quotes; a verified moment is snapped (first word −200 ms, last +600 ms,
+clamped to its kind's 3–12 s / 1.5–4 s); pacing drops cut words, teasers, the first 30 s and crosstalk,
+keeps 45 s between moments (a key-quote moment wins a tie), holds the density ceiling by thinning the
+most crowded spots, never repeats a layout and keeps `iris`/`over` 90 s apart (a loud one too close
+plays as its kind's quiet layout). The job writes into the saved edit in one transaction — suggestions
+replace only `suggested: true` layers, descriptors fill only empty guest lower thirds, key ideas never
+double a term — and bumps `edit.version`, so an open editor refetches (no local changes) or keeps its
+work and says to save or discard first. `touchSuggested` drops the mark on any highlight the producer
+changes, on every layers update. The density is fixed at Normal until M5 wires the setting; the cost
+sits at `ESTIMATE_USD.highlights` = $0.50 — like retakes the transcript is the bulk — **measure on a
+real episode and tighten**. The run's state and counts live on `episode.highlights`
+(`/api/studio/episodes/[id]/highlights`).
 
 ### M5 — settings and polish
 

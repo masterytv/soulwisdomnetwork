@@ -212,10 +212,15 @@ the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
   programme anchor), automatic placement on fresh edits (server and editor), the looped logo
   bug, the motion teaser tag over cut teasers (ASS fallback without Chromium), the `starlight`
   transition (no overlap; the drawn clip covers the cut), and the programme-clock preview.
-- **M3 built** (branch `claude/spec-021-m3`, at Extra effort): Part B — the `highlight` layer
+- **M3 built and merged** (PR #216, at Extra effort): Part B — the `highlight` layer
   with its route-enforced rules, the six layouts' templates drawn in three planes (words,
   matte, backdrop), the reframe inside the window encode by the shared 16-segment easing
   table, and the editor's preview (the `<video>` element itself reframed), rose timeline lane
-  and word-snapped drags. The spec's M3 section carries the particulars M4 needs.
-- **M4 next**: `mode: highlights` — Claude suggests the moments, verified and paced in code
-  (`lib/highlights.ts`), with Suggest/Clear in the editor and its cost in `spending.ts`.
+  and word-snapped drags.
+- **M4 built** (branch `claude/spec-021-m4`): `mode: highlights` — Claude suggests the
+  moments; verification and pacing are code with tests (`lib/highlights.ts`); the job writes
+  suggestions into the saved edit (`suggested: true`, never over a touched one) and the editor
+  gains Suggest/Clear; cost in `spending.ts` ($0.50, to be measured on a real episode). The
+  spec's M4 section carries the particulars M5 needs.
+- **M5 next**: the Studio settings (motion graphics on/off, highlight density, suggest-on-build,
+  the layout allowlist), graphics time on the Usage page, and hand-off export markers.
