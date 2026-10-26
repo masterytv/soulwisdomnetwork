@@ -202,10 +202,16 @@ spec): motion graphics on by default, the moving templates are the look (the ASS
 "Simple"), highlights on "Suggest highlights" at Normal density — a ceiling, not a quota — and
 the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
 
-- **M1 built** (PR #211): the graphics renderer (Playwright + ProRes 4444 clips, cached in
-  Storage), Cinzel, the workflows' Chromium step, and `lowerThird` end to end — the editor
-  preview plays the template in a sandboxed iframe, the render overlays its clip as a video
-  layer. The graphic layer kind exists, restricted to `lowerThird`. Rendering runs only once
-  this is on `main` (jobs run from `main`); staging can test the editor side.
-- **M2 next**: the other Part A templates, the full `graphic` layer, automatic placement
-  (D1-answer naming: automatic placement uses the motion templates), the `starlight` transition.
+- **M1 built and merged** (PR #211): the graphics renderer (Playwright + ProRes 4444 clips,
+  cached in Storage), Cinzel, the workflows' Chromium step, and `lowerThird` end to end — the
+  editor preview plays the template in a sandboxed iframe, the render overlays its clip as a
+  video layer. Rendering runs only once promoted to `main` (jobs run from `main`); staging can
+  test the editor side.
+- **M2 built** (branch `claude/spec-021-m2`): every Part A template rebuilt from the design
+  files, the full `graphic` layer (per-template fields; the end screen on a `fromEnd`
+  programme anchor), automatic placement on fresh edits (server and editor), the looped logo
+  bug, the motion teaser tag over cut teasers (ASS fallback without Chromium), the `starlight`
+  transition (no overlap; the drawn clip covers the cut), and the programme-clock preview.
+  The spec's M2 section carries the particulars M3 needs.
+- **M3 next** (Extra effort): Part B — the highlight layer, the reframe render for all six
+  layouts inside the window encode, the editor preview and Properties.

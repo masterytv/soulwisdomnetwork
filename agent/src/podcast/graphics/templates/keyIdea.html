@@ -1,0 +1,92 @@
+<!doctype html>
+<!-- The key idea callout (docs/specs/021-motion-graphics.md, item M2), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/Concept.dc.html): the side card wipes in from the right with its four
+     gold corner ticks, "KEY IDEA", the term in Cinzel, a drawn rule and the one-line definition rising in
+     turn. Fields: term, definition. Transparent outside the card. Fonts from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Key idea</title>
+<style>
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', sans-serif; color: #fff;
+        --ink-rgb: 20, 10, 46; --gold: #f7c65b; }
+.card { position: absolute; right: 110px; top: 210px; width: 680px; box-sizing: border-box; padding: 56px 60px 60px 60px;
+        background: rgba(var(--ink-rgb), 0.88); display: flex; flex-direction: column; gap: 22px; }
+.tick { position: absolute; width: 36px; height: 36px; }
+.tick.tl { left: 14px; top: 14px; border-left: 2px solid var(--gold); border-top: 2px solid var(--gold); }
+.tick.tr { right: 14px; top: 14px; border-right: 2px solid var(--gold); border-top: 2px solid var(--gold); }
+.tick.bl { left: 14px; bottom: 14px; border-left: 2px solid var(--gold); border-bottom: 2px solid var(--gold); }
+.tick.br { right: 14px; bottom: 14px; border-right: 2px solid var(--gold); border-bottom: 2px solid var(--gold); }
+.eyebrow { display: flex; align-items: center; gap: 12px; }
+.eyebrow svg path { fill: var(--gold); }
+.eyebrow p { margin: 0; font-weight: 600; font-size: 22px; letter-spacing: 0.3em; color: var(--gold); }
+.term { margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 58px; line-height: 1.1; letter-spacing: 0.02em; color: #ffffff; }
+.rule { width: 120px; height: 2px; transform-origin: left center; background: var(--gold); }
+.definition { margin: 0; font-weight: 400; font-size: 31px; line-height: 1.45; color: #ece6ff; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <aside id="card" class="card">
+    <div id="tick1" class="tick tl" aria-hidden="true"></div>
+    <div id="tick2" class="tick tr" aria-hidden="true"></div>
+    <div id="tick3" class="tick bl" aria-hidden="true"></div>
+    <div id="tick4" class="tick br" aria-hidden="true"></div>
+    <div id="eyebrow" class="eyebrow">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z"></path></svg>
+      <p>KEY IDEA</p>
+    </div>
+    <h2 id="term" class="term"></h2>
+    <div id="rule" class="rule" aria-hidden="true"></div>
+    <p id="definition" class="definition"></p>
+  </aside>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = h => { const n = parseInt(h.slice(1), 16); return `${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}`; };
+    const el = id => document.getElementById(id);
+
+    const root = el('g');
+    if (hex(colors.background)) root.style.setProperty('--ink-rgb', rgb(colors.background));
+    if (hex(colors.accent)) root.style.setProperty('--gold', colors.accent);
+    el('term').textContent = f.term || '';
+    el('definition').textContent = f.definition || '';
+    if (!f.definition) el('definition').style.display = 'none';
+
+    // The design's 9 s cycle as in / hold / out: the card wipes in over 900 ms; the ticks, eyebrow, term,
+    // rule and definition follow 300–850 ms behind; everything fades over the last 450 ms, the card
+    // easing 30 px right as it goes.
+    const R = window.graphicRuntime;
+    R.animate(el('card'), { inMs: 900, outMs: 450, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(80px)', clipPath: 'inset(0 0 0 100%)' },
+        { at: 1, opacity: 1, transform: 'translateX(0)', clipPath: 'inset(0 0 0 0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(30px)', clipPath: 'inset(0 0 0 0)' }] });
+    for (const id of ['tick1', 'tick2', 'tick3', 'tick4']) {
+        R.animate(el(id), { delay: 300, inMs: 900, outMs: 450, enter: [
+            { at: 0, opacity: 0, transform: 'scale(1.6)' }, { at: 1, opacity: 1, transform: 'scale(1)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'scale(1)' }] });
+    }
+    const rise = (id, delay) => R.animate(el(id), { delay, inMs: 990, outMs: 450, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(16px)' }, { at: 1, opacity: 1, transform: 'translateY(0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)' }] });
+    rise('eyebrow', 300);
+    rise('term', 450);
+    rise('definition', 850);
+    R.animate(el('rule'), { delay: 650, inMs: 990, outMs: 450, enter: [
+        { at: 0, opacity: 1, transform: 'scaleX(0)' }, { at: 1, opacity: 1, transform: 'scaleX(1)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scaleX(1)' }] });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

@@ -88,15 +88,17 @@ export function sequenceOf(edit: SequenceEdit, durationMs: number, words?: { sta
             // The transition at the first split after the earlier part (or, moved, the split this part starts at).
             const t = into(p, prev);
             const room = Math.min(prev.lengthMs - usedHead, p.lengthMs);
-            if (t && t.durationMs > room) {
+            if (t && t.transition !== 'starlight' && t.durationMs > room) {
                 skipped[joinKey({ atSplit: t.atMs })] = 'Longer than the section before or after it, so it plays as a straight cut.';
             }
-            const d = t && t.durationMs <= room ? t.durationMs : 0;
+            // Starlight (spec 021) is not an xfade: the parts meet in a straight cut (no overlap, so the
+            // timeline keeps its length) and the render lays the drawn clip centred on the join.
+            const d = t && t.transition !== 'starlight' && t.durationMs <= room ? t.durationMs : 0;
             at -= d;
             usedHead = d;
-            if (t && d) {
+            if (t && (d || t.transition === 'starlight')) {
                 joins.push({
-                    atMs: at, durationMs: d, transition: t.transition, splitMs: t.atMs, part: p.part,
+                    atMs: at, durationMs: t.transition === 'starlight' ? t.durationMs : d, transition: t.transition, splitMs: t.atMs, part: p.part,
                     aFromMs: walk(clips, prev.last, -d), aEndMs: clips[prev.last].endMs,
                     bStartMs: clips[p.first].startMs, bUntilMs: walk(clips, p.first, d),
                 });

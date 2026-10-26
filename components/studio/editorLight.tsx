@@ -21,7 +21,7 @@
 
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Editor } from '@/components/studio/editor';
 import { hint as small, primary, secondary } from '@/components/studio/ui';
@@ -35,11 +35,11 @@ import type { TimelineMedia } from '@/components/studio/timeline';
 import type { SectionJoins } from '@/lib/transitions';
 import type { CaptionChoice } from '@/lib/onScreen';
 import { addRetakes, kindCounts, retakeNotes } from '@/lib/retakes';
-import { brandOf, type StudioSettings } from '@/lib/studioSettings';
+import { brandOf, DEFAULT_BRAND, type StudioSettings } from '@/lib/studioSettings';
 import type { RetakesView, WordFixResult } from '@/types/studio';
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
-import { withLayers, type BinItem, type Brand } from '@/lib/layers';
+import { motionGraphics, withLayers, type BinItem, type Brand } from '@/lib/layers';
 import { firstEdit, type Teaser } from '@/lib/programme';
 import type { ProgrammeSetup } from '@/components/studio/programme';
 
@@ -146,6 +146,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     const [studioJoins, setStudioJoins] = useState<SectionJoins | null>(null);
     // The Studio's colours, font and hosts, for titles, lower thirds and the logo bug (spec 020 item E6).
     const [brand, setBrand] = useState<Brand | undefined>(undefined);
+    // The latest brand for work done inside load callbacks (the settings may land before or after the edit).
+    const brandRef = useRef<Brand | null>(null);
     // The audio's silences measured at ingest (null before then), for the pause suggestions.
     const [silences, setSilences] = useState<Silence[] | null>(null);
     // Claude's kind and why for each suggestion it made, shown in the review row.
@@ -182,6 +184,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             studioFetch<{
                 edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
                 fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro'];
+                graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[] } | null;
             }>(`/api/studio/episodes/${episodeId}/edit`),
             binLoad,
         ])
@@ -193,7 +196,15 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 const setUp = data.fresh && !data.brollBlock
                     ? firstEdit(data.edit, { words: accepted, silences: data.silences ?? null, teasers: data.teasers ?? [] }) : null;
                 const opened = withoutEmptyCuts(setUp?.edit ?? data.edit);
-                const shown = workspace && items ? withLayers(opened, items) : opened;
+                let shown = workspace && items ? withLayers(opened, items) : opened;
+                // The motion graphics (spec 021 M2, Tom's D2: on), placed once with the b-roll on a fresh
+                // edit; one that already has any ("Build for Studio editor" placed them) gets none again.
+                if (setUp && workspace && items && data.graphics && !(shown.layers ?? []).some(l => l.kind === 'graphic')) {
+                    shown = { ...shown, layers: [...(shown.layers ?? []), ...motionGraphics({
+                        ...data.graphics, words: accepted,
+                        hosts: data.graphics.hosts ?? (brandRef.current ?? DEFAULT_BRAND).hosts,
+                    })] };
+                }
                 setEdit(shown);
                 setOverlayUrls(data.overlayUrls ?? {});
                 setSilences(data.silences ?? null);
@@ -233,7 +244,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     useEffect(() => {
         if (!workspace) return;
         studioFetch<{ settings: StudioSettings }>('/api/studio/settings')
-            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); setBrand(brandOf(v.settings)); })
+            .then(v => { setStudioCaptions({ on: v.settings.burnCaptions, style: v.settings.captionStyle }); setStudioJoins(v.settings.joins); const b = brandOf(v.settings); brandRef.current = b; setBrand(b); })
             .catch(() => {});
     }, [workspace]);
 

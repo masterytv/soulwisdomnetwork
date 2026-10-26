@@ -1,10 +1,10 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** In progress. **M1 is built** (PR #211: the renderer, Cinzel, the workflow's Chromium step, and
-`lowerThird` end to end — the graphic layer kind restricted to that one template, the editor preview's
-sandboxed iframe, and the render overlaying the clip as a video layer). Tom answered D1–D6 on 26 October
-2026; his answers are recorded at the end of this page. M2 is next.
+**Status:** In progress. **M1 is built and merged** (PR #211). **M2 is built** (the branch
+`claude/spec-021-m2`): every Part A template, the full graphic layer, automatic placement, the motion
+teaser tag and the starlight transition — particulars in the M2 section below. Tom answered D1–D6 on
+26 October 2026; his answers are recorded at the end of this page. M3 is next, at Extra effort.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -139,6 +139,26 @@ scaled like the other layers, and calls `seek` from `useVideoTime` (never from R
 see the gotcha). What the editor shows is the file the render draws.
 
 ### M2 — Part A as layers, placed automatically
+
+**Built.** As specced, with these particulars M3+ builds on: all templates live beside lowerThird
+(`titleCard` grew a `show` field for the eyebrow line; `chapter` derives CHAPTER TWO and the numeral from
+its `number` field; the end screen's and sting's copy is the design's own, since their `fields` are empty —
+make them fields if another show ever needs its own words). Anchors: most graphics sit on the episode's
+clock; the **end screen anchors `{ fromEnd: ms }`** on the programme's clock (`lib/graphics.ts
+programmeWindow`; `layerSpan` returns null for it, and `asVideoLayer` refuses it). The **logo bug is drawn
+as a 12 s clip and looped** (`drawnMs`, the render's `loop` flag on picture entries); templates that draw
+the logo get it as `GRAPHIC.logo` (the Studio's `logoPath`, else `public/logo-trimmed.png`; its bytes'
+hash, `logoKey`, is in the cache name). The render gained **programme-time overlays** (`renderEdit`'s
+`overlays`: `fromEnd` against the end, `at` centred on a join by `joinKey`), which carry the end screen
+and the **starlight clips**; starlight is a `TransitionKind` with **no xfade and no overlap** —
+`sequenceOf` and `programmeOf` keep the timeline's length and the render lays the clip centred on the
+join (`XFADE.starlight` is undefined: guard any `XFADE[t]` use). The **teaser tag** is drawn per teaser
+(progress line spanning the clip) and laid over the cut teaser by the job (`overlayClip` in media.ts),
+with the ASS banner as the fallback when no Chromium is on the runner. Automatic placement is
+`lib/layers.ts motionGraphics(...)`, applied on fresh edits in both `buildEdit` (server) and the editor
+(the GET edit route's `graphics` payload carries title, show, chapters and hosts). The programme preview
+plays the real templates (`components/studio/graphics.tsx` `ProgrammeGraphics`): end screen, teaser tags
+and starlight on the programme clock.
 
 - **The model:** a new layer kind in `lib/layers.ts`:
   `{ kind: 'graphic', template: GraphicTemplate, fields: Record<string, string> }` with the base fields

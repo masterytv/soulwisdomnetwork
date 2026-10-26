@@ -1,0 +1,111 @@
+<!doctype html>
+<!-- The end screen (docs/specs/021-motion-graphics.md, M2), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/EndScreen.dc.html): the logo, "Keep Exploring" and the subscribe line
+     rise on the left; the dashed spaces stay clear for YouTube's two video elements (right) and its round
+     subscribe button (lower left) — YouTube draws its own elements exactly there, so nothing may sit in
+     those boxes. Same markup, colours and keyframes as the design, the review loop replaced by the
+     in / hold / out timing in runtime.js; the hold runs the full 20 s. Fields: none; the logo comes from
+     GRAPHIC.logo. Full screen: the sky is painted in the Studio's colours. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>End screen</title>
+<style>
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff;
+        --gold: #f7c65b; }
+.sky { position: absolute; inset: 0;
+       background-image: radial-gradient(2px 2px at 7% 12%, rgba(255,255,255,.7), transparent),
+           radial-gradient(1.5px 1.5px at 22% 88%, rgba(255,255,255,.5), transparent),
+           radial-gradient(2px 2px at 48% 7%, rgba(255,255,255,.6), transparent),
+           radial-gradient(1.5px 1.5px at 51% 61%, rgba(255,255,255,.5), transparent),
+           radial-gradient(2px 2px at 96% 50%, rgba(255,255,255,.7), transparent),
+           radial-gradient(ellipse 60% 80% at 22% 45%, var(--glow0) 0%, var(--glow1) 40%, var(--ink) 75%, var(--deep) 100%); }
+.left { position: absolute; left: 140px; top: 130px; width: 760px; display: flex; flex-direction: column; gap: 26px; }
+.left img { width: 230px; height: 164px; }
+.title { margin: 0; font-family: 'Cinzel', serif; font-weight: 600; font-size: 84px; line-height: 1.05; letter-spacing: 0.02em; color: #ffffff; }
+.line { margin: 0; max-width: 640px; font-weight: 400; font-size: 32px; line-height: 1.45; color: #ddd2ff; }
+.subCircle { position: absolute; left: 140px; top: 650px; width: 210px; height: 210px; border-radius: 50%; box-sizing: border-box;
+             border: 2px dashed rgba(var(--gold-rgb), 0.75); display: flex; align-items: center; justify-content: center; }
+.subCircle span, .slot span { font-weight: 600; font-size: 22px; letter-spacing: 0.18em; color: var(--gold); text-align: center; }
+.subCircle span { font-size: 20px; line-height: 1.4; }
+.beside { position: absolute; left: 390px; top: 708px; display: flex; flex-direction: column; gap: 8px; }
+.tagline { margin: 0; font-weight: 600; font-size: 22px; letter-spacing: 0.24em; color: var(--gold); }
+.site { margin: 0; font-weight: 500; font-size: 28px; color: #ffffff; }
+.slot { position: absolute; left: 1100px; width: 680px; height: 383px; box-sizing: border-box; border: 2px dashed rgba(var(--gold-rgb), 0.6);
+        border-radius: 6px; background: rgba(var(--ink-rgb), 0.55); overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.glint { position: absolute; left: 0; top: 0; width: 30%; height: 100%;
+         background: linear-gradient(90deg, rgba(253,230,138,0), rgba(253,230,138,0.18), rgba(253,230,138,0)); }
+.foot { position: absolute; left: 140px; bottom: 70px; margin: 0; font-weight: 400; font-size: 24px; color: #c4b5fd; }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div class="sky" aria-hidden="true"></div>
+  <div class="left">
+    <img id="logoImg" class="r" alt="">
+    <h2 class="title r">Keep Exploring</h2>
+    <p class="line r">Subscribe and turn on notifications so you never miss a conversation.</p>
+  </div>
+  <div id="subCircle" class="subCircle" aria-hidden="true"><span>SUBSCRIBE<br>ELEMENT</span></div>
+  <div class="beside r">
+    <p class="tagline">AWAKEN · EMPOWER · TRANSFORM</p>
+    <p class="site">soulwisdomcollective.com</p>
+  </div>
+  <div class="slot s" style="top: 140px" aria-hidden="true"><div class="glint"></div><span>BEST FOR VIEWER · VIDEO ELEMENT</span></div>
+  <div class="slot s" style="top: 560px" aria-hidden="true"><div class="glint"></div><span>MOST RECENT UPLOAD · VIDEO ELEMENT</span></div>
+  <p class="foot r">Full episodes, transcripts and the Soul Wisdom community</p>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const colors = g.colors || {};
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgbOf = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const lighten = (c, a) => '#' + rgbOf(c).map(v => Math.round(v + (255 - v) * a).toString(16).padStart(2, '0')).join('');
+    const darken = (c, a) => '#' + rgbOf(c).map(v => Math.round(v * (1 - a)).toString(16).padStart(2, '0')).join('');
+
+    const root = document.getElementById('g');
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const glow = ink === '#140a2e' ? ['#3b2382', '#23145a'] : [lighten(ink, 0.2), lighten(ink, 0.08)];
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--ink-rgb', rgbOf(ink).join(', '));
+    root.style.setProperty('--deep', darken(ink, 0.45));
+    root.style.setProperty('--glow0', glow[0]);
+    root.style.setProperty('--glow1', glow[1]);
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-rgb', rgbOf(gold).join(', '));
+    if (g.logo) document.getElementById('logoImg').src = g.logo;
+
+    // The design's rises, slots and glints as in / hold / out: everything is up inside 2 s and holds for
+    // the screen's 20 s; the glint crosses each video space once as it arrives.
+    const R = window.graphicRuntime;
+    const rises = document.querySelectorAll('.r');
+    rises.forEach((el, i) => R.animate(el, { delay: 200 * i, inMs: 800, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(24px)', filter: 'blur(8px)' },
+        { at: 1, opacity: 1, transform: 'translateY(0)', filter: 'blur(0px)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)', filter: 'blur(0px)' }] }));
+    document.querySelectorAll('.s').forEach((el, i) => R.animate(el, { delay: 400 + 400 * i, inMs: 900, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(60px) scale(0.97)' },
+        { at: 1, opacity: 1, transform: 'translateX(0) scale(1)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(0) scale(1)' }] }));
+    document.querySelectorAll('.glint').forEach((el, i) => R.animate(el, { delay: 600 + 400 * i, inMs: 1700, outMs: 0, enter: [
+        { at: 0, transform: 'translateX(-120%) skewX(-18deg)', easing: 'ease-in-out' },
+        { at: 0.3, transform: 'translateX(-120%) skewX(-18deg)', easing: 'ease-in-out' },
+        { at: 1, transform: 'translateX(320%) skewX(-18deg)' },
+    ], exit: [] }));
+    R.animate(document.getElementById('subCircle'), { delay: 600, inMs: 900, outMs: 500, enter: [
+        { at: 0, opacity: 0, transform: 'scale(0.6) rotate(-90deg)' },
+        { at: 1, opacity: 1, transform: 'scale(1) rotate(0deg)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'scale(1) rotate(0deg)' }] });
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

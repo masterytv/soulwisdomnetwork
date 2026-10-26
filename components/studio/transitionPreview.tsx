@@ -44,6 +44,9 @@ export function draw(kind: PreviewJoin['transition'], p: number, main: HTMLVideo
             break;
         }
         case 'zoomIn': n.opacity = String(p); n.transform = `scale(${1 + 0.15 * (1 - p)})`; break;
+        // Starlight joins never reach TransitionPreview (the drawn clip covers a straight cut:
+        // ProgrammeGraphics); if one does, show the cut at the middle rather than nothing.
+        case 'starlight': n.opacity = p < 0.5 ? '0' : '1'; break;
         case 'blur': n.opacity = String(p); main.style.filter = `blur(${p * 8}px)`; n.filter = `blur(${(1 - p) * 8}px)`; break;
     }
 }

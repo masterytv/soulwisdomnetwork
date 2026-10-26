@@ -9,6 +9,8 @@
 // elsewhere CHROMIUM_BIN can point at one already installed.
 
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import { createHash } from 'crypto';
 import { chromium } from 'playwright';
 import { GRAPHIC_MAX_MS, type GraphicSpec } from '../../../../lib/graphics';
@@ -28,7 +30,10 @@ export const graphicFrames = (durationMs: number) => Math.max(1, Math.round(dura
 
 // The template open in headless Chromium with GRAPHIC injected and the fonts loaded, ready to seek and
 // screenshot. The caller must close the browser; the tests use it to check a template's contract.
-export async function openTemplate(spec: GraphicSpec) {
+// `logoFile`: the Studio's logo on disk for templates that draw it (GRAPHIC.logo); the repository's
+// public/logo-trimmed.png when none is given.
+export async function openTemplate(spec: GraphicSpec, logoFile?: string) {
+    const logo = logoFile ?? path.join(process.cwd(), 'public/logo-trimmed.png');
     const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_BIN || undefined });
     try {
         const page = await browser.newPage({ viewport: { width: spec.width, height: spec.height }, deviceScaleFactor: 1 });
@@ -36,12 +41,13 @@ export async function openTemplate(spec: GraphicSpec) {
             const { pathname } = new URL(route.request().url());
             if (pathname === '/template.html') return route.fulfill({ contentType: 'text/html', body: templateHtml(spec.template) });
             if (pathname === '/runtime.js') return route.fulfill({ contentType: 'text/javascript', body: runtimeJs() });
+            if (pathname === '/logo.png') return route.fulfill({ contentType: 'image/png', body: fs.readFileSync(logo) });
             const font = pathname.startsWith('/fonts/') ? fontFile(pathname.slice('/fonts/'.length)) : null;
             if (font) return route.fulfill({ contentType: 'font/woff2', body: font });
             return route.fulfill({ status: 404, body: '' });
         });
         await page.addInitScript(`window.GRAPHIC = ${JSON.stringify({
-            fields: spec.fields, colors: spec.colors, durationMs: spec.durationMs, width: spec.width, height: spec.height,
+            fields: spec.fields, colors: spec.colors, durationMs: spec.durationMs, width: spec.width, height: spec.height, logo: 'logo.png',
         }).replace(/</g, '\\u003c')};`);
         await page.goto(`${ORIGIN}/template.html`);
         await page.waitForFunction('typeof window.seek === "function"');
@@ -53,10 +59,10 @@ export async function openTemplate(spec: GraphicSpec) {
     }
 }
 
-export async function renderGraphic(spec: GraphicSpec, out: string): Promise<{ frames: number }> {
+export async function renderGraphic(spec: GraphicSpec, out: string, logoFile?: string): Promise<{ frames: number }> {
     if (spec.durationMs > GRAPHIC_MAX_MS) throw new Error(`A graphic can be at most ${GRAPHIC_MAX_MS / 1000} s, not ${Math.round(spec.durationMs / 1000)} s`);
     const frames = graphicFrames(spec.durationMs);
-    const { browser, page } = await openTemplate(spec);
+    const { browser, page } = await openTemplate(spec, logoFile);
     try {
         const ffmpeg = spawn('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error',
             '-f', 'image2pipe', '-framerate', String(FPS), '-i', '-',
@@ -75,7 +81,13 @@ export async function renderGraphic(spec: GraphicSpec, out: string): Promise<{ f
             await page.evaluate(ms => window.seek(ms), i * 1000 / FPS);
             const png = await page.screenshot({ type: 'png', omitBackground: true });
             if (failed) break;
-            if (!ffmpeg.stdin.write(png)) await new Promise<void>(r => { ffmpeg.stdin.once('drain', () => r()); ffmpeg.stdin.once('error', () => r()); });
+            if (!ffmpeg.stdin.write(png)) {
+                await new Promise<void>(r => {
+                    const done = () => { ffmpeg.stdin.off('drain', done); ffmpeg.stdin.off('close', done); r(); };
+                    ffmpeg.stdin.once('drain', done);
+                    ffmpeg.stdin.once('close', done);
+                });
+            }
         }
         ffmpeg.stdin.end();
         await done;
