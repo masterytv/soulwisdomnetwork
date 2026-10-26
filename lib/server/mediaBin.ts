@@ -115,7 +115,7 @@ export async function removeUpload(id: string, mediaId: string) {
     if (!doc.exists) throw new HttpError(404, 'Not in the bin');
     const path = (doc.data() as UploadDoc).path;
     const edit = (snap.data() as Episode | undefined)?.edit;
-    const used = (edit?.layers ?? []).some(l => l.kind !== 'text' && l.kind !== 'graphic' && l.media.path === path) || (edit?.audio ?? []).some(s => s.media.path === path);
+    const used = (edit?.layers ?? []).some(l => l.kind !== 'text' && l.kind !== 'graphic' && l.kind !== 'highlight' && l.media.path === path) || (edit?.audio ?? []).some(s => s.media.path === path);
     if (used) throw new HttpError(409, 'The saved edit still uses this file; remove it from the timeline first');
     await doc.ref.delete();
     await adminBucket().file(path).delete().catch(() => {});

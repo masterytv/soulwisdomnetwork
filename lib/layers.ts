@@ -14,6 +14,7 @@
 import { z } from 'zod';
 import { editedTime, type KeptRange } from './edit';
 import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES, type GraphicTemplate } from './graphics';
+import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS, HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from './reframe';
 import {
     ALIGN, assRgba, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, POSITIONS, SIZE_NAMES, styleLine, TEXT_SIZES,
     type CaptionStyle, type FontName, type Overlay, type Position,
@@ -141,11 +142,28 @@ export const GraphicLayerSchema = z.discriminatedUnion('template', [
     graphicOf('endScreen', {}),
     graphicOf('logoSting', {}),
 ]);
-export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema, GraphicLayerSchema]);
+// A highlight (spec 021 Part B, lib/reframe.ts): a few seconds where the episode's own picture is
+// reframed by its layout's template and the words from that moment appear. Always anchored on its first
+// word (srcMs), so it moves with its words when cuts change; drawn on its own lane above V1. The edit
+// route also refuses overlaps, teaser stretches and cut words (lib/reframe.ts highlightProblems).
+export const HighlightLayerSchema = z.object({
+    id,
+    kind: z.literal('highlight'),
+    layout: z.enum(HIGHLIGHT_LAYOUTS),
+    anchor: z.object({ srcMs: ms }).strict(),
+    durationMs: z.number().int().min(HIGHLIGHT_MIN_MS).max(HIGHLIGHT_MAX_MS),
+    words: z.string().trim().min(1, 'A highlight needs its words').max(500),
+    emphasis: z.string().trim().max(80),
+    speaker: z.string().trim().max(200),
+    suggested: z.boolean().optional(),      // Claude's suggestion (M4), cleared once a producer touches it
+}).strict().refine(h => !h.emphasis || h.words.toLowerCase().includes(h.emphasis.toLowerCase()), 'The stressed word must be inside the words');
+
+export const LayerSchema = z.discriminatedUnion('kind', [ImageLayerSchema, VideoLayerSchema, TextLayerSchema, GraphicLayerSchema, HighlightLayerSchema]);
 export type ImageLayer = z.infer<typeof ImageLayerSchema>;
 export type VideoLayer = z.infer<typeof VideoLayerSchema>;
 export type TextLayer = z.infer<typeof TextLayerSchema>;
 export type GraphicLayer = z.infer<typeof GraphicLayerSchema>;
+export type HighlightLayer = z.infer<typeof HighlightLayerSchema>;
 export type PictureLayer = ImageLayer | VideoLayer;
 export type Layer = z.infer<typeof LayerSchema>;
 export const LayersSchema = z.array(LayerSchema).max(LAYERS_MAX)
@@ -155,6 +173,7 @@ export const isPicture = (l: Layer): l is PictureLayer => l.kind === 'image' || 
 
 // What a layer is, in words: its element, its template, or its kind.
 export function layerKind(l: Layer): string {
+    if (l.kind === 'highlight') return `Highlight · ${HIGHLIGHT_LABELS[l.layout]}`;
     if (l.kind === 'graphic') return GRAPHIC_TEMPLATES[l.template].label;
     if (l.kind !== 'video' && l.element) return ELEMENT_LABELS[l.element];
     return l.kind === 'text' ? 'Text' : l.kind === 'video' ? 'Video' : 'Picture';
@@ -162,6 +181,7 @@ export function layerKind(l: Layer): string {
 
 // A layer's name in the panels and on the timeline: what it says, or its file's name.
 export function layerName(l: Layer): string {
+    if (l.kind === 'highlight') return l.emphasis || l.words;
     if (l.kind === 'graphic') {
         const name = l.template === 'lowerThird' ? l.fields.name
             : l.template === 'titleCard' || l.template === 'chapter' ? l.fields.title
@@ -187,14 +207,14 @@ export function placeOf(position: Position, mh: number, mv: number): Place {
 // from the sides and 80 from the top or bottom (a lower third 120, clear of the captions), pictures 60,
 // and none for a picture as wide as the frame.
 export function marginsOf(l: Layer): [number, number] {
-    if (l.kind === 'graphic') return [0, 0];                 // the whole frame: the template places itself
+    if (l.kind === 'graphic' || l.kind === 'highlight') return [0, 0];   // the whole frame: the template places itself
     if (l.kind === 'text') return [90, l.element === 'lowerThird' ? 120 : 80];
     return l.w >= 1 ? [0, 0] : [60, 60];
 }
 
 // Which of the nine positions a layer is at, or "custom" once dragged or typed somewhere else.
 export function positionOf(l: Layer): Position | 'custom' {
-    if (l.kind === 'graphic') return 'custom';               // no place of its own: it covers the frame
+    if (l.kind === 'graphic' || l.kind === 'highlight') return 'custom';   // no place of its own: it covers the frame
     const [mh, mv] = marginsOf(l);
     const hit = POSITIONS.find(p => {
         const q = placeOf(p, mh, mv);
@@ -607,6 +627,16 @@ export function motionKeyIdea(srcMs: number, term: string, definition: string): 
 // The logo sting: a short logo reveal, wherever it is placed (the spec offers the outro's start).
 export function motionLogoSting(srcMs: number): GraphicLayer {
     return { ...graphicBase('logoSting', at(srcMs)), template: 'logoSting', fields: {} };
+}
+
+// A highlight at a moment of the recording (spec 021 Part B): 4 s by default, trimmed and nudged to word
+// boundaries in Properties; M4's picker makes these with `suggested: true`.
+export function highlight(srcMs: number, layout: HighlightLayer['layout'], words: string, emphasis: string, speaker: string, durationMs = 4000): HighlightLayer {
+    return {
+        id: newId('h'), kind: 'highlight', layout, anchor: at(srcMs),
+        durationMs: Math.max(HIGHLIGHT_MIN_MS, Math.min(HIGHLIGHT_MAX_MS, Math.round(durationMs))),
+        words: words.trim().slice(0, 500) || 'The words', emphasis: emphasis.trim().slice(0, 80), speaker: speaker.trim().slice(0, 200),
+    };
 }
 
 // The motion graphics an edit is first set up with (spec 021 M2; Tom's D2: on for every new episode):

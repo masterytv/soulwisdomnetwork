@@ -80,7 +80,7 @@ function LayerVideo({ layer, url, span, nowMs, playing }: { layer: Extract<Layer
 }
 
 // Every layer this preview draws itself: graphics (spec 021) play in their own iframes (graphics.tsx).
-type DrawnLayer = Exclude<Layer, { kind: 'graphic' }>;
+type DrawnLayer = Exclude<Layer, { kind: 'graphic' | 'highlight' }>;
 
 interface Drag { id: string; kind: 'move' | 'resize'; x0: number; y0: number; base: DrawnLayer; draft: DrawnLayer; moved: boolean }
 
@@ -101,7 +101,8 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
     const setDrag = (d: Drag | null) => { dragRef.current = d; setDragState(d); };
     const nowMs = timelineTime(clips, srcMs, true) ?? editedMs;
 
-    const shown = layers.filter((l): l is DrawnLayer => l.kind !== 'graphic')
+    // A graphic draws itself (its iframe) and a highlight reframes the video itself: neither is dragged here.
+    const shown = layers.filter((l): l is DrawnLayer => l.kind !== 'graphic' && l.kind !== 'highlight')
         .map(l => (drag?.id === l.id ? drag.draft : l))
         .map(l => ({ l, span: layerSpan(l, clips, editedMs) }))
         .flatMap(({ l, span }) => {

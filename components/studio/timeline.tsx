@@ -34,6 +34,7 @@ import { Captions, CaptionsOff, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } 
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, moveSection, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
 import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type GraphicAnchor, type Layer } from '@/lib/layers';
+import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from '@/lib/reframe';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
@@ -1032,13 +1033,24 @@ export function Timeline({
         const bounds = layerBounds(b, clips, editedMs);
         if (!bounds) return d;
         const editedAt = timelineTime(clips, ms, true) ?? editedMs;
-        const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
         let draft: Placed;
-        if (d.mode === 'move') draft = { ...b, anchor: anchorAt(ms, editedAt) };
-        else if (d.mode === 'end') draft = { ...b, durationMs: Math.max(LAYER_MIN_MS, Math.round(editedAt - bounds.span.startMs)) };
-        else {
-            const start = Math.min(editedAt, bounds.span.endMs - LAYER_MIN_MS);
-            draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: Math.max(LAYER_MIN_MS, Math.round(bounds.span.endMs - start)) };
+        if ('kind' in b && b.kind === 'highlight') {
+            // A highlight's anchor is always its words' moment, and its length keeps its own limits (lib/reframe.ts).
+            const clamp = (v: number) => Math.max(HIGHLIGHT_MIN_MS, Math.min(HIGHLIGHT_MAX_MS, Math.round(v)));
+            if (d.mode === 'move') draft = { ...b, anchor: { srcMs: Math.round(ms) } };
+            else if (d.mode === 'end') draft = { ...b, durationMs: clamp(editedAt - bounds.span.startMs) };
+            else {
+                const start = Math.min(editedAt, bounds.span.endMs - HIGHLIGHT_MIN_MS);
+                draft = { ...b, anchor: { srcMs: Math.round(sourceTime(clips, start) ?? ms) }, durationMs: clamp(bounds.span.endMs - start) };
+            }
+        } else {
+            const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
+            if (d.mode === 'move') draft = { ...b, anchor: anchorAt(ms, editedAt) };
+            else if (d.mode === 'end') draft = { ...b, durationMs: Math.max(LAYER_MIN_MS, Math.round(editedAt - bounds.span.startMs)) };
+            else {
+                const start = Math.min(editedAt, bounds.span.endMs - LAYER_MIN_MS);
+                draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: Math.max(LAYER_MIN_MS, Math.round(bounds.span.endMs - start)) };
+            }
         }
         return { ...d, draft, guide: s.to !== null && ms === s.ms ? s.to : null };
     };
@@ -1673,11 +1685,11 @@ export function Timeline({
                                     if (!b || !shown(b.fromMs, b.toMs)) return null;
                                     // A picture on a higher track (the logo bug, item E6) is a thin strip along the top of V2, so a
                                     // whole-episode logo never covers the b-roll under it.
-                                    const thin = l.kind !== 'text' && l.kind !== 'graphic' && l.track >= TRACK.logo;
-                                    // A graphic (spec 021) sits on V3 with the text it stands beside.
-                                    const [top, height] = l.kind === 'text' || l.kind === 'graphic' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
+                                    const thin = l.kind !== 'text' && l.kind !== 'graphic' && l.kind !== 'highlight' && l.track >= TRACK.logo;
+                                    // A graphic (spec 021) sits on V3 with the text it stands beside; so does a highlight (item M3).
+                                    const [top, height] = l.kind === 'text' || l.kind === 'graphic' || l.kind === 'highlight' ? [V3_TOP + 3, LANE_H - 6] : thin ? [V2_TOP + 1, 4] : [V2_TOP + 6, LANE_H - 8];
                                     const isSel = l.id === selectedLayer;
-                                    const color = l.kind === 'graphic' ? 'bg-amber-400/80' : l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
+                                    const color = l.kind === 'highlight' ? 'bg-rose-400/80' : l.kind === 'graphic' ? 'bg-amber-400/80' : l.kind === 'text' ? 'bg-violet-400/80' : l.kind === 'video' ? 'bg-emerald-400/80' : 'bg-sky-400/80';
                                     const handles = { onPointerMove: onLayerMove, onPointerUp: onLayerUp, onPointerCancel: () => setLayerDrag(null) };
                                     return (
                                         <div

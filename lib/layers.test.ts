@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
     alignFractions, anchorCut, brollLayer, layerFromBin, LayerSchema, layersAss, LayersSchema, layerSpan, layersOf, lookAt,
     overlayXY, pictureFilter, layerAudioFilter, placeOf, startAt, textEvents, toLayer, type ImageLayer, type TextLayer, type VideoLayer,
-    isWhole, layerKind, layerName, logoBug, lowerThird, lowerThirds, marginsOf, positionOf, SITE_LOGO, titleCard, TRACK, WHOLE_EPISODE_MS,
+    highlight, isWhole, layerKind, layerName, logoBug, lowerThird, lowerThirds, marginsOf, positionOf, SITE_LOGO, titleCard, TRACK, WHOLE_EPISODE_MS,
     type Brand, withLayers, type BinItem,
 } from './layers';
 import type { ImageOverlay, TextOverlay } from './onScreen';
@@ -224,4 +224,22 @@ test('withLayers: the notes plan\'s b-roll becomes layers once, and an edit with
     assert.equal((edit.layers![1] as ImageLayer).durationMs, 6000);
     const kept: EpisodeEdit = { cuts: [], version: 3, layers: [] };
     assert.equal(withLayers(kept, bin), kept);
+});
+
+test('a highlight (spec 021 item M3): schema limits, the factory, and how the panels name it', () => {
+    const h = highlight(5000, 'splitWord', 'The soul remembers what the mind forgets', 'remembers', 'Maria Santos');
+    assert.ok(LayersSchema.safeParse([h]).success);
+    assert.deepEqual(h.anchor, { srcMs: 5000 });
+    assert.equal(h.durationMs, 4000);
+    // The factory clamps what it is given; the schema refuses what gets past it.
+    assert.equal(highlight(0, 'iris', 'w', '', 's', 60_000).durationMs, 15_000);
+    assert.ok(!LayersSchema.safeParse([{ ...h, durationMs: 500 }]).success);
+    assert.ok(!LayersSchema.safeParse([{ ...h, words: '' }]).success);
+    assert.ok(!LayersSchema.safeParse([{ ...h, emphasis: 'absent' }]).success, 'a stressed word outside the words');
+    assert.ok(!LayersSchema.safeParse([{ ...h, anchor: { atMs: 5000 } }]).success, 'a highlight moves with its words only');
+    assert.ok(!LayersSchema.safeParse([{ ...h, layout: 'zoom' }]).success);
+    assert.equal(layerKind(h), 'Highlight · Split: stressed word');
+    assert.equal(layerName(h), 'remembers');
+    assert.equal(positionOf(h), 'custom');
+    assert.deepEqual(marginsOf(h), [0, 0]);
 });
