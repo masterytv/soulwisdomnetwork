@@ -118,18 +118,18 @@ export function HighlightReframe({ plane, layers, clips, editedMs, video, colors
         };
     }, [plane, video]);
 
-    if (!active) return null;
-    if (plane === 'background' && !HAS_BACKGROUND[active.h.layout]) return null;
-    const doc = html[highlightTemplate(active.h.layout)];
-    if (!doc) return null;
-    const data = {
-        fields: { words: active.h.words, emphasis: active.h.emphasis, speaker: active.h.speaker },
-        colors, durationMs: active.h.durationMs, width: FRAME.width, height: FRAME.height, logo: null, mode: plane,
+    const shown = active && (plane === 'graphics' || HAS_BACKGROUND[active.h.layout]) ? active : null;
+    const doc = shown ? html[highlightTemplate(shown.h.layout)] : undefined;
+    const data = shown && {
+        fields: { words: shown.h.words, emphasis: shown.h.emphasis, speaker: shown.h.speaker },
+        colors, durationMs: shown.h.durationMs, width: FRAME.width, height: FRAME.height, logo: null, mode: plane,
     };
+    // The stage is always mounted, empty between highlights: useStageScale measures it once on mount, so a
+    // stage mounted only while a highlight is up stayed at scale 0 and the words never drew.
     return (
-        <div ref={stage} aria-label={plane === 'background' ? 'Highlight backdrop' : 'Highlight'}
+        <div ref={stage} aria-label={plane === 'background' ? 'Highlight backdrop' : 'Highlight'} aria-hidden={!shown}
             className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
-            {scale > 0 && <GraphicFrame key={`${active.h.id}-${plane}`} doc={graphicSrcDoc(doc, data)} ms={active.ms} opacity={1} scale={scale} />}
+            {shown && doc && data && scale > 0 && <GraphicFrame key={`${shown.h.id}-${plane}`} doc={graphicSrcDoc(doc, data)} ms={shown.ms} opacity={1} scale={scale} />}
         </div>
     );
 }
