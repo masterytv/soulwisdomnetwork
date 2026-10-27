@@ -214,7 +214,7 @@ async function render(episode: Episode, words: TimedWord[]) {
         const inputs = renderInputs(item, aspect, finalAt);
         const durationMs = inputs.endMs - inputs.startMs;
         if (durationMs < SHORT_MIN_MS || durationMs > SHORT_MAX_MS) {
-            warnings.push(`"${item.title}" is ${Math.round(durationMs / 1000)}s long; a Short must be 5 seconds to 3 minutes, so it was not made.`);
+            warnings.push(`"${item.title}" is ${(durationMs / 1000).toFixed(1)}s long; a Short must be 5 seconds to 3 minutes, so it was not made.`);
             continue;
         }
         const ass = path.join(workDir, `${item.id}.ass`);

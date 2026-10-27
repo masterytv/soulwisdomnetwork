@@ -8,7 +8,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import type { TimedWord } from '@/lib/retime';
 import {
-    DEFAULT_ASPECT, renderInputs, sameRender, quoteMatch, SHORT_ASPECTS, SHORT_MAX_MS, ShortEditSchema, showsBroll, TRIM_WINDOW_MS, wordsBetween,
+    DEFAULT_ASPECT, renderInputs, sameRender, quoteMatch, SHORT_ASPECTS, SHORT_MAX_MS, SHORT_MIN_MS, ShortEditSchema, showsBroll, TRIM_WINDOW_MS, wordsBetween,
     type ShortAspect,
 } from '@/lib/shorts';
 import type { Episode, EpisodeShorts, ShortItem } from '@/types/episode';
@@ -152,8 +152,10 @@ export async function saveShorts(id: string, body: unknown) {
                 next.push(old);
                 continue;
             }
-            if (edit.endMs <= edit.startMs || edit.endMs - edit.startMs > SHORT_MAX_MS || edit.endMs > durationMs + 1000) {
-                throw new HttpError(400, `"${edit.title || edit.headline}" must be under three minutes and inside the episode`);
+            // The same floor the render holds (YouTube's 5 seconds), so a too-short trim is refused
+            // here in the Studio instead of failing the render run later.
+            if (edit.endMs - edit.startMs < SHORT_MIN_MS || edit.endMs - edit.startMs > SHORT_MAX_MS || edit.endMs > durationMs + 1000) {
+                throw new HttpError(400, `"${edit.title || edit.headline}" must be 5 seconds to three minutes and inside the episode`);
             }
             if (edit.quoteIndex !== null && edit.quoteIndex >= quoteCount) throw new HttpError(400, 'There is no such quote');
             if (/[<>]/.test(edit.title)) throw new HttpError(400, 'YouTube does not allow < or > in titles');
