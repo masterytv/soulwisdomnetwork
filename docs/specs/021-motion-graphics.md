@@ -168,12 +168,12 @@ and starlight on the programme clock.
   (gotcha: "The edit route checks every field").
 - **Placement** when the edit is first set up (`lib/programme.ts` `firstEdit`, `lib/server/buildEdit.ts`), only
   for episodes with no saved edit, and only when the Studio setting is on (D2):
-  - `titleCard` at the episode's start, 5 s, a banner over the bottom third: fields from the approved notes'
+  - `titleCard` at the episode's start, 7 s (about 5 s fully readable between its rise and fade), a banner over the bottom third: fields from the approved notes'
     chosen title and the first non-host speaker's name;
   - `lowerThird` where each speaker first talks, 5 s (hosts compact, "HOST"; guests: name and a descriptor
     Claude suggests in M4, empty until then); one due under the title banner, or over the lower third before
     it, waits until that one has gone;
-  - `chapter` at each approved chapter after the first, 5 s, numbered, a banner over the bottom third;
+  - `chapter` at each approved chapter after the first, 7 s, numbered, a banner over the bottom third;
   - `logoBug` for the whole episode, only with the setting `placeLogoBug` (off by default);
   - `endScreen` over the outro's last 20 s (or the episode's, with no outro);
   - each teaser's tag becomes `teaserTag`.

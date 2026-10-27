@@ -186,18 +186,24 @@ export function GraphicsPreview({ layers, clips, editedMs, video, colors, logo, 
                 // A banner as wide as the frame lets clicks through to the video's controls until selected.
                 const clickable = !!r && (isSelected || r.w < FRAME.width * 0.9);
                 const pct = (v: number, of: number) => `${(v / of * 100).toFixed(3)}%`;
+                // The selection frame is dashed, drawn inside the element and shown only under the pointer or
+                // while dragging: a solid line left on screen read as part of the graphic (Tom: a gold line
+                // over the guest's chin that stayed after the banner had faded).
+                const frame = drag?.id === g.id ? 'outline outline-2 outline-dashed outline-amber-300 -outline-offset-2'
+                    : isSelected ? 'hover:outline hover:outline-2 hover:outline-dashed hover:outline-amber-300 hover:-outline-offset-2'
+                        : 'hover:outline hover:outline-1 hover:outline-dashed hover:outline-white/50 hover:-outline-offset-1';
                 return (
                     <div key={g.id}>
                         <GraphicFrame doc={graphicSrcDoc(doc, data)} ms={nowMs - span.startMs} opacity={look.opacity} scale={scale} box={box} />
                         {r && bounds && (
                             <div aria-label={`Move ${GRAPHIC_LABEL(g)}`} title="Drag to move (Alt: no snapping)"
                                 onPointerDown={e => begin(e, g, bounds, 'move')} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}
-                                className={`absolute ${clickable ? 'pointer-events-auto cursor-move' : ''} ${isSelected ? 'outline outline-2 outline-amber-300 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-white/50'}`}
+                                className={`absolute ${clickable ? 'pointer-events-auto cursor-move' : ''} ${frame}`}
                                 style={{ left: pct(r.x, FRAME.width), top: pct(r.y, FRAME.height), width: pct(r.w, FRAME.width), height: pct(r.h, FRAME.height) }}>
                                 {isSelected && (
                                     <span role="presentation" title="Drag to resize (Alt: no snapping)"
                                         onPointerDown={e => begin(e, g, bounds, 'resize')} onPointerMove={move} onPointerUp={end}
-                                        className="pointer-events-auto absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-amber-300 border border-black cursor-nwse-resize" />
+                                        className="pointer-events-auto absolute right-0.5 bottom-0.5 w-3 h-3 rounded-sm bg-amber-300 border border-black cursor-nwse-resize" />
                                 )}
                             </div>
                         )}
