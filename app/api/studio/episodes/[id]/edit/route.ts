@@ -88,6 +88,7 @@ export const GET = handle<Context>(async (request, { params }) => {
         show: settings.showName,
         chapters: notes?.chapters ?? [],
         hosts: settings.hosts,
+        logoBug: settings.placeLogoBug,
     };
     return Response.json({
         edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics,

@@ -74,10 +74,11 @@ export const StudioSettingsSchema = z.object({
     podcastExplicit: z.boolean(),
     podcastEmail: z.string().trim().max(120).refine(s => s === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s), 'Use an email address, or leave it empty'),
     // Motion graphics (spec 021, Tom's D2–D4): whether fresh edits get the branded graphics placed
-    // automatically; how often Claude's highlight suggestions may appear (a ceiling — 'off' turns
+    // automatically, and the logo bug among them (Tom: off unless asked for); how often Claude's highlight suggestions may appear (a ceiling — 'off' turns
     // Suggest off); whether a built edit suggests straight away; and which layouts Claude may pick
     // (the producer can always place any by hand).
     motionGraphics: z.boolean(),
+    placeLogoBug: z.boolean(),
     highlightDensity: z.enum(HIGHLIGHT_DENSITIES),
     suggestOnBuild: z.boolean(),
     highlightLayouts: z.array(z.enum(HIGHLIGHT_LAYOUTS)).max(HIGHLIGHT_LAYOUTS.length),
@@ -121,6 +122,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     podcastExplicit: false,
     podcastEmail: '',
     motionGraphics: true,
+    placeLogoBug: false,
     highlightDensity: 'normal',
     suggestOnBuild: false,
     highlightLayouts: [...HIGHLIGHT_LAYOUTS],

@@ -15,7 +15,7 @@ import {
     MOTION_LABELS, MOTIONS, placeOf, positionOf, startAt, WHOLE_EPISODE_MS,
     type Brand, type Edge, type Layer, type LayerTransition, type Motion,
 } from "@/lib/layers";
-import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES } from "@/lib/graphics";
+import { BOX_SCALE, clampBox, GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES, graphicBounds, placedRect } from "@/lib/graphics";
 import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS, HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS, type HighlightLayout } from "@/lib/reframe";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
 import { field, hint, secondary } from "@/components/studio/ui";
@@ -212,6 +212,27 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                             <p className={hint}>No words of its own: it draws the Studio&apos;s logo and colours.</p>
                         )}
                         <p className={hint}>Drawn by the template in the Studio&apos;s colours; it places and fades itself (spec 021).</p>
+                        {(() => {
+                            // A movable graphic: dragged on the preview, sized here or from its corner there.
+                            const bounds = graphicBounds(l);
+                            if (!bounds) return null;
+                            const box = l.box ?? { x: 0, y: 0, scale: 1 };
+                            const at = placedRect(bounds, box);
+                            const size = (s: number) => set({ box: clampBox({ x: at.x - bounds.x * s, y: at.y - bounds.y * s, scale: s }, bounds) });
+                            return (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <label className="flex items-center gap-1" title="Its size, from its top-left corner">
+                                        Size
+                                        <NumberField label="Size, % of the design's" value={Math.round(box.scale * 100)} min={BOX_SCALE.min * 100} max={BOX_SCALE.max * 100} step={5}
+                                            onChange={v => size(v / 100)} />
+                                        %
+                                    </label>
+                                    <button type="button" disabled={!l.box} className={`${secondary} px-2 py-0.5`} title="Back to the place and size the design gives it"
+                                        onClick={() => set({ box: undefined })}>Reset position</button>
+                                    <p className={hint}>Drag it on the preview to move it; drag its corner to resize it.</p>
+                                </div>
+                            );
+                        })()}
                     </Section>
                 )}
                 {l.kind === "text" && (

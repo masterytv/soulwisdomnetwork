@@ -1052,7 +1052,9 @@ export function Editor({
                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
             {workspace && !overlaysHidden && (
-                <GraphicsPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} logo={graphicsLogo} />
+                <GraphicsPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} logo={graphicsLogo}
+                    selected={selectedLayer} onSelect={openLayer}
+                    onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
             {workspace && !overlaysHidden && <OnScreenPreview cues={cues} clips={kept} edit={edit} video={videoRef} studio={studio} />}
             {workspace && ccShown && !(captionLook(edit, { burnCaptions: studio.on, captionStyle: studio.style }) && !overlaysHidden) && (

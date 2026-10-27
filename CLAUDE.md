@@ -45,7 +45,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               cached in Storage (episodes/<id>/graphics/) and overlaid by the render as video layers; the shared contract
               (templates, fields, colours, the graphic layer → video layer mapping) is lib/graphics.ts, the layer schema in
               lib/layers.ts, the editor's preview components/studio/graphics.tsx (a sandboxed iframe of the same HTML,
-              served by /api/studio/graphics/[template] with fonts inlined); Cinzel is in agent/assets/fonts (OFL);
+              served by /api/studio/graphics/[template] with fonts inlined; a title card, lower third, chapter, logo bug
+              or key idea is dragged and resized there, saved as the layer's `box`, by which the render lays the same clip); Cinzel is in agent/assets/fonts (OFL);
               highlight moments (spec 021 Part B) reframe the episode's own picture: their movement, limits and rules
               are lib/reframe.ts (one easing table for the render's ffmpeg expressions in podcast/graphics/reframe.ts,
               the preview components/studio/highlightPreview.tsx, and the tests), each layout's template drawing three
@@ -54,7 +55,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               moments, every quote verified against the transcript and the pacing, spacing and density enforced in
               code (lib/highlights.ts), saved onto the edit as `suggested: true` highlight layers the editor can keep,
               edit or clear (/api/studio/episodes/[id]/highlights, lib/server/claudeEdits.ts); the Studio settings'
-              Motion graphics section (lib/studioSettings.ts: motionGraphics, highlightDensity, suggestOnBuild,
+              Motion graphics section (lib/studioSettings.ts: motionGraphics, placeLogoBug (off), highlightDensity, suggestOnBuild,
               highlightLayouts) turns all of it on and off per show, the Usage page counts each render's drawing
               minutes, and the Resolve/Premiere/Final Cut hand-off exports graphic clips as files and highlights
               as markers (podcast/editExport.ts)

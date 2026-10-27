@@ -14,8 +14,8 @@ import * as os from 'os';
 import * as path from 'path';
 import { GRAPHIC_TEMPLATE_IDS, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
 import { pictureFilter } from '../../../lib/layers';
-import { asVideoLayer } from '../../../lib/graphics';
-import { motionLowerThird } from '../../../lib/layers';
+import { asVideoLayer, clampBox, graphicBounds, placedRect } from '../../../lib/graphics';
+import { motionKeyIdea, motionLowerThird } from '../../../lib/layers';
 import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LAYOUTS, LayoutKeyframesSchema } from '../../../lib/reframe';
 import { graphicClipName, graphicFrames, openTemplate, renderGraphic, seekTo } from './graphics/render';
 
@@ -71,6 +71,30 @@ test('a 2 s clip: ProRes 4444 with alpha, 60 frames, 1920 × 1080; too long is r
     assert.ok(clear[0] > 200 && clear[1] < 60, `beside the band the red should show, got ${clear}`);
 
     await assert.rejects(renderGraphic(spec({ durationMs: 120_000 }), out), /at most/);
+    fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a moved, smaller key idea: the same clip overlays at the box\'s corner and scale, where the preview shows it', { timeout: 120_000 }, async () => {
+    // Tom's case: the card off the guest's face, to the left and at 75 %. Its clip is the one drawn for it
+    // in place (the box is not in the spec), laid by the render's own pictureFilter over a red frame.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'graphics-box-'));
+    const fields = { term: 'Soul', definition: 'The part of us that remembers.' };
+    const out = path.join(dir, 'key.mov');
+    await renderGraphic(spec({ template: 'keyIdea', fields, durationMs: 2000 }), out);
+    const bounds = graphicBounds({ template: 'keyIdea', fields })!;
+    const box = clampBox({ x: -780, y: 60, scale: 0.75 }, bounds);
+    const card = placedRect(bounds, box);
+    const layer = asVideoLayer({ ...motionKeyIdea(0, fields.term, fields.definition), id: 'k1', anchor: { atMs: 0 }, durationMs: 2000, box }, 'episodes/abcdefghij/graphics/k.mov');
+    const framePng = path.join(dir, 'moved.png');
+    const filter = `color=c=red:s=1920x1080:r=30:d=2[bg];${pictureFilter(0, 'bg', 'done', layer, { startMs: 0, endMs: 2000 })}`;
+    await run(['ffmpeg', '-y', '-v', 'error', '-i', out, '-filter_complex', filter.replace(/;$/, ''), '-map', '[done]',
+        '-ss', '1.5', '-frames:v', '1', framePng]);
+    const px = await pixels(framePng);
+    const inside = px(Math.round(card.x + card.w / 2), Math.round(card.y + card.h - 20));
+    assert.ok(inside[0] < 90, `the card should be ink where the box puts it (${JSON.stringify(card)}), got ${inside}`);
+    const designed = px(1800 - 40, 210 + 40), right = px(Math.round(card.x + card.w + 30), Math.round(card.y + card.h / 2));
+    assert.ok(designed[0] > 200 && designed[1] < 60, `the design's own place is clear once moved, got ${designed}`);
+    assert.ok(right[0] > 200 && right[1] < 60, `beside the smaller card the red shows, got ${right}`);
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
