@@ -13,7 +13,7 @@
 
 import { z } from 'zod';
 import { editedTime, type KeptRange } from './edit';
-import { GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES, type GraphicTemplate } from './graphics';
+import { BOX_SCALE, GRAPHIC_MAX_MS, GRAPHIC_TEMPLATES, type GraphicTemplate } from './graphics';
 import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS, HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from './reframe';
 import {
     ALIGN, assRgba, assText, assTime, BACKGROUNDS, FONT_NAMES, FRAME, POSITIONS, SIZE_NAMES, styleLine, TEXT_SIZES,
@@ -111,7 +111,8 @@ export const TextLayerSchema = z.object({
 });
 // A motion graphic (docs/specs/021-motion-graphics.md): a branded template drawn over the picture, with
 // its fields checked per template (each ≤ 200 characters, trimmed). Its in and out are the template's own
-// motion, so the edges stay 'none'; it covers the whole frame, so it has no place or width. Most sit on
+// motion, so the edges stay 'none'; it covers the whole frame, so it has no place or width, only an
+// optional `box` that moves and scales the whole drawn frame. Most sit on
 // the edited episode's clock like every layer; the end screen sits `fromEnd` ms before the programme's
 // end, over the outro (lib/graphics.ts programmeWindow). Only the logo bug may run the whole episode
 // (its clip is drawn short and looped); everything else is drawn frame by frame, so its length is capped.
@@ -119,6 +120,13 @@ const noEdge = z.object({ transition: z.literal('none'), durationMs: z.literal(0
 const field200 = z.string().trim().max(200);
 export const GraphicAnchorSchema = z.union([...AnchorSchema.options, z.object({ fromEnd: ms }).strict()]);
 export type GraphicAnchor = z.infer<typeof GraphicAnchorSchema>;
+// Where a moved graphic's whole frame sits (lib/graphics.ts GraphicBox): its corner in render pixels and its
+// scale. The editor keeps the element itself on the frame (clampBox); these are only the outer limits.
+const GraphicBoxSchema = z.object({
+    x: z.number().int().min(-FRAME.width * BOX_SCALE.max).max(FRAME.width),
+    y: z.number().int().min(-FRAME.height * BOX_SCALE.max).max(FRAME.height),
+    scale: z.number().min(BOX_SCALE.min).max(BOX_SCALE.max),
+}).strict();
 const graphicOf = <T extends GraphicTemplate, F extends z.ZodRawShape>(template: T, fields: F) => z.object({
     id,
     track: z.number().int().min(2).max(9),
@@ -130,6 +138,7 @@ const graphicOf = <T extends GraphicTemplate, F extends z.ZodRawShape>(template:
     kind: z.literal('graphic'),
     template: z.literal(template),
     fields: z.object(fields).strict(),
+    box: GraphicBoxSchema.optional(),
 });
 export const GraphicLayerSchema = z.discriminatedUnion('template', [
     graphicOf('titleCard', { title: field200, guest: field200, show: field200 }),

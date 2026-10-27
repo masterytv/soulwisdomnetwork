@@ -182,6 +182,22 @@ and starlight on the programme clock.
 - **Starlight** joins the transitions list (`lib/transitions.ts`): the render overlays the `starlight` clip
   centred on the join (the panel covers the frame at its middle, so the cut happens under it); the preview
   shows it the same way.
+- **Moving and resizing** (Tom, 27 October 2026: the key idea card covered the guest's face). A graphic
+  layer may carry `box: { x, y, scale }`: where its whole drawn 1920 × 1080 frame sits (its top-left corner in
+  render pixels, whole numbers) and a uniform scale, 0.4–1.5. No box is the design's own place, so every
+  earlier edit renders as before. The template, its motion and its cached clip are unchanged (the box is not in
+  `graphicSpec`, so moving a graphic never redraws it); `asVideoLayer` lays the same clip at
+  `place { x: box.x / 1920, y: box.y / 1080, align: 7 }` and `w: box.scale`, and the preview's iframe gets the
+  same translate and scale. Movable templates (`lib/graphics.ts movableGraphic`): `titleCard`, `chapter`,
+  `lowerThird`, `logoBug`, `keyIdea`; each declares where it draws its element (`graphicBounds`, from its
+  CSS; the key idea card's height is estimated from its words, within a few pixels of Chromium's), so the
+  preview grabs the element, not the frame. Not movable: the full-screen templates, the teaser tag (on the
+  programme's clock) and highlights. On the preview, click the element to select it, drag it (its edges and
+  centre snap to the frame's edges, the 60 px margins, the thirds and the centre; Alt turns that off) and
+  drag its corner to resize it; a whole drag is one undo step, and `clampBox` keeps the element on the frame
+  (a full-width banner only shrinks). Banners as wide as the frame take clicks only once selected, so the
+  video's controls stay reachable. Properties has the size in % and **Reset position**. The Resolve,
+  Premiere and Final Cut hand-off still exports each clip full-frame: a moved one is placed there by hand.
 
 ### M3 — Part B: reframing the episode's picture
 
@@ -328,6 +344,9 @@ Each item is one PR, promotable on its own (jobs only run from `main`).
 - Renderer: a 2 s `lowerThird` clip has alpha (probe `pix_fmt`), 60 frames, the right size; the cache hit skips
   drawing.
 - Layer schemas: `graphic` and `highlight` round-trip; bad fields refused; overlap and length rules.
+- Moving: the schema takes a valid `box` and refuses one out of range; `asVideoLayer` maps it to `place` and
+  `w`, and a layer without one overlays full-frame as before; `clampBox` keeps the element on the frame; a
+  moved key idea at 75 % rendered through `pictureFilter` shows the card where the box puts it.
 - Reframe: the keyframe → expression conversion matches the curve at sampled times; a 4 s `splitQuote` over a
   test pattern puts the pattern's centre inside the window at the hold (pixel probe at one point).
 - Pacing: fixtures for spacing, the layout rotation, teasers and cuts excluded, density targets.

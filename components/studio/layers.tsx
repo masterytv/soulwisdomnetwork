@@ -44,10 +44,10 @@ export function useFrameTime(video: React.RefObject<HTMLVideoElement | null>): {
 }
 
 // Where the pinned point may snap, as shares of the frame: the edges, the render's 60-pixel margins, the
-// thirds and the centre.
-const GUIDES_X = [0, 60 / 1920, 1 / 3, 0.5, 2 / 3, 1 - 60 / 1920, 1];
-const GUIDES_Y = [0, 60 / 1080, 1 / 3, 0.5, 2 / 3, 1 - 60 / 1080, 1];
-const SNAP = 0.012;
+// thirds and the centre. Moved graphics snap their edges and centre to the same (graphics.tsx).
+export const GUIDES_X = [0, 60 / 1920, 1 / 3, 0.5, 2 / 3, 1 - 60 / 1920, 1];
+export const GUIDES_Y = [0, 60 / 1080, 1 / 3, 0.5, 2 / 3, 1 - 60 / 1080, 1];
+export const SNAP = 0.012;
 const snapTo = (v: number, guides: number[]) => guides.reduce((best, g) => (Math.abs(g - v) < Math.abs(best - v) ? g : best), Infinity);
 function snap(v: number, guides: number[], on: boolean) {
     const g = snapTo(v, guides);
