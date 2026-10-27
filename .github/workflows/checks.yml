@@ -34,24 +34,15 @@ jobs:
     - name: Install Dependencies
       run: npm ci
 
-    # The render tests run ffmpeg, with the fonts podcast_edit_render.yml installs.
-    # A stalled apt (a slow mirror, or man-db re-indexing every manual page) once held this step for half an hour:
-    # each try is limited to 5 minutes, up to three tries, without the man-db indexing.
+    # The render tests run ffmpeg: a pinned static build, because the apt mirror kept stalling
+    # this step past its retries. The on-screen text fonts ship in agent/assets/fonts.
     - name: Install ffmpeg
-      timeout-minutes: 16
-      run: |
-        sudo rm -f /var/lib/man-db/auto-update
-        for try in 1 2 3; do
-          if sudo timeout 300 sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg fonts-open-sans fonts-roboto fonts-lato fonts-ebgaramond fonts-dejavu-core'; then exit 0; fi
-          echo "apt try $try did not finish; trying again"
-          sleep 10
-        done
-        exit 1
+      uses: ./.github/actions/ffmpeg
 
 
     # The graphics renderer's tests (spec 021) draw templates in headless Chromium, as the render job does.
-    # No --with-deps: that would be another apt call on the mirror that already makes the ffmpeg step
-    # flaky, and GitHub's ubuntu runner image ships the browser's system libraries.
+    # No --with-deps: that would be an apt call on a mirror that has stalled runs before, and GitHub's
+    # ubuntu runner image ships the browser's system libraries.
     - name: Install Chromium for the graphics renderer
       run: npx playwright install chromium
 

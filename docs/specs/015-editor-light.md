@@ -219,7 +219,7 @@ Added from Jo Ann H's fork (Part I), 5 October 2026, without Part H (AI video b-
   caption track, which viewers switch on and off themselves, is always uploaded either way.
 - The preview shows them over the video, and the timeline has a row for them.
 - The render turns them into one ASS subtitle file and ffmpeg overlays, on the edited timeline.
-  The fonts are in `agent/assets/fonts` or installed by `podcast_edit_render.yml`.
+  The fonts are all in `agent/assets/fonts`.
 
 **Translations** (`lib/translate.ts`, `components/studio/translations.tsx`): Claude translates the
 captions, title and description into up to five languages (the settings choose the usual ones).

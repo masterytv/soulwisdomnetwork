@@ -8,8 +8,8 @@ import { z } from 'zod';
 // The render's frame; every size and margin below is in its pixels.
 export const FRAME = { width: 1920, height: 1080 } as const;
 
-// Fonts the render has: the Outfit pair ships in agent/assets/fonts, the rest are installed on the
-// render runner (.github/workflows/podcast_edit_render.yml). `bold` asks the font for its bold weight.
+// Fonts the render has: every family ships in agent/assets/fonts, which the render passes to libass
+// as its fontsdir — no job installs fonts. `bold` asks the font for its bold weight.
 export const FONTS = [
     { name: 'Outfit SemiBold', label: 'Outfit (the Shorts font)', bold: false, css: '"Outfit", system-ui, sans-serif' },
     { name: 'Outfit Black', label: 'Outfit Black (heavy)', bold: false, css: '"Outfit", system-ui, sans-serif' },
