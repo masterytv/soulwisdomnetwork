@@ -88,6 +88,7 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
                 words,
                 chapters: notes?.chapters ?? [],
                 hosts: settings.hosts,
+                logoBug: settings.placeLogoBug,
             })];
         }
         await adminDb().runTransaction(async tx => {

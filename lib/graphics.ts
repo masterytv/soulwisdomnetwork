@@ -14,17 +14,18 @@ import type { GraphicAnchor, GraphicLayer, Span, VideoLayer } from './layers';
 import type { HighlightLayout } from './reframe';
 
 // The templates (spec 021 Part A). `durationMs` is the hold the design gives each one; the producer can
-// change it on the layer. A whole-episode graphic (the logo bug) is drawn once as a `loopMs` clip and
+// change it on the layer. The title card and chapters are banners over the picture's bottom third
+// (Tom, after the first episode), long enough to read while the conversation goes on. A whole-episode graphic (the logo bug) is drawn once as a `loopMs` clip and
 // looped by the render, since a clip is drawn frame by frame. `fullScreen` templates paint the frame
 // (no transparency behind them); `element` ones are offered in the editor's Elements panel (the teaser
 // tag goes on teasers, never at the playhead).
 interface TemplateInfo { label: string; durationMs: number; fullScreen: boolean; loopMs?: number; element: boolean }
 export const GRAPHIC_TEMPLATES = {
-    titleCard: { label: 'Title card (motion)', durationMs: 4000, fullScreen: true, element: true },
+    titleCard: { label: 'Title card (motion)', durationMs: 5000, fullScreen: false, element: true },
     lowerThird: { label: 'Lower third (motion)', durationMs: 5000, fullScreen: false, element: true },
     logoBug: { label: 'Logo bug (motion)', durationMs: 24 * 3600_000, fullScreen: false, loopMs: 12_000, element: true },
     teaserTag: { label: '“In this episode” (motion)', durationMs: 5000, fullScreen: false, element: false },
-    chapter: { label: 'Chapter (motion)', durationMs: 3000, fullScreen: true, element: true },
+    chapter: { label: 'Chapter (motion)', durationMs: 5000, fullScreen: false, element: true },
     pullQuote: { label: 'Pull quote (motion)', durationMs: 6000, fullScreen: true, element: true },
     keyIdea: { label: 'Key idea (motion)', durationMs: 6000, fullScreen: false, element: true },
     endScreen: { label: 'End screen (motion)', durationMs: 20_000, fullScreen: true, element: true },

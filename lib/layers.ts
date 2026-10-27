@@ -640,29 +640,43 @@ export function highlight(srcMs: number, layout: HighlightLayer['layout'], words
 }
 
 // The motion graphics an edit is first set up with (spec 021 M2; Tom's D2: on for every new episode):
-// the title card from the approved notes' chosen title and the first speaker who is not a host, a motion
-// lower third where each speaker first talks (hosts compact), a chapter divider at each approved chapter
-// after the first, the logo bug, and the end screen over the programme's last 20 s. Only for an episode
-// with no saved edit, like the teasers and b-roll (lib/programme.ts firstEdit, lib/layers.ts withLayers).
+// the title banner from the approved notes' chosen title and the first speaker who is not a host, a motion
+// lower third where each speaker first talks (hosts compact), a chapter banner at each approved chapter
+// after the first, the logo bug only when the Studio settings ask for it (`logoBug`, off by default), and
+// the end screen over the programme's last 20 s. The title banner and the lower thirds share the bottom
+// third, so a lower third due while the banner is up waits until just after it. Only for an episode with
+// no saved edit, like the teasers and b-roll (lib/programme.ts firstEdit, lib/layers.ts withLayers).
 export function motionGraphics(o: {
     title: string;
     show: string;
     words: { speaker: string; start: number }[];
     chapters: { title: string; startMs: number }[];
     hosts: string[];
+    logoBug?: boolean;
 }): GraphicLayer[] {
     const hosts = new Set(o.hosts.map(h => h.trim().toLowerCase()));
     const first = new Map<string, number>();
     for (const w of o.words) if (w.speaker && !first.has(w.speaker)) first.set(w.speaker, w.start);
     const guest = [...first.keys()].find(s => !hosts.has(s.trim().toLowerCase())) ?? '';
+    const card = motionTitleCard(o.title, guest, o.show);
+    // Lower thirds anchor on the recording's clock and the banner on the edit's, so the gap is kept on
+    // the recording's: cuts in the first seconds can only bring a third earlier by what they remove.
+    // Lower thirds sit in one place too, so one that would cover the one before waits for it to go.
+    let free = card.durationMs + TITLE_GAP_MS;
+    const thirds = [...first].map(([speaker, start]) => {
+        const third = motionLowerThird(Math.max(start, free), speaker, hosts.has(speaker.trim().toLowerCase()));
+        free = (third.anchor as { srcMs: number }).srcMs + third.durationMs + THIRD_GAP_MS;
+        return third;
+    });
     return [
-        motionTitleCard(o.title, guest, o.show),
-        ...[...first].map(([speaker, start]) => motionLowerThird(start, speaker, hosts.has(speaker.trim().toLowerCase()))),
+        card,
+        ...thirds,
         ...o.chapters.slice(1).map((c, i) => motionChapter(c.startMs, i + 2, c.title)),
-        motionLogoBug(),
+        ...(o.logoBug ? [motionLogoBug()] : []),
         motionEndScreen(),
     ];
 }
+const TITLE_GAP_MS = 1500, THIRD_GAP_MS = 500;
 
 // The logo bug: the Studio's logo small in the top right, a little see-through, for the whole episode
 // (pinned at its start, so it never moves with cuts).

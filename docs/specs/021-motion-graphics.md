@@ -38,11 +38,11 @@ Two parts that share one renderer.
 
 | Template id | What it is | How it is placed |
 |---|---|---|
-| `titleCard` | Episode title card: star blooms, title in Cinzel, "with [Guest]" | Automatically, at the start of the episode (after the intro) |
+| `titleCard` | Episode title banner over the bottom third: star blooms, title in Cinzel, "with [Guest]" | Automatically, at the start of the episode (after the intro) |
 | `lowerThird` | Name and descriptor with the gold star and a drawn rule; a compact variant for hosts ("HOST") | Automatically, where each speaker first talks (replaces today's `lowerThirds`) |
-| `logoBug` | The logo, top right, with a slow glint | Automatically, for the whole episode (replaces today's still logo bug) |
+| `logoBug` | The logo, top right, with a slow glint | Automatically for the whole episode only when the settings' "Include the logo bug" is on (off by default); else by hand |
 | `teaserTag` | "In this episode" with the speaker and a progress line | On each teaser (replaces `teaserBanner.ts`'s ASS tag in the render) |
-| `chapter` | Chapter divider: numeral, "CHAPTER TWO", title | Automatically, at each approved chapter after the first |
+| `chapter` | Chapter banner over the bottom third: numeral, "CHAPTER TWO", title | Automatically, at each approved chapter after the first |
 | `pullQuote` | Full-screen quote, line by line | By hand, or as a highlight (Part B, `iris` covers the same need) |
 | `keyIdea` | Side card: "KEY IDEA", a term, a one-line definition | Suggested by Claude (Part B's picker), approved in the editor |
 | `endScreen` | 20 s end screen with spaces for YouTube's two video elements and subscribe button | Automatically, over the outro's last 20 s |
@@ -113,7 +113,7 @@ design reference: same markup, styles and keyframes; no `<x-dc>`, no `support.js
   the design files;
 - exposes `window.seek(ms)` that sets every animation's `currentTime` for that moment
   (`document.getAnimations()`), so a frame can be drawn for any time, in any order;
-- has a transparent background unless the template is full screen (`titleCard`, `chapter`, `pullQuote`,
+- has a transparent background unless the template is full screen (`pullQuote`,
   `endScreen`, `logoSting`, and the sky behind Part B's layouts);
 - loads fonts from local `@font-face` files and the logo from the Studio's logo (settings `logoPath`, else
   `public/logo-trimmed.png`); no network.
@@ -168,12 +168,13 @@ and starlight on the programme clock.
   (gotcha: "The edit route checks every field").
 - **Placement** when the edit is first set up (`lib/programme.ts` `firstEdit`, `lib/server/buildEdit.ts`), only
   for episodes with no saved edit, and only when the Studio setting is on (D2):
-  - `titleCard` at the episode's start, 4 s: fields from the approved notes' chosen title and the first
-    non-host speaker's name;
+  - `titleCard` at the episode's start, 5 s, a banner over the bottom third: fields from the approved notes'
+    chosen title and the first non-host speaker's name;
   - `lowerThird` where each speaker first talks, 5 s (hosts compact, "HOST"; guests: name and a descriptor
-    Claude suggests in M4, empty until then);
-  - `chapter` at each approved chapter after the first, 3 s, numbered;
-  - `logoBug` for the whole episode;
+    Claude suggests in M4, empty until then); one due under the title banner, or over the lower third before
+    it, waits until that one has gone;
+  - `chapter` at each approved chapter after the first, 5 s, numbered, a banner over the bottom third;
+  - `logoBug` for the whole episode, only with the setting `placeLogoBug` (off by default);
   - `endScreen` over the outro's last 20 s (or the episode's, with no outro);
   - each teaser's tag becomes `teaserTag`.
 - **Elements panel** (spec 020 E6): each template can be added at the playhead; Properties edits its fields.
@@ -288,7 +289,7 @@ real episode and tighten**. The run's state and counts live on `episode.highligh
 
 ### M5 — settings and polish
 
-- **Studio settings** (spec 018): "Motion graphics" on/off (D2); highlight density Off / Light / Normal / Rich
+- **Studio settings** (spec 018): "Motion graphics" on/off (D2), and "Include the logo bug" (off); highlight density Off / Light / Normal / Rich
   (D4); "Suggest highlights when the edit is built" (D3); which layouts are allowed (all six by default).
 - **Usage page:** graphics drawing time per render.
 - **Hand-off export** (019 item 4.1): graphic clips export as files beside the cuts; highlights export as markers
@@ -296,7 +297,8 @@ real episode and tighten**. The run's state and counts live on `episode.highligh
 
 **Built.** The Studio settings (spec 018 pattern, nothing saved before them changes behaviour):
 `motionGraphics` (D2, on) gates the automatic placement on fresh edits in both Build for Studio editor
-and the editor's first open (through the edit route's `graphics` payload); `highlightDensity` (D4,
+and the editor's first open (through the edit route's `graphics` payload), and `placeLogoBug` (off) whether the
+logo bug is among them; `highlightDensity` (D4,
 Normal) is read by the suggestions job, with Off refusing the run and hiding Suggest highlights
 (`highlightsOff` on the edit GET); `suggestOnBuild` (D3, off) starts the suggestions with a fresh
 build, best-effort; `highlightLayouts` narrows what the pacing may pick, a kind with nothing left

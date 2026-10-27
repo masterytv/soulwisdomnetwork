@@ -54,7 +54,7 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               moments, every quote verified against the transcript and the pacing, spacing and density enforced in
               code (lib/highlights.ts), saved onto the edit as `suggested: true` highlight layers the editor can keep,
               edit or clear (/api/studio/episodes/[id]/highlights, lib/server/claudeEdits.ts); the Studio settings'
-              Motion graphics section (lib/studioSettings.ts: motionGraphics, highlightDensity, suggestOnBuild,
+              Motion graphics section (lib/studioSettings.ts: motionGraphics, placeLogoBug (off), highlightDensity, suggestOnBuild,
               highlightLayouts) turns all of it on and off per show, the Usage page counts each render's drawing
               minutes, and the Resolve/Premiere/Final Cut hand-off exports graphic clips as files and highlights
               as markers (podcast/editExport.ts)
