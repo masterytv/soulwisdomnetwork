@@ -120,9 +120,9 @@ test('M2 placement: title card with the guest, a third per speaker, chapters aft
     assert.deepEqual(card.fields, { title: 'The field around us', guest: 'Maria Santos', show: 'Soul Wisdom Collective' });
     const thirds = by('lowerThird') as Extract<GraphicLayer, { template: 'lowerThird' }>[];
     assert.deepEqual(thirds.map(t => [t.fields.name, t.fields.variant]), [['Daniel Endy', 'host'], ['Maria Santos', 'guest'], ['Tom Wood', 'host']]);
-    // The first speaks under the title banner, so their third waits until just after it (5 s + 1.5 s);
+    // The first speaks under the title banner, so their third waits until just after it (7 s + 1.5 s);
     // the next would cover that one, so it waits for it to go (+ 5 s + 0.5 s); the third is clear.
-    assert.deepEqual(thirds.map(t => t.anchor), [{ srcMs: 6500 }, { srcMs: 12_000 }, { srcMs: 31_000 }]);
+    assert.deepEqual(thirds.map(t => t.anchor), [{ srcMs: 8500 }, { srcMs: 14_000 }, { srcMs: 31_000 }]);
     const chapters = by('chapter') as Extract<GraphicLayer, { template: 'chapter' }>[];
     assert.deepEqual(chapters.map(c => [c.fields.number, c.fields.title]), [['2', 'The middle'], ['3', 'The close']]);
     assert.equal(by('logoBug').length, 0);
