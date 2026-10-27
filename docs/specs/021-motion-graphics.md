@@ -75,8 +75,8 @@ and **stressed words** (a word or short phrase, 1.5–4 s: `splitWord`, `over`).
   `colors` (background, backgroundBottom, accent) so another show gets its own; the others derive from them
   the way `thumbnailCanvas.ts` `applyPalette` does.
 - **Type:** Cinzel 600/700 (titles, names, chapters; echoes the logo's lettering), Outfit 400–900 (labels,
-  captions; already in `agent/assets/fonts` and the site), EB Garamond Italic (quotes; already installed on
-  the render runner). **Cinzel is new:** add its OFL files to `agent/assets/fonts` (with the licence) and load
+  captions; already in `agent/assets/fonts` and the site), EB Garamond Italic (quotes; also in
+  `agent/assets/fonts`). **Cinzel is new:** add its OFL files to `agent/assets/fonts` (with the licence) and load
   all three from local files in the templates — never from Google Fonts at render time.
 - **Motion:** enter with `cubic-bezier(.22, 1, .36, 1)`, 500–700 ms, rising ≈28 px out of a ≈10 px blur;
   exit by fading in ≈400 ms, no bounce; stagger 150–250 ms. Picture moves use `cubic-bezier(.65, 0, .25, 1)`.

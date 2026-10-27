@@ -1,0 +1,25 @@
+# Installs ffmpeg and ffprobe from a pinned static build on GitHub releases, instead of apt:
+# the runners' apt mirror repeatedly stalled the old install step past its 15-minute limit, and
+# a download from GitHub's own release storage takes seconds and cannot drift — the sha256 pins
+# the exact file. To update ffmpeg, change the tag, the asset name and the hash together
+# (https://github.com/BtbN/FFmpeg-Builds; the build is GPL, with libass, fontconfig and libx264).
+# The on-screen text fonts need no install either: they ship in agent/assets/fonts, which the
+# render hands to libass as its fontsdir (lib/onScreen.ts).
+name: Install ffmpeg
+description: ffmpeg and ffprobe from a pinned static build, not apt
+
+runs:
+  using: composite
+  steps:
+    - name: Install ffmpeg
+      shell: bash
+      run: |
+        build=ffmpeg-N-128100-gceb466cbcd-linux64-gpl
+        curl -fsSL --retry 4 --retry-delay 5 --retry-all-errors --max-time 120 -o /tmp/ffmpeg.tar.xz \
+          "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-26-14-25/$build.tar.xz"
+        echo "cd6219478e044024cea76bbd3e053bd85b57485381d5c61e72415c8e8b8db9cd  /tmp/ffmpeg.tar.xz" | sha256sum -c
+        mkdir -p "$HOME/ffmpeg-static"
+        tar -xJf /tmp/ffmpeg.tar.xz -C "$HOME/ffmpeg-static" --strip-components=2 "$build/bin/ffmpeg" "$build/bin/ffprobe"
+        rm /tmp/ffmpeg.tar.xz
+        echo "$HOME/ffmpeg-static" >> "$GITHUB_PATH"
+        "$HOME/ffmpeg-static/ffmpeg" -version | head -1
