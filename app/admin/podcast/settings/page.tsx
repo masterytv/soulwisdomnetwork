@@ -333,7 +333,11 @@ export default function StudioSettingsPage() {
                             <Section title="Motion graphics" intro="The branded templates and highlight moments (spec 021). The producer can always place any of them by hand in the Studio editor; these choices steer what happens on its own.">
                                 <label className="flex items-start gap-2 text-sm text-gray-200">
                                     <input type="checkbox" checked={s.motionGraphics} onChange={e => set("motionGraphics", e.target.checked)} disabled={off} className="mt-1" />
-                                    <span>Place the motion graphics on new edits<span className={`block ${hint}`}>The title card, a lower third where each speaker first talks, chapter dividers, the logo bug and the end screen, placed once when an edit is first set up.</span></span>
+                                    <span>Place the motion graphics on new edits<span className={`block ${hint}`}>The title banner, a lower third where each speaker first talks, a chapter banner at each chapter and the end screen, placed once when an edit is first set up.</span></span>
+                                </label>
+                                <label className="flex items-start gap-2 text-sm text-gray-200 ml-6">
+                                    <input type="checkbox" checked={s.placeLogoBug} onChange={e => set("placeLogoBug", e.target.checked)} disabled={off || !s.motionGraphics} className="mt-1" />
+                                    <span>Include the logo bug<span className={`block ${hint}`}>The logo top right for the whole episode. Off: it can still be added by hand from Elements in the Studio editor.</span></span>
                                 </label>
                                 <fieldset className="flex flex-col gap-2">
                                     <legend className="text-sm font-medium text-gray-200 mb-1">Suggested highlights</legend>

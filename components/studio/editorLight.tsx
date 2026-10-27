@@ -259,7 +259,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             studioFetch<{
                 edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
                 fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro'];
-                graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[] } | null;
+                graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[]; logoBug?: boolean } | null;
                 highlightsOff?: boolean;
             }>(`/api/studio/episodes/${episodeId}/edit`),
             binLoad,

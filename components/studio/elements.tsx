@@ -97,9 +97,9 @@ export function ElementsPanel({ words, layers, brand, logo, video, canEdit, onAd
             </div>
             {!canEdit && <p className="text-sm text-amber-300">The media bin did not load, so layers cannot be added now. Reload the page.</p>}
 
-            {motionRow({ template: "titleCard", sampleText: "Title", what: "The star blooms and the title lands in Cinzel at the episode's start; the words in Properties.", make: () => [motionTitleCard("", guest)] })}
+            {motionRow({ template: "titleCard", sampleText: "Title", what: "A banner over the bottom third: the star blooms and the title lands in Cinzel at the episode's start; the words in Properties.", make: () => [motionTitleCard("", guest)] })}
             {motionRow({ template: "lowerThird", sampleText: "Name", align: "items-end justify-start p-1.5", what: "The star spins in, the name slides in Cinzel, a rule draws; hosts get the compact variant.", make: () => [motionLowerThird(currentMs, speakers[0] ?? "", false)], atPlayhead: true })}
-            {motionRow({ template: "chapter", sampleText: "II", what: `The numeral and the chapter title, full screen; the next would be chapter ${nextChapter}.`, make: () => [motionChapter(currentMs, nextChapter, "")], atPlayhead: true })}
+            {motionRow({ template: "chapter", sampleText: "II", what: `The numeral and the chapter title, a banner over the bottom third; the next would be chapter ${nextChapter}.`, make: () => [motionChapter(currentMs, nextChapter, "")], atPlayhead: true })}
             {motionRow({ template: "pullQuote", sampleText: "“ ”", what: "A full-screen quote, line by line on the starry sky; the words in Properties.", make: () => [motionPullQuote(currentMs, "", "")], atPlayhead: true })}
             {motionRow({ template: "keyIdea", sampleText: "Key", align: "items-center justify-end p-1.5", what: "The side card: KEY IDEA, a term and its one-line definition.", make: () => [motionKeyIdea(currentMs, "", "")], atPlayhead: true })}
             {motionRow({ template: "logoBug", align: "items-start justify-end p-1.5", what: "The logo top right with a slow glint, for the whole episode.", make: () => [motionLogoBug()] })}
