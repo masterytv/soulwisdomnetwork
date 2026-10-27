@@ -202,10 +202,27 @@ spec): motion graphics on by default, the moving templates are the look (the ASS
 "Simple"), highlights on "Suggest highlights" at Normal density — a ceiling, not a quota — and
 the Shorts overlay later (it is in `docs/BACKLOG.md` so it is not forgotten).
 
-- **M1 built** (PR #211): the graphics renderer (Playwright + ProRes 4444 clips, cached in
-  Storage), Cinzel, the workflows' Chromium step, and `lowerThird` end to end — the editor
-  preview plays the template in a sandboxed iframe, the render overlays its clip as a video
-  layer. The graphic layer kind exists, restricted to `lowerThird`. Rendering runs only once
-  this is on `main` (jobs run from `main`); staging can test the editor side.
-- **M2 next**: the other Part A templates, the full `graphic` layer, automatic placement
-  (D1-answer naming: automatic placement uses the motion templates), the `starlight` transition.
+- **M1 built and merged** (PR #211): the graphics renderer (Playwright + ProRes 4444 clips,
+  cached in Storage), Cinzel, the workflows' Chromium step, and `lowerThird` end to end — the
+  editor preview plays the template in a sandboxed iframe, the render overlays its clip as a
+  video layer. Rendering runs only once promoted to `main` (jobs run from `main`); staging can
+  test the editor side.
+- **M2 built and merged** (PR #213): every Part A template rebuilt from the design
+  files, the full `graphic` layer (per-template fields; the end screen on a `fromEnd`
+  programme anchor), automatic placement on fresh edits (server and editor), the looped logo
+  bug, the motion teaser tag over cut teasers (ASS fallback without Chromium), the `starlight`
+  transition (no overlap; the drawn clip covers the cut), and the programme-clock preview.
+- **M3 built and merged** (PR #216, at Extra effort): Part B — the `highlight` layer
+  with its route-enforced rules, the six layouts' templates drawn in three planes (words,
+  matte, backdrop), the reframe inside the window encode by the shared 16-segment easing
+  table, and the editor's preview (the `<video>` element itself reframed), rose timeline lane
+  and word-snapped drags.
+- **M4 built and merged** (PR #217): `mode: highlights` — Claude suggests the
+  moments; verification and pacing are code with tests (`lib/highlights.ts`); the job writes
+  suggestions into the saved edit (`suggested: true`, never over a touched one) and the editor
+  gains Suggest/Clear; cost in `spending.ts` ($0.50, to be measured on a real episode).
+- **M5 built** (branch `claude/spec-021-m5`): the Studio settings (motion graphics on/off,
+  highlight density with Off, suggest-on-build, the layout allowlist), the render's drawing
+  time on the Usage page, and the hand-off export carrying graphic clips as files and
+  highlights as markers. **Spec 021 is complete**; what waits is the Shorts overlay
+  (`docs/BACKLOG.md`) and measuring the highlights run's real cost on an episode.

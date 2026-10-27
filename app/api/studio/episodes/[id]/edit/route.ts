@@ -21,6 +21,7 @@ import { CutsSchema, isReordered, MAX_SPLITS, SplitsSchema, validOrder, type Epi
 import { CaptionChoiceSchema, OverlaysSchema, type CaptionChoice, type Overlay } from '@/lib/onScreen';
 import { JoinsSchema, type Join } from '@/lib/transitions';
 import { layersOf, LayersSchema, SITE_LOGO, SITE_LOGO_URL, type BinItem, type Layer } from '@/lib/layers';
+import { highlightProblems } from '@/lib/reframe';
 import { binItems, binPaths } from '@/lib/server/mediaBin';
 import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
@@ -54,7 +55,8 @@ export const GET = handle<Context>(async (request, { params }) => {
     const overlayUrls: Record<string, string> = {};
     for (const l of layersOf(edit)) {
         // A graphic (spec 021) has no file: the preview fetches its template from /api/studio/graphics.
-        if (l.kind === 'text' || l.kind === 'graphic' || overlayUrls[l.media.path]) continue;
+        // A highlight (item M3) reframes the episode's own picture, so it has no file either.
+        if (l.kind === 'text' || l.kind === 'graphic' || l.kind === 'highlight' || overlayUrls[l.media.path]) continue;
         if (l.media.path === SITE_LOGO) { overlayUrls[l.media.path] = SITE_LOGO_URL; continue; }
         const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[l.media.path] = url;
@@ -78,7 +80,20 @@ export const GET = handle<Context>(async (request, { params }) => {
         : intro ? await adminBucket().file(intro.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null) : null;
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
-    return Response.json({ edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio });
+    // Spec 021 M2: what a fresh edit's motion graphics are placed from (the editor itself has the words
+    // and the hosts); null once an edit is saved, so they are never placed twice — and null when the
+    // Studio setting turns automatic placement off (item M5).
+    const graphics = data.edit || !settings.motionGraphics ? null : {
+        title: notes?.titles?.[notes.chosenTitle] ?? notes?.titles?.[0] ?? '',
+        show: settings.showName,
+        chapters: notes?.chapters ?? [],
+        hosts: settings.hosts,
+    };
+    return Response.json({
+        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics,
+        // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
+        highlightsOff: settings.highlightDensity === 'off',
+    });
 });
 
 export const PUT = handle<Context>(async (request, { params }) => {
@@ -181,12 +196,12 @@ export const PUT = handle<Context>(async (request, { params }) => {
     // A picture is checked once, when it first appears on the edit: an overlay upload must be a real PNG
     // or JPEG uploaded through the Studio (lib/server/uploads.ts); any other file must be in the episode's
     // media bin.
-    const pictures = layers ? layers.flatMap(l => l.kind === 'text' || l.kind === 'graphic' ? [] : [l.media.path])
+    const pictures = layers ? layers.flatMap(l => l.kind === 'text' || l.kind === 'graphic' || l.kind === 'highlight' ? [] : [l.media.path])
         : overlays ? overlays.flatMap(o => o.type === 'image' ? [o.path] : []) : [];
     if (pictures.length) {
         const episode = (await ref.get()).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
-        const saved = new Set(layersOf(episode.edit ?? { cuts: [], version: 0 }).flatMap(l => l.kind === 'text' || l.kind === 'graphic' ? [] : [l.media.path]));
+        const saved = new Set(layersOf(episode.edit ?? { cuts: [], version: 0 }).flatMap(l => l.kind === 'text' || l.kind === 'graphic' || l.kind === 'highlight' ? [] : [l.media.path]));
         let bin: Set<string> | null = null;
         for (const path of new Set(pictures)) {
             if (saved.has(path)) continue;
@@ -231,6 +246,18 @@ export const PUT = handle<Context>(async (request, { params }) => {
             throw new HttpError(409, 'Version mismatch — someone else edited');
         }
         const version = (current?.version ?? 0) + 1;
+        // A highlight reframes a kept stretch of the recording (spec 021 item M3): the save is refused while
+        // one sits on cut words or a teaser, or overlaps another, against what this save would leave behind.
+        const keptLayers = layers ?? current?.layers ?? [];
+        const highlights = keptLayers.filter(l => l.kind === 'highlight');
+        if (highlights.length) {
+            const media = (snap.data() as Episode).media;
+            const durationMs = (media?.durationSeconds ?? 86_400) * 1000;
+            const keptTeasers = teasers !== undefined ? teasers ?? [] : current?.teasers ?? [];
+            const problems = highlightProblems(highlights, { cuts: cuts.data, teasers: keptTeasers, durationMs });
+            const first = problems.values().next().value;
+            if (first) throw new HttpError(400, `A highlight cannot stay as saved: ${first}`);
+        }
         // A transition at a split goes with its split.
         const keptSplits = splits ?? current?.splits ?? [];
         const keptJoins = (joins ?? current?.joins ?? []).filter(j => typeof j.at === 'string' || keptSplits.includes(j.at.atSplit));

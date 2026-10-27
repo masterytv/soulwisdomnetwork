@@ -25,8 +25,9 @@ const USD_PER_MTOK = { input: 4, output: 20 };
 // Requests sent at once while translating, so a long episode finishes well inside the job's time.
 const PARALLEL = 4;
 
-// One structured request to Claude; returns the parsed answer and what it cost.
-async function ask<S extends z.ZodType>(client: Anthropic, schema: S, system: string, content: string, effort: Effort, maxTokens: number) {
+// One structured request to Claude; returns the parsed answer and what it cost. Also used by the
+// highlights job (highlights.ts, spec 021 item M4).
+export async function ask<S extends z.ZodType>(client: Anthropic, schema: S, system: string, content: string, effort: Effort, maxTokens: number) {
     const response = await client.beta.messages.stream({
         model: NOTES_MODEL,
         max_tokens: maxTokens,

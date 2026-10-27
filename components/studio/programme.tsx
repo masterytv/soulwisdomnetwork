@@ -476,18 +476,8 @@ export function ProgrammePlayer({ view, video, ranges, hold, active }: {
             <video ref={aRef} playsInline preload="auto" className="absolute inset-0 w-full h-full rounded-lg" aria-label="The teasers, intro and outro" />
             <video ref={bRef} playsInline preload="auto" className="absolute inset-0 w-full h-full rounded-lg" aria-hidden tabIndex={-1} />
             <div ref={veilRef} aria-hidden className="pointer-events-none absolute inset-0 rounded-lg" style={{ opacity: 0, background: '#000' }} />
-            {/* The "In this episode" tag the render burns into each teaser (agent/src/podcast/teaserBanner.ts), drawn here. */}
-            {piece?.kind === 'teaser' && piece.tag !== false && (
-                <div aria-hidden className="absolute z-10 pointer-events-none" style={{ left: '4.2cqw', bottom: '4.7cqw' }}>
-                    <div className="flex" style={{ background: 'rgba(42,21,82,0.8)' }}>
-                        <span style={{ width: '0.42cqw', background: '#e9b949' }} />
-                        <span className="flex flex-col" style={{ padding: '0.9cqw 2.1cqw' }}>
-                            <span style={{ color: '#e9b949', fontWeight: 900, fontSize: '2.3cqw', letterSpacing: '0.3cqw', lineHeight: 1.1 }}>IN THIS EPISODE</span>
-                            {piece.speaker && <span style={{ color: 'white', fontWeight: 600, fontSize: '2cqw', lineHeight: 1.3 }}>{piece.speaker}</span>}
-                        </span>
-                    </div>
-                </div>
-            )}
+            {/* The "In this episode" tag is the motion teaserTag template, drawn over the player by
+                ProgrammeGraphics (components/studio/graphics.tsx, spec 021). */}
             {piece && (
                 <div className="absolute z-10 top-2 left-2 right-2 flex items-center gap-2 text-xs">
                     <span className="rounded bg-black/70 px-2 py-0.5 text-amber-200">

@@ -12,6 +12,7 @@ const LABELS: Record<EditRenderView["exports"][number]["kind"], string> = {
     finalcut: "Final Cut Pro (.fcpxml)",
     captions: "Captions for them (.srt)",
     constantRate: "Constant-frame-rate copy of the recording (.mp4)",
+    graphicClip: "Motion graphic clip (.mov)",
 };
 
 export function EditFiles({ files }: { files: EditRenderView["exports"] }) {

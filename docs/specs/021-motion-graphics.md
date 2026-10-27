@@ -1,10 +1,10 @@
 # Spec 021: Motion graphics — branded templates and highlight moments
 
 **Date:** 26 October 2026
-**Status:** In progress. **M1 is built** (PR #211: the renderer, Cinzel, the workflow's Chromium step, and
-`lowerThird` end to end — the graphic layer kind restricted to that one template, the editor preview's
-sandboxed iframe, and the render overlaying the clip as a video layer). Tom answered D1–D6 on 26 October
-2026; his answers are recorded at the end of this page. M2 is next.
+**Status:** Built. **M1–M4 are merged** (PRs #211, #213, #216 and #217) and **M5 is built** (the
+branch `claude/spec-021-m5`): the Studio settings, the Usage page's drawing time and the hand-off
+export — particulars in the M5 section below. Tom answered D1–D6 on 26 October 2026; his answers are
+recorded at the end of this page. The Shorts overlay (D5, "later") is in `docs/BACKLOG.md`.
 **Author:** Claude, from Tom's request: "design a series of motion graphics templates that we can use in
 our videos", then "when a person says something that is quotable (or a word that could be stressed), move
 the person in a frame to the side and bring the quote up on the other side … a few versions … so that the
@@ -140,6 +140,26 @@ see the gotcha). What the editor shows is the file the render draws.
 
 ### M2 — Part A as layers, placed automatically
 
+**Built.** As specced, with these particulars M3+ builds on: all templates live beside lowerThird
+(`titleCard` grew a `show` field for the eyebrow line; `chapter` derives CHAPTER TWO and the numeral from
+its `number` field; the end screen's and sting's copy is the design's own, since their `fields` are empty —
+make them fields if another show ever needs its own words). Anchors: most graphics sit on the episode's
+clock; the **end screen anchors `{ fromEnd: ms }`** on the programme's clock (`lib/graphics.ts
+programmeWindow`; `layerSpan` returns null for it, and `asVideoLayer` refuses it). The **logo bug is drawn
+as a 12 s clip and looped** (`drawnMs`, the render's `loop` flag on picture entries); templates that draw
+the logo get it as `GRAPHIC.logo` (the Studio's `logoPath`, else `public/logo-trimmed.png`; its bytes'
+hash, `logoKey`, is in the cache name). The render gained **programme-time overlays** (`renderEdit`'s
+`overlays`: `fromEnd` against the end, `at` centred on a join by `joinKey`), which carry the end screen
+and the **starlight clips**; starlight is a `TransitionKind` with **no xfade and no overlap** —
+`sequenceOf` and `programmeOf` keep the timeline's length and the render lays the clip centred on the
+join (`XFADE.starlight` is undefined: guard any `XFADE[t]` use). The **teaser tag** is drawn per teaser
+(progress line spanning the clip) and laid over the cut teaser by the job (`overlayClip` in media.ts),
+with the ASS banner as the fallback when no Chromium is on the runner. Automatic placement is
+`lib/layers.ts motionGraphics(...)`, applied on fresh edits in both `buildEdit` (server) and the editor
+(the GET edit route's `graphics` payload carries title, show, chapters and hosts). The programme preview
+plays the real templates (`components/studio/graphics.tsx` `ProgrammeGraphics`): end screen, teaser tags
+and starlight on the programme clock.
+
 - **The model:** a new layer kind in `lib/layers.ts`:
   `{ kind: 'graphic', template: GraphicTemplate, fields: Record<string, string> }` with the base fields
   (anchor, `durationMs`, track, opacity); `in`/`out` are the template's own, so `EdgeSchema` is `none` for it.
@@ -177,11 +197,12 @@ window encode (spec 019 item 4.2, `renderWindows.ts`):
 
 1. **Background:** a still drawn by the template (the sky), looped for the span.
 2. **The picture:** the episode's frames for the span, moved by **keyframes the template declares**:
-   `window.GRAPHIC_LAYOUT = { from: Box, to: Box, inMs, outMs, ease }`, where a `Box` is
-   `{ x, y, scale, crop: {l,t,r,b}, radius, shape: 'rect' | 'ellipse', brightness, blur }`. The renderer turns
-   them into ffmpeg expressions over `t` (`crop`, `scale` with `eval=frame`, `overlay` x/y, `eq` brightness)
-   using the same cubic-bezier, approximated by a short lookup table if needed; tests compare the expression
-   to the curve at sampled times.
+   `window.GRAPHIC_LAYOUT = { from: Box, to: Box, inMs, outMs }`, where a `Box` is
+   `{ x, y, scale, brightness, blur }` — no crop, radius or shape: the picture is only ever scaled and
+   moved, and every shape is the matte's, so the render's frames keep one size. The renderer turns the
+   keyframes into ffmpeg expressions over `t` (`scale` with `eval=frame` — probed to work under `overlay`
+   on ffmpeg 6.1 — and `overlay` x/y) through the house curve as a 16-segment piecewise table
+   (`lib/reframe.ts easeSegments`); tests compare the expression to the curve at sampled times.
 3. **The mask:** the window's shape (rounded rectangle, or the closing oval for `iris`) is drawn by the template
    as a **matte clip** (white shape on black, same timing) and applied with `alphamerge`, so ffmpeg never has to
    draw rounded corners. `over`'s blur is a crossfade between the sharp picture and a `boxblur`red copy, by the
@@ -195,6 +216,28 @@ plan check: every highlight inside the programme, not across a join, words kept.
 `transform` and `clip-path`, driven by `useVideoTime`) and plays the template's iframe over it. The
 Properties panel switches the layout, edits the words and the emphasised word, and nudges the start and end
 to word boundaries (as teaser trims do, `pickTeaserWord`).
+
+**Built.** As specced, with these particulars M4+ builds on. The one source for the movement is
+`lib/reframe.ts`: `HIGHLIGHT_KEYFRAMES` holds each template's declared `GRAPHIC_LAYOUT` (pinned by
+`agent/src/podcast/graphicsRender.test.ts`, so a template cannot drift from what the render and the
+preview compute), and `easeSegments()` is the 16-segment table of cubic-bezier(.65, 0, .25, 1) that the
+render's expressions (`agent/src/podcast/graphics/reframe.ts progressExpr`), the preview's CSS
+(`boxAt`/`boxStyle`) and the tests all read. The splits are pure 410 px pans and `push` a 560 px pan
+(the design files never scale them); `below` is the one scaling layout (0.76); `iris` never moves the
+picture (its matte carries the whole close); `over` is drawn as a linear alpha crossfade to a dimmed,
+blurred copy over the same squeezed in/out — the one visible-motion approximation, invisible in a blur
+fade. `HIGHLIGHT_PLANES` (graphics/reframe.ts) says which plane clips each layout draws: `over` only its
+words, `push` words and backdrop, the rest all three; visible = picture alpha × matte alpha, so a
+one-pixel ease drift can never leave a fringe. The clip cache name now carries `mode` and the logo's
+hash. A highlight straddling a render-window join is trimmed in absolute episode seconds, so both windows
+draw their own frames of the move seamlessly (tested at 3 s windows). The edit route refuses a save whose
+highlight sits on cut words or a teaser or overlaps another (`highlightProblems`); the render warns (QC)
+when words are cut on a stale edit, a transition blends under one, or b-roll hides one. In the editor the
+preview reframes the `<video>` element itself and approximates the matte as an animated `clip-path`
+(`components/studio/highlightPreview.tsx` — the matte clip stays the render's truth); highlights live on
+a thin rose lane just above V1 (amber, with the reason, while the route would refuse them), drag edges
+nudge to word boundaries, and Elements' "+ Highlight" starts on the next word with the eight words said
+there.
 
 ### M4 — Claude picks the moments
 
@@ -227,6 +270,22 @@ cut, the teasers), and asks Claude for:
 - **Cost:** add `highlights` to `ESTIMATE_USD` in `lib/server/spending.ts` (measure on a real episode; the
   transcript is the bulk, as for retakes) and record the real cost on the episode.
 
+**Built.** As specced, with these particulars M5 builds on. The rules live in `lib/highlights.ts` with
+tests, the job in `agent/src/podcast/highlights.ts` (mode `highlights` of `podcast_notes.yml`, run like
+retakes), the prompts beside the rules that check the answers. Claude's picks are verified with the
+same `locate` that anchors quotes; a verified moment is snapped (first word −200 ms, last +600 ms,
+clamped to its kind's 3–12 s / 1.5–4 s); pacing drops cut words, teasers, the first 30 s and crosstalk,
+keeps 45 s between moments (a key-quote moment wins a tie), holds the density ceiling by thinning the
+most crowded spots, never repeats a layout and keeps `iris`/`over` 90 s apart (a loud one too close
+plays as its kind's quiet layout). The job writes into the saved edit in one transaction — suggestions
+replace only `suggested: true` layers, descriptors fill only empty guest lower thirds, key ideas never
+double a term — and bumps `edit.version`, so an open editor refetches (no local changes) or keeps its
+work and says to save or discard first. `touchSuggested` drops the mark on any highlight the producer
+changes, on every layers update. The density is fixed at Normal until M5 wires the setting; the cost
+sits at `ESTIMATE_USD.highlights` = $0.50 — like retakes the transcript is the bulk — **measure on a
+real episode and tighten**. The run's state and counts live on `episode.highlights`
+(`/api/studio/episodes/[id]/highlights`).
+
 ### M5 — settings and polish
 
 - **Studio settings** (spec 018): "Motion graphics" on/off (D2); highlight density Off / Light / Normal / Rich
@@ -234,6 +293,19 @@ cut, the teasers), and asks Claude for:
 - **Usage page:** graphics drawing time per render.
 - **Hand-off export** (019 item 4.1): graphic clips export as files beside the cuts; highlights export as markers
   (the reframe itself can't be expressed in an XML timeline).
+
+**Built.** The Studio settings (spec 018 pattern, nothing saved before them changes behaviour):
+`motionGraphics` (D2, on) gates the automatic placement on fresh edits in both Build for Studio editor
+and the editor's first open (through the edit route's `graphics` payload); `highlightDensity` (D4,
+Normal) is read by the suggestions job, with Off refusing the run and hiding Suggest highlights
+(`highlightsOff` on the edit GET); `suggestOnBuild` (D3, off) starts the suggestions with a fresh
+build, best-effort; `highlightLayouts` narrows what the pacing may pick, a kind with nothing left
+falling back to its full set. The render clocks real drawing time (cached clips cost nothing) onto
+`editRender.graphicsSeconds`, shown under the Usage page's machine time. The hand-off export carries
+each drawn graphic clip as a file (`graphicClip`, named by the cache's template-hash) and each
+highlight as a marker at its place on the exported timeline — sequence markers in the FCP7 XML for
+Resolve and Premiere, a marker inside the covering `asset-clip` on its source clock for Final Cut; a
+file auto-editor writes in an unrecognised shape is left unmarked rather than corrupted.
 
 ## Order and effort
 

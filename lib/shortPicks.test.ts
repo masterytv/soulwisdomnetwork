@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { z } from 'zod';
 import {
-    DIRECTION_MAX, isTaken, overlapping, PICK_ASK, PICK_COUNT, pickInstructions, pickingTranscript, rankPicks, ShortPicksSchema,
+    DIRECTION_MAX, isTaken, LONG_PICK_COUNT, LONG_PICK_MIN_MS, overlapping, PICK_ASK, PICK_COUNT, pickInstructions, pickingTranscript, rankPicks, ShortPicksSchema,
     ShortSuggestionSchema, snapPick, speakerFor, suggestionToShort, swapIn, type ShortSuggestion,
 } from './shortPicks';
 import type { ShortEdit } from './shorts';
@@ -60,6 +60,20 @@ test('rankPicks: best first, scores kept to 1-10, no overlaps, at most the count
     assert.deepEqual(rankPicks([p(0, 30000, 7), p(50000, 70000, 8), p(100000, 120000, 9)], 2).map(r => r.startMs), [100000, 50000]);
 });
 
+test('rankPicks: the long, substantial picks keep their own seats beside the quips', () => {
+    const p = (startMs: number, endMs: number, score: number) => ({ startMs, endMs, score, speaker: 'Ana', hook: 'Hook', reason: 'Lands.' });
+    // Two quip seats, all scoring higher than the long picks — the longs still make the list.
+    const quips = [p(0, 30_000, 10), p(50_000, 80_000, 10), p(300_000, 330_000, 9)];
+    const longs = [p(400_000, 500_000, 5), p(600_000, 710_000, 4), p(800_000, 950_000, 3),
+        p(1_000_000, 1_120_000, 3), p(1_200_000, 1_330_000, 2), p(1_400_000, 1_560_000, 2)];
+    const ranked = rankPicks([...quips, ...longs], 2);
+    const isLong = (r: { startMs: number; endMs: number }) => r.endMs - r.startMs >= LONG_PICK_MIN_MS;
+    assert.equal(ranked.filter(r => !isLong(r)).length, 2);                  // quips capped at max
+    assert.equal(ranked.filter(isLong).length, LONG_PICK_COUNT);             // five longs kept, the sixth dropped
+    // One list, still best first.
+    assert.deepEqual(ranked.map(r => r.score), [...ranked.map(r => r.score)].sort((a, b) => b - a));
+});
+
 test('speakerFor: the key quote overlapping most, else Claude\'s name, else "Speaker"', () => {
     const quotes = [{ speaker: 'Ana', startMs: 0, endMs: 10000 }, { speaker: 'Ben', startMs: 8000, endMs: 30000 }];
     assert.equal(speakerFor(quotes, 9000, 20000, 'Cara'), 'Ben');
@@ -85,6 +99,7 @@ test('adding and swapping a pick in as a short', () => {
 test('the request and the shapes', () => {
     const plain = pickInstructions(PICK_ASK, '');
     assert.match(plain, /up to 15 moments/);
+    assert.match(plain, /up to 5 longer moments of 90 seconds to 3 minutes/);
     assert.match(plain, /score from 1 to 10/);
     assert.doesNotMatch(plain, /Direction/);
     assert.ok(pickInstructions(15, '  Favour decisions. ').endsWith('\n\nDirection from the producer: Favour decisions.'));

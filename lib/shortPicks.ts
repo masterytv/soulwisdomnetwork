@@ -9,9 +9,14 @@ import { mmss } from './showNotes';
 import { SHORT_MAX_MS, SHORT_MIN_MS, wordBounds, type ShortEdit } from './shorts';
 
 // Suggestions kept and asked for, and the max length of the producer's direction.
-export const PICK_COUNT = 10;       // how many suggestions we keep
+export const PICK_COUNT = 10;       // how many quick suggestions we keep
 export const PICK_ASK = 15;          // how many we ask Claude for (it may return fewer)
 export const DIRECTION_MAX = 1000;   // the producer's direction, in characters
+// Besides the quick picks, longer moments with real substance — a complete story, explanation or
+// exchange — of 90 seconds to the Shorts limit. They keep their own seats in the ranking, so the
+// quips' scroll-stopping scores cannot crowd them out.
+export const LONG_PICK_COUNT = 5;
+export const LONG_PICK_MIN_MS = 90_000;
 
 // What Claude returns for the picks. No .min()/.max(): Claude's output format does not take them.
 export const ShortPicksSchema = z.object({
@@ -100,6 +105,8 @@ export function overlapping(a: { startMs: number; endMs: number }, b: { startMs:
 
 // Ranks picks: score rounded and kept to 1..10, whitespace collapsed and trimmed, sorted
 // by score high to low then startMs low to high, keeping each that overlaps none already kept.
+// Quick picks and long ones (LONG_PICK_MIN_MS and up) fill their own seats — up to `max` quick
+// and LONG_PICK_COUNT long — so the substantial moments always make the list.
 export function rankPicks(picks: { startMs: number; endMs: number; score: number; speaker: string; hook: string; reason: string }[], max = PICK_COUNT) {
     const clean = picks.map(p => ({
         startMs: p.startMs,
@@ -111,11 +118,15 @@ export function rankPicks(picks: { startMs: number; endMs: number; score: number
     }));
     clean.sort((a, b) => b.score - a.score || a.startMs - b.startMs);
     const kept: typeof clean = [];
+    let quick = 0, long = 0;
     for (const p of clean) {
-        if (kept.length >= max) break;
+        const isLong = p.endMs - p.startMs >= LONG_PICK_MIN_MS;
+        if (isLong ? long >= LONG_PICK_COUNT : quick >= max) continue;
         if (kept.some(k => overlapping(k, p))) continue;
         kept.push(p);
+        if (isLong) long++; else quick++;
     }
+    kept.sort((a, b) => b.score - a.score || a.startMs - b.startMs);
     return kept;
 }
 
@@ -150,9 +161,13 @@ export function swapIn(items: ShortEdit[], targetId: string, s: ShortSuggestion)
         : i);
 }
 
-// The instructions sent to Claude, with the count filled in. Direction appended when not empty.
+// The instructions sent to Claude, with the counts filled in. Direction appended when not empty.
 export function pickInstructions(count: number, direction: string): string {
-    let text = `Pick up to ${count} moments that would make the strongest YouTube Shorts, each 20 to 90 seconds and never over three minutes. For each give startMs, the time of the transcript line where it starts; endMs, the time just after its last word; the speaker; a score from 1 to 10 for how well it would hold a stranger scrolling past; the hook, its opening words exactly as spoken; and the reason, one plain sentence on why it works. Prefer moments that open on a strong line and end on a complete thought. No two moments may overlap.`;
+    let text = `Pick up to ${count} moments that would make the strongest YouTube Shorts, each 20 to 90 seconds and never over three minutes. For each give startMs, the time of the transcript line where it starts; endMs, the time just after its last word; the speaker; a score from 1 to 10 for how well it would hold a stranger scrolling past; the hook, its opening words exactly as spoken; and the reason, one plain sentence on why it works. Prefer moments that open on a strong line and end on a complete thought.
+
+Also pick up to ${LONG_PICK_COUNT} longer moments of 90 seconds to 3 minutes each, with the same fields: a complete story, explanation or exchange with real substance — an idea unfolded from start to finish — chosen for depth rather than a quick quip. These too must open strong and end on a complete thought.
+
+No two moments may overlap.`;
     const d = direction.trim();
     if (d) text += `\n\nDirection from the producer: ${d}`;
     return text;

@@ -1,0 +1,153 @@
+<!doctype html>
+<!-- Highlight, the stressed word (docs/specs/021-motion-graphics.md, item M3), rebuilt from the design
+     reference (docs/specs/021-motion-graphics/HighlightWord.dc.html): the episode's picture slides right
+     into a rounded, gold-framed window (left 950, top 140, 860 × 800) while the stressed word lands very
+     large in Cinzel gold on the left, a star flare blooms at its corner, the speaker's name above and the
+     line it came from in italic under it. Same markup, colours, type and keyframes; the review loop
+     replaced by in / hold / out (runtime.js). The picture's own move is window.GRAPHIC_LAYOUT (a pan,
+     never a crop: scale 1, x 410), drawn by the render; this file draws the three planes GRAPHIC.mode
+     names — 'graphics', 'matte' and 'background'. Fields: words (the line), emphasis (the stressed word),
+     speaker. Fonts from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Highlight: stressed word</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+@font-face { font-family: 'Cinzel'; src: url('fonts/Cinzel-latin.woff2') format('woff2'); font-weight: 400 900; font-display: block; }
+@font-face { font-family: 'EB Garamond'; src: url('fonts/EBGaramond-Italic-latin.woff2') format('woff2'); font-weight: 400 800; font-style: italic; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', system-ui, sans-serif; color: #fff;
+        --gold: #f7c65b; }
+.sky { position: absolute; inset: 0; background-color: var(--ink);
+       background-image:
+           radial-gradient(2px 2px at 8% 16%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 21% 84%, rgba(255,255,255,.5), transparent),
+           radial-gradient(2px 2px at 41% 9%, rgba(255,255,255,.7), transparent), radial-gradient(1.5px 1.5px at 33% 61%, rgba(255,255,255,.4), transparent),
+           radial-gradient(ellipse 50% 70% at 26% 48%, var(--glow-a) 0%, var(--glow-b) 40%, var(--ink) 75%, var(--deep) 100%); }
+.matte { position: absolute; inset: 0; background: #fff; }
+.frame { position: absolute; left: 950px; top: 140px; width: 860px; height: 800px; box-sizing: border-box; border-radius: 20px;
+         border: 2px solid var(--gold-80); box-shadow: 0 30px 80px rgba(0,0,0,0.45); }
+.col { position: absolute; left: 110px; top: 330px; width: 800px; display: flex; flex-direction: column; align-items: center; gap: 22px; text-align: center; }
+.who { margin: 0; font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 24px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--gold); }
+.stress { margin: 0; font-family: 'Cinzel', serif; font-weight: 700; line-height: 1; letter-spacing: 0.04em; text-transform: uppercase;
+          color: var(--gold); text-shadow: 0 0 60px var(--gold-35); }
+.line { margin: 0; max-width: 640px; font-family: 'EB Garamond', serif; font-style: italic; font-size: 42px; line-height: 1.3; color: #ddd2ff; }
+.flare { position: absolute; left: 0; top: 0; width: 0; height: 0; }
+.flare i { position: absolute; display: block; }
+.flare .core { left: -50px; top: -50px; width: 100px; height: 100px; border-radius: 50%;
+               background: radial-gradient(circle, #fff 0, #fff 10%, rgba(255,255,255,.6) 22%, var(--gold-25) 48%, transparent 70%); }
+.flare .h { left: -200px; top: -1.5px; width: 400px; height: 3px; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+.flare .v { left: -1.5px; top: -140px; width: 3px; height: 280px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div id="sky" class="sky" aria-hidden="true"></div>
+  <div id="matte" class="matte" aria-hidden="true"></div>
+  <div id="art">
+    <div id="frame" class="frame" aria-hidden="true"></div>
+    <div class="col">
+      <p id="who" class="who"></p>
+      <div style="position: relative">
+        <p id="stress" class="stress"></p>
+        <div aria-hidden="true" style="position: absolute; right: -6px; top: 6px; width: 0; height: 0">
+          <div id="flare" class="flare"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+        </div>
+      </div>
+      <p id="line" class="line"></p>
+    </div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    // The picture's move while this highlight is up (lib/reframe.ts Box): the mirror of splitQuote — a
+    // 410 px pan right into the window; the matte does all the shaping.
+    window.GRAPHIC_LAYOUT = {
+        from: { x: 0, y: 0, scale: 1, brightness: 1, blur: 0 },
+        to: { x: 410, y: 0, scale: 1, brightness: 1, blur: 0 },
+        inMs: 700, outMs: 700,
+    };
+
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const mode = g.mode || 'graphics';
+    const el = id => document.getElementById(id);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = c => { const n = parseInt(c.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const toHex = v => `#${v.map(x => Math.round(Math.min(255, Math.max(0, x))).toString(16).padStart(2, '0')).join('')}`;
+    const lighten = (c, amount) => toHex(rgb(c).map(x => x + amount * 255));
+    const darken = (c, by) => toHex(rgb(c).map(x => x * by));
+
+    const root = el('g');
+    const ink = hex(colors.background) ? colors.background : '#140a2e';
+    const gold = hex(colors.accent) ? colors.accent : '#f7c65b';
+    const [glowA, glowB] = ink === '#140a2e' ? ['#3b2382', '#23145a'] : [lighten(ink, 0.25), lighten(ink, 0.08)];
+    root.style.setProperty('--ink', ink);
+    root.style.setProperty('--deep', ink === '#140a2e' ? '#0b0520' : darken(ink, 0.55));
+    root.style.setProperty('--glow-a', glowA);
+    root.style.setProperty('--glow-b', glowB);
+    root.style.setProperty('--gold', gold);
+    root.style.setProperty('--gold-80', `rgba(${rgb(gold).join(',')},0.8)`);
+    root.style.setProperty('--gold-35', `rgba(${rgb(gold).join(',')},0.35)`);
+    root.style.setProperty('--gold-25', `rgba(${rgb(gold).join(',')},0.25)`);
+
+    el('sky').style.display = mode === 'background' ? '' : 'none';
+    el('matte').style.display = mode === 'matte' ? '' : 'none';
+    el('art').style.display = mode === 'graphics' ? '' : 'none';
+
+    const R = window.graphicRuntime;
+    const PE = R.PICTURE_EASE;
+
+    // The matte, in step with GRAPHIC_LAYOUT: full frame at the ends, the design's window through the hold.
+    const FULL = 'inset(0px 0px 0px 0px round 0px)';
+    const WINDOW = 'inset(140px 110px 140px 950px round 20px)';
+    if (mode === 'matte') {
+        R.animate(el('matte'), { inMs: 700, outMs: 700, enter: [
+            { at: 0, clipPath: FULL, easing: PE }, { at: 1, clipPath: WINDOW, easing: PE },
+        ], exit: [{ at: 1, clipPath: FULL }] });
+    }
+
+    if (mode === 'graphics') {
+        // The stressed word, very large; a long word or phrase shrinks to the 800 px column. The line it
+        // came from sits under it, the design's placeholder when the fields are empty.
+        const line = (f.words || 'the moment peace found the room').trim();
+        const word = (f.emphasis || line.split(/\s+/)[0] || 'PEACE').trim();
+        const size = Math.max(72, Math.min(190, Math.floor(190 * 5 / Math.max(1, word.length))));
+        el('stress').textContent = word;
+        el('stress').style.fontSize = `${size}px`;
+        el('line').textContent = `“…${line}”`;
+        el('who').textContent = f.speaker || '';
+        if (!f.speaker) el('who').style.display = 'none';
+
+        // The design's cycle as in / hold / out: the frame settles with the picture, the word lands out of
+        // wide letter-spacing and blur, the flare blooms at its corner, the name and the line follow.
+        R.animate(el('frame'), { delay: 150, inMs: 700, outMs: 500, enter: [
+            { at: 0, opacity: 0, transform: 'scale(1.04)', easing: PE }, { at: 1, opacity: 1, transform: 'scale(1)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'scale(1)' }] });
+        if (f.speaker) R.animate(el('who'), { delay: 100, inMs: 800, outMs: 500, enter: [
+            { at: 0, opacity: 0, transform: 'translateY(20px)', easing: 'cubic-bezier(.22,1,.36,1)' },
+            { at: 1, opacity: 1, transform: 'translateY(0)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)' }] });
+        R.animate(el('stress'), { delay: 250, inMs: 1000, outMs: 500, enter: [
+            { at: 0, opacity: 0, letterSpacing: '0.55em', filter: 'blur(14px)', easing: 'cubic-bezier(.16,1,.3,1)' },
+            { at: 1, opacity: 1, letterSpacing: '0.04em', filter: 'blur(0px)' },
+        ], exit: [{ at: 1, opacity: 0, letterSpacing: '0.04em', filter: 'blur(8px)' }] });
+        R.animate(el('flare'), { delay: 500, inMs: 900, outMs: 500, enter: [
+            { at: 0, opacity: 0, transform: 'scale(0.2) rotate(-30deg)', easing: 'cubic-bezier(.22,1,.36,1)' },
+            { at: 0.5, opacity: 1, transform: 'scale(1.2) rotate(0deg)', easing: 'cubic-bezier(.22,1,.36,1)' },
+            { at: 1, opacity: 0.9, transform: 'scale(1) rotate(0deg)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'scale(0.4) rotate(0deg)' }] });
+        R.animate(el('line'), { delay: 650, inMs: 800, outMs: 500, enter: [
+            { at: 0, opacity: 0, transform: 'translateY(20px)', easing: 'cubic-bezier(.22,1,.36,1)' },
+            { at: 1, opacity: 1, transform: 'translateY(0)' },
+        ], exit: [{ at: 1, opacity: 0, transform: 'translateY(0)' }] });
+    }
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

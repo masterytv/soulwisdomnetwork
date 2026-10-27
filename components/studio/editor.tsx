@@ -40,7 +40,10 @@ import { CaptionsPanel, CaptionTrackPreview } from '@/components/studio/captions
 import { ReversePlay, useStudioKeys } from '@/components/studio/editorKeys';
 import { editCues } from '@/lib/captions';
 import { LayersPreview } from '@/components/studio/layers';
-import { GraphicsPreview } from '@/components/studio/graphics';
+import { GraphicsPreview, ProgrammeGraphics } from '@/components/studio/graphics';
+import { HighlightReframe } from '@/components/studio/highlightPreview';
+import { highlightProblems } from '@/lib/reframe';
+import { touchSuggested } from '@/lib/highlights';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
 import { PropertiesPanel } from '@/components/studio/properties';
@@ -261,11 +264,14 @@ export function Editor({
     // The YouTube caption track (item E8): the cues the render's .srt will have, on the edited timeline. CC
     // shows them over the preview.
     const cues = useMemo(() => workspace ? editCues(words, kept) : [], [workspace, words, kept]);
-    const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.map(j => ({
+    // Starlight joins (spec 021) are straight cuts under a drawn clip (ProgrammeGraphics), so they are
+    // no business of TransitionPreview's, and CutBridge smooths their cut like any other.
+    const previewJoins = useMemo<PreviewJoin[]>(() => sequence.joins.flatMap(j => (j.transition === 'starlight' ? [] : [{
         aEndMs: j.aEndMs, bStartMs: j.bStartMs, durationMs: j.durationMs, transition: j.transition,
-    })), [sequence.joins]);
+    }])), [sequence.joins]);
+    const starlightSplits = useMemo(() => sequence.joins.flatMap(j => (j.transition === 'starlight' ? [{ atMs: j.atMs, durationMs: j.durationMs }] : [])), [sequence.joins]);
     // Item 4.3 (CutBridge): cuts where a transition plays are left to TransitionPreview.
-    const bridgeSkips = useMemo(() => sequence.joins.map(j => j.aEndMs), [sequence.joins]);
+    const bridgeSkips = useMemo(() => sequence.joins.flatMap(j => (j.transition === 'starlight' ? [] : [j.aEndMs])), [sequence.joins]);
     // The split whose transition the Transitions panel shows first (chosen on the timeline).
     const [joinFocus, setJoinFocus] = useState<number | null>(null);
 
@@ -297,15 +303,25 @@ export function Editor({
     // them as layers for good. Links to their files come from the edit and the bin.
     const layers = useMemo(() => layersOf(edit), [edit]);
     const setLayers = useCallback((next: Layer[]) => {
-        if (layersEditable) updateEdit(prev => ({ ...prev, layers: next, overlays: [] }));
+        // A suggested highlight the producer changes stops being a suggestion (spec 021 M4): every
+        // layers update — Properties, timeline drags, the keys — passes through here.
+        if (layersEditable) updateEdit(prev => ({ ...prev, layers: touchSuggested(layersOf(prev), next), overlays: [] }));
     }, [layersEditable, updateEdit]);
     const mediaUrls = useMemo(() => {
         const urls: Record<string, string> = { ...overlayUrls };
         for (const it of media?.items ?? []) if (it.url && !urls[it.path]) urls[it.path] = it.url;
         return urls;
     }, [overlayUrls, media?.items]);
+    // Why a highlight cannot stay as saved (spec 021 M3), by id: the edit route refuses such a save, so
+    // the timeline and Properties say why first.
+    const highlightIssues = useMemo(() => highlightProblems(
+        layers.filter(l => l.kind === 'highlight'),
+        { cuts: edit.cuts, teasers: edit.teasers ?? [], durationMs: videoDuration || (words.length > 0 ? words[words.length - 1].end : 0) },
+    ), [layers, edit.cuts, edit.teasers, videoDuration, words]);
     // The whole video (item E10): teasers, intro, this episode and outro.
     const prog = useProgramme({ setup: workspace ? programme : null, edit, urls: mediaUrls, studioJoins, src: videoUrl, editedMs });
+    // The Studio's logo (or the site's) for the motion graphics templates that draw it (spec 021).
+    const graphicsLogo = media?.items?.find(i => i.source === 'logo')?.url ?? '/logo-trimmed.png';
     const programmeControl = prog?.control;
     // Item E14: a stretch of the recording (a section or stretch chosen on the timeline, made a teaser or copied and
     // pasted) added as a teaser where the preview is among the teasers (before the one it shows in that one's first
@@ -1010,6 +1026,11 @@ export function Editor({
             // Scaled to fit the preview, leaving room for the play controls under it.
             ? { containerType: 'inline-size', width: 'min(100cqw, calc((100cqh - 3rem) * 16 / 9))', aspectRatio: '16 / 9', margin: '0 auto' }
             : { containerType: 'inline-size' }}>
+            {/* The highlight's backdrop sits behind the video: the video is given position relative while
+                one is up, so it paints above this (components/studio/highlightPreview.tsx). */}
+            {workspace && !overlaysHidden && (
+                <HighlightReframe plane="background" layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} />
+            )}
             <video
                 ref={videoRef}
                 src={videoUrl}
@@ -1017,6 +1038,9 @@ export function Editor({
                 controls
                 onLoadedMetadata={e => { setVideoDuration(e.currentTarget.duration * 1000); e.currentTarget.playbackRate = speed; }}
             />
+            {workspace && !overlaysHidden && (
+                <HighlightReframe plane="graphics" layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} />
+            )}
             {workspace && reverse > 0 && (
                 <ReversePlay video={videoRef} rate={reverse} onStop={() => setReverse(0)} clips={kept} ranges={ranges} edited={playMode === 'edited'} />
             )}
@@ -1028,7 +1052,7 @@ export function Editor({
                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))} />
             )}
             {workspace && !overlaysHidden && (
-                <GraphicsPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} />
+                <GraphicsPreview layers={layers} clips={kept} editedMs={editedMs} video={videoRef} colors={brand.colors} logo={graphicsLogo} />
             )}
             {workspace && !overlaysHidden && <OnScreenPreview cues={cues} clips={kept} edit={edit} video={videoRef} studio={studio} />}
             {workspace && ccShown && !(captionLook(edit, { burnCaptions: studio.on, captionStyle: studio.style }) && !overlaysHidden) && (
@@ -1038,6 +1062,10 @@ export function Editor({
                 <SoundsPreview sounds={sounds} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls} words={words} mutedTracks={mutedTracks} />
             )}
             {prog && <ProgrammePlayer view={prog} video={videoRef} ranges={ranges} hold={previewRef} active={playMode === 'edited'} />}
+            {workspace && !overlaysHidden && prog && (
+                <ProgrammeGraphics layers={layers} prog={prog} video={videoRef} clips={kept} editedMs={editedMs}
+                    colors={brand.colors} logo={graphicsLogo} starlights={starlightSplits} />
+            )}
         </div>
     );
 
@@ -1327,6 +1355,7 @@ export function Editor({
                                     video={videoRef}
                                     brand={brand}
                                     canEdit={layersEditable}
+                                    problem={selectedLayer ? highlightIssues.get(selectedLayer) : undefined}
                                     onChange={l => setLayers(layers.map(x => (x.id === l.id ? l : x)))}
                                     onRemove={removeLayer}
                                     onSeek={ms => seekToTime(ms / 1000)}
@@ -1371,6 +1400,7 @@ export function Editor({
                             clips={kept}
                             editedMs={editedMs}
                             selectedLayer={selectedLayer}
+                            highlightIssues={highlightIssues}
                             onSelectLayer={id => { openLayer(id); if (id) { setTimelineSel(null); setSelectedRange(null); } }}
                             onLayers={layersEditable ? setLayers : undefined}
                             onDropMedia={addFromBin}

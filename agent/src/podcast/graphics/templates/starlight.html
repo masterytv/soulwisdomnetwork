@@ -1,0 +1,86 @@
+<!doctype html>
+<!-- The starlight wipe (docs/specs/021-motion-graphics.md, item M2), rebuilt from the design reference
+     (docs/specs/021-motion-graphics/Stinger.dc.html): a starry night panel with a glowing gold leading
+     edge and a star flare sweeps across the frame. It is a TRANSITION's clip, not a layer
+     (lib/transitions.ts): the render overlays it centred on the join, so at exactly half
+     GRAPHIC.durationMs the panel covers the whole frame (the cut happens under it), and at 0 and at the
+     end it is off screen. No fields. Transparent outside the panel. Fonts are not used. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Starlight</title>
+<style>
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        --ink: #140a2e; --ink-rgb: 20, 10, 46; --gold: #f7c65b; --gold-rgb: 247, 198, 91; --glow-a: #4a2f9c; --glow-b: #23145a; }
+.travel { position: absolute; left: 0; top: 0; width: 2200px; height: 1080px; transform: translateX(-2300px); }
+.panelsky { position: absolute; inset: 0; background-color: var(--ink);
+    background-image:
+        radial-gradient(2px 2px at 14% 30%, rgba(255,255,255,.8), transparent),
+        radial-gradient(1.5px 1.5px at 33% 72%, rgba(255,255,255,.6), transparent),
+        radial-gradient(2px 2px at 52% 18%, rgba(255,255,255,.7), transparent),
+        radial-gradient(1.5px 1.5px at 71% 61%, rgba(255,255,255,.6), transparent),
+        radial-gradient(2px 2px at 86% 36%, rgba(255,255,255,.8), transparent),
+        linear-gradient(90deg, rgba(var(--ink-rgb), 0) 0%, var(--ink) 9%, var(--glow-b) 60%, color-mix(in srgb, var(--glow-a) 80%, var(--glow-b)) 92%, var(--glow-a) 100%); }
+.edge { position: absolute; right: 0; top: 0; width: 6px; height: 1080px; background: var(--gold);
+        box-shadow: 0 0 40px 10px rgba(var(--gold-rgb), 0.55), 0 0 140px 40px rgba(var(--gold-rgb), 0.2); }
+.flare { position: absolute; right: 3px; top: 540px; width: 0; height: 0; }
+.flare i { position: absolute; display: block; }
+.flare .core { left: -80px; top: -80px; width: 160px; height: 160px; border-radius: 50%;
+    background: radial-gradient(circle, #fff 0, #fff 10%, rgba(255,255,255,.6) 22%, rgba(var(--gold-rgb),.25) 48%, rgba(var(--gold-rgb),0) 70%); }
+.flare .h { left: -300px; top: -2px; width: 600px; height: 4px; background: linear-gradient(90deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+.flare .v { left: -2px; top: -560px; width: 4px; height: 1120px; background: linear-gradient(180deg, rgba(255,255,255,0), #fff 50%, rgba(255,255,255,0)); }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div id="travel" class="travel" aria-hidden="true">
+    <div class="panelsky"></div>
+    <div class="edge"></div>
+    <div class="flare"><i class="core"></i><i class="h"></i><i class="v"></i></div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const colors = g.colors || {};
+    const T = Math.max(1, g.durationMs || 1000);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const lighten = (h, amount) => '#' + rgb(h).map(c => Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0')).join('');
+    const el = id => document.getElementById(id);
+
+    // The sky's glow pair derives from the background as thumbnailCanvas.ts applyPalette does.
+    const root = el('g');
+    if (hex(colors.background)) {
+        root.style.setProperty('--ink', colors.background);
+        root.style.setProperty('--ink-rgb', rgb(colors.background).join(', '));
+        const soul = colors.background.toLowerCase() === '#140a2e';
+        root.style.setProperty('--glow-a', soul ? '#4a2f9c' : lighten(colors.background, 0.25));
+        root.style.setProperty('--glow-b', soul ? '#23145a' : lighten(colors.background, 0.08));
+    }
+    if (hex(colors.accent)) {
+        root.style.setProperty('--gold', colors.accent);
+        root.style.setProperty('--gold-rgb', rgb(colors.accent).join(', '));
+    }
+
+    // The sweep spans the whole clip: off screen left at 0, the frame fully covered through the middle
+    // (the panel's see-through left tail — its first 9%, 198 px — is then past the frame's left edge, so
+    // the cut underneath never shows), off screen right at the end. The picture ease is the design's.
+    const a = el('travel').animate([
+        { offset: 0, transform: 'translateX(-2300px)', easing: 'cubic-bezier(.65,0,.35,1)' },
+        { offset: 0.47, transform: 'translateX(-239px)', easing: 'linear' },
+        { offset: 0.53, transform: 'translateX(-239px)', easing: 'cubic-bezier(.65,0,.35,1)' },
+        { offset: 1, transform: 'translateX(1960px)' },
+    ], { duration: T, fill: 'both' });
+    a.pause();
+    const base = window.seek;
+    window.seek = ms => { base(ms); a.currentTime = Math.max(0, Math.min(ms, T)); };
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>

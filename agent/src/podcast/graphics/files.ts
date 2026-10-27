@@ -16,6 +16,7 @@ const TEMPLATES_DIR = 'agent/src/podcast/graphics/templates';
 export const FONT_FILES: Record<string, string> = {
     'Cinzel-latin.woff2': 'agent/assets/fonts/Cinzel-latin.woff2',
     'Outfit-latin.woff2': 'app/fonts/Outfit-latin.woff2',
+    'EBGaramond-Italic-latin.woff2': 'agent/assets/fonts/EBGaramond-Italic-latin.woff2',
 };
 
 export function templateHtml(template: GraphicTemplate): string {

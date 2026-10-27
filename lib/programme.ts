@@ -59,7 +59,9 @@ export type PieceKind = 'teaser' | 'intro' | 'episode' | 'outro';
 
 // A piece of the programme: where it starts, how long it is, and how much of it the transition from the piece before
 // overlaps (0 for a straight cut), and which transition that is ('cut' when joinMs is 0). `index` numbers the teasers.
-export interface ProgrammePiece { kind: PieceKind; index: number; atMs: number; lengthMs: number; joinMs: number; transition: TransitionKind }
+// Starlight (spec 021) overlaps nothing — the drawn clip covers the straight cut — so a piece it leads into has
+// joinMs 0, transition 'starlight' and the clip's length as `starlightMs`.
+export interface ProgrammePiece { kind: PieceKind; index: number; atMs: number; lengthMs: number; joinMs: number; transition: TransitionKind; starlightMs?: number }
 
 export interface Programme {
     pieces: ProgrammePiece[];
@@ -103,12 +105,17 @@ export function programmeOf(o: { teasers: number[]; introMs: number | null; outr
     const put = (kind: PieceKind, index: number, lengthMs: number, join: SectionJoin | null) => {
         const t = join && pieces.length ? o.sections[join] : null;
         let joinMs = 0;
-        if (t && t.transition !== 'cut') {
+        const starlight = t?.transition === 'starlight';
+        if (t && !starlight && t.transition !== 'cut') {
             if (t.durationMs <= prevLeft && t.durationMs <= lengthMs) joinMs = t.durationMs;
             else warnings.push(`${SECTION_JOIN_LABELS[join!]}: the transition is longer than the clips around it, so it plays as a straight cut.`);
         }
         at -= joinMs;
-        pieces.push({ kind, index, atMs: at, lengthMs, joinMs, transition: joinMs ? t!.transition : 'cut' });
+        pieces.push({
+            kind, index, atMs: at, lengthMs, joinMs,
+            transition: joinMs ? t!.transition : starlight ? 'starlight' : 'cut',
+            ...(starlight ? { starlightMs: t!.durationMs } : {}),
+        });
         at += lengthMs;
         prevLeft = lengthMs - joinMs;
     };

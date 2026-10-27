@@ -35,6 +35,8 @@ import {
     chainStarts, clipPcm, FPS, frameAt, PcmAssembler, RATE, readPcm, SAMPLES_PER_FRAME, windowContents, windowStarts,
     type PlannedPart, type PlannedPiece,
 } from './renderWindows';
+import { highlightFilter } from './graphics/reframe';
+import type { HighlightLayout, LayoutKeyframes } from '../../../lib/reframe';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -168,7 +170,20 @@ export async function renderEdit(opts: {
     blockMinutes?: number;
     // On screen (Part I, and layers since spec 020 item E5): captions in this look (null for none), text
     // layers, and picture and video layers (each with its local file), all placed on the edited episode.
-    onScreen?: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: { layer: PictureLayer; file: string }[] };
+    // `loop` plays a clip looped for the layer's span (a motion graphic drawn shorter than its layer,
+    // such as the whole-episode logo bug: spec 021).
+    onScreen?: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: { layer: PictureLayer; file: string; loop?: boolean }[] };
+    // Motion graphics on the programme's own clock (spec 021 M2): clips with alpha laid over the joined
+    // programme — the end screen `fromEnd` ms before the end, and the starlight transition's clip centred
+    // on its join (`at`: a section join's name or `split:<ms>`, lib/transitions.ts joinKey). A join that
+    // is not there (the split was removed, or that section is not in this video) is skipped with a warning.
+    overlays?: { file: string; durationMs: number; fromEnd?: number; at?: string; loop?: boolean }[];
+    // Highlight moments (spec 021 item M3): the episode's picture reframed for a few seconds by the
+    // template's keyframes, shaped by its matte clip over its background clip, the words clip on top
+    // (graphics/reframe.ts). `srcMs` is the highlight's moment in the recording, mapped here as b-roll is;
+    // one whose words are cut is skipped (the edit route refuses saving it, so this is only a retried
+    // render against a changed edit).
+    highlights?: { layout: HighlightLayout; keyframes: LayoutKeyframes; srcMs: number; durationMs: number; files: { background?: string; matte?: string; graphics: string } }[];
     // The accepted transcript and show-note times, when known: their new times are written
     // next to the output, so the final cut never has to be transcribed again.
     words?: { text: string; start: number; end: number }[];
@@ -289,7 +304,7 @@ export async function renderEdit(opts: {
         // Layers (spec 020 item E5): when each picture is up, and a moving still made into a clip with
         // the b-roll's Ken Burns. A still is looped for its length; a video is used as it is.
         const MOTION_OF = { kenBurnsIn: 'in', kenBurnsOut: 'out', pan: 'right' } as const;
-        const pictures: { layer: PictureLayer; file: string; span: { startMs: number; endMs: number }; clip: boolean; sound: boolean }[] = [];
+        const pictures: { layer: PictureLayer; file: string; span: { startMs: number; endMs: number }; clip: boolean; sound: boolean; loop?: boolean }[] = [];
         for (const [i, p] of [...(opts.onScreen?.pictures ?? [])].sort((a, b) => a.layer.track - b.layer.track).entries()) {
             const span = layerSpan(p.layer, ranges, editedMs);
             if (!span) continue;
@@ -301,7 +316,7 @@ export async function renderEdit(opts: {
                 clip = true;
             }
             const sound = p.layer.kind === 'video' && p.layer.volumeDb !== null && await hasAudio(p.file);
-            pictures.push({ layer: p.layer, file, span, clip, sound });
+            pictures.push({ layer: p.layer, file, span, clip, sound, loop: p.loop });
         }
         pictures.sort((a, b) => a.layer.track - b.layer.track || a.span.startMs - b.span.startMs);
 
@@ -320,15 +335,24 @@ export async function renderEdit(opts: {
             const planned = clips.map(c => { const p = { startMs: c.startMs, endMs: c.endMs, at, frames: framesOf(c) }; at += p.frames; return p; });
             const first = clips[0], prev = k > 0 ? groups[k - 1][groups[k - 1].length - 1] : null;
             const join = prev ? seq.joins.find(j => j.part === first.part) : undefined;
+            // Starlight (spec 021) is not an xfade: the parts meet in a straight cut and the drawn clip
+            // covers the join (resolved below, once the programme's frames are known).
             return {
                 clips: planned, start: 0, frames: at,
-                join: join && prev ? frameAt(prev.atMs + prev.endMs - prev.startMs) - frameAt(first.atMs) : 0,
-                xfade: join ? XFADE[join.transition] : null,
+                join: join && prev && join.transition !== 'starlight' ? frameAt(prev.atMs + prev.endMs - prev.startMs) - frameAt(first.atMs) : 0,
+                xfade: join ? XFADE[join.transition] ?? null : null,
             };
         });
         const partChain = chainStarts(parts);
         parts.forEach((p, k) => { p.start = partChain.starts[k]; p.join = partChain.joins[k]; });
         const episodeFrames = parts.length ? partChain.frames : 1;
+        // Where each join lands, for the starlight clips: `split:<ms>` at each part boundary (filled in
+        // with the episode's own start below), and each section join at its piece's first frame.
+        const joinAt = new Map<string, () => number>();
+        groups.forEach((clips, k) => {
+            const j = k > 0 ? seq.joins.find(x => x.part === clips[0].part) : undefined;
+            if (j) joinAt.set(`split:${j.splitMs}`, () => pieces[episodePiece].start + parts[k].start);
+        });
 
         const framesOfFile = async (f: string) => Math.max(1, frameAt(Math.round((await probeDuration(f)) * 1000)));
         const pieces: PlannedPiece[] = [];
@@ -336,9 +360,13 @@ export async function renderEdit(opts: {
         const put = (kind: PlannedPiece['kind'], file: string | null, frames: number, at: SectionJoin | null) => {
             const t: Transition | null = at && pieces.length ? sections[at] : null;
             let join = 0, xfade: string | null = null;
-            if (at && t && t.transition !== 'cut') {
+            if (at && t && t.transition === 'starlight') {
+                // A straight cut under the drawn starlight clip, centred on this piece's first frame.
+                const index = pieces.length;
+                joinAt.set(at, () => pieces[index].start);
+            } else if (at && t && t.transition !== 'cut') {
                 const d = frameAt(t.durationMs);
-                if (d <= prevLeft && d <= frames) { join = d; xfade = XFADE[t.transition]; }
+                if (d <= prevLeft && d <= frames) { join = d; xfade = XFADE[t.transition]!; }
                 else warnings.push(`${SECTION_JOIN_LABELS[at]}: the transition is longer than the clips around it, so it plays as a straight cut.`);
             }
             pieces.push({ kind, file, start: 0, frames, join, xfade });
@@ -353,6 +381,22 @@ export async function renderEdit(opts: {
         pieces.forEach((p, k) => { p.start = programme.starts[k]; p.join = programme.joins[k]; });
         const edgeFrames = { start: sections.start.transition === 'cut' ? 0 : Math.min(frameAt(sections.start.durationMs), programme.frames),
             end: sections.end.transition === 'cut' ? 0 : Math.min(frameAt(sections.end.durationMs), programme.frames) };
+
+        // The motion graphics on the programme's clock (spec 021 M2), as frames of the finished video:
+        // the end screen against the end, and each starlight clip centred on its join.
+        const programmeOverlays: { file: string; from: number; frames: number; loop?: boolean }[] = [];
+        for (const o of opts.overlays ?? []) {
+            const oFrames = Math.max(1, frameAt(o.durationMs));
+            if (o.fromEnd !== undefined) {
+                const from = Math.max(0, programme.frames - frameAt(o.fromEnd));
+                programmeOverlays.push({ file: o.file, from, frames: Math.min(oFrames, programme.frames - from), loop: o.loop });
+            } else if (o.at) {
+                const centre = joinAt.get(o.at)?.();
+                if (centre === undefined) { warnings.push(`A starlight clip at ${o.at} has no join there, so it was left out.`); continue; }
+                const from = Math.max(0, Math.min(programme.frames - oFrames, centre - Math.floor(oFrames / 2)));
+                programmeOverlays.push({ file: o.file, from, frames: oFrames, loop: o.loop });
+            }
+        }
 
         // What shows over the episode, in its own time: b-roll, picture layers, then captions and text.
         const broll = (opts.broll ?? []).flatMap((b, i) => {
@@ -379,6 +423,26 @@ export async function renderEdit(opts: {
             }
         }
         const sounds = (opts.sounds ?? []).flatMap(s => { const span = soundSpan(s.sound, ranges, editedMs); return span ? [{ ...s, span }] : []; });
+
+        // Highlight moments (spec 021 item M3), mapped onto the edited episode as b-roll is, with the plan
+        // checks the spec asks for: words kept, not across a join, not hidden by b-roll.
+        const highlights = (opts.highlights ?? []).flatMap(h => {
+            const at = timelineTime(ranges, h.srcMs);
+            if (at === null) { onScreenWarnings.push(`A highlight at ${mmss(h.srcMs)} of the recording: its words are cut, so it was left out.`); return []; }
+            return [{ ...h, startMs: at }];
+        }).sort((a, b) => a.startMs - b.startMs);
+        for (const h of highlights) {
+            const hFrom = frameAt(h.startMs), hTo = frameAt(h.startMs + h.durationMs);
+            const r = ranges.find(c => h.srcMs >= c.startMs && h.srcMs < c.endMs);
+            if (r && h.srcMs + h.durationMs > r.endMs) onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: it crosses a cut, so its words run past what is kept.`);
+            if (parts.some(p => p.join > 0 && hFrom < p.start + p.join && hTo > p.start)
+                || pieces.some((p, k) => p.join > 0 && (k === episodePiece ? hFrom < p.join : k > episodePiece ? hTo > episodeFrames - p.join : false))) {
+                onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: a transition blends under it.`);
+            }
+            if (broll.some(b => b.startSec < (h.startMs + h.durationMs) / 1000 && b.endSec > h.startMs / 1000)) {
+                onScreenWarnings.push(`The highlight at ${mmss(h.startMs)}: b-roll plays over those seconds and hides it.`);
+            }
+        }
 
         // ── The sound, made once for the whole programme ────────────────────────
         // The voice (cleaned, or as recorded) from time 0 of the video, as raw 48 kHz stereo; the kept stretches
@@ -497,6 +561,19 @@ export async function renderEdit(opts: {
                     const fromSec = ep.from / FPS, toSec = (ep.from + ep.frames) / FPS;
                     f += `[epc]setpts=PTS-STARTPTS+${fromSec.toFixed(6)}/TB[e0];`;
                     let v = 'e0';
+                    // The reframe first, so b-roll, captions and text stay over the reframed picture.
+                    highlights.filter(h => h.startMs / 1000 < toSec && (h.startMs + h.durationMs) / 1000 > fromSec).forEach((h, j) => {
+                        const inputs = {
+                            graphics: add([], h.files.graphics),
+                            ...(h.files.matte ? { matte: add([], h.files.matte) } : {}),
+                            ...(h.files.background ? { background: add([], h.files.background) } : {}),
+                        };
+                        f += highlightFilter(v, `hl${j}`, {
+                            layout: h.layout, keyframes: h.keyframes, startSec: h.startMs / 1000, durationMs: h.durationMs,
+                            inputs, windowFromSec: fromSec, windowToSec: toSec, tag: `h${j}`,
+                        });
+                        v = `hl${j}`;
+                    });
                     broll.filter(b => b.startSec < toSec && b.endSec > fromSec).forEach((b, j) => {
                         const n = add([], b.file);
                         f += `[${n}:v]setpts=PTS-STARTPTS+${b.startSec}/TB,format=yuv420p,fade=t=in:st=${b.startSec.toFixed(3)}:d=0.5:alpha=1,fade=t=out:st=${(b.endSec - 0.5).toFixed(3)}:d=0.5:alpha=1[br${j}];`;
@@ -504,7 +581,8 @@ export async function renderEdit(opts: {
                         v = `eb${j}`;
                     });
                     pictures.filter(p => p.span.startMs / 1000 < toSec && p.span.endMs / 1000 > fromSec).forEach((p, j) => {
-                        const n = add(p.clip ? [] : ['-loop', '1', '-t', ((p.span.endMs - p.span.startMs) / 1000 + 0.5).toFixed(3)], p.file);
+                        // A clip shorter than its layer (a looped motion graphic, spec 021) plays round and round.
+                        const n = add(p.clip ? (p.loop ? ['-stream_loop', '-1'] : []) : ['-loop', '1', '-t', ((p.span.endMs - p.span.startMs) / 1000 + 0.5).toFixed(3)], p.file);
                         f += pictureFilter(n, v, `ly${j}`, p.layer, p.span);
                         v = `ly${j}`;
                     });
@@ -516,12 +594,24 @@ export async function renderEdit(opts: {
                 local.push({ v: 'ep', a: '', frames: ep.frames, join });
             }
             f += chainPieces(local, { v: 'pg', a: '' }, 'pc', false).filter;
+            // The programme-clock graphics (spec 021): each clip that shows in this window, laid over the
+            // joined pieces at its place in the finished video, before the window is cut out.
+            let pg = 'pg';
+            programmeOverlays.filter(o => o.from < w.to && o.from + o.frames > c.first).forEach((o, j) => {
+                const skip = Math.max(0, c.first - o.from);
+                const fromLocal = Math.max(0, o.from - c.first);
+                const show = o.frames - skip;
+                const n = add(o.loop ? ['-stream_loop', '-1'] : [], o.file);
+                f += `[${n}:v]trim=start=${(skip / FPS).toFixed(6)}:duration=${(show / FPS).toFixed(6)},setpts=PTS-STARTPTS,fps=${FPS},format=rgba,setpts=PTS+${(fromLocal / FPS).toFixed(6)}/TB[po${j}];`;
+                f += `[${pg}][po${j}]overlay=x=0:y=0:enable='between(t,${(fromLocal / FPS).toFixed(6)},${((fromLocal + show) / FPS).toFixed(6)})':eof_action=pass,format=yuv420p[pgo${j}];`;
+                pg = `pgo${j}`;
+            });
             const lo = w.from - c.first, hi = w.to - c.first;
             const edges = [
                 ...(w.from === 0 && edgeFrames.start ? [`fade=t=in:st=0:d=${(edgeFrames.start / FPS).toFixed(6)}${sections.start.transition === 'fadeWhite' ? ':color=white' : ''}`] : []),
                 ...(w.to === programme.frames && edgeFrames.end ? [`fade=t=out:st=${((hi - lo - edgeFrames.end) / FPS).toFixed(6)}:d=${(edgeFrames.end / FPS).toFixed(6)}${sections.end.transition === 'fadeWhite' ? ':color=white' : ''}`] : []),
             ];
-            f += `[pg]trim=start_frame=${lo}:end_frame=${hi},setpts=PTS-STARTPTS${edges.map(e => `,${e}`).join('')},format=yuv420p[out]`;
+            f += `[${pg}]trim=start_frame=${lo}:end_frame=${hi},setpts=PTS-STARTPTS${edges.map(e => `,${e}`).join('')},format=yuv420p[out]`;
             const encode = ['-map', '[out]', '-an', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-r', String(FPS)];
             // A retried run finds the windows an earlier attempt finished (opts.store), named by what made them.
             const name = `window-${i}-${windowKey([...inputs, f, ...encode], path.dirname(opts.out), stamp)}.mkv`;

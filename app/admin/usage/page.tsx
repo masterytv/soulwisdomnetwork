@@ -57,6 +57,11 @@ function Detail({ u }: { u: EpisodeUsage }) {
                         <span>{s.step}{s.runs > 1 ? ` (${s.runs} runs)` : ""}</span><span>{duration(s.minutes)}</span>
                     </p>
                 ))}
+                {u.graphicsMinutes != null && (
+                    <p className="text-xs text-gray-400 flex justify-between gap-3 mt-1">
+                        <span>of which drawing motion graphics (last render)</span><span>{duration(u.graphicsMinutes)}</span>
+                    </p>
+                )}
                 <p className="text-xs text-gray-500 mt-2">
                     {u.machine.source === "github"
                         ? "Every GitHub Actions run for this episode, retries included. Copy and transcribe is from the episode record."

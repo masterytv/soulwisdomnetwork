@@ -18,6 +18,9 @@ export interface EpisodeUsage {
     elapsedHours: number | null;        // started → on YouTube
     milestones: { label: string; at: number }[];
     machine: { minutes: number; source: 'github' | 'records'; byStep: JobTime[] };
+    // Of the render's time, drawing the motion graphics' clips (spec 021 M5); null before the first
+    // render that measured it. Cached clips cost nothing, so a re-render usually shows less.
+    graphicsMinutes?: number | null;
     money: { totalUsd: number; byService: { service: string; usd: number }[]; items: { label: string; usd: number; count: number }[] };
     descript: { aiCredits: number; mediaMinutes: number; sends: number; allSends: boolean };
     usdPerEpisodeMinute: number | null;
@@ -153,6 +156,7 @@ export function analyseEpisode(episodeId: string, e: Episode, runs: RunTime[] = 
         elapsedHours: startedAt != null && onYoutubeAt != null ? round((onYoutubeAt - startedAt) / 3_600_000, 1) : null,
         milestones,
         machine,
+        graphicsMinutes: e.editRender?.graphicsSeconds != null ? round(e.editRender.graphicsSeconds / 60, 1) : null,
         money: {
             totalUsd,
             byService: [...services.entries()].map(([service, usd]) => ({ service, usd: round(usd) })).sort((a, b) => b.usd - a.usd),

@@ -120,6 +120,14 @@ export function assStill(ass: string, matte: string, fontsDir: string, output: s
 // an output pixel per step, which keeps the motion from juddering. The movement eases in and
 // out. Zooms go between 100% and 125%; pans cross the image at 120-125%, about a fifth of the
 // frame, zooming in a little as they go.
+// Lays a clip with alpha (a motion graphic, spec 021) over a video, full frame, keeping the video's
+// sound: the "In this episode" tag onto a cut teaser.
+export async function overlayClip(input: string, overlay: string, out: string): Promise<void> {
+    await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', input, '-i', overlay,
+        '-filter_complex', '[1:v]format=rgba[g];[0:v][g]overlay=x=0:y=0:eof_action=pass,format=yuv420p[v]',
+        '-map', '[v]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-c:a', 'copy', out]);
+}
+
 export type BrollMotion = 'in' | 'out' | 'left' | 'right';
 export const BROLL_MOTIONS: BrollMotion[] = ['in', 'right', 'out', 'left'];
 const ZOOM = 0.25;

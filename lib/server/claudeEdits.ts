@@ -6,7 +6,7 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { cleanLanguages, languageName } from '@/lib/translate';
 import type { Episode, EpisodeRetakes, EpisodeTranslations } from '@/types/episode';
-import type { RetakesView, TranslationsView } from '@/types/studio';
+import type { HighlightsView, RetakesView, TranslationsView } from '@/types/studio';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { startNotes } from './github';
 import { ESTIMATE_USD, withinDailyLimit } from './spending';
@@ -122,4 +122,45 @@ export async function getRetakes(id: string): Promise<RetakesView> {
     if (!snap.exists) throw new HttpError(404, 'Episode not found');
     const r: EpisodeRetakes | undefined = (snap.data() as Episode).retakes;
     return { ...shown(r), found: r?.found ?? [], notFound: r?.notFound ?? 0, protectedCount: r?.protectedCount ?? 0, generatedAt: millis(r?.generatedAt) };
+}
+
+// ─── highlights (spec 021 item M4) ───────────────────────────────────────────
+
+// Starts Claude's highlight suggestions from the accepted transcript (the notes job does the work and
+// writes them into the edit as `suggested: true` layers).
+export async function requestHighlights(id: string) {
+    const ref = episodeRef(id);
+    if ((await getSettings()).highlightDensity === 'off') throw new HttpError(409, 'Highlights are off in the Studio settings');
+    await adminDb().runTransaction(async tx => {
+        const episode = (await tx.get(ref)).data() as Episode | undefined;
+        if (!episode) throw new HttpError(404, 'Episode not found');
+        if (episode.status !== 'speakers_confirmed' || !episode.review?.reviewedPath) throw new HttpError(409, 'Accept the transcript first');
+        if (!episode.edit) throw new HttpError(409, 'Open the Studio editor first (or Build for Studio editor): it sets up and saves the first edit');
+        if (busy(episode.highlights)) throw new HttpError(409, 'Claude is already reading the transcript for highlight moments');
+        tx.update(ref, {
+            highlights: { status: 'queued', requestedAt: FieldValue.serverTimestamp(), error: null },
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+    });
+    try {
+        await withinDailyLimit('highlight moments', ESTIMATE_USD.highlights, () => startNotes(id, 'highlights'));
+    } catch (error) {
+        const message = `Could not start looking: ${(error as Error).message}`;
+        await ref.update({ 'highlights.status': 'failed', 'highlights.error': message });
+        throw new HttpError(502, message);
+    }
+}
+
+// The run's state for the editor: the suggestions themselves arrive on the edit (the editor reloads it
+// when the status turns ready).
+export async function getHighlights(id: string): Promise<HighlightsView> {
+    const snap = await episodeRef(id).get();
+    if (!snap.exists) throw new HttpError(404, 'Episode not found');
+    const h = (snap.data() as Episode).highlights;
+    return {
+        ...shown(h),
+        suggested: h?.suggested ?? 0, unverified: h?.unverified ?? 0, dropped: h?.dropped ?? 0,
+        descriptorsFilled: h?.descriptorsFilled ?? 0, keyIdeas: h?.keyIdeas ?? 0,
+        generatedAt: millis(h?.generatedAt),
+    };
 }

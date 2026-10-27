@@ -1,0 +1,99 @@
+<!doctype html>
+<!-- The "In this episode" tag (docs/specs/021-motion-graphics.md, item M2), rebuilt from the design
+     reference (docs/specs/021-motion-graphics/TeaserTag.dc.html): the card pops up, the star's ring
+     pulses, the label and speaker slide in, and the progress line along the card's foot fills linearly
+     across the whole GRAPHIC.durationMs (the teaser's length). It replaces teaserBanner.ts's ASS tag on
+     teaser clips. Field: speaker. Transparent outside the card; the card stays above YouTube's progress
+     bar (bottom ≤ 990) and inside the 90 px side safe area. Fonts from local files only. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>In this episode</title>
+<style>
+@font-face { font-family: 'Outfit'; src: url('fonts/Outfit-latin.woff2') format('woff2'); font-weight: 100 900; font-display: block; }
+html, body { margin: 0; background: transparent; }
+.root { position: relative; width: 1920px; height: 1080px; overflow: hidden; font-family: 'Outfit', sans-serif; color: #fff;
+        --ink-rgb: 20, 10, 46; --gold: #f7c65b; --gold-pale: #fde68a; }
+.card { position: absolute; left: 90px; top: 806px; width: 600px; box-sizing: border-box; padding: 30px 40px 34px 40px;
+        border-radius: 8px; background: rgba(var(--ink-rgb), 0.9); border: 1px solid rgba(var(--gold-rgb), 0.35);
+        box-shadow: 0 20px 60px rgba(0,0,0,0.35); display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 16px; }
+.mark { position: relative; width: 26px; height: 26px; flex-shrink: 0; }
+.ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid var(--gold); }
+.mark svg { position: absolute; inset: 0; }
+.mark path { fill: var(--gold); }
+.label { margin: 0; font-weight: 900; font-size: 34px; letter-spacing: 0.2em; color: var(--gold); }
+.speaker { margin: 0 0 0 42px; font-weight: 600; font-size: 36px; color: #ffffff; }
+.rail { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: rgba(255,255,255,0.14); }
+.fill { width: 100%; height: 4px; transform-origin: left center; background: linear-gradient(90deg, var(--gold), var(--gold-pale)); }
+</style>
+</head>
+<body>
+<div id="g" class="root">
+  <div id="card" class="card">
+    <div class="row">
+      <div class="mark" aria-hidden="true">
+        <div id="ring" class="ring"></div>
+        <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 0C12.9 8 16 11.1 24 12C16 12.9 12.9 16 12 24C11.1 16 8 12.9 0 12C8 11.1 11.1 8 12 0Z"></path></svg>
+      </div>
+      <p id="label" class="label">IN THIS EPISODE</p>
+    </div>
+    <p id="speaker" class="speaker"></p>
+    <div class="rail" aria-hidden="true"><div id="fill" class="fill"></div></div>
+  </div>
+</div>
+<script src="runtime.js"></script>
+<script>
+(() => {
+    'use strict';
+    const g = window.GRAPHIC || {};
+    const f = g.fields || {};
+    const colors = g.colors || {};
+    const T = Math.max(1, g.durationMs || 5000);
+    const hex = c => /^#[0-9a-fA-F]{6}$/.test(c || '');
+    const rgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const lighten = (h, amount) => '#' + rgb(h).map(c => Math.round(c + (255 - c) * amount).toString(16).padStart(2, '0')).join('');
+    const el = id => document.getElementById(id);
+
+    const root = el('g');
+    if (hex(colors.background)) root.style.setProperty('--ink-rgb', rgb(colors.background).join(', '));
+    if (hex(colors.accent)) {
+        root.style.setProperty('--gold', colors.accent);
+        root.style.setProperty('--gold-rgb', rgb(colors.accent).join(', '));
+        root.style.setProperty('--gold-pale', lighten(colors.accent, 0.35));
+    } else root.style.setProperty('--gold-rgb', '247, 198, 91');
+    el('speaker').textContent = f.speaker || '';
+    if (!f.speaker) el('speaker').style.display = 'none';
+
+    // The design's 6 s cycle as in / hold / out: the card pops over 540 ms, the label and speaker follow
+    // 200 and 350 ms later; everything fades over the last 400 ms.
+    const R = window.graphicRuntime;
+    R.animate(el('card'), { inMs: 540, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: 'translateY(24px) scale(0.96)' }, { at: 1, opacity: 1, transform: 'translateY(0) scale(1)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateY(10px) scale(1)' }] });
+    R.animate(el('label'), { delay: 200, inMs: 660, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(-20px)' }, { at: 1, opacity: 1, transform: 'translateX(0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(0)' }] });
+    R.animate(el('speaker'), { delay: 350, inMs: 660, outMs: 400, enter: [
+        { at: 0, opacity: 0, transform: 'translateX(-20px)' }, { at: 1, opacity: 1, transform: 'translateX(0)' },
+    ], exit: [{ at: 1, opacity: 0, transform: 'translateX(0)' }] });
+
+    // Motion the runtime's in/hold/out cannot say: the progress line fills linearly over the whole
+    // length, and the star's ring pulses every 1.6 s. Registered on seek beside the runtime's own.
+    const extra = [];
+    const drive = a => { a.pause(); extra.push(a); return a; };
+    drive(el('fill').animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: T, easing: 'linear', fill: 'both' }));
+    drive(el('ring').animate([{ opacity: 0.9, transform: 'scale(0.6)' }, { opacity: 0, transform: 'scale(2.4)' }],
+        { duration: 1600, easing: 'ease-out', iterations: Infinity }));
+    const base = window.seek;
+    window.seek = ms => {
+        base(ms);
+        const t = Math.max(0, Math.min(ms, T));
+        for (const a of extra) a.currentTime = t;
+    };
+
+    window.seek(0);
+})();
+</script>
+</body>
+</html>
