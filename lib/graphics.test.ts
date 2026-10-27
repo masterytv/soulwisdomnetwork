@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { asVideoLayer, drawnMs, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, graphicSrcDoc, programmeWindow } from './graphics';
+import { asVideoLayer, BOX_SCALE, clampBox, drawnMs, episodeAnchored, GRAPHIC_MAX_MS, GRAPHIC_TEMPLATE_IDS, graphicBounds, graphicSpec, graphicSrcDoc, movableGraphic, placedRect, programmeWindow } from './graphics';
 import { GraphicLayerSchema, LayersSchema, layerKind, layerName, layerSpan, motionChapter, motionEndScreen, motionGraphics, motionLogoBug, motionLowerThird, motionPullQuote, positionOf, type GraphicLayer } from './layers';
 import { sequenceLength, sequenceOf } from './sequence';
 
@@ -139,4 +139,58 @@ test('M2: a starlight join never shortens the timeline, and is kept for the rend
     assert.deepEqual(seq.joins.map(j => [j.transition, j.splitMs, j.durationMs]), [['starlight', 10_000, 1000]]);
     const dissolve = sequenceOf({ ...edit, joins: [{ at: { atSplit: 10_000 }, transition: 'dissolve' as const, durationMs: 1000 }] }, 20_000);
     assert.equal(sequenceLength(dissolve.clips), 19_000);
+});
+
+// Moving and resizing a graphic (the key idea card over the guest's face): a `box` lays the same drawn
+// clip at another corner and scale; no box is the design's own place, exactly as before.
+test('box: the schema takes a moved, scaled graphic and refuses one out of range', () => {
+    const ok = { ...graphic(), box: { x: -700, y: 40, scale: 0.75 } };
+    assert.deepEqual(GraphicLayerSchema.parse(ok), ok);
+    assert.equal(GraphicLayerSchema.safeParse(graphic()).success, true, 'no box is still valid');
+    for (const box of [
+        { x: 0, y: 0, scale: BOX_SCALE.min - 0.01 }, { x: 0, y: 0, scale: BOX_SCALE.max + 0.01 },
+        { x: 0.5, y: 0, scale: 1 }, { x: 1921, y: 0, scale: 1 }, { x: 0, y: -1621, scale: 1 },
+        { x: 0, y: 0, scale: 1, extra: 1 }, { x: 0, y: 0 },
+    ]) assert.equal(GraphicLayerSchema.safeParse({ ...graphic(), box }).success, false, JSON.stringify(box));
+});
+
+test('box: asVideoLayer lays the clip at the box\'s corner and scale; without one, across the whole frame', () => {
+    const v = asVideoLayer({ ...graphic(), box: { x: -960, y: 270, scale: 0.5 } }, 'episodes/abcdefghij/graphics/x.mov');
+    assert.deepEqual(v.place, { x: -0.5, y: 0.25, align: 7 });
+    assert.equal(v.w, 0.5);
+    const plain = asVideoLayer(graphic(), 'episodes/abcdefghij/graphics/x.mov');
+    assert.deepEqual([plain.place, plain.w], [{ x: 0, y: 0, align: 7 }, 1]);
+    // The box never changes what is drawn, so a moved graphic reuses its clip.
+    assert.deepEqual(graphicSpec({ ...graphic(), box: { x: 10, y: 10, scale: 0.8 } }, COLORS), graphicSpec(graphic(), COLORS));
+});
+
+test('box: only templates with one element to move are movable, and each says where it draws it', () => {
+    const movable = GRAPHIC_TEMPLATE_IDS.filter(movableGraphic).sort();
+    assert.deepEqual(movable, ['chapter', 'keyIdea', 'logoBug', 'lowerThird', 'titleCard']);
+    const key = graphicBounds({ template: 'keyIdea', fields: { term: 'Soul', definition: 'The part of us that remembers.' } })!;
+    // Measured in Chromium: the card is 680 × 321 at the top right.
+    assert.deepEqual([key.x, key.y, key.w], [1130, 210, 680]);
+    assert.ok(Math.abs(key.h - 321) < 10, `the card's height, got ${key.h}`);
+    assert.equal(graphicBounds({ template: 'pullQuote', fields: { quote: 'x', speaker: 'y' } }), null);
+    assert.deepEqual(graphicBounds({ template: 'lowerThird', fields: { name: 'Tom', descriptor: 'HOST', variant: 'host' } }), { x: 74, y: 810, w: 700, h: 150 });
+});
+
+test('box: clampBox keeps the element on the frame and its scale in range', () => {
+    const card = { x: 1130, y: 210, w: 680, h: 320 };
+    // The card moved to the left and made smaller (Tom's case): kept as asked.
+    const left = clampBox({ x: -800, y: 0, scale: 0.75 }, card);
+    assert.deepEqual(left, { x: -800, y: 0, scale: 0.75 });
+    const r = placedRect(card, left);
+    assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= 1920 && r.y + r.h <= 1080, JSON.stringify(r));
+    // Dragged past the edges: held on the frame.
+    for (const box of [{ x: -5000, y: -5000, scale: 1 }, { x: 5000, y: 5000, scale: 1.4 }, { x: 300, y: 0, scale: 9 }]) {
+        const c = clampBox(box, card), p = placedRect(card, c);
+        assert.ok(c.scale >= BOX_SCALE.min && c.scale <= BOX_SCALE.max);
+        assert.ok(p.x >= 0 && p.y >= 0 && p.x + p.w <= 1920 + 1e-9 && p.y + p.h <= 1080 + 1e-9, `${JSON.stringify(box)} → ${JSON.stringify(p)}`);
+        assert.ok(Number.isInteger(c.x) && Number.isInteger(c.y));
+    }
+    // A full-width banner only shrinks.
+    assert.equal(clampBox({ x: 0, y: 0, scale: 1.3 }, { x: 0, y: 720, w: 1920, h: 360 }).scale, 1);
+    // No box is the design's place.
+    assert.deepEqual(placedRect(card), card);
 });

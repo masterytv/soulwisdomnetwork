@@ -113,6 +113,63 @@ export function programmeWindow(layer: { anchor: GraphicAnchor; durationMs: numb
     return endMs > startMs ? { startMs, endMs } : null;
 }
 
+// Moving and resizing a graphic (Tom: the key idea card covered the guest's face). A graphic's optional
+// `box` places its whole drawn frame: the frame's top-left corner in render pixels and a uniform scale, so
+// the template, its motion and its cached clip stay as they are, and the render only overlays the clip
+// elsewhere (asVideoLayer). No box is the design's own place. Only templates with one element the
+// producer would want elsewhere are movable: the full-screen ones, the teaser tag (on the programme's
+// clock) and the highlights (which reframe the picture itself) are not.
+export interface GraphicBox { x: number; y: number; scale: number }
+export interface Rect { x: number; y: number; w: number; h: number }
+export const BOX_SCALE = { min: 0.4, max: 1.5 } as const;
+
+// Where each movable template draws its element at the design's place, in render pixels (the CSS in its
+// template), so the preview can grab the element rather than the whole frame and keep it on the frame.
+// The key idea card grows with its words: its height is estimated from them (Cinzel and Outfit widths
+// measured in Chromium), close enough for a handle; the render draws whatever the template draws.
+const wrapLines = (text: string, perLine: number) =>
+    Math.max(1, text.split(/\s+/).filter(Boolean).reduce((lines, word) => {
+        const last = lines[lines.length - 1];
+        if (last && (last + ' ' + word).length <= perLine) lines[lines.length - 1] = `${last} ${word}`;
+        else lines.push(word);
+        return lines;
+    }, [] as string[]).length);
+const MOVABLE: Partial<Record<GraphicTemplate, (fields: Record<string, string>) => Rect>> = {
+    titleCard: () => ({ x: 0, y: 720, w: 1920, h: 360 }),
+    chapter: () => ({ x: 0, y: 720, w: 1920, h: 360 }),
+    lowerThird: f => (f.variant === 'host' ? { x: 74, y: 810, w: 700, h: 150 } : { x: 66, y: 750, w: 1080, h: 210 }),
+    logoBug: () => ({ x: 1710, y: 48, w: 150, h: 110 }),
+    keyIdea: f => ({
+        x: 1130, y: 210, w: 680,
+        h: Math.min(870, 211 + 64 * wrapLines(f.term ?? '', 14) + (f.definition?.trim() ? 45 * wrapLines(f.definition, 38) : -22)),
+    }),
+};
+export const movableGraphic = (template: GraphicTemplate) => template in MOVABLE;
+
+// The element's rectangle as the design draws it, or null for a template that is not movable.
+export function graphicBounds(layer: Pick<GraphicLayer, 'template' | 'fields'>): Rect | null {
+    return MOVABLE[layer.template]?.(layer.fields) ?? null;
+}
+
+// Where the element shows once its frame is placed by `box` (or at the design's place without one).
+export function placedRect(bounds: Rect, box?: GraphicBox): Rect {
+    const b = box ?? { x: 0, y: 0, scale: 1 };
+    return { x: b.x + bounds.x * b.scale, y: b.y + bounds.y * b.scale, w: bounds.w * b.scale, h: bounds.h * b.scale };
+}
+
+// A box the element fits on the frame with: its scale within BOX_SCALE (and no wider or taller than the
+// frame, so a full-width banner only shrinks), its corner moved so the element stays wholly on the frame,
+// in whole pixels.
+export function clampBox(box: GraphicBox, bounds: Rect): GraphicBox {
+    const fit = Math.min(BOX_SCALE.max, FRAME.width / bounds.w, FRAME.height / bounds.h);
+    const scale = Math.round(Math.min(fit, Math.max(BOX_SCALE.min, box.scale)) * 1000) / 1000;
+    const axis = (v: number, at: number, size: number, frame: number) => {
+        const lo = Math.ceil(-at * scale), hi = Math.floor(frame - (at + size) * scale);
+        return Math.min(hi, Math.max(lo, Math.round(v)));
+    };
+    return { x: axis(box.x, bounds.x, bounds.w, FRAME.width), y: axis(box.y, bounds.y, bounds.h, FRAME.height), scale };
+}
+
 // The editor's iframe document: the template with GRAPHIC set before its script runs, as the renderer
 // sets it. `</` is escaped so a field's text can never close the script tag.
 export function graphicSrcDoc(templateHtml: string, data: GraphicData): string {
@@ -122,7 +179,7 @@ export function graphicSrcDoc(templateHtml: string, data: GraphicData): string {
 
 // The graphic's clip as the render overlays it (spec 021 M1): a silent video layer across the whole
 // frame, timed as the graphic layer is; the template draws its own place and fades, so the layer's
-// edges stay off. `mediaPath` is the clip in Storage (episodes/<id>/graphics/<name>.mov). A layer
+// edges stay off. A moved graphic's `box` lays the same clip at its corner and scale instead. `mediaPath` is the clip in Storage (episodes/<id>/graphics/<name>.mov). A layer
 // longer than its drawn clip (the logo bug) is looped (`loop` on the render's picture entry).
 export function asVideoLayer(layer: GraphicLayer, mediaPath: string): VideoLayer {
     if (!episodeAnchored(layer.anchor)) throw new Error('A programme-anchored graphic is overlaid on the programme, never as an episode layer');
@@ -132,12 +189,12 @@ export function asVideoLayer(layer: GraphicLayer, mediaPath: string): VideoLayer
         track: layer.track,
         anchor: layer.anchor as Exclude<GraphicAnchor, { fromEnd: number }>,
         durationMs: layer.durationMs,
-        place: { x: 0, y: 0, align: 7 },
+        place: layer.box ? { x: layer.box.x / FRAME.width, y: layer.box.y / FRAME.height, align: 7 } : { x: 0, y: 0, align: 7 },
         opacity: layer.opacity,
         in: { transition: 'none', durationMs: 0 },
         out: { transition: 'none', durationMs: 0 },
         media: { path: mediaPath, name: GRAPHIC_TEMPLATES[layer.template].label },
-        w: 1,
+        w: layer.box?.scale ?? 1,
         trimInMs: 0,
         volumeDb: null,
     };

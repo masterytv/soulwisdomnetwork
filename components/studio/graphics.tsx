@@ -5,8 +5,13 @@
 // The template comes from /api/studio/graphics/[template] (fonts and runtime inlined), with
 // window.GRAPHIC written into the document before its script runs (lib/graphics.ts), and is seeked by
 // posting {t:'seek', ms} — driven from the video element itself (useFrameTime), never from state the
-// whole editor rerenders on (docs/PLANNING.md). Clicks pass through; a graphic is selected on the
-// timeline or in the On screen list. GraphicsPreview draws the episode-anchored graphics over the main
+// whole editor rerenders on (docs/PLANNING.md). A movable graphic (lib/graphics.ts movableGraphic: the
+// title card, lower thirds, chapters, the logo bug and key ideas) is clicked on its element to select it,
+// dragged to move it (its edges and centre snap to the frame's edges, margins, thirds and centre; Alt
+// turns that off) and resized from its corner, the whole frame moved and scaled as its `box`, which the
+// render lays the same clip by; a whole drag is one undo step. Banners as wide as the frame take clicks
+// only once selected, so the video's controls stay reachable. Others are selected on the timeline or in
+// the On screen list. GraphicsPreview draws the episode-anchored graphics over the main
 // video; ProgrammeGraphics follows the programme's own clock (components/studio/programme.tsx) for the
 // end screen over the outro, the motion "In this episode" tag over each teaser, and the starlight
 // transition's clip centred on its join — the same clips the render lays over the finished video.
@@ -14,9 +19,12 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { timelineTime, type Clip } from '@/lib/sequence';
 import { layerSpan, lookAt, type GraphicLayer, type Layer } from '@/lib/layers';
-import { episodeAnchored, graphicSrcDoc, programmeWindow, type GraphicColors, type GraphicTemplate } from '@/lib/graphics';
+import {
+    clampBox, episodeAnchored, GRAPHIC_TEMPLATES, graphicBounds, graphicSrcDoc, placedRect, programmeWindow,
+    type GraphicBox, type GraphicColors, type GraphicTemplate, type Rect,
+} from '@/lib/graphics';
 import { FRAME } from '@/lib/onScreen';
-import { useFrameTime } from '@/components/studio/layers';
+import { GUIDES_X, GUIDES_Y, SNAP, useFrameTime } from '@/components/studio/layers';
 import type { ProgrammeView } from '@/components/studio/programme';
 import { studioFetch } from '@/lib/studioClient';
 
@@ -52,8 +60,9 @@ export function useStageScale(stage: React.RefObject<HTMLDivElement | null>): nu
     return scale;
 }
 
-// One template's iframe, seeked to its own time (ms into the graphic) whenever the clock moves.
-export function GraphicFrame({ doc, ms, opacity, scale }: { doc: string; ms: number; opacity: number; scale: number }) {
+// One template's iframe, seeked to its own time (ms into the graphic) whenever the clock moves; a moved
+// graphic's whole frame at its box's corner and scale, as the render overlays its clip.
+export function GraphicFrame({ doc, ms, opacity, scale, box }: { doc: string; ms: number; opacity: number; scale: number; box?: GraphicBox }) {
     const frame = useRef<HTMLIFrameElement>(null);
     const at = useRef(0);
     useEffect(() => {
@@ -71,28 +80,96 @@ export function GraphicFrame({ doc, ms, opacity, scale }: { doc: string; ms: num
             aria-hidden
             tabIndex={-1}
             className="pointer-events-none absolute left-0 top-0 border-0"
-            style={{ width: FRAME.width, height: FRAME.height, transform: `scale(${scale})`, transformOrigin: 'top left', opacity }}
+            style={{
+                width: FRAME.width, height: FRAME.height, transformOrigin: 'top left', opacity,
+                transform: box ? `translate(${box.x * scale}px, ${box.y * scale}px) scale(${scale * box.scale})` : `scale(${scale})`,
+            }}
         />
     );
 }
 
+// Where a dragged edge or centre may snap: the shift (in frame pixels) that puts the element's start,
+// centre or end on the nearest guide within reach, or 0.
+function snapShift(at: number, size: number, frame: number, guides: number[], on: boolean): number {
+    if (!on) return 0;
+    let best = 0, bestGap = SNAP * frame;
+    for (const g of guides) {
+        for (const edge of [at, at + size / 2, at + size]) {
+            const gap = Math.abs(g * frame - edge);
+            if (gap <= bestGap) { best = g * frame - edge; bestGap = gap; }
+        }
+    }
+    return best;
+}
+
+interface GraphicDrag { id: string; kind: 'move' | 'resize'; x0: number; y0: number; base: GraphicLayer; bounds: Rect; box: GraphicBox; moved: boolean }
+
 // The episode-anchored graphics, over the main video on the edited episode's clock.
-export function GraphicsPreview({ layers, clips, editedMs, video, colors, logo }: {
+export function GraphicsPreview({ layers, clips, editedMs, video, colors, logo, selected, onSelect, onChange }: {
     layers: Layer[];
     clips: Clip[];                   // the play order (lib/sequence.ts), to find the edited time
     editedMs: number;
     video: React.RefObject<HTMLVideoElement | null>;
     colors: GraphicColors;           // the Studio's colours, as the render reads them
     logo: string | null;             // the Studio's logo (or the site's), for templates that draw it
+    selected?: string | null;
+    onSelect?: (id: string | null) => void;
+    onChange?: (layer: Layer) => void;    // a finished drag, as one change
 }) {
     const graphics = layers.filter((l): l is GraphicLayer => l.kind === 'graphic' && episodeAnchored(l.anchor));
     const html = useGraphicTemplates(graphics.map(g => g.template));
     const stage = useRef<HTMLDivElement>(null);
     const scale = useStageScale(stage);
     const { ms: srcMs } = useFrameTime(video);
+    const dragRef = useRef<GraphicDrag | null>(null);
+    const [drag, setDragState] = useState<GraphicDrag | null>(null);
+    const setDrag = (d: GraphicDrag | null) => { dragRef.current = d; setDragState(d); };
 
     if (!graphics.length) return null;
     const nowMs = timelineTime(clips, srcMs, true) ?? editedMs;
+    const editable = !!onSelect && !!onChange;
+
+    const begin = (e: React.PointerEvent, g: GraphicLayer, bounds: Rect, kind: GraphicDrag['kind']) => {
+        if (e.button !== 0 || !editable) return;
+        e.stopPropagation();
+        e.preventDefault();
+        onSelect(g.id);
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setDrag({ id: g.id, kind, x0: e.clientX, y0: e.clientY, base: g, bounds, box: g.box ?? { x: 0, y: 0, scale: 1 }, moved: false });
+    };
+    const move = (e: React.PointerEvent) => {
+        const d = dragRef.current, r = stage.current?.getBoundingClientRect();
+        if (!d || !r || r.width <= 0) return;
+        const moved = d.moved || Math.abs(e.clientX - d.x0) + Math.abs(e.clientY - d.y0) >= 3;
+        if (!moved) return;
+        // Pointer travel in frame pixels.
+        const dx = (e.clientX - d.x0) * FRAME.width / r.width, dy = (e.clientY - d.y0) * FRAME.height / r.height;
+        const base = d.base.box ?? { x: 0, y: 0, scale: 1 };
+        const from = placedRect(d.bounds, base);
+        let box: GraphicBox;
+        if (d.kind === 'move') {
+            const at = { x: from.x + dx, y: from.y + dy };
+            at.x += snapShift(at.x, from.w, FRAME.width, GUIDES_X, !e.altKey);
+            at.y += snapShift(at.y, from.h, FRAME.height, GUIDES_Y, !e.altKey);
+            box = { x: at.x - d.bounds.x * base.scale, y: at.y - d.bounds.y * base.scale, scale: base.scale };
+        } else {
+            // The corner follows the pointer; the element's top-left corner stays put. 100 % snaps.
+            let s = base.scale * Math.max(0.05, (from.w + dx) / from.w);
+            if (!e.altKey && Math.abs(s - 1) < 0.03) s = 1;
+            box = { x: from.x - d.bounds.x * s, y: from.y - d.bounds.y * s, scale: s };
+        }
+        setDrag({ ...d, box: clampBox(box, d.bounds), moved });
+    };
+    const end = () => {
+        const d = dragRef.current;
+        if (d?.moved && onChange) {
+            // Dragged back to the design's own place: no box, as a graphic never moved.
+            const next: GraphicLayer = { ...d.base, box: d.box };
+            if (d.box.x === 0 && d.box.y === 0 && d.box.scale === 1) delete next.box;
+            onChange(next);
+        }
+        setDrag(null);
+    };
 
     return (
         <div ref={stage} aria-label="Motion graphics" className="pointer-events-none absolute inset-0 overflow-hidden rounded-lg">
@@ -101,12 +178,37 @@ export function GraphicsPreview({ layers, clips, editedMs, video, colors, logo }
                 const span = layerSpan(g, clips, editedMs);
                 const look = span ? lookAt(g, span, nowMs) : null;
                 if (!doc || !span || !look) return null;
+                const box = drag?.id === g.id ? drag.box : g.box;
                 const data = { fields: g.fields, colors, durationMs: span.endMs - span.startMs, width: FRAME.width, height: FRAME.height, logo };
-                return <GraphicFrame key={g.id} doc={graphicSrcDoc(doc, data)} ms={nowMs - span.startMs} opacity={look.opacity} scale={scale} />;
+                const bounds = editable ? graphicBounds(g) : null;
+                const isSelected = selected === g.id;
+                const r = bounds && placedRect(bounds, box);
+                // A banner as wide as the frame lets clicks through to the video's controls until selected.
+                const clickable = !!r && (isSelected || r.w < FRAME.width * 0.9);
+                const pct = (v: number, of: number) => `${(v / of * 100).toFixed(3)}%`;
+                return (
+                    <div key={g.id}>
+                        <GraphicFrame doc={graphicSrcDoc(doc, data)} ms={nowMs - span.startMs} opacity={look.opacity} scale={scale} box={box} />
+                        {r && bounds && (
+                            <div aria-label={`Move ${GRAPHIC_LABEL(g)}`} title="Drag to move (Alt: no snapping)"
+                                onPointerDown={e => begin(e, g, bounds, 'move')} onPointerMove={move} onPointerUp={end} onPointerCancel={() => setDrag(null)}
+                                className={`absolute ${clickable ? 'pointer-events-auto cursor-move' : ''} ${isSelected ? 'outline outline-2 outline-amber-300 outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-white/50'}`}
+                                style={{ left: pct(r.x, FRAME.width), top: pct(r.y, FRAME.height), width: pct(r.w, FRAME.width), height: pct(r.h, FRAME.height) }}>
+                                {isSelected && (
+                                    <span role="presentation" title="Drag to resize (Alt: no snapping)"
+                                        onPointerDown={e => begin(e, g, bounds, 'resize')} onPointerMove={move} onPointerUp={end}
+                                        className="pointer-events-auto absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-sm bg-amber-300 border border-black cursor-nwse-resize" />
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
             })}
         </div>
     );
 }
+
+const GRAPHIC_LABEL = (g: GraphicLayer) => GRAPHIC_TEMPLATES[g.template].label.replace(/ \(motion\)$/, '').toLowerCase();
 
 // The piece the programme player shows and how far into it it is, followed frame by frame while one plays.
 function usePieceTime(prog: ProgrammeView): { piece: number | null; pieceMs: number } {
