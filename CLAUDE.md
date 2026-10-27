@@ -49,7 +49,15 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               highlight moments (spec 021 Part B) reframe the episode's own picture: their movement, limits and rules
               are lib/reframe.ts (one easing table for the render's ffmpeg expressions in podcast/graphics/reframe.ts,
               the preview components/studio/highlightPreview.tsx, and the tests), each layout's template drawing three
-              planes (words, matte, backdrop) told apart by GRAPHIC.mode
+              planes (words, matte, backdrop) told apart by GRAPHIC.mode; "Suggest highlights" in the editor starts
+              podcast_notes.yml `mode: highlights` (agent/src/podcast/highlights.ts, a paid run): Claude picks the
+              moments, every quote verified against the transcript and the pacing, spacing and density enforced in
+              code (lib/highlights.ts), saved onto the edit as `suggested: true` highlight layers the editor can keep,
+              edit or clear (/api/studio/episodes/[id]/highlights, lib/server/claudeEdits.ts); the Studio settings'
+              Motion graphics section (lib/studioSettings.ts: motionGraphics, highlightDensity, suggestOnBuild,
+              highlightLayouts) turns all of it on and off per show, the Usage page counts each render's drawing
+              minutes, and the Resolve/Premiere/Final Cut hand-off exports graphic clips as files and highlights
+              as markers (podcast/editExport.ts)
               podcast/editRender.ts — Editor Light render (docs/specs/015-editor-light.md): cuts from lib/edit.ts in their play order (lib/sequence.ts), transitions (lib/transitions.ts),
               its sound made once and its picture in windows encoded once and kept for a re-run (podcast/renderWindows.ts, spec 019 item 4.2),
               teasers, intro, outro, b-roll, voice cleanup (standard, Studio sound, DeepFilterNet or Auphonic: lib/voice.ts and podcast/voiceCleanup.ts,
@@ -83,13 +91,14 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               recording, cuts and all); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
               and the show's intro is public/studio/show-intro.mp4, which the editor plays too
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
-              transitions, final cut, Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
+              transitions, final cut, motion graphics and highlights (spec 021), Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-020; docs/BACKLOG.md lists features agreed for later;
-              019 is the planned Editor Light v2 and 020 its full editing page, the Studio editor;
+docs/specs/   numbered specs, 001-021; docs/BACKLOG.md lists features agreed for later;
+              019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
+              motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
 docs/research/ dated research reports behind the specs
 types/
@@ -117,6 +126,9 @@ Pushing to `main` (and to `staging`, for the staging backend) triggers a build a
 in CI — App Hosting connects to the repo directly. Do not add one. The `checks` workflow
 (`.github/workflows/checks.yml`) only checks pull requests into `staging` and `main`: typecheck,
 lint, tests and a build with placeholder config. It deploys nothing and uses no secrets.
+Every workflow installs ffmpeg through `.github/actions/ffmpeg` — a static build pinned by
+sha256, never apt, whose mirror kept stalling runs — and the render's text fonts ship in
+`agent/assets/fonts`, so no job installs fonts either.
 
 ### Secrets
 
@@ -179,7 +191,10 @@ same API, normalizes it to −14 LUFS, saves it to `04 Final` in Drive, and move
 approves the episode there (Checkpoint D). "Upload to YouTube" then starts `podcast_youtube.yml` (`agent/src/podcast/youtube.ts`,
 `docs/specs/012-youtube-upload.md`), which signs in as the channel owner with the `YOUTUBE_CLIENT_ID`, `YOUTUBE_CLIENT_SECRET` and
 `YOUTUBE_REFRESH_TOKEN` repo secrets. Under Shorts the producer ticks key quotes; `podcast_shorts.yml` (`agent/src/podcast/shorts.ts`,
-`docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest moments), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript) and upload
+`docs/specs/013-shorts.md`) runs in one of four modes: pick (Claude suggests the strongest quick moments, plus up to
+five longer ones of 90 seconds to 3 minutes with real substance, which keep their own seats in the ranking —
+`lib/shortPicks.ts`), titles (Claude writes headlines and titles), render (ffmpeg, from the final cut; no Descript; every
+short must be 5 seconds to 3 minutes, a floor the Studio's save also holds) and upload
 (the shorts approved at Checkpoint E, scheduled one a day, with the same YouTube secrets). The transcript Google Doc beside the video only works in a shared drive:
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
 `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and `AUPHONIC_API_KEY` (the clean-up comparison, and renders with Auphonic as
@@ -205,7 +220,7 @@ are the show library's music and effects with their licence records (spec 020 it
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts picks and titles, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
