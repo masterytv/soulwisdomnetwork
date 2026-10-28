@@ -237,3 +237,4 @@ and sounds on clips), the automatic conversion of saved edits (checked by the re
 Stages: 1 the spec, 2 the model and conversion, 3a sounds anywhere, 3b the opening as clips; each a PR into `staging`.
 **Approved by Tom on 28 October 2026** with D1–D7 answered (recorded in the spec; music under a built opening is on by
 default). Draft PR #231 (the Studio's wind sounds) stays held; stage 3a carries it and #231 is then closed.
+**Built** (28 October 2026): stage 2 (#233), 3a (#234) and 3b, each a PR into `staging`, merged in that order.

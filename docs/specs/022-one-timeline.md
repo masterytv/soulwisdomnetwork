@@ -2,8 +2,8 @@
 
 **Date:** 28 October 2026
 **Status:** Approved by Tom on 28 October 2026, with his answers to D1–D7 (end of this page). Stage 1 (this spec) is
-PR #232. **Stage 2 is built** (PR #233) and **stage 3a is built** (branch `claude/spec-022-stage-3a`; see "Stage 3a — built"
-below); 3b follows, a PR into `staging`.
+PR #232. **Stage 2 is built** (PR #233), **stage 3a** (PR #234) and **stage 3b** (branch `claude/spec-022-stage-3b`); see
+"Stage 2 — built", "Stage 3a — built" and "Stage 3b — built" below. **Spec 022 is built.**
 **Author:** Claude, from Tom's request: make the Studio editor a regular editor, "one timeline for the whole video",
 where the "In this episode" opening is ordinary clips he can cut, duplicate, move, trim, dissolve, label and put sound
 under, not the locked teaser box it is now.
@@ -315,6 +315,42 @@ site and every render read edits the old way. To keep that safe:
   from the repository), the golden test; in Chromium with an old edit whose settings had music and a whoosh: both on
   the timeline over the opening, playing with ▶ Whole video (the bed ducked), the whoosh dragged into the episode and
   back onto teaser 1, and Wind: breath dropped from the Media panel onto teaser 2.
+
+### Stage 3b — built
+
+- **Editing clips** (`lib/programme.ts`, tested in `lib/programme.test.ts`): `splitClip` (the second part a new clip
+  after it, joined by a straight cut; graphics and sounds that start in it move with it, playing where they did),
+  `duplicateClip` (a copy after it with copies of its label and sounds; the intro and outro play once), `moveClip`
+  (anywhere but the episode), `trimClip` (a label reaching the end follows), `removeClip` (with what is on it),
+  `insertClip` (+ Opening clip, labelled), `setClipJoin`, `setLabel` (on, off, renamed; any clip but the episode).
+  New clips are `c<n>`.
+- **The timeline** (`components/studio/timeline.tsx`) works on the clips by id (`TimelineProgramme.clips`, `onClips`;
+  the selection is a clip or its label): the Blade cuts a recording clip in two between words (Alt or Snap off for
+  anywhere); with Select a recording clip's ends trim it, and any clip but the episode is dragged anywhere on V1
+  (`lib/timeline.ts clipDrop`: before the first clip whose middle is past the pointer); the chosen clip's bar has ▶
+  Play, In the episode, Duplicate (⌘D or Ctrl+D), + Label and Remove (Delete); labels sit on V3 over their clip, chosen to
+  rename or take off; a ◆ marker at each change (filled when a transition plays there) opens it in the Transitions panel,
+  which lists every change ("Into Teaser 3 · Bo Guest") with its own transition or the default for its kind. + Teaser is
+  + Opening clip.
+- **Build the opening** (the Parts panel): the approved notes' teaser clips (whatever the teasers setting; the route's
+  `opening`), dissolves between them (the Studio's "Between teaser clips", or 0.5 s when that is a cut), a label on each,
+  Wind: breath at each change and **music by default** (D3): the one the last opening used (`openingMusic` on the Studio
+  settings document, saved by `POST /api/studio/opening-music` when Build runs, never by the Settings page), else the
+  Studio's old teaser music, else the first checked library music by name (`lib/audio.ts openingMusicDefault`), or None
+  chosen in its menu. Building again asks "Replace the opening you have?" (Undo puts it back). A new edit gets its opening
+  built the same way when the Studio plays teasers (the editor's first open and Build for Studio editor:
+  `withBuiltOpening`).
+- **The render** lays a label on the intro or outro over a copy of its file before the join (only with the graphics
+  renderer; otherwise left out with a warning), as it does a recording clip's. The golden test still finds every
+  command unchanged.
+- **Not built in 3b:** labels other than the "In this episode" one on clips (any graphic, its `box`, and an offset into
+  the clip; the model holds labels at the clip's start), and Build on V1 itself (it is in the Parts panel).
+- **Checked:** `lib/programme.test.ts`, `lib/timeline.test.ts` (`clipDrop`), `lib/audio.test.ts`
+  (`openingMusicDefault`), `lib/studioSettings.test.ts`, `editRenderJob.test.ts` (a built opening reaches the render as
+  clips, dissolves, labels and winds; a label on the intro is laid over the intro alone), the golden test; in Chromium
+  with the API mocked: Build the opening with the library music picked by default (and remembered), the Blade cutting
+  the first clip in two (a straight cut), six change markers and the Transitions panel setting one change to Fade, the
+  second clip dragged to after the intro, and Undo.
 
 Stage 3 is two PRs so each stays one concern; 3a first, since Build places sounds. Each stage updates CLAUDE.md's map,
 spec 020's notes and this page's status.
