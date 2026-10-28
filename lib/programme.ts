@@ -9,7 +9,7 @@ import { replaceSuggestions, suggestCuts, SUGGESTED_REASONS, type EpisodeEdit, t
 import type { SpokenWord } from './showNotes';
 import { SECTION_JOIN_LABELS, TransitionSchema, type SectionJoin, type SectionJoins, type Transition, type TransitionKind } from './transitions';
 import { LAYER_MIN_MS, TRACK, type GraphicLayer } from './layers';
-import { SoundSchema, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from './audio';
+import { SOUND_TRACK, SoundSchema, TEASER_MUSIC_FADE_IN_MS, TEASER_MUSIC_FADE_OUT_MS, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from './audio';
 import { GRAPHIC_MAX_MS } from './graphics';
 
 // A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker; `tag`
@@ -499,4 +499,176 @@ export function clipJoins(clips: TimedClip[], sections: SectionJoins, names: (c:
         const join = c.join ?? (def ? sections[def] : null);
         return { clip: c, join, label: c.join || !def ? `Into ${names(c)}` : SECTION_JOIN_LABELS[def], key: `clip:${c.id}` };
     });
+}
+
+// ─── Editing the whole video's clips (spec 022 stage 3b) ──────────────────────
+
+// A new clip id: `c<n>`, the first not in use.
+export function newClipId(p: ProgrammeEdit): string {
+    const used = new Set(p.clips.map(c => c.id));
+    let n = 1;
+    while (used.has(`c${n}`)) n++;
+    return `c${n}`;
+}
+
+const isRecording = (c: ProgrammeClip | undefined): c is RecordingClip => c?.kind === 'recording';
+
+// The whole video with a recording clip's start or end moved to `ms` of the recording: inside it (when its length is
+// known), and at least TEASER_SHORTEST_MS long. A label that reached the clip's end still does.
+export function trimClip(p: ProgrammeEdit, id: string, edge: 'start' | 'end', ms: number, durationMs?: number): ProgrammeEdit {
+    const c = p.clips.find(x => x.id === id);
+    if (!isRecording(c)) return p;
+    const top = durationMs && durationMs > 0 ? durationMs : Infinity;
+    const v = Math.round(ms);
+    const next: RecordingClip = edge === 'start'
+        ? { ...c, inMs: Math.max(0, Math.min(v, c.outMs - TEASER_SHORTEST_MS)) }
+        : { ...c, outMs: Math.min(top, Math.max(v, c.inMs + TEASER_SHORTEST_MS)) };
+    if (next.inMs === c.inMs && next.outMs === c.outMs) return p;
+    const oldLen = c.outMs - c.inMs, newLen = next.outMs - next.inMs;
+    return {
+        ...p,
+        clips: p.clips.map(x => (x.id === id ? next : x)),
+        layers: p.layers.map(l => (l.anchor.clip === id && l.anchor.ms + l.durationMs >= Math.min(oldLen, labelLength(oldLen))
+            ? { ...l, durationMs: labelLength(newLen - l.anchor.ms) } : l)),
+    };
+}
+
+// The whole video with a clip (not the episode) moved to place `to` (its index once taken out).
+export function moveClip(p: ProgrammeEdit, id: string, to: number): ProgrammeEdit {
+    const from = p.clips.findIndex(c => c.id === id);
+    if (from < 0 || p.clips[from].kind === 'episode') return p;
+    const clips = [...p.clips];
+    const [c] = clips.splice(from, 1);
+    const at = Math.max(0, Math.min(clips.length, to));
+    if (at === from) return p;
+    clips.splice(at, 0, c);
+    return { ...p, clips };
+}
+
+// The whole video without a clip (not the episode), and without what was on it: its graphics and sounds.
+export function removeClip(p: ProgrammeEdit, id: string): ProgrammeEdit {
+    if (p.clips.find(c => c.id === id)?.kind === 'episode') return p;
+    return {
+        clips: p.clips.filter(c => c.id !== id),
+        layers: p.layers.filter(l => l.anchor.clip !== id),
+        ...(p.audio ? { audio: p.audio.filter(s => s.anchor.clip !== id) } : {}),
+    };
+}
+
+// The whole video with a recording clip cut in two at `atMs` of the recording (each part at least
+// TEASER_SHORTEST_MS): the second part is a new clip after it, joined by a straight cut whatever the default, with the
+// graphics and sounds that start in it (the times they play do not change).
+export function splitClip(p: ProgrammeEdit, id: string, atMs: number): ProgrammeEdit {
+    const c = p.clips.find(x => x.id === id);
+    const at = Math.round(atMs);
+    if (!isRecording(c) || at - c.inMs < TEASER_SHORTEST_MS || c.outMs - at < TEASER_SHORTEST_MS) return p;
+    const nid = newClipId(p), cutAt = at - c.inMs;
+    const first: RecordingClip = { ...c, outMs: at };
+    const second: RecordingClip = { id: nid, kind: 'recording', inMs: at, outMs: c.outMs, name: c.name, join: { transition: 'cut', durationMs: 500 } };
+    const k = p.clips.indexOf(c);
+    const moveTo = <T extends { anchor: ClipAnchor }>(x: T): T => (x.anchor.clip === id && x.anchor.ms >= cutAt ? { ...x, anchor: { clip: nid, ms: x.anchor.ms - cutAt } } : x);
+    return {
+        clips: [...p.clips.slice(0, k), first, second, ...p.clips.slice(k + 1)],
+        layers: p.layers.map(moveTo).map(l => (l.anchor.clip === id ? { ...l, durationMs: Math.max(LAYER_MIN_MS, Math.min(l.durationMs, labelLength(cutAt - l.anchor.ms))) } : l)),
+        ...(p.audio ? { audio: p.audio.map(moveTo) } : {}),
+    };
+}
+
+// The whole video with a copy of a clip (a recording clip, the intro or outro cannot be twice) right after it, with
+// copies of its graphics and sounds.
+export function duplicateClip(p: ProgrammeEdit, id: string): ProgrammeEdit {
+    const c = p.clips.find(x => x.id === id);
+    if (!isRecording(c) || p.clips.length >= MAX_CLIPS) return p;
+    const nid = newClipId(p);
+    const k = p.clips.indexOf(c);
+    const copy = <T extends { id: string; anchor: ClipAnchor }>(x: T): T => ({ ...x, id: `${nid}-${x.id}`.slice(0, 40), anchor: { ...x.anchor, clip: nid } });
+    return {
+        clips: [...p.clips.slice(0, k + 1), { ...c, id: nid }, ...p.clips.slice(k + 1)],
+        layers: [...p.layers, ...p.layers.filter(l => l.anchor.clip === id).map(copy)],
+        ...(p.audio ? { audio: [...p.audio, ...p.audio.filter(s => s.anchor.clip === id).map(copy)] } : {}),
+    };
+}
+
+// The whole video with a stretch of the recording added as a clip at place `at`, named by the speaker first heard in
+// it, with its "In this episode" label; unchanged when there are MAX_CLIPS already, or it is shorter than
+// TEASER_SHORTEST_MS.
+export function insertClip(p: ProgrammeEdit, stretch: { startMs: number; endMs: number }, at: number, words: { start: number; end: number; speaker: string }[]): ProgrammeEdit {
+    const inMs = Math.round(stretch.startMs), outMs = Math.round(stretch.endMs);
+    if (p.clips.length >= MAX_CLIPS || outMs - inMs < TEASER_SHORTEST_MS) return p;
+    const name = (words.find(w => w.end > inMs && w.start < outMs)?.speaker ?? '').slice(0, 200);
+    const id = newClipId(p);
+    const clips = [...p.clips];
+    clips.splice(Math.max(0, Math.min(clips.length, at)), 0, { id, kind: 'recording', inMs, outMs, name });
+    return { ...p, clips, layers: [...p.layers, clipLabel(id, name, outMs - inMs)] };
+}
+
+// The whole video with the transition into a clip set (null: the default for its kind of change).
+export function setClipJoin(p: ProgrammeEdit, id: string, t: Transition | null): ProgrammeEdit {
+    return { ...p, clips: p.clips.map(c => { if (c.id !== id) return c; const next = { ...c }; if (t) next.join = t; else delete next.join; return next; }) };
+}
+
+// The whole video with a clip's "In this episode" label on (named `speaker`, or the clip's name) or off, or renamed.
+export function setLabel(p: ProgrammeEdit, id: string, change: { on?: boolean; speaker?: string }): ProgrammeEdit {
+    const c = p.clips.find(x => x.id === id);
+    if (!c || c.kind === 'episode') return p;
+    const label = p.layers.find(l => l.anchor.clip === id);
+    if (change.on === false) return { ...p, layers: p.layers.filter(l => l.anchor.clip !== id) };
+    if (!label) {
+        if (change.on !== true && change.speaker === undefined) return p;
+        const len = isRecording(c) ? c.outMs - c.inMs : 5000;
+        return { ...p, layers: [...p.layers, clipLabel(id, change.speaker ?? (isRecording(c) ? c.name : ''), len)] };
+    }
+    if (change.speaker === undefined) return p;
+    return { ...p, layers: p.layers.map(l => (l === label ? { ...l, fields: { speaker: change.speaker!.trim().slice(0, 200) } } : l)) };
+}
+
+// ─── Building the opening (spec 022 stage 3b) ─────────────────────────────────
+
+// The Studio's breath of wind at each change in a built opening (Tom, 28 October 2026), and the music under it.
+export const OPENING_WIND = { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', durationMs: 1200, gainDb: -18 };
+export const OPENING_MUSIC_DB = -16;
+export interface OpeningMusic { library: string; path: string; name: string }
+
+// The opening: the recording clips before the first clip that is not one (the intro, or the episode).
+export function openingClips(p: ProgrammeEdit): RecordingClip[] {
+    const end = p.clips.findIndex(c => c.kind !== 'recording');
+    return p.clips.slice(0, end < 0 ? p.clips.length : end) as RecordingClip[];
+}
+
+// The whole video with its opening built from the approved notes' teaser clips (teasersFromNotes): a recording clip
+// each before the rest, named by its speaker with its "In this episode" label; a dissolve into each after the first
+// (the Studio settings' "Between opening clips", or 0.5 s when that is a straight cut); Wind: breath at each change,
+// at the middle of the transition less WHOOSH_LEAD_MS; and, unless `music` is null, music under the whole opening.
+// What the opening had (its clips, and what was on them) is replaced; everything else stays.
+export function buildOpening(p: ProgrammeEdit, o: { teasers: Teaser[]; sections: SectionJoins; music: OpeningMusic | null }): ProgrammeEdit {
+    const old = new Set(openingClips(p).map(c => c.id));
+    const rest: ProgrammeEdit = {
+        clips: p.clips.filter(c => !old.has(c.id)),
+        layers: p.layers.filter(l => !old.has(l.anchor.clip)),
+        audio: (p.audio ?? []).filter(s => !old.has(s.anchor.clip)),
+    };
+    const between = o.sections.betweenTeasers.transition === 'cut' ? { transition: 'dissolve' as const, durationMs: 500 } : o.sections.betweenTeasers;
+    const clips: RecordingClip[] = [];
+    for (const t of o.teasers.slice(0, MAX_CLIPS - rest.clips.length)) {
+        const id = newClipId({ ...rest, clips: [...clips, ...rest.clips] });
+        clips.push({ id, kind: 'recording', inMs: t.startMs, outMs: t.endMs, name: t.speaker, ...(clips.length ? { join: between } : {}) });
+    }
+    if (!clips.length) return rest;
+    const layers = clips.map(c => clipLabel(c.id, c.name, c.outMs - c.inMs));
+    // Where each change plays (a dissolve longer than its clips plays as a cut), for the wind.
+    const pg = programmeOf({ clips: clips.map(c => ({ kind: c.kind, id: c.id, lengthMs: c.outMs - c.inMs, ...(c.join ? { join: c.join } : {}) })), sections: o.sections });
+    const plan = teaserSoundPlan(pg.pieces);
+    const sound = (id: string, track: number, media: { path: string; name: string }, rest: Partial<ProgrammeSound>): ProgrammeSound => ({
+        id, track, media, anchor: { clip: clips[0].id, ms: 0 }, durationMs: 1200, inMs: 0, loop: false, gainDb: 0, fadeInMs: 10, fadeOutMs: 30, duck: false, ...rest,
+    });
+    const audio: ProgrammeSound[] = pg.pieces.slice(1).map((piece, i) => sound(`wind-${piece.id}`, SOUND_TRACK.effects, { path: OPENING_WIND.path, name: OPENING_WIND.name }, {
+        anchor: { clip: piece.id, ms: Math.round(plan.whooshes[i] - piece.atMs) }, durationMs: OPENING_WIND.durationMs, gainDb: OPENING_WIND.gainDb,
+    }));
+    if (o.music && plan.music) {
+        audio.unshift(sound(`music-${clips[0].id}`, SOUND_TRACK.music, { path: o.music.path, name: o.music.name.slice(0, 150) }, {
+            library: o.music.library, durationMs: Math.max(LAYER_MIN_MS, plan.music.endMs - plan.music.startMs), loop: true,
+            gainDb: OPENING_MUSIC_DB, fadeInMs: TEASER_MUSIC_FADE_IN_MS, fadeOutMs: TEASER_MUSIC_FADE_OUT_MS, duck: true,
+        }));
+    }
+    return { clips: [...clips, ...rest.clips], layers: [...layers, ...rest.layers], audio: [...audio, ...rest.audio!] };
 }
