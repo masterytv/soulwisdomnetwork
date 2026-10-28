@@ -40,7 +40,12 @@ import type { HighlightLayout, LayoutKeyframes } from '../../../lib/reframe';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
+// Every command the render runs, for the tests that show a change makes the same video (spec 022's golden commands).
+let commandTrace: ((cmd: string, args: string[]) => void) | null = null;
+export function traceCommands(f: ((cmd: string, args: string[]) => void) | null) { commandTrace = f; }
+
 function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+    commandTrace?.(cmd, args);
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '', stderr = '';
