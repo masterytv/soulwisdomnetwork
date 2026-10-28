@@ -248,17 +248,29 @@ export function shortBackground(logo: string, output: string, l: { width: number
     ]);
 }
 
+// A URL read by ffmpeg (the final cut, straight from Storage) gets a time limit on each read and reconnects:
+// without them one stalled connection hangs ffmpeg for good (the shorts job of 28 October 2026 sat 59 minutes on
+// one short until the workflow's limit cancelled it). `readTimeoutSeconds` is for the tests.
+export const URL_READ_TIMEOUT_S = 60;
+const isUrl = (input: string) => /^https?:\/\//i.test(input);
+export function urlInputOptions(input: string, readTimeoutSeconds = URL_READ_TIMEOUT_S): string[] {
+    if (!isUrl(input)) return [];
+    return ['-rw_timeout', String(Math.round(readTimeoutSeconds * 1_000_000)), '-reconnect', '1', '-reconnect_on_network_error', '1', '-reconnect_delay_max', '10'];
+}
+
 // One vertical short: the final cut from `startSeconds`, its sides trimmed to `aspect` (width
 // over height), scaled to the frame's width and placed on the backdrop at `videoTop`, with the
-// headline, speaker and captions burned in from an ASS file. `input` may be a URL.
+// headline, speaker and captions burned in from an ASS file. `input` may be a URL; reading it can
+// fail on the network, so that failure is retried (withRetry) rather than taken as bad input.
 export function renderShort(input: string, output: string, o: {
     startSeconds: number; durationSeconds: number; aspect: number; background: string; ass: string; fontsDir: string;
-    width: number; videoTop: number;
+    width: number; videoTop: number; readTimeoutSeconds?: number;
 }) {
     const fadeOut = Math.max(0, o.durationSeconds - 0.25).toFixed(3);
     return run('ffmpeg', [
         '-y', '-hide_banner', '-loglevel', 'error',
         '-loop', '1', '-framerate', '30', '-i', o.background,
+        ...urlInputOptions(input, o.readTimeoutSeconds),
         '-ss', o.startSeconds.toFixed(3), '-t', o.durationSeconds.toFixed(3), '-i', input,
         '-filter_complex',
         // A short rarely starts exactly on a frame, so the first frame after the seek comes a few
@@ -273,5 +285,8 @@ export function renderShort(input: string, output: string, o: {
         '-t', o.durationSeconds.toFixed(3),
         '-movflags', '+faststart',
         output,
-    ]);
+    ]).catch(error => {
+        if (!isUrl(input)) throw error;
+        throw Object.assign(new Error((error as Error).message), { code: 'ETIMEDOUT' });
+    });
 }
