@@ -126,7 +126,7 @@ test('M2 placement: title card with the guest, a third per speaker, chapters aft
     const chapters = by('chapter') as Extract<GraphicLayer, { template: 'chapter' }>[];
     assert.deepEqual(chapters.map(c => [c.fields.number, c.fields.title]), [['2', 'The middle'], ['3', 'The close']]);
     assert.equal(by('logoBug').length, 0);
-    assert.equal(by('endScreen').length, 1);
+    assert.equal(by('endScreen').length, 0, 'the end screen is never placed (Tom, 28 October 2026)');
     assert.ok(LayersSchema.safeParse(layers).success);
     const withBug = motionGraphics({ title: 'T', show: 'S', words: [], chapters: [], hosts: [], logoBug: true });
     assert.equal(withBug.filter(l => l.template === 'logoBug').length, 1);

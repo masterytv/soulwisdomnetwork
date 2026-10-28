@@ -651,8 +651,8 @@ export function highlight(srcMs: number, layout: HighlightLayer['layout'], words
 // The motion graphics an edit is first set up with (spec 021 M2; Tom's D2: on for every new episode):
 // the title banner from the approved notes' chosen title and the first speaker who is not a host, a motion
 // lower third where each speaker first talks (hosts compact), a chapter banner at each approved chapter
-// after the first, the logo bug only when the Studio settings ask for it (`logoBug`, off by default), and
-// the end screen over the programme's last 20 s. The title banner and the lower thirds share the bottom
+// after the first, and the logo bug only when the Studio settings ask for it (`logoBug`, off by default). The
+// end screen is never placed (Tom, 28 October 2026); Elements still adds it by hand. The title banner and the lower thirds share the bottom
 // third, so a lower third due while the banner is up waits until just after it. Only for an episode with
 // no saved edit, like the teasers and b-roll (lib/programme.ts firstEdit, lib/layers.ts withLayers).
 export function motionGraphics(o: {
@@ -682,7 +682,6 @@ export function motionGraphics(o: {
         ...thirds,
         ...o.chapters.slice(1).map((c, i) => motionChapter(c.startMs, i + 2, c.title)),
         ...(o.logoBug ? [motionLogoBug()] : []),
-        motionEndScreen(),
     ];
 }
 const TITLE_GAP_MS = 1500, THIRD_GAP_MS = 500;
