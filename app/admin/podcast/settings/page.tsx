@@ -23,10 +23,10 @@ import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/
 import { DENSITY_LABELS, HIGHLIGHT_DENSITIES } from "@/lib/highlights";
 import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS } from "@/lib/reframe";
 import type { SettingsView } from "@/lib/server/studioSettings";
-import { TEASER_MUSIC_DB, TEASER_WHOOSH_DB, type LibraryEntry, type TeaserSound } from "@/lib/audio";
+import { STUDIO_SOUNDS, studioSoundUrl, TEASER_MUSIC_DB, TEASER_WHOOSH_DB, type LibraryEntry, type TeaserSound } from "@/lib/audio";
 
-// The teasers' music or whoosh (lib/audio.ts teaserSoundPlan): a show library file of the right kind whose licence an
-// admin has checked, and its level; "None" plays nothing.
+// The teasers' music or whoosh (lib/audio.ts teaserSoundPlan): for the whoosh, one of the Studio's own sounds; or a show
+// library file of the right kind whose licence an admin has checked; and its level. "None" plays nothing.
 function TeaserSoundPick({ label, kind, value, defaultDb, disabled, onChange, note }: {
     label: string; kind: LibraryEntry["kind"]; value: TeaserSound | null; defaultDb: number; disabled: boolean;
     onChange: (v: TeaserSound | null) => void; note: string;
@@ -36,19 +36,25 @@ function TeaserSoundPick({ label, kind, value, defaultDb, disabled, onChange, no
         studioFetch<{ entries: LibraryEntry[] }>("/api/studio/library").then(r => setEntries(r.entries)).catch(() => setEntries([]));
     }, []);
     const usable = (entries ?? []).filter(e => e.kind === kind && e.checked);
-    const chosen = entries?.find(e => e.id === value?.library);
+    const own = kind === "effect" ? STUDIO_SOUNDS : [];
+    // Each choice as one value: a library entry by its id, a Studio sound by its path.
+    const keyOf = (t: TeaserSound | null) => (!t ? "" : t.library ? `lib:${t.library}` : t.path);
+    const listenUrl = value?.library ? entries?.find(e => e.id === value.library)?.url : value ? studioSoundUrl(value.path) : null;
     return (
         <div className="flex flex-col gap-1 text-sm text-gray-200">
             <div className="flex flex-wrap items-center gap-2">
                 <span>{label}</span>
-                <select aria-label={label} disabled={disabled || entries === null} className={`${field} !w-auto !py-1 !px-2 text-xs`} value={value?.library ?? ""}
+                <select aria-label={label} disabled={disabled || entries === null} className={`${field} !w-auto !py-1 !px-2 text-xs`} value={keyOf(value)}
                     onChange={e => {
-                        const pick = usable.find(x => x.id === e.target.value);
-                        onChange(pick ? { library: pick.id, path: pick.path, name: pick.name.slice(0, 150), gainDb: value?.gainDb ?? defaultDb } : null);
+                        const k = e.target.value, gainDb = value?.gainDb ?? defaultDb;
+                        const st = own.find(x => x.path === k);
+                        const lib = usable.find(x => `lib:${x.id}` === k);
+                        onChange(st ? { path: st.path, name: st.name, gainDb } : lib ? { library: lib.id, path: lib.path, name: lib.name.slice(0, 150), gainDb } : null);
                     }}>
                     <option value="">None</option>
-                    {value && !usable.some(e => e.id === value.library) && <option value={value.library}>{value.name} (licence not checked)</option>}
-                    {usable.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                    {own.length > 0 && <optgroup label="Studio sounds">{own.map(x => <option key={x.path} value={x.path}>{x.name}</option>)}</optgroup>}
+                    {value?.library && !usable.some(e => e.id === value.library) && <option value={keyOf(value)}>{value.name} (licence not checked)</option>}
+                    {usable.length > 0 && <optgroup label="Show library">{usable.map(e => <option key={e.id} value={`lib:${e.id}`}>{e.name}</option>)}</optgroup>}
                 </select>
                 {value && (
                     <label className="flex items-center gap-1" title="Its level, in decibels (0 is as the file is)">
@@ -58,11 +64,11 @@ function TeaserSoundPick({ label, kind, value, defaultDb, disabled, onChange, no
                         <span className="tabular-nums w-12">{value.gainDb} dB</span>
                     </label>
                 )}
-                {chosen?.url && <audio src={chosen.url} controls preload="none" className="h-8" />}
+                {listenUrl && <audio key={listenUrl} src={listenUrl} controls preload="none" className="h-8" />}
             </div>
             <span className={hint}>
-                {note} From the <Link href="/admin/podcast/library" className="underline">show library</Link>{kind === "music" ? " (Music)" : " (Effects)"}, once its licence is checked.
-                {entries !== null && !usable.length && ` Nothing there yet: add one and check its licence first.`}
+                {note} {kind === "effect" ? "The Studio's own wind sounds, or one" : "One"} from the <Link href="/admin/podcast/library" className="underline">show library</Link>{kind === "music" ? " (Music)" : " (Effects)"} once its licence is checked.
+                {kind === "music" && entries !== null && !usable.length && " Nothing there yet: add one and check its licence first."}
             </span>
         </div>
     );

@@ -48,12 +48,13 @@ export async function saveSettings(input: unknown, uid: string): Promise<StudioS
     if (s.logoPath) await checkUploaded('logo', s.logoPath);
     if (s.introPath) await checkUploaded('intro', s.introPath);
     // The teasers' music and whoosh: show library files of the right kind, with their licences checked.
+    // (The Studio's own sounds need no check: TeaserSoundSchema already holds them to the list.)
     const sounds = ([['teaserMusic', 'music', 'The teasers\' music'], ['teaserWhoosh', 'effect', 'The teasers\' whoosh']] as const)
-        .flatMap(([key, kind, label]) => (s[key] ? [{ t: s[key]!, kind, label }] : []));
+        .flatMap(([key, kind, label]) => (s[key]?.library ? [{ t: s[key]!, id: s[key]!.library!, kind, label }] : []));
     if (sounds.length) {
-        const entries = await libraryEntries(sounds.map(x => x.t.library));
-        for (const { t, kind, label } of sounds) {
-            const e = entries.get(t.library);
+        const entries = await libraryEntries(sounds.map(x => x.id));
+        for (const { t, id, kind, label } of sounds) {
+            const e = entries.get(id);
             if (!e || e.path !== t.path) throw new HttpError(400, `${label}: "${t.name}" is not in the show library`);
             if (e.kind !== kind) throw new HttpError(400, `${label}: "${t.name}" is in the library as ${kind === 'music' ? 'an effect' : 'music'}`);
             if (!e.checked) throw new HttpError(400, `${label}: "${t.name}" has no licence check yet`);

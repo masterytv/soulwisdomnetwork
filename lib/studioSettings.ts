@@ -13,7 +13,7 @@ import { VOICE_CLEANUPS, WARMTHS } from './voice';
 import { PODCAST_CATEGORIES } from './podcastFeed';
 import { HIGHLIGHT_DENSITIES } from './highlights';
 import { HIGHLIGHT_LAYOUTS } from './reframe';
-import { TeaserSoundSchema } from './audio';
+import { DEFAULT_TEASER_WHOOSH, TeaserSoundSchema } from './audio';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -116,7 +116,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     introPath: null,
     teasers: true,
     teaserMusic: null,
-    teaserWhoosh: null,
+    teaserWhoosh: DEFAULT_TEASER_WHOOSH,
     joins: DEFAULT_SECTION_JOINS,
     finalSource: 'editorLight',
     voiceCleanup: 'standard',

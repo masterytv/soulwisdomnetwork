@@ -731,6 +731,13 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
   programme's sound (`podcast/editRender.ts`, `teaserSounds`); the editor's preview plays them with the programme
   player (`components/studio/teaserSounds.tsx`). Tested in `lib/audio.test.ts`, `editRender.test.ts` (heard where
   planned) and `editRenderJob.test.ts`.
+- **The Studio's own sounds** (Tom, 28 October 2026). Three gentle wind sounds made for the show by
+  `scripts/windSounds.py` (filtered noise, no recording or library in them, so nobody else holds rights) ship in
+  `public/studio/sounds` (`lib/audio.ts STUDIO_SOUNDS`): Wind: breath (1.2 s), breeze (1.6 s) and swell (2 s). They
+  need no licence check: the Media panel lists them under **Studio sounds** for A3 anywhere, the Settings picker
+  offers them for the sound between teasers, the preview plays them from the site and the render job copies them from
+  the repository (`publicDir`; without it they are left out with a warning). **Breath at −18 dB is the default sound
+  between teasers**, at the middle of each dissolve; "None" in Settings turns it off.
 
 - **Model** (`lib/audio.ts`, tested in `lib/audio.test.ts`): `edit.audio`, at most 200 sounds, ids unique. A sound is a file
   on **A2 Music** or **A3 Effects** with the layers' `anchor` and `durationMs` (so `layerSpan`, `startAt` and the timeline's

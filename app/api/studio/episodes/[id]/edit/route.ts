@@ -25,7 +25,7 @@ import { highlightProblems } from '@/lib/reframe';
 import { binItems, binPaths } from '@/lib/server/mediaBin';
 import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
-import { SoundsSchema, type Sound } from '@/lib/audio';
+import { isStudioSound, SoundsSchema, studioSoundUrl, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import { brollBlock } from '@/lib/brollGate';
 import { loadSilences } from '@/lib/server/buildEdit';
@@ -64,6 +64,7 @@ export const GET = handle<Context>(async (request, { params }) => {
     // And to every sound (item E7), so the preview can play them.
     for (const snd of edit.audio ?? []) {
         if (overlayUrls[snd.media.path]) continue;
+        if (isStudioSound(snd.media.path)) { overlayUrls[snd.media.path] = studioSoundUrl(snd.media.path); continue; }
         const url = await adminBucket().file(snd.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[snd.media.path] = url;
     }
@@ -81,9 +82,12 @@ export const GET = handle<Context>(async (request, { params }) => {
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
     // The teasers' music and whoosh (Studio settings), for the preview: only while their licences are checked, as the render plays them.
     const picks = ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []));
-    const pickEntries = picks.length ? await libraryEntries(picks.map(x => x.t.library)) : new Map();
+    const pickIds = picks.flatMap(x => (x.t.library ? [x.t.library] : []));
+    const pickEntries = pickIds.length ? await libraryEntries(pickIds) : new Map();
     const teaserSounds: Record<string, { name: string; url: string; gainDb: number }> = {};
     for (const { k, t } of picks) {
+        // The Studio's own sounds are served with the site.
+        if (!t.library) { if (isStudioSound(t.path)) teaserSounds[k] = { name: t.name, url: studioSoundUrl(t.path), gainDb: t.gainDb }; continue; }
         const e = pickEntries.get(t.library);
         if (!e || e.path !== t.path || !e.checked) continue;
         const url = await adminBucket().file(t.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
@@ -232,6 +236,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
         const library = await libraryEntries(fresh.flatMap(s => (s.library ? [s.library] : [])));
         let bin: BinItem[] | null = null;
         for (const s of fresh) {
+            if (!s.library && isStudioSound(s.media.path)) continue;   // the Studio's own sounds are free to use
             if (s.library) {
                 const entry = library.get(s.library);
                 if (!entry || entry.path !== s.media.path) throw new HttpError(400, `"${s.media.name}" is not in the show library`);

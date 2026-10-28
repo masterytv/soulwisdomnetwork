@@ -14,6 +14,7 @@ import { HttpError } from './staff';
 import { getSettings } from './studioSettings';
 import { checkUploaded, mediaKindOf } from './uploads';
 import { libraryAll } from './library';
+import { isStudioSound, STUDIO_SOUNDS, studioSoundUrl } from '@/lib/audio';
 
 const LINK_MS = 6 * 3600_000;
 export const BIN_MAX = 300;
@@ -55,6 +56,11 @@ export async function binItems(id: string, episode: Episode, settings: StudioSet
             sound: { kind: e.kind, checked: !!e.checked, credit: e.licence.credit, licence: e.licence.name },
         });
     }
+    // The Studio's own sounds (public/studio/sounds): the show's, so free to place.
+    for (const st of STUDIO_SOUNDS) {
+        items.push({ id: `studio-${st.path.split('/').pop()}`, kind: 'audio', source: 'studio', path: st.path, name: st.name, durationMs: st.durationMs,
+            sound: { kind: 'effect', checked: true, credit: '', licence: 'The Studio\'s own' } });
+    }
     return items;
 }
 
@@ -66,6 +72,7 @@ export async function getBin(id: string): Promise<{ items: BinItem[] }> {
     const expires = Date.now() + LINK_MS;
     await Promise.all(items.map(async it => {
         if (it.path === SITE_LOGO) { it.url = SITE_LOGO_URL; return; }
+        if (isStudioSound(it.path)) { it.url = studioSoundUrl(it.path); return; }
         it.url = await adminBucket().file(it.path).getSignedUrl({ action: 'read', expires }).then(([u]) => u).catch(() => null);
     }));
     return { items };

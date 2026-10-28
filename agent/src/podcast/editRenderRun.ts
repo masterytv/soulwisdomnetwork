@@ -92,6 +92,7 @@ async function main() {
         settings: await loadSettings(getFirestore()),
         showIntro: path.resolve('public/studio/show-intro.mp4'),
         siteLogo: path.resolve('public/logo.png'),
+        publicDir: path.resolve('public'),
         // The show library (spec 020 item E7): its entries' licence state, and the log of every use.
         library: async ids => {
             const items = getFirestore().collection('studio').doc('media').collection('items');

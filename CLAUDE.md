@@ -75,7 +75,9 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
               library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin
               (the teasers, before the episode, get theirs from the Studio settings instead: teaserMusic and teaserWhoosh, lib/audio.ts
-              teaserSoundPlan, mixed over the programme by the render and played by components/studio/teaserSounds.tsx);
+              teaserSoundPlan, mixed over the programme by the render and played by components/studio/teaserSounds.tsx; the Studio's own
+              wind sounds, made by scripts/windSounds.py, ship in public/studio/sounds with no licence to check, lib/audio.ts STUDIO_SOUNDS,
+              and "Wind: breath" is the default between teasers);
               the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
               editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
               components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,
@@ -98,7 +100,7 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
-scripts/      make_admin.ts
+scripts/      make_admin.ts; windSounds.py (the Studio's own wind sounds, public/studio/sounds)
 docs/specs/   numbered specs, 001-021; docs/BACKLOG.md lists features agreed for later;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;

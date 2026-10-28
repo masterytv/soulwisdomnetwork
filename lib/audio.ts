@@ -94,9 +94,20 @@ export const SOUND_TRACK = { music: 2, effects: 3 } as const;
 export const SOUND_TRACK_LABELS: Record<number, string> = { 2: 'A2 Music', 3: 'A3 Effects' };
 export const SOUNDS_MAX = 200;
 
-// Where a sound's file is: the show library, or the episode's own media.
+// The Studio's own sounds, shipped with it in public/studio/sounds (made by scripts/windSounds.py, so no one else
+// holds rights in them): placed like a library effect, with no licence to check, and fetched by the render from
+// the repository. Breath is the default sound between the teasers.
+export const STUDIO_SOUNDS = [
+    { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', durationMs: 1200 },
+    { path: 'studio/sounds/soul-wisdom-wind-breeze.wav', name: 'Wind: breeze', durationMs: 1600 },
+    { path: 'studio/sounds/soul-wisdom-wind-swell.wav', name: 'Wind: swell', durationMs: 2000 },
+] as const;
+export const isStudioSound = (path: string) => STUDIO_SOUNDS.some(s => s.path === path);
+export const studioSoundUrl = (path: string) => `/${path}`;
+
+// Where a sound's file is: the show library, the episode's own media, or one of the Studio's own sounds.
 export const SoundPathSchema = z.string().max(300)
-    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+)$/, 'Not a Studio sound')
+    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+|studio\/sounds\/[\w.-]+)$/, 'Not a Studio sound')
     .refine(p => !p.includes('..'), 'Not a Studio sound');
 
 export const SoundSchema = z.object({
@@ -152,13 +163,17 @@ export const uploadKind = (durationMs: number | null | undefined): LibraryKind =
 // every episode with teasers gets them; the render mixes them over the programme (podcast/editRender.ts)
 // and the editor's preview plays them with the teasers (components/studio/teaserSounds.tsx).
 export const TeaserSoundSchema = z.object({
-    library: z.string().regex(/^[\w-]{1,40}$/),            // the library entry, for its licence check and credit
-    path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
+    library: z.string().regex(/^[\w-]{1,40}$/).optional(),   // the library entry, for its licence check and credit
+    path: z.string().max(300).regex(/^(library\/[\w.-]+|studio\/sounds\/[\w.-]+)$/, 'Not a show library or Studio sound'),
     name: z.string().trim().max(150),
     gainDb: z.number().min(-40).max(6),
-}).strict();
+}).strict()
+    // A library file names its entry; one of the Studio's own sounds needs none, and must be one of them.
+    .refine(t => (t.path.startsWith('library/') ? !!t.library : !t.library && isStudioSound(t.path)), 'Not a show library or Studio sound');
 export type TeaserSound = z.infer<typeof TeaserSoundSchema>;
-export const TEASER_MUSIC_DB = -16, TEASER_WHOOSH_DB = -12;
+export const TEASER_MUSIC_DB = -16, TEASER_WHOOSH_DB = -18;
+// Unless the settings say otherwise: the Studio's breath of wind, low, at each change (Tom, 28 October 2026).
+export const DEFAULT_TEASER_WHOOSH: TeaserSound = { path: STUDIO_SOUNDS[0].path, name: STUDIO_SOUNDS[0].name, gainDb: TEASER_WHOOSH_DB };
 // The music fades in over the first half second and out over the last teaser's last 1.5 s; the whoosh
 // starts a little before each change, so it peaks on the cut.
 export const TEASER_MUSIC_FADE_IN_MS = 500, TEASER_MUSIC_FADE_OUT_MS = 1500, WHOOSH_LEAD_MS = 250;

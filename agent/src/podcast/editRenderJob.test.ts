@@ -684,3 +684,31 @@ test('the teasers\' music and whoosh (Studio settings): given to the render when
     assert.equal(given, undefined);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('the Studio\'s breath of wind between teasers by default: copied from the repository, never downloaded, no licence needed', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-studio-sound-'));
+    const downloads: string[] = [];
+    let given: { whoosh?: { sound: { path: string; gainDb: number }; file: string } } | undefined;
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: { version: 1, cuts: [], teasers: [
+            { startMs: 1000, endMs: 3000, speaker: 'Ana' }, { startMs: 5000, endMs: 7000, speaker: 'Ben' },
+        ] } }),
+        download: async (p, dest) => { downloads.push(p); fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async () => {},
+        cutClip: async (_in, out) => { fs.writeFileSync(out, ''); },
+        render: async opts => {
+            given = opts.teaserSounds;
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, intro: 'none' },
+        publicDir: path.resolve('public'),
+    }, path.join(dir, 'work'), '1');
+    assert.deepEqual([given?.whoosh?.sound.path, given?.whoosh?.sound.gainDb], ['studio/sounds/soul-wisdom-wind-breath.wav', -18]);
+    assert.equal(fs.statSync(given!.whoosh!.file).size, fs.statSync('public/studio/sounds/soul-wisdom-wind-breath.wav').size);
+    assert.ok(!downloads.some(p => p.startsWith('studio/')), downloads.join(', '));
+    fs.rmSync(dir, { recursive: true, force: true });
+});

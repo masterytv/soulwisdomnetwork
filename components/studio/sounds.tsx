@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import {
-    fileTimeAt, soundGainAt, soundSpan, SOUND_TRACK, SOUND_TRACK_LABELS, type Sound,
+    fileTimeAt, isStudioSound, soundGainAt, soundSpan, SOUND_TRACK, SOUND_TRACK_LABELS, type Sound,
 } from "@/lib/audio";
 import { isWhole, LAYER_MIN_MS, startAt, WHOLE_EPISODE_MS, type BinItem, type Span } from "@/lib/layers";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
@@ -109,7 +109,8 @@ export function SoundProperties({ sound, clips, editedMs, video, bin, onChange, 
                 <button type="button" className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(s.id)}>Remove</button>
             </div>
             <p className={hint}>
-                {s.library
+                {isStudioSound(s.media.path) ? 'One of the Studio\'s own sounds: the show\'s to use, with no licence to check.'
+                    : s.library
                     ? item?.sound ? `From the show library: ${item.sound.licence || 'licence'}${item.sound.checked ? ', checked' : ', NOT checked (it will be left out of the render)'}.${item.sound.credit ? ` Credit in the description: “${item.sound.credit}”.` : ''}` : 'From the show library.'
                     : item?.rights ? `Uploaded for this episode; ${item.rights.name} said it is theirs to use (${item.rights.on}).` : 'Uploaded for this episode.'}
             </p>

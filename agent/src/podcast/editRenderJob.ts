@@ -30,7 +30,7 @@ import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTe
 import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LABELS } from '../../../lib/reframe';
 import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';
-import { soundCredits, type LibraryEntry, type LibraryUse, type Sound, type TeaserSound } from '../../../lib/audio';
+import { isStudioSound, soundCredits, type LibraryEntry, type LibraryUse, type Sound, type TeaserSound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -61,6 +61,7 @@ export interface EditRenderDeps {
     settings?: StudioSettings;           // the defaults when left out
     showIntro?: string;                  // the show's intro in the repository, when there is no edit package
     siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
+    publicDir?: string;                  // the repository's public/, where the Studio's own sounds are (lib/audio.ts STUDIO_SOUNDS)
     // Cuts a teaser clip from the recording: plainly, when there is no edit package to take clips from, or with the
     // "In this episode" tag and its speaker (`tag`) for the edit's own teasers (item E10).
     cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number, tag?: { speaker: string }) => Promise<void>;
@@ -218,7 +219,9 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const known = fetched.get(storagePath);
         if (known) return known;
         const local = path.join(workDir, `${name}${path.extname(storagePath) || '.mp4'}`);
-        await deps.download(storagePath, local);
+        // The Studio's own sounds ship in the repository (public/studio/sounds), not in Storage.
+        if (isStudioSound(storagePath)) fs.copyFileSync(path.join(deps.publicDir!, storagePath), local);
+        else await deps.download(storagePath, local);
         fetched.set(storagePath, local);
         return local;
     };
@@ -358,11 +361,18 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const teaserPicks = teasers.length
         ? ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []))
         : [];
-    const libraryIds = [...new Set([...plan.sounds.flatMap(s => (s.library ? [s.library] : [])), ...teaserPicks.map(x => x.t.library)])];
+    const libraryIds = [...new Set([...plan.sounds.flatMap(s => (s.library ? [s.library] : [])), ...teaserPicks.flatMap(x => (x.t.library ? [x.t.library] : []))])];
     const library = libraryIds.length && deps.library ? await deps.library(libraryIds) : new Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>();
     const sounds: { sound: Sound; file: string }[] = [];
     const soundWarnings: string[] = [];
+    // The Studio's own sounds come from the repository; without it (a test, a run elsewhere) they are left out.
+    const ownMissing = (p: string, name: string) => {
+        if (!isStudioSound(p) || (deps.publicDir && fs.existsSync(path.join(deps.publicDir, p)))) return false;
+        soundWarnings.push(`The Studio sound "${name}" was not found with the render, so it was left out.`);
+        return true;
+    };
     for (const [i, s] of plan.sounds.entries()) {
+        if (ownMissing(s.media.path, s.media.name)) continue;
         if (s.library) {
             const entry = library.get(s.library);
             if (!entry || entry.path !== s.media.path) { soundWarnings.push(`The sound "${s.media.name}" is no longer in the show library, so it was left out.`); continue; }
@@ -372,10 +382,12 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
     const teaserSounds: { music?: { sound: TeaserSound; file: string }; whoosh?: { sound: TeaserSound; file: string } } = {};
     for (const { k, t } of teaserPicks) {
-        const entry = library.get(t.library);
         const label = k === 'music' ? 'The teasers\' music' : 'The teasers\' whoosh';
-        if (!entry || entry.path !== t.path) { soundWarnings.push(`${label} "${t.name}" is no longer in the show library, so it was left out.`); continue; }
-        if (!entry.checked) { soundWarnings.push(`${label} "${t.name}": its licence is not checked, so it was left out.`); continue; }
+        if (t.library) {
+            const entry = library.get(t.library);
+            if (!entry || entry.path !== t.path) { soundWarnings.push(`${label} "${t.name}" is no longer in the show library, so it was left out.`); continue; }
+            if (!entry.checked) { soundWarnings.push(`${label} "${t.name}": its licence is not checked, so it was left out.`); continue; }
+        } else if (!isStudioSound(t.path) || ownMissing(t.path, t.name)) continue;
         teaserSounds[k] = { sound: t, file: await get(t.path, `teaser-${k}`) };
     }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
@@ -429,7 +441,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const order = report.soundsPlayed ?? [];
     const played = new Set(order);
     // The teasers' sounds play first, before the episode, so their credits come first.
-    const teaserUsed = (report.teaserSoundsPlayed ?? []).flatMap(k => (teaserSounds[k] ? [teaserSounds[k]!.sound.library] : []));
+    const teaserUsed = (report.teaserSoundsPlayed ?? []).flatMap(k => (teaserSounds[k]?.sound.library ? [teaserSounds[k]!.sound.library!] : []));
     const credits = [...new Set([
         ...teaserUsed.flatMap(id => { const c = library.get(id)?.licence.credit.trim(); return c ? [c] : []; }),
         ...soundCredits(plan.sounds.map(s => ({ sound: s, span: played.has(s.id) ? { startMs: order.indexOf(s.id), endMs: order.indexOf(s.id) + 1 } : null })), library),

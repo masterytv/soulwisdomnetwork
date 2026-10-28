@@ -7,6 +7,7 @@ import {
     EMPTY_LICENCE, fileTimeAt, licenceMissing, licenceProblem, newSound, soundCredits, soundFilter, soundGainAt, soundsMix,
     SoundSchema, SoundsSchema, soundSpan, SOUND_TRACK, uploadKind, type Licence,
     teaserMusicSound, teaserSoundPlan, TeaserSoundSchema, teaserWhooshSound, WHOOSH_LEAD_MS, TEASER_MUSIC_DB,
+    isStudioSound, STUDIO_SOUNDS, studioSoundUrl,
 } from './audio';
 import { WHOLE_EPISODE_MS } from './layers';
 import { youtubeDescription, type ShowNotes } from './showNotes';
@@ -134,4 +135,23 @@ test('teaser sounds: valid sounds for the render, and the setting checks its fil
     for (const bad of [{ ...TS, path: 'episodes/abcdefghij/media/x.mp3' }, { ...TS, gainDb: 12 }, { ...TS, extra: 1 }, { ...TS, library: '../x' }]) {
         assert.equal(TeaserSoundSchema.safeParse(bad).success, false, JSON.stringify(bad));
     }
+});
+
+test('the Studio\'s own sounds: shipped in public/, the length each says, placeable and a teaser sound with no library', async () => {
+    const { execFileSync } = await import('child_process');
+    for (const st of STUDIO_SOUNDS) {
+        const seconds = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', `public/${st.path}`]).toString());
+        assert.ok(Math.abs(seconds * 1000 - st.durationMs) < 20, `${st.path}: ${seconds} s`);
+        assert.equal(studioSoundUrl(st.path), `/${st.path}`);
+    }
+    const breath = STUDIO_SOUNDS[0].path;
+    assert.ok(isStudioSound(breath) && !isStudioSound('studio/sounds/other.wav'));
+    const placed = { ...newSound({ path: breath, name: 'Wind: breath', durationMs: 1200 }, 'effect', { srcMs: 0, atMs: 0 }), id: 'w1' };
+    assert.equal(SoundSchema.safeParse(placed).success, true);
+    assert.equal(TeaserSoundSchema.safeParse({ path: breath, name: 'Wind: breath', gainDb: -18 }).success, true);
+    for (const bad of [
+        { path: breath, name: 'x', gainDb: -18, library: 'lib1' },             // a Studio sound names no library entry
+        { path: 'studio/sounds/other.wav', name: 'x', gainDb: -18 },           // only the Studio's own
+        { path: 'library/bed.mp3', name: 'x', gainDb: -18 },                   // a library file names its entry
+    ]) assert.equal(TeaserSoundSchema.safeParse(bad).success, false, JSON.stringify(bad));
 });

@@ -90,9 +90,12 @@ test('who makes the final cut (spec 020 item E15): the Studio editor by default;
     assert.equal(withDefaults({ finalCutBy: 'nonsense' }).finalSource, 'editorLight');
 });
 
-test('the teasers\' music and whoosh: none by default; a saved one is kept, a broken one dropped', () => {
-    assert.deepEqual([DEFAULT_SETTINGS.teaserMusic, DEFAULT_SETTINGS.teaserWhoosh], [null, null]);
+test('the teasers\' music and whoosh: no music and the Studio\'s breath of wind, low, by default; a saved one is kept, a broken one dropped', () => {
+    assert.equal(DEFAULT_SETTINGS.teaserMusic, null);
+    assert.deepEqual(DEFAULT_SETTINGS.teaserWhoosh, { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', gainDb: -18 });
+    assert.equal(StudioSettingsSchema.shape.teaserWhoosh.safeParse(DEFAULT_SETTINGS.teaserWhoosh).success, true);
+    assert.equal(withDefaults({ teaserWhoosh: null }).teaserWhoosh, null, 'None, once chosen, stays none');
     const bed = { library: 'lib1', path: 'library/bed.mp3', name: 'Starlit bed', gainDb: -16 };
     assert.deepEqual(withDefaults({ teaserMusic: bed }).teaserMusic, bed);
-    assert.equal(withDefaults({ teaserWhoosh: { ...bed, path: '/etc/passwd' } }).teaserWhoosh, null);
+    assert.deepEqual(withDefaults({ teaserWhoosh: { ...bed, path: '/etc/passwd' } }).teaserWhoosh, DEFAULT_SETTINGS.teaserWhoosh, 'a broken one falls back to the default');
 });
