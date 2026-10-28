@@ -144,7 +144,7 @@ export const GraphicLayerSchema = z.discriminatedUnion('template', [
     graphicOf('titleCard', { title: field200, guest: field200, show: field200 }),
     graphicOf('lowerThird', { name: field200, descriptor: field200, variant: z.enum(['guest', 'host']) }),
     graphicOf('logoBug', {}),
-    graphicOf('teaserTag', { speaker: field200 }),
+    graphicOf('teaserTag', { speaker: field200, label: field200.optional() }),   // label: the top line, "IN THIS EPISODE" when absent
     graphicOf('chapter', { number: field200, title: field200 }),
     graphicOf('pullQuote', { quote: field200, speaker: field200 }),
     graphicOf('keyIdea', { term: field200, definition: field200 }),

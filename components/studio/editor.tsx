@@ -46,7 +46,7 @@ import { highlightProblems } from '@/lib/reframe';
 import { touchSuggested } from '@/lib/highlights';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
-import { PropertiesPanel } from '@/components/studio/properties';
+import { ClipLabelProperties, PropertiesPanel } from '@/components/studio/properties';
 import { ClipSoundProperties, ClipSoundsPreview, SoundProperties, SoundsPreview } from '@/components/studio/sounds';
 import { soundBlocked } from '@/components/studio/mediaBin';
 import { newSound, openingMusicDefault, uploadKind, type OpeningMusic, type Sound } from '@/lib/audio';
@@ -62,7 +62,7 @@ import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 import { clipsOf, ProgrammePlayer, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
-import { buildOpening, changeJoin, clipStretches, insertClip, openingClips, setClipJoin, setEnds, setProgramme, type ProgrammeEdit, type ProgrammeSound } from '@/lib/programme';
+import { buildOpening, changeJoin, clipStretches, insertClip, LABEL_TEXT, openingClips, setClipJoin, setEnds, setLabel, setProgramme, type ProgrammeEdit, type ProgrammeSound } from '@/lib/programme';
 import { studioFetch } from '@/lib/studioClient';
 import { teaserSlot } from '@/lib/timeline';
 
@@ -342,6 +342,12 @@ export function Editor({
     const programmeControl = prog?.control;
     // Spec 022: the sounds on the clips other than the episode.
     const clipSounds = prog?.clips.audio ?? NO_CLIP_SOUNDS;
+    // A clip of the whole video as the panels name it, and the label chosen on V3 (spec 022), for Properties.
+    const pieceName = (id: string) => {
+        const p = prog?.pieces.find(x => x.id === id);
+        return !p ? 'a clip' : p.kind === 'teaser' ? `Teaser ${p.index + 1}${p.name ? ` · ${p.name}` : ''}` : p.label;
+    };
+    const chosenLabel = timelineSel?.kind === 'label' ? prog?.clips.layers.find(l => l.anchor.clip === timelineSel.id) ?? null : null;
     // Spec 022: the teasers' actions change the whole video's clips, and the old fields with them (lib/programme.ts).
     const changeClips = useCallback((f: (p: ProgrammeEdit) => ProgrammeEdit) =>
         updateEdit(prev => setProgramme(prev, f(clipsOf(prev, programme, studioJoins)))), [updateEdit, programme, studioJoins]);
@@ -1395,10 +1401,25 @@ export function Editor({
                         {
                             id: 'properties',
                             label: 'Properties',
-                            node: prog && clipSounds.some(s => s.id === selectedLayer) ? (
+                            node: !selectedLayer && prog && chosenLabel ? (
+                                <ClipLabelProperties
+                                    key={`${chosenLabel.anchor.clip}|${chosenLabel.fields.speaker}|${chosenLabel.fields.label ?? ''}`}
+                                    on={pieceName(chosenLabel.anchor.clip)}
+                                    speaker={chosenLabel.fields.speaker}
+                                    text={chosenLabel.fields.label ?? ''}
+                                    defaultText={LABEL_TEXT}
+                                    others={prog.clips.layers.length - 1}
+                                    canEdit={layersEditable}
+                                    onChange={({ speaker, text, everywhere }) => changeClips(p => everywhere
+                                        ? p.layers.reduce((q, l) => setLabel(q, l.anchor.clip, { text }), p)
+                                        : setLabel(p, chosenLabel.anchor.clip, { speaker, text }))}
+                                    onRemove={() => { changeClips(p => setLabel(p, chosenLabel.anchor.clip, { on: false })); setTimelineSel(null); }}
+                                    onPlay={() => { const k = prog.pieces.findIndex(p => p.id === chosenLabel.anchor.clip); if (k >= 0) prog.control.cue(k, 0); }}
+                                />
+                            ) : prog && clipSounds.some(s => s.id === selectedLayer) ? (
                                 <ClipSoundProperties
                                     sound={clipSounds.find(s => s.id === selectedLayer)!}
-                                    clips={prog.pieces.filter(p => p.kind !== 'episode').map(p => ({ id: p.id, name: p.kind === 'teaser' ? `Teaser ${p.index + 1}${p.name ? ` · ${p.name}` : ''}` : p.label }))}
+                                    clips={prog.pieces.filter(p => p.kind !== 'episode').map(p => ({ id: p.id, name: pieceName(p.id) }))}
                                     bin={media?.items ?? null}
                                     onChange={snd => changeClips(p => ({ ...p, audio: (p.audio ?? []).map(x => (x.id === snd.id ? snd : x)) }))}
                                     onRemove={removeLayer}
@@ -1497,7 +1518,7 @@ export function Editor({
                             onSeek={ms => seekToTime(ms / 1000)}
                             media={timelineMedia}
                             selection={timelineSel}
-                            onSelect={sel => { setTimelineSel(sel); if (sel) setSelectedRange(null); }}
+                            onSelect={sel => { setTimelineSel(sel); if (sel) setSelectedRange(null); if (sel?.kind === 'label') setPanelId('properties'); }}
                             onCuts={cuts => updateEdit(prev => ({ ...prev, cuts }))}
                             onHear={hear}
                             keys={containerRef}

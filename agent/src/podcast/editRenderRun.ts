@@ -110,7 +110,7 @@ async function main() {
         cutClip: async (input, output, start, seconds, tag) => {
             if (!tag) { await cutClip(input, output, start, seconds, true); return; }
             const ass = output.replace(/\.mp4$/, '.ass');
-            fs.writeFileSync(ass, teaserAss({ speaker: tag.speaker, durationMs: Math.round(seconds * 1000) }));
+            fs.writeFileSync(ass, teaserAss({ speaker: tag.speaker, label: tag.label, durationMs: Math.round(seconds * 1000) }));
             await cutClip(input, output, start, seconds, true, { ass, fontsDir: FONTS_DIR });
         },
         // The voice clean-ups (spec 019 item 3.2): the workflow downloads deep-filter; Auphonic's key is a repo secret.

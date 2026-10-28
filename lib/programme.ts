@@ -287,7 +287,7 @@ const ProgrammeLayerSchema = z.object({
     out: z.object({ transition: z.literal('none'), durationMs: z.literal(0) }).strict(),
     kind: z.literal('graphic'),
     template: z.literal('teaserTag'),
-    fields: z.object({ speaker: z.string().trim().max(200) }).strict(),
+    fields: z.object({ speaker: z.string().trim().max(200), label: z.string().trim().max(200).optional() }).strict(),
 }).strict();
 
 const ProgrammeSoundSchema = SoundSchema.omit({ anchor: true }).extend({
@@ -319,6 +319,9 @@ export const ProgrammeSchema = z.object({
 // How long an "In this episode" label is on a clip of `lengthMs`: the whole clip, at least a second (the motion tag's
 // shortest drawing) and at most the longest graphic, as the render has drawn the teaser's tag since spec 021.
 export const labelLength = (lengthMs: number) => Math.max(1000, Math.min(Math.round(lengthMs), GRAPHIC_MAX_MS));
+
+// The label's top line when none is set (teaserTag.html draws it, teaserBanner.ts burns it in).
+export const LABEL_TEXT = 'IN THIS EPISODE';
 
 // The "In this episode" label on a clip.
 export function clipLabel(clip: string, speaker: string, lengthMs: number): ProgrammeLayer {
@@ -607,8 +610,9 @@ export function setClipJoin(p: ProgrammeEdit, id: string, t: Transition | null):
     return { ...p, clips: p.clips.map(c => { if (c.id !== id) return c; const next = { ...c }; if (t) next.join = t; else delete next.join; return next; }) };
 }
 
-// The whole video with a clip's "In this episode" label on (named `speaker`, or the clip's name) or off, or renamed.
-export function setLabel(p: ProgrammeEdit, id: string, change: { on?: boolean; speaker?: string }): ProgrammeEdit {
+// The whole video with a clip's "In this episode" label on (named `speaker`, or the clip's name) or off, renamed, or
+// with its top line (`text`) changed.
+export function setLabel(p: ProgrammeEdit, id: string, change: { on?: boolean; speaker?: string; text?: string }): ProgrammeEdit {
     const c = p.clips.find(x => x.id === id);
     if (!c || c.kind === 'episode') return p;
     const label = p.layers.find(l => l.anchor.clip === id);
@@ -618,8 +622,12 @@ export function setLabel(p: ProgrammeEdit, id: string, change: { on?: boolean; s
         const len = isRecording(c) ? c.outMs - c.inMs : 5000;
         return { ...p, layers: [...p.layers, clipLabel(id, change.speaker ?? (isRecording(c) ? c.name : ''), len)] };
     }
-    if (change.speaker === undefined) return p;
-    return { ...p, layers: p.layers.map(l => (l === label ? { ...l, fields: { speaker: change.speaker!.trim().slice(0, 200) } } : l)) };
+    if (change.speaker === undefined && change.text === undefined) return p;
+    const speaker = (change.speaker ?? label.fields.speaker).trim().slice(0, 200);
+    // The top line: kept only when it is not the template's own, so a label never changed draws exactly as before.
+    const text = (change.text ?? label.fields.label ?? '').trim().slice(0, 200);
+    const fields = text && text !== LABEL_TEXT ? { speaker, label: text } : { speaker };
+    return { ...p, layers: p.layers.map(l => (l === label ? { ...l, fields } : l)) };
 }
 
 // ─── Building the opening (spec 022 stage 3b) ─────────────────────────────────

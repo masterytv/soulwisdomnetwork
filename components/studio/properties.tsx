@@ -7,6 +7,7 @@
 // and goes; a still's motion; a video's start and sound; and for text, the words and their look, with the
 // band's and the second line's colours (the brand's, for titles and lower thirds).
 
+import { useState } from "react";
 import {
     ALIGN, FRAME, POSITION_LABELS, POSITIONS, type Position,
 } from "@/lib/onScreen";
@@ -398,6 +399,67 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                         </div>
                     </Section>
                 )}
+            </fieldset>
+        </section>
+    );
+}
+
+// Spec 022: the "In this episode" label on a clip of the whole video (a teaser, the intro or the outro), chosen on V3:
+// its top line and the name under it, saved when the field is left (or Enter), as the timeline's name box does.
+export function ClipLabelProperties({ on, speaker, text, defaultText, others, canEdit, onChange, onRemove, onPlay }: {
+    on: string;                              // the clip it is on, as the timeline names it
+    speaker: string;
+    text: string;                            // its top line; "" for the template's own
+    defaultText: string;
+    others: number;                          // how many other clips have a label
+    canEdit: boolean;
+    onChange: (change: { speaker?: string; text?: string; everywhere?: boolean }) => void;
+    onRemove: () => void;
+    onPlay: () => void;
+}) {
+    const [name, setName] = useState(speaker);
+    const [line, setLine] = useState(text || defaultText);
+    const shown = (line.trim() || defaultText);
+    const saveName = () => { if (name.trim() !== speaker) onChange({ speaker: name }); };
+    const saveLine = () => { if (shown !== (text || defaultText)) onChange({ text: shown }); };
+    const enter = (save: () => void) => (e: React.KeyboardEvent<HTMLInputElement>) => {
+        if (e.key === "Enter") { e.preventDefault(); save(); e.currentTarget.blur(); }
+    };
+    return (
+        <section aria-label="Properties" className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-gray-200">Properties</h2>
+                <span className="px-1.5 py-0.5 rounded text-xs bg-amber-400/20 text-amber-200">“In this episode” label</span>
+                <span className="text-xs text-gray-300 truncate max-w-[14rem]">on {on}</span>
+                <span className="grow" />
+                <button type="button" onClick={onPlay} className={`${secondary} px-2 py-0.5`} title="Play the clip">▶ Play</button>
+                <button type="button" disabled={!canEdit} className={`${secondary} px-2 py-0.5`} onClick={onRemove} title="Take the label off this clip (Delete)">Remove</button>
+            </div>
+            <fieldset disabled={!canEdit} className="contents">
+                <Section title="Text">
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                        Top line
+                        <input value={line} maxLength={200} aria-label="Top line" onChange={e => setLine(e.target.value)} onBlur={saveLine} onKeyDown={enter(saveLine)}
+                            className={field} placeholder={defaultText} />
+                    </label>
+                    <label className="flex flex-col gap-1 text-xs text-gray-300">
+                        Name
+                        <input value={name} maxLength={200} aria-label="Name" onChange={e => setName(e.target.value)} onBlur={saveName} onKeyDown={enter(saveName)}
+                            className={field} placeholder="The speaker's name (none: the top line alone)" />
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                        {others > 0 && (
+                            <button type="button" className={`${secondary} px-2 py-0.5 text-xs`} onClick={() => onChange({ text: shown, everywhere: true })}
+                                title="Put this top line on every clip's label">Use this top line on every label</button>
+                        )}
+                        {shown !== defaultText && (
+                            <button type="button" className={`${secondary} px-2 py-0.5 text-xs`} onClick={() => { setLine(defaultText); onChange({ text: defaultText }); }}>
+                                Back to “{defaultText}”
+                            </button>
+                        )}
+                    </div>
+                    <p className={hint}>The motion graphic shows the top line in gold and the name under it, for the whole clip.</p>
+                </Section>
             </fieldset>
         </section>
     );
