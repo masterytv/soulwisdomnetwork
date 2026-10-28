@@ -759,8 +759,8 @@ test('spec 022 3b: a built opening goes to the render as clips, dissolves, label
     const base = { version: 1, cuts: [] } as EpisodeEdit;
     const notes = [{ startMs: 1000, endMs: 3000, speaker: 'Ana' }, { startMs: 5000, endMs: 7000, speaker: 'Ben' }];
     const built = buildOpening(programmeEdit(base), { teasers: notes, sections: DEFAULT_SETTINGS.joins, music: null });
-    const edit = setProgramme(base, setLabel(built, 'intro', { on: true, speaker: 'Welcome' }));
-    const overlaid: string[] = [];
+    const edit = setProgramme(base, setLabel(setLabel(built, 'intro', { on: true, speaker: 'Welcome' }), 'c2', { text: 'COMING UP' }));
+    const overlaid: string[] = [], drawn: string[] = [];
     let given: { programme: { kind: string; id?: string; file?: string; join: string | null }[]; sounds: string[] } = { programme: [], sounds: [] };
     await runEditRender(ID, {
         getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit }),
@@ -780,7 +780,7 @@ test('spec 022 3b: a built opening goes to the render as clips, dissolves, label
         },
         now: () => 'NOW',
         settings: { ...DEFAULT_SETTINGS, intro: 'custom', introPath: 'settings/intro-1.mp4' },
-        graphics: { name: spec => `${spec.template}-${JSON.stringify(spec.fields).length}.mov`, draw: async (_spec, out) => { fs.writeFileSync(out, ''); } },
+        graphics: { name: spec => `${spec.template}-${JSON.stringify(spec.fields).length}.mov`, draw: async (spec, out) => { drawn.push(JSON.stringify(spec.fields)); fs.writeFileSync(out, ''); } },
         publicDir: path.resolve('public'),
     }, path.join(dir, 'work'), '5');
     fs.rmSync(dir, { recursive: true, force: true });
@@ -793,4 +793,6 @@ test('spec 022 3b: a built opening goes to the render as clips, dissolves, label
     ]);
     assert.deepEqual(overlaid, ['teaser-cut-1.mp4 → teaser-cut-1-tagged.mp4', 'teaser-cut-2.mp4 → teaser-cut-2-tagged.mp4', 'intro.mp4 → intro-tagged.mp4']);
     assert.deepEqual(given.sounds, ['wind-c2 on c2 at 0']);
+    // A label's own top line reaches the motion tag; the others draw the template's own.
+    assert.deepEqual(drawn, ['{"speaker":"Ana"}', '{"speaker":"Ben","label":"COMING UP"}', '{"speaker":"Welcome"}']);
 });

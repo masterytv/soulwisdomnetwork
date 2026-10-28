@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    EMPTY_LICENCE, fileTimeAt, licenceMissing, licenceProblem, newSound, soundCredits, soundFilter, soundGainAt, soundsMix,
+    EMPTY_LICENCE, fileTimeAt, startTrimMs, licenceMissing, licenceProblem, newSound, soundCredits, soundFilter, soundGainAt, soundsMix,
     SoundSchema, SoundsSchema, soundSpan, SOUND_TRACK, uploadKind, type Licence,
     teaserMusicSound, teaserSoundPlan, TeaserSoundSchema, teaserWhooshSound, WHOOSH_LEAD_MS, TEASER_MUSIC_DB,
     isStudioSound, STUDIO_SOUNDS, studioSoundUrl, openingMusicDefault, OpeningMusicSchema,
@@ -65,6 +65,15 @@ test('the preview: level with fades and ducking; place in the file, round again 
     assert.equal(fileTimeAt({ inMs: 500, loop: false }, span, 13_000, 2000), 3500);
     assert.equal(fileTimeAt({ inMs: 500, loop: true }, span, 13_000, 2000), 1500);
     assert.equal(fileTimeAt({ inMs: 500, loop: true }, span, 13_000, null), 3500);
+});
+
+test('trimming a sound\'s start cuts into the file, so the rest plays where it did', () => {
+    const s = { inMs: 0, durationMs: 60_000 };
+    assert.equal(startTrimMs(s, 2500), 2500);                          // 2.5 s of silence off the front
+    assert.equal(startTrimMs(s, -1000), 0);                            // nothing before the file's start
+    assert.equal(startTrimMs({ inMs: 2500, durationMs: 57_500 }, -1000), -1000);   // dragged back out
+    assert.equal(startTrimMs({ inMs: 2500, durationMs: 57_500 }, -9000), -2500);
+    assert.equal(startTrimMs(s, 90_000), 60_000 - 500);                // never shorter than LAYER_MIN_MS
 });
 
 test('the render: each sound trimmed, levelled, faded and placed; the ducked ones keyed by the voice', () => {

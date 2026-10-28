@@ -37,11 +37,11 @@ import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, moveSection, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
 import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type GraphicAnchor, type Layer } from '@/lib/layers';
 import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from '@/lib/reframe';
-import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
+import { SOUND_TRACK, SOUND_TRACK_LABELS, startTrimMs, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import {
-    duplicateClip, MAX_CLIPS, moveClip, removeClip, setLabel, splitClip, TEASER_SHORTEST_MS, trimClip, type ProgrammeEdit, type ProgrammeSound,
+    duplicateClip, LABEL_TEXT, MAX_CLIPS, moveClip, removeClip, setLabel, splitClip, TEASER_SHORTEST_MS, trimClip, type ProgrammeEdit, type ProgrammeSound,
 } from '@/lib/programme';
 import { TRANSITION_LABELS } from '@/lib/transitions';
 import type { ProgrammeControl, ShownPiece } from '@/components/studio/programme';
@@ -1107,7 +1107,12 @@ export function Timeline({
             const anchorAt = (srcMs: number, at: number) => ('atMs' in b.anchor ? { atMs: Math.round(at) } : { srcMs: Math.round(srcMs) });
             if (d.mode === 'move') draft = { ...b, anchor: anchorAt(ms, editedAt) };
             else if (d.mode === 'end') draft = { ...b, durationMs: Math.max(LAYER_MIN_MS, Math.round(editedAt - bounds.span.startMs)) };
-            else {
+            else if (isSound(b)) {
+                // A sound's start cuts into its file (inMs), so the rest stays where it plays.
+                const by = startTrimMs(b, Math.min(editedAt, bounds.span.endMs - LAYER_MIN_MS) - bounds.span.startMs);
+                const start = bounds.span.startMs + by;
+                draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: b.durationMs - by, inMs: b.inMs + by };
+            } else {
                 const start = Math.min(editedAt, bounds.span.endMs - LAYER_MIN_MS);
                 draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: Math.max(LAYER_MIN_MS, Math.round(bounds.span.endMs - start)) };
             }
@@ -1172,7 +1177,7 @@ export function Timeline({
         const v = clipSoundView(axis, d.base)!;
         const delta = Math.round((e.clientX - d.x0) / pxPerMs / DRAG_STEP_MS) * DRAG_STEP_MS;
         if (d.mode === 'move') setClipDrag({ ...d, moved, from: Math.max(0, v.fromMs + delta), to: Math.max(0, v.fromMs + delta) + d.base.durationMs });
-        else if (d.mode === 'start') setClipDrag({ ...d, moved, from: Math.max(0, Math.min(v.toMs - LAYER_MIN_MS, v.fromMs + delta)), to: v.toMs });
+        else if (d.mode === 'start') setClipDrag({ ...d, moved, from: v.fromMs + startTrimMs(d.base, Math.max(-v.fromMs, Math.min(v.toMs - LAYER_MIN_MS - v.fromMs, delta))), to: v.toMs });
         else setClipDrag({ ...d, moved, from: v.fromMs, to: Math.max(v.fromMs + LAYER_MIN_MS, v.toMs + delta) });
     };
     const onClipSoundUp = () => {
@@ -1181,14 +1186,16 @@ export function Timeline({
         setClipDrag(null);
         if (!d.moved) { seekView(d.from); return; }
         const durationMs = Math.round(d.mode === 'move' ? d.base.durationMs : d.to - d.from);
+        // A trimmed start cuts into the file, so the rest plays where it did.
+        const inMs = d.mode === 'start' ? d.base.inMs + Math.round(d.from - clipSoundView(axis, d.base)!.fromMs) : d.base.inMs;
         const onto = soundPlace(axis, d.from);
         if ('clip' in onto) {
-            onAllSounds!(sounds, clipSounds.map(s => (s.id === d.id ? { ...d.base, anchor: onto, durationMs } : s)));
+            onAllSounds!(sounds, clipSounds.map(s => (s.id === d.id ? { ...d.base, anchor: onto, durationMs, inMs } : s)));
             return;
         }
         // Into the episode: music stays at its time in the edit, an effect with its words.
         const at = timelineTime(clips, onto.srcMs, true) ?? 0;
-        onAllSounds!([...sounds, { ...d.base, durationMs, anchor: d.base.track === SOUND_TRACK.music ? { atMs: Math.round(at) } : { srcMs: onto.srcMs } }],
+        onAllSounds!([...sounds, { ...d.base, durationMs, inMs, anchor: d.base.track === SOUND_TRACK.music ? { atMs: Math.round(at) } : { srcMs: onto.srcMs } }],
             clipSounds.filter(s => s.id !== d.id));
     };
     const selectedLayerShown: Placed | null = shownLayers.find(l => l.id === selectedLayer) ?? shownSounds.find(s => s.id === selectedLayer) ?? null;
@@ -1914,7 +1921,7 @@ export function Timeline({
                                             key={l.id}
                                             type="button"
                                             aria-label={`The "In this episode" label on ${clipName(c.id ?? '')}: ${l.fields.speaker}`}
-                                            title={`"In this episode" label${l.fields.speaker ? `: ${l.fields.speaker}` : ''}. Click to change the name or take it off.`}
+                                            title={`"In this episode" label${l.fields.speaker ? `: ${l.fields.speaker}` : ''}. Click to change its words in Properties, or take it off.`}
                                             onPointerDown={e => e.stopPropagation()}
                                             onClick={() => { onSelectLayer?.(null); if (c.id) onSelect({ kind: 'label', id: c.id }); cueClip(c, l.anchor.ms); }}
                                             className={`absolute flex items-stretch overflow-hidden rounded-sm text-left ${isSel ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-amber-200'}`}
@@ -1923,7 +1930,7 @@ export function Timeline({
                                             <span className="shrink-0 w-[3px]" style={{ background: TEASER }} />
                                             {w > 40 && (
                                                 <span className="flex items-center gap-1 px-1 whitespace-nowrap text-[9px] leading-none">
-                                                    <span className="font-black tracking-wider" style={{ color: TEASER }}>IN THIS EPISODE</span>
+                                                    <span className="font-black tracking-wider" style={{ color: TEASER }}>{l.fields.label ?? LABEL_TEXT}</span>
                                                     {l.fields.speaker && <span className="font-semibold text-white">{l.fields.speaker}</span>}
                                                 </span>
                                             )}

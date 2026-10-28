@@ -282,7 +282,7 @@ export function ProgrammeGraphics({ layers, prog, video, clips, editedMs, colors
                     ms={programmeMs - span.startMs} opacity={g.opacity} scale={scale} />;
             })}
             {scale > 0 && teaser && html.teaserTag && (
-                <GraphicFrame key={`tag-${shownPiece.piece}`} doc={graphicSrcDoc(html.teaserTag, data({ speaker: teaser.speaker ?? '' }, teaser.lengthMs))}
+                <GraphicFrame key={`tag-${shownPiece.piece}`} doc={graphicSrcDoc(html.teaserTag, data({ speaker: teaser.speaker ?? '', ...(teaser.tagText ? { label: teaser.tagText } : {}) }, teaser.lengthMs))}
                     ms={shownPiece.pieceMs} opacity={1} scale={scale} />
             )}
             {scale > 0 && html.starlight && starlights.map((s, i) => {

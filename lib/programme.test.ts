@@ -315,6 +315,13 @@ test('spec 022 3b: clips cut, duplicated, moved anywhere, trimmed, taken out, ad
     assert.deepEqual(setLabel(setLabel(p, 't1', { on: false }), 't1', { on: true }).layers.at(-1)!.fields, { speaker: 'Ana' });
     assert.deepEqual(setLabel(p, 't2', { speaker: ' Bo Guest ' }).layers[1].fields, { speaker: 'Bo Guest' });
     assert.deepEqual(setLabel(p, 'outro', { on: true }).layers.at(-1)!.anchor, { clip: 'outro', ms: 0 });
+    // Its top line: kept when changed, and dropped again when it is the template's own, so it draws as before.
+    const lined = setLabel(p, 't2', { text: ' Coming up ' });
+    assert.deepEqual(lined.layers[1].fields, { speaker: 'Bo', label: 'Coming up' });
+    assert.deepEqual(setLabel(lined, 't2', { speaker: 'Bo Guest' }).layers[1].fields, { speaker: 'Bo Guest', label: 'Coming up' });
+    assert.deepEqual(setLabel(lined, 't2', { text: 'IN THIS EPISODE' }).layers[1].fields, { speaker: 'Bo' });
+    assert.deepEqual(setLabel(lined, 't2', { text: '' }).layers[1].fields, { speaker: 'Bo' });
+    assert.ok(ProgrammeSchema.safeParse(lined).success);
 });
 
 test('spec 022 3b: Build the opening places clips, dissolves, labels, the wind at each change and the music, replacing the old opening', () => {
