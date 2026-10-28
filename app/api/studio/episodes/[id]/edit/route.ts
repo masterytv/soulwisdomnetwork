@@ -29,7 +29,7 @@ import { SoundsSchema, type Sound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import { brollBlock } from '@/lib/brollGate';
 import { loadSilences } from '@/lib/server/buildEdit';
-import { SHOW_INTRO_URL, studioIntro, teasersFromNotes, TeasersSchema, type Teaser } from '@/lib/programme';
+import { legacyFields, ProgrammeSchema, SHOW_INTRO_URL, studioIntro, teasersFromNotes, TeasersSchema, type ProgrammeEdit, type Teaser } from '@/lib/programme';
 
 // The episode's own intro or outro (spec 020 item E9): a video from its media bin.
 const SectionFileSchema = z.object({ path: z.string().min(1).max(300), name: z.string().max(200) }).strict();
@@ -110,7 +110,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 export const PUT = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
     const ref = episodeRef((await params).id);
-    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown; order?: unknown; intro?: unknown; outro?: unknown; teasers?: unknown }; version?: unknown };
+    const body = await request.json().catch(() => ({})) as { edit?: { cuts?: unknown; overlays?: unknown; captions?: unknown; splits?: unknown; joins?: unknown; layers?: unknown; audio?: unknown; voice?: unknown; speakerTracks?: unknown; order?: unknown; intro?: unknown; outro?: unknown; teasers?: unknown; programme?: unknown }; version?: unknown };
     if (!body.edit) throw new HttpError(400, 'Missing edit');
     if (typeof body.version !== 'number') throw new HttpError(400, 'Missing version');
     const cuts = CutsSchema.safeParse(body.edit.cuts);
@@ -197,6 +197,15 @@ export const PUT = handle<Context>(async (request, { params }) => {
         if (!r.success) throw new HttpError(400, `Teasers: ${r.error.issues[0]?.message ?? 'not valid'}`);
         teasers = r.data;
     }
+    // The whole video as clips (spec 022, lib/programme.ts). Left out of the request, it stays as saved, unless the save
+    // changes the old fields it is kept with (teasers, intro, outro) without it: those then win and it is converted
+    // from them again. Sent, the old fields are written from it.
+    let programme: ProgrammeEdit | null | undefined;
+    if (body.edit.programme !== undefined) {
+        const r = ProgrammeSchema.nullable().safeParse(body.edit.programme);
+        if (!r.success) throw new HttpError(400, `The video's clips: ${r.error.issues[0]?.message ?? 'not valid'}`);
+        programme = r.data as ProgrammeEdit | null;
+    }
     // Whether the render uses the speaker tracks (spec 019 item 3.3). Left out of the request, it stays as saved.
     let speakerTracks: boolean | null | undefined;
     if (body.edit.speakerTracks !== undefined) {
@@ -257,6 +266,18 @@ export const PUT = handle<Context>(async (request, { params }) => {
             throw new HttpError(409, 'Version mismatch — someone else edited');
         }
         const version = (current?.version ?? 0) + 1;
+        const keptProgramme = programme !== undefined ? programme
+            : teasers !== undefined || ends.intro !== undefined || ends.outro !== undefined ? null : current?.programme ?? null;
+        const recordingMs = ((snap.data() as Episode).media?.durationSeconds ?? 0) * 1000;
+        if (keptProgramme && recordingMs > 0 && keptProgramme.clips.some(c => c.kind === 'recording' && c.outMs > recordingMs + 1000)) {
+            throw new HttpError(400, 'A clip runs past the end of the recording');
+        }
+        const keptEnds = {
+            intro: ends.intro !== undefined ? ends.intro : current?.intro ?? null,
+            outro: ends.outro !== undefined ? ends.outro : current?.outro ?? null,
+        };
+        const old = keptProgramme ? legacyFields(keptProgramme, keptEnds)
+            : { teasers: teasers !== undefined ? teasers : current?.teasers ?? null, ...keptEnds };
         // A highlight reframes a kept stretch of the recording (spec 021 item M3): the save is refused while
         // one sits on cut words or a teaser, or overlaps another, against what this save would leave behind.
         const keptLayers = layers ?? current?.layers ?? [];
@@ -264,7 +285,8 @@ export const PUT = handle<Context>(async (request, { params }) => {
         if (highlights.length) {
             const media = (snap.data() as Episode).media;
             const durationMs = (media?.durationSeconds ?? 86_400) * 1000;
-            const keptTeasers = teasers !== undefined ? teasers ?? [] : current?.teasers ?? [];
+            const keptTeasers = keptProgramme ? keptProgramme.clips.flatMap(c => (c.kind === 'recording' ? [{ startMs: c.inMs, endMs: c.outMs }] : []))
+                : old.teasers ?? [];
             const problems = highlightProblems(highlights, { cuts: cuts.data, teasers: keptTeasers, durationMs });
             const first = problems.values().next().value;
             if (first) throw new HttpError(400, `A highlight cannot stay as saved: ${first}`);
@@ -285,9 +307,10 @@ export const PUT = handle<Context>(async (request, { params }) => {
                     const o = order !== undefined ? order : current?.order ?? null;
                     return o && validOrder(o, keptSplits.length + 1) && isReordered(o) ? o : null;
                 })(),
-                intro: ends.intro !== undefined ? ends.intro : current?.intro ?? null,
-                outro: ends.outro !== undefined ? ends.outro : current?.outro ?? null,
-                teasers: teasers !== undefined ? teasers : current?.teasers ?? null,
+                intro: old.intro ?? null,
+                outro: old.outro ?? null,
+                teasers: old.teasers ?? null,
+                programme: keptProgramme,
                 splits: keptSplits,
                 joins: keptJoins,
                 ...((audio ?? current?.audio) ? { audio: audio ?? current?.audio } : {}),

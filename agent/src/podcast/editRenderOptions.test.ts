@@ -123,11 +123,12 @@ test('your own intro plays at the start and end', { timeout: 600_000 }, async ()
     fs.rmSync(r.dir, { recursive: true, force: true });
 });
 
-test('no edit package: teaser cut from the recording, the show intro from the site files', { timeout: 600_000 }, async () => {
+test('no edit package: the notes\' teaser cut exactly with its label (spec 022 D1), the show intro from the site files', { timeout: 600_000 }, async () => {
     const r = await run(DEFAULT_SETTINGS);
-    // Teaser 12.0 s to 13.1 s with 0.3 s before and 0.6 s after = 2.0 s; show intro 2 s, twice.
+    // Teaser 12.0 s to 13.1 s with 0.3 s before and 0.6 s after = 2.0 s, as the editor shows it; show intro 2 s, twice.
+    assert.deepEqual(r.cuts, [{ start: 11.7, seconds: 2, tag: { speaker: 'Sam' } }]);
     assert.ok(Math.abs(r.seconds - (2.0 + 2 + EDITED + 2)) < 0.5, `rendered ${r.seconds}s`);
-    assert.match(r.result.warnings.join(' '), /edit package is not built/);
+    assert.doesNotMatch(r.result.warnings.join(' '), /edit package/);
     fs.rmSync(r.dir, { recursive: true, force: true });
 });
 

@@ -40,7 +40,12 @@ import type { HighlightLayout, LayoutKeyframes } from '../../../lib/reframe';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
+// Every command the render runs, for the tests that show a change makes the same video (spec 022's golden commands).
+let commandTrace: ((cmd: string, args: string[]) => void) | null = null;
+export function traceCommands(f: ((cmd: string, args: string[]) => void) | null) { commandTrace = f; }
+
 function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+    commandTrace?.(cmd, args);
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '', stderr = '';
@@ -143,12 +148,36 @@ interface RenderReport {
     teaserSoundsPlayed?: ('music' | 'whoosh')[];   // the teasers' music and whoosh, when they played (Studio settings)
 }
 
+// A piece of the whole video for the render (spec 022): a file, or the episode, and the transition into it.
+export interface ProgrammeInput {
+    kind: PlannedPiece['kind'];
+    file?: string;
+    join: { transition: Transition; label: string; key: string } | null;
+}
+
+// The whole video from the teasers, intro and outro as the render took them before spec 022 (the command line and
+// older callers): the teasers, the intro, the episode and the outro, each joined by its section join.
+export function legacyProgramme(o: { teasers?: string[]; intro?: string; outro?: string }, sections: SectionJoins): ProgrammeInput[] {
+    const at = (key: SectionJoin) => ({ transition: sections[key], label: SECTION_JOIN_LABELS[key], key });
+    const teasers = o.teasers ?? [];
+    return [
+        ...teasers.map((file, i) => ({ kind: 'teaser' as const, file, join: i > 0 ? at('betweenTeasers') : null })),
+        ...(o.intro ? [{ kind: 'intro' as const, file: o.intro, join: teasers.length ? at('afterTeasers') : null }] : []),
+        { kind: 'episode' as const, join: o.intro ? at('afterIntro') : teasers.length ? at('afterTeasers') : null },
+        ...(o.outro ? [{ kind: 'outro' as const, file: o.outro, join: at('beforeOutro') }] : []),
+    ];
+}
+
 // ─── the render ─────────────────────────────────────────────────────────────
 
 export async function renderEdit(opts: {
     video: string;
     edit: EpisodeEdit;
     out: string;
+    // The whole video in order (spec 022, lib/programme.ts): each clip's file (none for the episode) and the transition
+    // into it as the job resolved it (lib/programme.ts clipJoins), `label` naming it in a warning and `key` being where
+    // a starlight clip goes. Left out, it is made from `teasers`, `intro` and `outro` as the programme always was.
+    programme?: ProgrammeInput[];
     teasers?: string[];
     intro?: string;
     outro?: string;
@@ -361,26 +390,28 @@ export async function renderEdit(opts: {
         const framesOfFile = async (f: string) => Math.max(1, frameAt(Math.round((await probeDuration(f)) * 1000)));
         const pieces: PlannedPiece[] = [];
         let prevLeft = 0;      // what the piece before has left after its own transition in
-        const put = (kind: PlannedPiece['kind'], file: string | null, frames: number, at: SectionJoin | null) => {
-            const t: Transition | null = at && pieces.length ? sections[at] : null;
+        const put = (kind: PlannedPiece['kind'], file: string | null, frames: number, at: ProgrammeInput['join']) => {
+            const t: Transition | null = at && pieces.length ? at.transition : null;
             let join = 0, xfade: string | null = null;
             if (at && t && t.transition === 'starlight') {
                 // A straight cut under the drawn starlight clip, centred on this piece's first frame.
                 const index = pieces.length;
-                joinAt.set(at, () => pieces[index].start);
+                joinAt.set(at.key, () => pieces[index].start);
             } else if (at && t && t.transition !== 'cut') {
                 const d = frameAt(t.durationMs);
                 if (d <= prevLeft && d <= frames) { join = d; xfade = XFADE[t.transition]!; }
-                else warnings.push(`${SECTION_JOIN_LABELS[at]}: the transition is longer than the clips around it, so it plays as a straight cut.`);
+                else warnings.push(`${at.label}: the transition is longer than the clips around it, so it plays as a straight cut.`);
             }
             pieces.push({ kind, file, start: 0, frames, join, xfade });
             prevLeft = frames - join;
         };
-        for (const [i, t] of (opts.teasers ?? []).entries()) put('teaser', t, await framesOfFile(t), i > 0 ? 'betweenTeasers' : null);
-        if (opts.intro) put('intro', opts.intro, await framesOfFile(opts.intro), opts.teasers?.length ? 'afterTeasers' : null);
-        const episodePiece = pieces.length;
-        put('episode', null, episodeFrames, opts.intro ? 'afterIntro' : opts.teasers?.length ? 'afterTeasers' : null);
-        if (opts.outro) put('outro', opts.outro, await framesOfFile(opts.outro), 'beforeOutro');
+        // The whole video in order (spec 022): the job's, or the teasers, intro and outro as before.
+        let episodePiece = -1;
+        for (const p of opts.programme ?? legacyProgramme(opts, sections)) {
+            if (p.kind === 'episode') { episodePiece = pieces.length; put('episode', null, episodeFrames, p.join); }
+            else if (p.file) put(p.kind, p.file, await framesOfFile(p.file), p.join);
+        }
+        if (episodePiece < 0) throw new Error('The video has no episode in it');
         const programme = chainStarts(pieces);
         pieces.forEach((p, k) => { p.start = programme.starts[k]; p.join = programme.joins[k]; });
         const edgeFrames = { start: sections.start.transition === 'cut' ? 0 : Math.min(frameAt(sections.start.durationMs), programme.frames),

@@ -63,7 +63,7 @@ import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 import { ProgrammePlayer, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
 import { TeaserSoundsPreview } from '@/components/studio/teaserSounds';
-import { addTeaser as withTeaser } from '@/lib/programme';
+import { addTeaser as withTeaser, clipStretches, programmeEdit, setEnds, setProgramme, withoutEnd, withTeasers, type ProgrammeEdit } from '@/lib/programme';
 import { teaserSlot } from '@/lib/timeline';
 
 // No media videos: one array, so the Parts panel does not redraw on every render.
@@ -317,13 +317,17 @@ export function Editor({
     // the timeline and Properties say why first.
     const highlightIssues = useMemo(() => highlightProblems(
         layers.filter(l => l.kind === 'highlight'),
-        { cuts: edit.cuts, teasers: edit.teasers ?? [], durationMs: videoDuration || (words.length > 0 ? words[words.length - 1].end : 0) },
-    ), [layers, edit.cuts, edit.teasers, videoDuration, words]);
+        { cuts: edit.cuts, teasers: clipStretches(edit), durationMs: videoDuration || (words.length > 0 ? words[words.length - 1].end : 0) },
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- what clipStretches reads
+    ), [layers, edit.cuts, edit.teasers, edit.programme, videoDuration, words]);
     // The whole video (item E10): teasers, intro, this episode and outro.
     const prog = useProgramme({ setup: workspace ? programme : null, edit, urls: mediaUrls, studioJoins, src: videoUrl, editedMs });
     // The Studio's logo (or the site's) for the motion graphics templates that draw it (spec 021).
     const graphicsLogo = media?.items?.find(i => i.source === 'logo')?.url ?? '/logo-trimmed.png';
     const programmeControl = prog?.control;
+    // Spec 022: the teasers' actions change the whole video's clips, and the old fields with them (lib/programme.ts).
+    const changeClips = useCallback((f: (p: ProgrammeEdit) => ProgrammeEdit) =>
+        updateEdit(prev => setProgramme(prev, f(programmeEdit(prev, programme?.teasers ?? [])))), [updateEdit, programme?.teasers]);
     // Item E14: a stretch of the recording (a section or stretch chosen on the timeline, made a teaser or copied and
     // pasted) added as a teaser where the preview is among the teasers (before the one it shows in that one's first
     // half, after it in its second), or after the last one; then chosen on the timeline.
@@ -334,9 +338,9 @@ export function Editor({
         const at = teaserSlot(prog.teasers.length, piece && pos ? { kind: piece.kind, index: piece.index, ms: pos.ms, lengthMs: piece.lengthMs } : null);
         const next = withTeaser(prog.teasers, stretch, at, words);
         if (next === prog.teasers) return;
-        updateEdit(prev => ({ ...prev, teasers: next }));
+        changeClips(p => withTeasers(p, next));
         setTimelineSel({ kind: 'teaser', index: at });
-    }, [prog, words, updateEdit, setTimelineSel]);
+    }, [prog, words, changeClips, setTimelineSel]);
     // Choosing a layer on the preview or the timeline keeps the keys with the editor (Delete removes it),
     // even when the element that was clicked goes away. Not from the panel, whose fields need the keys.
     const pickLayer = useCallback((id: string | null) => {
@@ -1374,7 +1378,12 @@ export function Editor({
                             node: (
                                 <PartsPanel edit={edit} totalMs={totalMs} clips={kept} words={words}
                                     videos={media?.items?.filter(i => i.kind === 'video') ?? NO_VIDEOS}
-                                    onChange={patch => updateEdit(prev => ({ ...prev, ...patch }))}
+                                    onChange={({ intro, outro, ...patch }) => updateEdit(prev => {
+                                        // Spec 022: an intro or outro chosen puts its clip on the timeline or takes it off.
+                                        const ends = { ...(intro !== undefined ? { intro } : {}), ...(outro !== undefined ? { outro } : {}) };
+                                        const next = { ...prev, ...patch };
+                                        return Object.keys(ends).length ? setEnds(next, ends, programme?.teasers ?? []) : next;
+                                    })}
                                     onSeek={ms => seekToTime(ms / 1000)} />
                             ),
                         },
@@ -1442,9 +1451,9 @@ export function Editor({
                                 teasers: prog.teasers,
                                 pieces: prog.pieces,
                                 control: prog.control,
-                                onTeasers: teasers => updateEdit(prev => ({ ...prev, teasers })),
+                                onTeasers: teasers => changeClips(p => withTeasers(p, teasers)),
                                 onMakeTeaser: addTeaser,
-                                onEnd: key => updateEdit(prev => ({ ...prev, [key]: false })),
+                                onEnd: key => changeClips(p => withoutEnd(p, key)),
                                 onParts: () => setPanelId('parts'),
                             }}
                             split={{
