@@ -57,8 +57,9 @@ export const StudioSettingsSchema = z.object({
     intro: z.enum(['show', 'custom', 'none']),    // the show's intro (also the outro), your own, or none
     introPath: z.string().max(300).nullable(),    // Cloud Storage, when intro is 'custom'
     teasers: z.boolean(),                         // "In this episode" clips before the intro
-    // Under the teasers: a music bed and a short effect at each change between them, from the show library
-    // (lib/audio.ts teaserSoundPlan); null plays none.
+    // Under the teasers: a music bed and a short effect at each change between them, from the show library. Since spec
+    // 022 stage 3a, not shown or saved: an edit saved before then converts them into sounds on its clips
+    // (lib/programme.ts oldTeaserSounds); every newer one has its own sounds.
     teaserMusic: TeaserSoundSchema.nullable(),
     teaserWhoosh: TeaserSoundSchema.nullable(),
     // Transitions at the start and end and between the teasers, intro, episode and outro, for every

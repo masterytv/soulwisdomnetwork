@@ -473,12 +473,12 @@ export function layersAss(cues: Cue[], captions: CaptionStyle | null, texts: { l
 // What the episode's media bin lists (lib/server/mediaBin.ts): its uploads and the files it already has.
 export const BIN_KINDS = ['image', 'video', 'audio'] as const;
 export type BinKind = typeof BIN_KINDS[number];
-export type BinSource = 'upload' | 'broll' | 'teaser' | 'intro' | 'logo' | 'library';
+export type BinSource = 'upload' | 'broll' | 'teaser' | 'intro' | 'logo' | 'library' | 'studio';
 export interface BinItem {
     id: string;
     kind: BinKind;
     source: BinSource;
-    path: string;                 // Cloud Storage
+    path: string;                 // Cloud Storage (the Studio's own sounds: public/, lib/audio.ts STUDIO_SOUNDS)
     name: string;
     url?: string | null;          // a short-lived link for the browser
     durationMs?: number | null;   // video and audio

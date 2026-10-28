@@ -6,7 +6,6 @@ import { SETTINGS_DOC, StudioSettingsSchema, toStored, withDefaults, type Studio
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
 import { checkUploaded } from './uploads';
-import { libraryEntries } from './library';
 
 const LINK_MS = 60 * 60_000;
 
@@ -47,18 +46,11 @@ export async function saveSettings(input: unknown, uid: string): Promise<StudioS
     if (s.intro === 'custom' && !s.introPath) throw new HttpError(400, 'Upload your intro video, or choose another intro option');
     if (s.logoPath) await checkUploaded('logo', s.logoPath);
     if (s.introPath) await checkUploaded('intro', s.introPath);
-    // The teasers' music and whoosh: show library files of the right kind, with their licences checked.
-    const sounds = ([['teaserMusic', 'music', 'The teasers\' music'], ['teaserWhoosh', 'effect', 'The teasers\' whoosh']] as const)
-        .flatMap(([key, kind, label]) => (s[key] ? [{ t: s[key]!, kind, label }] : []));
-    if (sounds.length) {
-        const entries = await libraryEntries(sounds.map(x => x.t.library));
-        for (const { t, kind, label } of sounds) {
-            const e = entries.get(t.library);
-            if (!e || e.path !== t.path) throw new HttpError(400, `${label}: "${t.name}" is not in the show library`);
-            if (e.kind !== kind) throw new HttpError(400, `${label}: "${t.name}" is in the library as ${kind === 'music' ? 'an effect' : 'music'}`);
-            if (!e.checked) throw new HttpError(400, `${label}: "${t.name}" has no licence check yet`);
-        }
-    }
+    // The teasers' old music and whoosh (spec 022 stage 3a): no longer shown or changed here; what is stored stays, so
+    // edits saved before stage 3a keep converting them into sounds on their clips (lib/programme.ts oldTeaserSounds).
+    const stored = await getSettings();
+    s.teaserMusic = stored.teaserMusic;
+    s.teaserWhoosh = stored.teaserWhoosh;
     await ref().set({ ...toStored(s), updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
     return s;
 }
