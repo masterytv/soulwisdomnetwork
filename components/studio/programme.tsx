@@ -19,7 +19,13 @@ import { draw } from '@/components/studio/transitionPreview';
 import { secondary } from '@/components/studio/ui';
 
 // What the editor's page loaded for the programme: the teasers a new edit gets, and the Studio's intro (also its outro).
-export interface ProgrammeSetup { teasers: Teaser[]; studioIntro: { name: string; url: string } | null }
+// And the teasers' music and whoosh from the Studio settings, when set and licence-checked (components/studio/teaserSounds.tsx).
+export interface TeaserSoundLink { name: string; url: string; gainDb: number }
+export interface ProgrammeSetup {
+    teasers: Teaser[];
+    studioIntro: { name: string; url: string } | null;
+    teaserSounds?: { music?: TeaserSoundLink; whoosh?: TeaserSoundLink };
+}
 
 // Which piece the second video is playing (null: none; the editor's video has the episode), shared by the player and
 // the timeline (its V1 clips and playhead, item E14) without redrawing the editor. The player puts its play and pause in.

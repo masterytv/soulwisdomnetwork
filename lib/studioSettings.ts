@@ -13,6 +13,7 @@ import { VOICE_CLEANUPS, WARMTHS } from './voice';
 import { PODCAST_CATEGORIES } from './podcastFeed';
 import { HIGHLIGHT_DENSITIES } from './highlights';
 import { HIGHLIGHT_LAYOUTS } from './reframe';
+import { TeaserSoundSchema } from './audio';
 
 // Kept with the Studio's other documents (backlog order, spending), Admin SDK only.
 export const SETTINGS_DOC = { collection: 'studio', id: 'settings' } as const;
@@ -56,6 +57,10 @@ export const StudioSettingsSchema = z.object({
     intro: z.enum(['show', 'custom', 'none']),    // the show's intro (also the outro), your own, or none
     introPath: z.string().max(300).nullable(),    // Cloud Storage, when intro is 'custom'
     teasers: z.boolean(),                         // "In this episode" clips before the intro
+    // Under the teasers: a music bed and a short effect at each change between them, from the show library
+    // (lib/audio.ts teaserSoundPlan); null plays none.
+    teaserMusic: TeaserSoundSchema.nullable(),
+    teaserWhoosh: TeaserSoundSchema.nullable(),
     // Transitions at the start and end and between the teasers, intro, episode and outro, for every
     // episode (spec 020 item E4); straight cuts until chosen. An episode can choose its own.
     joins: SectionJoinsSchema,
@@ -110,6 +115,8 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     intro: 'show',
     introPath: null,
     teasers: true,
+    teaserMusic: null,
+    teaserWhoosh: null,
     joins: DEFAULT_SECTION_JOINS,
     finalSource: 'editorLight',
     voiceCleanup: 'standard',

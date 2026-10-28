@@ -641,3 +641,46 @@ test('highlights M3: the planes each layout needs are drawn by mode and routed t
     assert.ok(hs[0].files.matte && hs[0].files.background && hs[0].files.graphics);
     assert.deepEqual([hs[1].layout, hs[1].files.matte, hs[1].files.background], ['over', undefined, undefined]);
 });
+
+test('the teasers\' music and whoosh (Studio settings): given to the render when checked, left out with a warning when not, credited first', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-teaser-sounds-'));
+    const check: LicenceCheck | null = { by: 'u1', name: 'Tom', on: '2026-10-28' };
+    const updates: Record<string, unknown>[] = [];
+    let given: unknown;
+    const withTeasers = { version: 1, cuts: [], teasers: [{ startMs: 1000, endMs: 3000, speaker: 'Ana' }, { startMs: 5000, endMs: 7000, speaker: 'Ben' }] };
+    const run = (edit: typeof withTeasers | { version: number; cuts: never[] }) => runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit }),
+        download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async fields => { updates.push(fields); },
+        cutClip: async (_in, out) => { fs.writeFileSync(out, ''); },
+        render: async opts => {
+            given = opts.teaserSounds;
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [],
+                ...(opts.teaserSounds ? { teaserSoundsPlayed: ['music' as const] } : {}) };
+        },
+        now: () => 'NOW',
+        settings: {
+            ...DEFAULT_SETTINGS, intro: 'none',
+            teaserMusic: { library: 'bed', path: 'library/bed.mp3', name: 'Starlit', gainDb: -16 },
+            teaserWhoosh: { library: 'wh', path: 'library/wh.wav', name: 'Whoosh', gainDb: -12 },
+        },
+        library: async ids => new Map(ids.flatMap((id): [string, { path: string; checked: LicenceCheck | null; licence: typeof EMPTY_LICENCE }][] => id === 'bed'
+            ? [[id, { path: 'library/bed.mp3', checked: check, licence: { ...EMPTY_LICENCE, credit: 'Music: Starlit by B' } }]]
+            : id === 'wh' ? [[id, { path: 'library/wh.wav', checked: null, licence: EMPTY_LICENCE }]] : [])),
+        logUses: async () => {},
+    }, path.join(dir, 'work'), '1');
+    const result = await run(withTeasers);
+    const g = given as { music?: { sound: { library: string } }; whoosh?: unknown };
+    assert.equal(g.music?.sound.library, 'bed');
+    assert.equal(g.whoosh, undefined);
+    assert.ok(result.warnings.some(w => /whoosh "Whoosh": its licence is not checked/.test(w)), result.warnings.join(' | '));
+    assert.deepEqual(result.credits, ['Music: Starlit by B']);
+    // No teasers: nothing to play them under.
+    given = 'unset';
+    await run({ version: 1, cuts: [] });
+    assert.equal(given, undefined);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

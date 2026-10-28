@@ -143,6 +143,56 @@ export function newSound(file: { path: string; name: string; durationMs?: number
 // An episode upload counts as music when it is long enough to be a bed.
 export const uploadKind = (durationMs: number | null | undefined): LibraryKind => ((durationMs ?? 0) >= 30_000 ? 'music' : 'effect');
 
+// ─── the teasers' music and whoosh ──────────────────────────────────────────
+
+// Under the "In this episode" teasers, which play before the episode on the programme's clock (so no
+// sound on the edit can reach them): a music bed from the show library under all of them, ducked under
+// their voices and faded out as the last one ends, and a short effect (a soft whoosh) at each change from
+// one teaser to the next. Both are Studio settings (lib/studioSettings.ts teaserMusic, teaserWhoosh), so
+// every episode with teasers gets them; the render mixes them over the programme (podcast/editRender.ts)
+// and the editor's preview plays them with the teasers (components/studio/teaserSounds.tsx).
+export const TeaserSoundSchema = z.object({
+    library: z.string().regex(/^[\w-]{1,40}$/),            // the library entry, for its licence check and credit
+    path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
+    name: z.string().trim().max(150),
+    gainDb: z.number().min(-40).max(6),
+}).strict();
+export type TeaserSound = z.infer<typeof TeaserSoundSchema>;
+export const TEASER_MUSIC_DB = -16, TEASER_WHOOSH_DB = -12;
+// The music fades in over the first half second and out over the last teaser's last 1.5 s; the whoosh
+// starts a little before each change, so it peaks on the cut.
+export const TEASER_MUSIC_FADE_IN_MS = 500, TEASER_MUSIC_FADE_OUT_MS = 1500, WHOOSH_LEAD_MS = 250;
+
+// When the music plays and where each whoosh starts, on the programme's clock, from its pieces (lib/programme.ts
+// programmeOf, or the render's own plan in ms): the music from the first teaser's start to the last one's end;
+// a whoosh before each later teaser's change, the middle of its transition when it has one.
+export function teaserSoundPlan(pieces: { kind: string; atMs: number; lengthMs: number; joinMs: number }[]): { music: Span | null; whooshes: number[] } {
+    const teasers = pieces.filter(p => p.kind === 'teaser');
+    if (!teasers.length) return { music: null, whooshes: [] };
+    const last = teasers[teasers.length - 1];
+    return {
+        music: { startMs: teasers[0].atMs, endMs: last.atMs + last.lengthMs },
+        whooshes: teasers.slice(1).map(t => Math.max(0, Math.round(t.atMs + t.joinMs / 2 - WHOOSH_LEAD_MS))),
+    };
+}
+
+// The two as sounds, so the render's soundFilter places them like any other: the bed looped and ducked,
+// the whoosh once, at full length (`fileMs`, or 1.5 s when unknown), never ducked.
+export function teaserMusicSound(t: TeaserSound, span: Span): Sound {
+    return {
+        id: 'teaserMusic', track: SOUND_TRACK.music, media: { path: t.path, name: t.name }, library: t.library,
+        anchor: { atMs: span.startMs }, durationMs: Math.max(LAYER_MIN_MS, span.endMs - span.startMs), inMs: 0, loop: true,
+        gainDb: t.gainDb, fadeInMs: TEASER_MUSIC_FADE_IN_MS, fadeOutMs: TEASER_MUSIC_FADE_OUT_MS, duck: true,
+    };
+}
+export function teaserWhooshSound(t: TeaserSound, atMs: number, fileMs: number | null): Sound {
+    return {
+        id: `teaserWhoosh${Math.round(atMs)}`, track: SOUND_TRACK.effects, media: { path: t.path, name: t.name }, library: t.library,
+        anchor: { atMs }, durationMs: Math.max(LAYER_MIN_MS, Math.min(5000, Math.round(fileMs ?? 1500))), inMs: 0, loop: false,
+        gainDb: t.gainDb, fadeInMs: 10, fadeOutMs: 30, duck: false,
+    };
+}
+
 // ─── the preview ────────────────────────────────────────────────────────────
 
 export const DUCK_PREVIEW_DB = -12;     // about what the render's compressor takes off under speech
