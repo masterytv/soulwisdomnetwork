@@ -20,7 +20,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/specs/020-studio-editor.md` | The Studio editor: an optional full editing page beside the simple pipeline (items E1–E16) |
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
 | `docs/specs/021-motion-graphics.md` | Motion graphics: branded templates and highlight moments (items M1–M5; the design in `docs/specs/021-motion-graphics/`) |
-| `docs/specs/022-one-timeline.md` | One timeline: the whole video as ordinary clips, the opening built from the notes, sounds anywhere (proposed, stages 1–3) |
+| `docs/specs/022-one-timeline.md` | One timeline: the whole video as ordinary clips, the opening built from the notes, sounds anywhere (approved; stages 2, 3a, 3b) |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
 ## Decisions so far
@@ -235,5 +235,5 @@ opening is ordinary clips. Spec 022 proposes `edit.programme` (V1 as a list of c
 and sounds on clips), the automatic conversion of saved edits (checked by the render's window keys staying the same),
 **Build the opening** from the approved notes' teaser clips, sounds anywhere, and the teasers' sound settings removed.
 Stages: 1 the spec, 2 the model and conversion, 3a sounds anywhere, 3b the opening as clips; each a PR into `staging`.
-**Waiting for Tom's approval and his answers to D1–D7** before any code. Draft PR #231 (the Studio's wind sounds) stays
-held; stage 3a carries it.
+**Approved by Tom on 28 October 2026** with D1–D7 answered (recorded in the spec; music under a built opening is on by
+default). Draft PR #231 (the Studio's wind sounds) stays held; stage 3a carries it and #231 is then closed.

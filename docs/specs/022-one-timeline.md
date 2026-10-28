@@ -1,8 +1,8 @@
 # Spec 022: One timeline — the whole video as ordinary clips
 
 **Date:** 28 October 2026
-**Status:** Proposed. **Waiting for Tom's approval; no code until he approves it.** The questions for him are at the
-end (D1–D7), each with a recommendation.
+**Status:** Approved by Tom on 28 October 2026, with his answers to D1–D7 (end of this page). Stage 1 (this spec) is
+PR #232; stages 2, 3a and 3b follow, each a PR into `staging`.
 **Author:** Claude, from Tom's request: make the Studio editor a regular editor, "one timeline for the whole video",
 where the "In this episode" opening is ordinary clips he can cut, duplicate, move, trim, dissolve, label and put sound
 under, not the locked teaser box it is now.
@@ -179,8 +179,13 @@ teaser clips (`teasersFromNotes`: the same stretches the edit package cuts, 300 
 - an **"In this episode" label** on each clip, for its whole length, with its speaker;
 - **Wind: breath** (#231's Studio sound) at −18 dB on A3 at each change, at the middle of its transition less 250 ms,
   anchored to the clip it leads into;
-- **music**, when chosen in Build's menu (none by default, or any show library music whose licence is checked): on A2
-  from the first clip's start to the last one's end, −16 dB, ducked, fading in over 0.5 s and out over 1.5 s.
+- **music**, on by default (D3: taking it out is easier than adding it): on A2 from the first clip's start to the last
+  one's end, −16 dB, ducked, fading in over 0.5 s and out over 1.5 s. Build's menu shows which music and offers any
+  other show library music whose licence is checked, or None. It preselects the music the last opening was built with
+  (remembered on the Studio settings document as `openingMusic` each time Build runs; not a field on the Settings
+  page); the first time, the Studio's old "Music under the teasers" if it had one, else the first checked music in the
+  library by name. With no checked music in the library there is none, and the menu says so. A new edit built without
+  the menu (the editor's first open, Build for Studio editor) gets the same default.
 
 Building again replaces the opening (its recording clips before the intro and everything on them), after "Replace the
 opening you have?"; Undo puts it back. A new edit (the editor's first open, item E10, and Build for Studio editor,
@@ -197,7 +202,7 @@ New openings get theirs from Build.
 
 **#231** (held): stage 3 carries its Studio sounds (the three wind files, `scripts/windSounds.py`, `STUDIO_SOUNDS`,
 the Media panel's "Studio sounds", the edit route and the render job's copy from the repository) and leaves out its
-changes to the teaser settings, which stage 3 removes. See D5.
+changes to the teaser settings, which stage 3 removes. (D5.)
 
 ## The preview and the render
 
@@ -263,14 +268,18 @@ spec 020's notes and this page's status.
 - **Moving the episode's sections out of it** onto the opening. Copy them (+ Opening clip), as today.
 - **The end screen on the outro clip.** It stays where it is (`fromEnd`, the last 20 s of the video).
 
-## Decisions for Tom
+## Decisions (answered by Tom, 28 October 2026)
 
-| # | Question | Recommendation |
+D1, D2 and D5 Tom left to Claude ("whatever is best for the long term and quality"): each is taken as recommended.
+D3: music is **picked by default** ("removing is easier than adding manually"), so Build places it unless None is
+chosen (see Building the opening). D4: **anywhere**. D6 and D7: **yes**.
+
+| # | Question | Answer |
 |---|---|---|
-| D1 | An edit saved before item E10 (no `teasers`) renders today from the edit package's clip files with the old burned-in banner, while the editor shows the notes' clips with the motion label. Convert it to what the editor shows? | **Yes.** The same stretches either way; the render then matches the preview, and the render loses a special path. |
-| D2 | Starlight at "Between teaser clips" is drawn by the render at the last change only (one clip per section join), while the preview draws it at every change. Draw it at every change? | **Yes**, a fix: each change has its own transition now. |
-| D3 | Music in Build the opening: chosen in Build's menu each time, none by default? | **Yes.** The settings go, so nothing is applied to every episode unseen. |
-| D4 | May recording clips, the intro and the outro go anywhere on V1 (after the episode, after the outro), or only within the opening? | **Anywhere**, as in other editors; the model costs the same. |
-| D5 | #231: carry its Studio sounds into stage 3a and close #231 unmerged when 3a merges? | **Yes**; its teaser-setting changes are what stage 3a removes. |
-| D6 | Build the opening again: replace the whole opening (after a question, with Undo), or refuse once it is hand-edited? | **Replace, after the question.** |
+| D1 | An edit saved before item E10 (no `teasers`) renders today from the edit package's clip files with the old burned-in banner, while the editor shows the notes' clips with the motion label. Convert it to what the editor shows? | **Yes** (Claude's call). The same stretches either way; the render then matches the preview, and the render loses a special path. |
+| D2 | Starlight at "Between teaser clips" is drawn by the render at the last change only (one clip per section join), while the preview draws it at every change. Draw it at every change? | **Yes** (Claude's call), a fix: each change has its own transition now. |
+| D3 | Music in Build the opening: chosen in Build's menu each time, none by default? | **No: picked by default**, since removing it is easier than adding it. Build preselects the last opening's music; None takes it out. |
+| D4 | May recording clips, the intro and the outro go anywhere on V1 (after the episode, after the outro), or only within the opening? | **Anywhere.** |
+| D5 | #231: carry its Studio sounds into stage 3a and close #231 unmerged when 3a merges? | **Yes** (Claude's call); its teaser-setting changes are what stage 3a removes. |
+| D6 | Build the opening again: replace the whole opening (after a question, with Undo), or refuse once it is hand-edited? | **Yes: replace, after the question.** |
 | D7 | Until each stage is on `main`: test on test episodes only, and render stage 3's work only from `main` (above)? | **Yes.** |
