@@ -13,7 +13,7 @@ import type { Episode } from '../../../types/episode';
 import { renderEdit } from './editRender';
 import { DEFAULT_SETTINGS } from '../../../lib/studioSettings';
 import { planEditRender, runEditRender, type EditRenderDeps } from './editRenderJob';
-import { probeDuration } from './media';
+import { cutClip, probeDuration } from './media';
 import { highlight, logoBug, motionEndScreen, motionLogoBug, motionLowerThird, SITE_LOGO } from '../../../lib/layers';
 import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
 import { EMPTY_LICENCE, newSound, type LicenceCheck } from '../../../lib/audio';
@@ -77,17 +77,21 @@ test('plan: uses the filled 1080p copy when the package made one', () => {
     assert.equal(planEditRender(episode()).video, `episodes/${ID}/source/original.mp4`);
 });
 
-test('plan: teasers and intro come only from a ready package, with a warning otherwise', () => {
+test('plan: the intro from a ready package; the teasers are the edit\'s clips, never the package\'s files (spec 022 D1)', () => {
     const ready = planEditRender(episode());
-    assert.deepEqual(ready.teasers, [`episodes/${ID}/package/clip-1.mp4`]);
+    assert.deepEqual(ready.programme.clips.map(c => c.kind), ['intro', 'episode', 'outro']);
     assert.equal(ready.intro, `episodes/${ID}/package/intro.mp4`);
     assert.equal(ready.warnings.length, 0);
     const e = episode();
     e.package!.status = 'building';
-    const notReady = planEditRender(e);
-    assert.deepEqual(notReady.teasers, []);
-    assert.equal(notReady.intro, null);
-    assert.match(notReady.warnings.join(' '), /edit package/);
+    assert.equal(planEditRender(e).intro, null);
+    // Saved before the edit had teasers: the approved notes' clips, as the editor shows them, labelled.
+    const old = episode();
+    (old.notes!.approved as { teaserClips?: unknown }).teaserClips = [{ text: 'hi', speaker: 'Sam', startMs: 12_000, endMs: 13_100 }];
+    const plan = planEditRender(old);
+    assert.deepEqual(plan.programme.clips[0], { id: 't1', kind: 'recording', inMs: 11_700, outMs: 13_700, name: 'Sam' });
+    assert.deepEqual(plan.programme.layers.map(l => l.fields.speaker), ['Sam']);
+    assert.equal(plan.warnings.length, 0);
 });
 
 test('plan: b-roll in idea order, quotes without an end dropped, notes warning', () => {
@@ -121,9 +125,10 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-job-'));
     const store = path.join(dir, 'storage');
     const put = (p: string) => { const f = path.join(store, p); fs.mkdirSync(path.dirname(f), { recursive: true }); return f; };
+    // A 2 s teaser of the edit's own, without its label, cut from the recording (spec 022: never the package's file).
     const e = episode();
+    e.edit!.teasers = [{ startMs: 14_000, endMs: 16_000, speaker: 'Host', tag: false }];
     await clip(put(e.media!.sourcePath!), 20, 440);
-    await clip(put(e.package!.clipPaths![0]), 2, 660);
     await clip(put(e.package!.introPath!), 3, 880);
     await ffmpeg(['-f', 'lavfi', '-i', 'color=c=blue:s=800x600', '-frames:v', '1', put(`episodes/${ID}/broll/0.png`)]);
     fs.writeFileSync(put(e.review!.reviewedPath!), JSON.stringify({ lines: [
@@ -147,6 +152,7 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
         removeFolder: async prefix => { removed.push(prefix); },
         render: renderEdit,
         now: () => 'NOW',
+        cutClip: (input, output, start, seconds) => cutClip(input, output, start, seconds, true),
     };
     const result = await runEditRender(ID, deps, path.join(dir, 'work'), '222');
 
@@ -161,7 +167,7 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
 
     // Every input downloaded exactly once; the intro serves as the outro without a second download.
     assert.deepEqual([...downloads].sort(), [
-        e.broll!.images!['0'].path, e.package!.introPath!, e.package!.clipPaths![0],
+        e.broll!.images!['0'].path, e.package!.introPath!,
         e.media!.sourcePath!, e.review!.reviewedPath!,
     ].sort());
 
@@ -471,7 +477,9 @@ test('the episode\'s own intro and outro, from its media, replace the Studio\'s 
             saveToDrive: async () => null,
             update: async () => {},
             render: async opts => {
-                given = { intro: opts.intro && path.basename(opts.intro), outro: opts.outro && path.basename(opts.outro) };
+                // Spec 022: the whole video's files, in order.
+                const file = (kind: string) => { const f = opts.programme?.find(p => p.kind === kind)?.file; return f && path.basename(f); };
+                given = { intro: file('intro'), outro: file('outro') };
                 fs.writeFileSync(opts.out, '');
                 return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
             },
@@ -570,7 +578,7 @@ test('motion graphics M2: the end screen and starlight go to the programme, the 
         getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: {
             version: 1, cuts: [], layers,
             teasers: [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }],
-            joins: [{ at: 'beforeOutro', transition: 'starlight', durationMs: 1000 }],
+            joins: [{ at: 'afterTeasers', transition: 'starlight', durationMs: 1000 }],
         } }),
         download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
         upload: async () => {},
@@ -583,7 +591,7 @@ test('motion graphics M2: the end screen and starlight go to the programme, the 
                 overlays: opts.overlays?.map(o => ({ durationMs: o.durationMs, fromEnd: o.fromEnd, at: o.at })),
                 pictures: (opts.onScreen?.pictures ?? []).map(p => ({ id: p.layer.id, loop: p.loop })),
             };
-            assert.ok(opts.teasers?.[0].endsWith('-tagged.mp4'), 'the teaser should carry the motion tag');
+            assert.ok(opts.programme?.[0].file?.endsWith('-tagged.mp4'), 'the teaser should carry the motion tag');
             fs.writeFileSync(opts.out, '');
             return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
         },
@@ -597,7 +605,7 @@ test('motion graphics M2: the end screen and starlight go to the programme, the 
     assert.deepEqual(given.pictures, [{ id: `${layers[0].id}-clip`, loop: true }]);
     assert.deepEqual(given.overlays, [
         { durationMs: 20_000, fromEnd: 20_000, at: undefined },
-        { durationMs: 1000, fromEnd: undefined, at: 'beforeOutro' },
+        { durationMs: 1000, fromEnd: undefined, at: 'clip:episode' },
     ]);
     assert.deepEqual(drawn.map(d => [d.template, d.logo]), [['logoBug', true], ['endScreen', true], ['starlight', true], ['teaserTag', true]]);
     assert.equal(drawn[0].durationMs, 12_000);
@@ -683,4 +691,32 @@ test('the teasers\' music and whoosh (Studio settings): given to the render when
     await run({ version: 1, cuts: [] });
     assert.equal(given, undefined);
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('spec 022 (D2): starlight between teasers plays at every change, each the clip\'s own join', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-stars-'));
+    let at: (string | undefined)[] = [];
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit: {
+            version: 1, cuts: [],
+            teasers: [{ startMs: 1000, endMs: 3000, speaker: 'A' }, { startMs: 4000, endMs: 6000, speaker: 'B' }, { startMs: 7000, endMs: 9000, speaker: 'C' }],
+            joins: [{ at: 'betweenTeasers', transition: 'starlight', durationMs: 1000 }],
+        } }),
+        download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async () => {},
+        cutClip: async (_in, out) => { fs.writeFileSync(out, ''); },
+        overlayClip: async (_input, _overlay, out) => { fs.writeFileSync(out, ''); },
+        render: async opts => {
+            at = (opts.overlays ?? []).map(o => o.at);
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, intro: 'none' },
+        graphics: { name: spec => `${spec.template}-x.mov`, draw: async (_spec, out) => { fs.writeFileSync(out, ''); } },
+    }, path.join(dir, 'work'), '4');
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.deepEqual(at, ['clip:t2', 'clip:t3']);
 });

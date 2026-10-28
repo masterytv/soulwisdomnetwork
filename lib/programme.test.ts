@@ -3,9 +3,10 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, firstEdit, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, changeJoin, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
+import type { EpisodeEdit } from './edit';
 
 const w = (text: string, start: number, end: number, speaker = 'A'): SpokenWord => ({ text, start, end, speaker } as SpokenWord);
 
@@ -40,8 +41,19 @@ test('the first edit: fillers, stammers and long pauses cut, the teasers placed,
     assert.deepEqual(firstEdit({ cuts: [], version: 0, teasers: [] }, { words, silences: null, teasers: [{ startMs: 0, endMs: 1, speaker: 'A' }] }).edit.teasers, []);
 });
 
+// The whole video before spec 022: teasers, then the intro, the episode and the outro (null: none), as clips.
+const old = (o: { teasers: number[]; introMs: number | null; outroMs: number | null; episodeMs: number; sections: SectionJoins }) => programmeOf({
+    sections: o.sections,
+    clips: [
+        ...o.teasers.map((lengthMs, i) => ({ kind: 'recording' as const, id: `t${i + 1}`, lengthMs })),
+        ...(o.introMs === null ? [] : [{ kind: 'intro' as const, id: 'intro', lengthMs: o.introMs }]),
+        { kind: 'episode' as const, id: 'episode', lengthMs: o.episodeMs },
+        ...(o.outroMs === null ? [] : [{ kind: 'outro' as const, id: 'outro', lengthMs: o.outroMs }]),
+    ],
+});
+
 test('the programme in order, joined as the render joins it', () => {
-    const p = programmeOf({ teasers: [5000, 4000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections: DEFAULT_SECTION_JOINS });
+    const p = old({ teasers: [5000, 4000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections: DEFAULT_SECTION_JOINS });
     assert.deepEqual(p.pieces.map(x => [x.kind, x.atMs, x.lengthMs]), [
         ['teaser', 0, 5000], ['teaser', 5000, 4000], ['intro', 9000, 3000], ['episode', 12_000, 60_000], ['outro', 72_000, 3000],
     ]);
@@ -55,7 +67,7 @@ test('the programme in order, joined as the render joins it', () => {
         betweenTeasers: { transition: 'dissolve', durationMs: 3000 },
         beforeOutro: { transition: 'fade', durationMs: 500 },
     };
-    const q = programmeOf({ teasers: [5000, 2000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections });
+    const q = old({ teasers: [5000, 2000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections });
     assert.deepEqual(q.pieces.map(x => [x.kind, x.atMs, x.joinMs]), [
         ['teaser', 0, 0], ['teaser', 5000, 0], ['intro', 7000, 0], ['episode', 9000, 1000], ['outro', 68_500, 500],
     ]);
@@ -65,7 +77,7 @@ test('the programme in order, joined as the render joins it', () => {
     assert.deepEqual(q.pieces.map(x => x.transition), ['cut', 'cut', 'cut', 'dissolve', 'fade']);
 
     // Nothing but the episode.
-    const r = programmeOf({ teasers: [], introMs: null, outroMs: null, episodeMs: 1000, sections });
+    const r = old({ teasers: [], introMs: null, outroMs: null, episodeMs: 1000, sections });
     assert.deepEqual(r.pieces.map(x => x.kind), ['episode']);
     assert.equal(r.episodeAtMs, 0);
 });
@@ -131,4 +143,71 @@ test('the preview\'s hand-over: the recording at a moment of the edited episode,
     assert.deepEqual([0, 500, 2000, 2500, 3000, 3999, 9999].map(ms => recordingAt(ranges, ms)), [1000, 1500, 10_000, 10_500, 5000, 5999, 6000]);
     assert.deepEqual([1000, 2999, 3000, 10_500, 5500, 7000].map(ms => playedAt(ranges, ms)), [0, 1999, null, 2500, 3500, null]);
     assert.equal(recordingAt([], 100), 0);
+});
+
+// ─── Spec 022: the whole video as clips ───────────────────────────────────────
+
+test('spec 022: an old edit converts to clips, and back to the same old fields', () => {
+    const teasers: Teaser[] = [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }, { startMs: 9000, endMs: 9600, speaker: 'Bo', tag: false }];
+    const p = programmeEdit({ teasers, intro: null, outro: null });
+    assert.deepEqual(p.clips.map(c => [c.kind, c.id]), [['recording', 't1'], ['recording', 't2'], ['intro', 'intro'], ['episode', 'episode'], ['outro', 'outro']]);
+    assert.deepEqual(p.clips[0], { id: 't1', kind: 'recording', inMs: 1000, outMs: 4000, name: 'Ana' });
+    // A label on the tagged teaser only, the whole clip long; a short clip's label is drawn for a second, as before.
+    assert.deepEqual(p.layers.map(l => [l.anchor.clip, l.fields.speaker, l.durationMs]), [['t1', 'Ana', 3000]]);
+    assert.equal(programmeEdit({ teasers: [{ startMs: 0, endMs: 600, speaker: 'C' }] }).layers[0].durationMs, 1000);
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    assert.deepEqual(legacyFields(p, { intro: null, outro: null }), { teasers, intro: null, outro: null });
+    // Taken out: no clip; and back to false.
+    const own = { path: 'episodes/abcdefghij/media/i.mp4', name: 'Mine' };
+    const q = programmeEdit({ teasers: [], intro: own, outro: false });
+    assert.deepEqual(q.clips.map(c => c.kind), ['intro', 'episode']);
+    assert.deepEqual(legacyFields(q, { intro: own, outro: false }), { teasers: [], intro: own, outro: false });
+    // Saved before the edit had teasers: the ones the editor shows (the notes' clips), D1.
+    assert.deepEqual(programmeEdit({ teasers: null }, teasers).clips.length, 5);
+    assert.deepEqual(programmeEdit({}).clips.map(c => c.kind), ['intro', 'episode', 'outro']);
+    // Its own wins.
+    assert.equal(programmeEdit({ programme: q, teasers }), q);
+});
+
+test('spec 022: the teasers\' actions on clips keep the rest of the video, and the edit keeps its old fields in step', () => {
+    const p = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }], intro: false });
+    const next = withTeasers(p, [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
+    assert.deepEqual(next.clips.map(c => c.id), ['t1', 't2', 'episode', 'outro']);
+    assert.deepEqual(next.layers.map(l => l.anchor.clip), ['t2']);
+    assert.deepEqual(teasersOf(next), [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
+    const base: EpisodeEdit = { cuts: [], version: 1, intro: false, outro: null };
+    const edit = setProgramme(base, withoutEnd(next, 'outro'));
+    assert.deepEqual([edit.intro, edit.outro, edit.teasers?.length], [false, false, 2]);
+    assert.deepEqual(programmeEdit({ ...edit, programme: null }).clips.map(c => c.id), ['t1', 't2', 'episode']);
+});
+
+test('spec 022: what may be saved', () => {
+    const p = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }] });
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    const bad = (q: unknown) => !ProgrammeSchema.safeParse(q).success;
+    assert.ok(bad({ ...p, clips: p.clips.filter(c => c.kind !== 'episode') }), 'the episode once');
+    assert.ok(bad({ ...p, clips: [...p.clips, { id: 'episode', kind: 'episode' }] }), 'not twice');
+    assert.ok(bad({ ...p, clips: [{ id: 't1', kind: 'recording', inMs: 0, outMs: 100, name: '' }, ...p.clips.slice(1)] }), 'half a second at least');
+    assert.ok(bad({ ...p, layers: [{ ...p.layers[0], anchor: { clip: 'gone', ms: 0 } }] }), 'a graphic on a clip that is there');
+    assert.ok(bad({ ...p, layers: [{ ...p.layers[0], anchor: { clip: 'episode', ms: 0 } }] }), 'not on the episode');
+    assert.ok(bad({ ...p, clips: [...p.clips.slice(0, 1), { id: 't9', kind: 'recording', inMs: 0, outMs: 900, name: 'x' }, ...p.clips.slice(1)].concat(p.clips[0]) }), 'ids once');
+});
+
+test('spec 022: each change\'s transition, its own or the default for its kind', () => {
+    const sections: SectionJoins = { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'dissolve', durationMs: 500 }, afterTeasers: { transition: 'wipeLeft', durationMs: 300 } };
+    const clips = [
+        { kind: 'recording' as const, id: 'a', lengthMs: 2000 },
+        { kind: 'recording' as const, id: 'b', lengthMs: 2000, join: { transition: 'cut' as const, durationMs: 500 } },
+        { kind: 'intro' as const, id: 'intro', lengthMs: null },           // no file: skipped
+        { kind: 'episode' as const, id: 'episode', lengthMs: 9000 },
+        { kind: 'recording' as const, id: 'c', lengthMs: 1000 },             // after the episode: a straight cut by default
+    ];
+    assert.deepEqual(clipJoins(clips, sections).map(j => [j.clip.id, j.join?.transition ?? null, j.label]), [
+        ['a', null, ''], ['b', 'cut', 'Into b'], ['episode', 'wipeLeft', 'After the teasers'], ['c', null, 'Into c'],
+    ]);
+    const pg = programmeOf({ clips, sections });
+    assert.deepEqual(pg.pieces.map(x => [x.id, x.atMs, x.joinMs]), [['a', 0, 0], ['b', 2000, 0], ['episode', 3700, 300], ['c', 12_700, 0]]);
+    assert.equal(changeJoin('intro', 'episode'), 'afterIntro');
+    assert.equal(changeJoin('episode', 'outro'), 'beforeOutro');
+    assert.equal(changeJoin('outro', 'recording'), null);
 });
