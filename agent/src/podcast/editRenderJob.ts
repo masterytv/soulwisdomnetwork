@@ -212,7 +212,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // renderer, burned in by the cutter as before; a clip with no label is cut plainly. The intro and outro are the
     // episode's own or the Studio's (the outro is the Studio's intro, as always).
     const motionTags = !!deps.graphics && !!deps.overlayClip;
-    const tagLater: { file: string; speaker: string; durationMs: number }[] = [];
+    const tagLater: { id: string; file: string; speaker: string; durationMs: number }[] = [];
+    const graphicWarnings: string[] = [];
     const files = new Map<string, string>();
     let cut = 0;
     for (const c of plan.programme.clips) {
@@ -221,7 +222,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const label = plan.programme.layers.find(l => l.anchor.clip === c.id);
         if (label && motionTags) {
             await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000);
-            tagLater.push({ file: out, speaker: label.fields.speaker, durationMs: label.durationMs });
+            tagLater.push({ id: c.id, file: out, speaker: label.fields.speaker, durationMs: label.durationMs });
         } else await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000, label ? { speaker: label.fields.speaker } : undefined);
         files.set(c.id, out);
     }
@@ -231,6 +232,14 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const outro = plan.programme.clips.some(c => c.kind === 'outro') ? (plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro) : undefined;
     if (intro) files.set(INTRO_CLIP, intro);
     if (outro) files.set(OUTRO_CLIP, outro);
+    // Spec 022 stage 3b: a label on the intro or outro is laid over its file too (only with the graphics renderer).
+    for (const id of [INTRO_CLIP, OUTRO_CLIP]) {
+        const label = plan.programme.layers.find(l => l.anchor.clip === id);
+        const file = files.get(id);
+        if (!label || !file) continue;
+        if (motionTags) tagLater.push({ id, file, speaker: label.fields.speaker, durationMs: label.durationMs });
+        else graphicWarnings.push(`The "In this episode" label on the ${id} was left out: the graphics renderer is not on this runner.`);
+    }
     // Each change's transition, its own or the default for its kind (lib/programme.ts clipJoins, as the editor plays it).
     const names = new Map(plan.programme.clips.map(c => [c.id, c.kind === 'recording' ? `"${c.name || 'a clip'}"` : `the ${c.kind}`]));
     const joins = clipJoins(plan.programme.clips.map(c => ({
@@ -257,7 +266,6 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // draws what changed. Episode-anchored graphics go to the renderer as silent video layers (looped when
     // their clip is shorter than the layer: the whole-episode logo bug); the end screen and the starlight
     // clips are overlaid on the programme's own clock (renderEdit's `overlays`).
-    const graphicWarnings: string[] = [];
     const overlays: NonNullable<Parameters<typeof renderEdit>[0]['overlays']> = [];
     const highlights: NonNullable<Parameters<typeof renderEdit>[0]['highlights']> = [];
     // The motion graphic layers' drawn clips, for the editor hand-off (spec 021 M5): one file each,
@@ -339,9 +347,10 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
                 template: 'teaserTag', fields: { speaker: t.speaker }, colors: settings.colors,
                 durationMs: t.durationMs, width: 1920, height: 1080,
             });
-            const tagged = t.file.replace(/\.mp4$/, '-tagged.mp4');
+            // A cut clip's own file, or (the intro and outro, whose file may serve both) a copy of its own.
+            const tagged = /teaser-cut-\d+\.mp4$/.test(t.file) ? t.file.replace(/\.mp4$/, '-tagged.mp4') : path.join(workDir, `${t.id}-tagged.mp4`);
             await deps.overlayClip!(t.file, local, tagged);
-            for (const p of programme) if (p.file === t.file) p.file = tagged;
+            for (const p of programme) if (p.id === t.id) p.file = tagged;
         }
     }
     // Each sound's file, on the episode (edit.audio) and on the other clips (spec 022). A show library file plays only

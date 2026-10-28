@@ -96,3 +96,10 @@ test('the teasers\' music and whoosh: none by default; a saved one is kept, a br
     assert.deepEqual(withDefaults({ teaserMusic: bed }).teaserMusic, bed);
     assert.equal(withDefaults({ teaserWhoosh: { ...bed, path: '/etc/passwd' } }).teaserWhoosh, null);
 });
+
+test('spec 022 3b: the opening\'s remembered music: none by default, a saved one kept, a broken one dropped', () => {
+    assert.equal(DEFAULT_SETTINGS.openingMusic, null);
+    const m = { library: 'bed', path: 'library/bed.mp3', name: 'Bed' };
+    assert.deepEqual(withDefaults({ openingMusic: m }).openingMusic, m);
+    assert.equal(withDefaults({ openingMusic: { ...m, path: 'x' } }).openingMusic, null);
+});

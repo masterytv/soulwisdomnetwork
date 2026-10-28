@@ -10,7 +10,7 @@ import {
     msAt, nearest, pct, preciseTime, rangeOf, removedRanges, snapMs, SPEAKER_COLORS, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticks, ticksBetween, tickStep, tickText, wordEdges, zoomAround,
     timelineAxis, dropPosition, playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, uncut, joinMarks, MIN_PIECE_MS,
-    withProgramme, extraAt, teaserEdgeAt, teaserDrop, teaserSlot, clipSoundView, soundPlace,
+    withProgramme, extraAt, teaserEdgeAt, teaserDrop, teaserSlot, clipSoundView, soundPlace, clipDrop,
 } from './timeline';
 import { playOrder } from './sequence';
 
@@ -387,4 +387,16 @@ test('spec 022: clips around the episode overlap by their transitions, and sound
     assert.deepEqual(soundPlace(a, a.lengthMs + 500), { clip: 'outro', ms: 3_500 });
     // No overlaps given: end to end, as before.
     assert.deepEqual(withProgramme(inner, [teaser(0, 0, 1_000), teaser(1, 0, 1_000)], []).extras.map(c => c.viewStart), [0, 1_000]);
+});
+
+test('spec 022 3b: where a dragged clip goes among the whole video\'s clips', () => {
+    const a = withProgramme(timelineAxis([], null, 60_000), [
+        { ...teaser(0, 0, 4_000), id: 't1' }, { ...teaser(1, 0, 2_000), id: 't2' }, { kind: 'intro', index: 0, srcStart: 0, lengthMs: 2_000, id: 'intro' },
+    ], [{ kind: 'outro', index: 0, srcStart: 0, lengthMs: 3_000, id: 'outro' }]);
+    const order = ['t1', 't2', 'intro', 'episode', 'outro'];
+    assert.equal(clipDrop(a, order, 't1', 5_500), 1);          // past t2's middle: after it
+    assert.equal(clipDrop(a, order, 'intro', 100), 0);          // to the very start
+    assert.equal(clipDrop(a, order, 't1', 30_000), 2);          // before the episode's middle: before the episode
+    assert.equal(clipDrop(a, order, 't1', 50_000), 3);          // past it: after the episode
+    assert.equal(clipDrop(a, order, 't2', a.lengthMs), 4);      // after the outro
 });

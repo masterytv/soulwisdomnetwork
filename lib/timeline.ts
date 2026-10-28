@@ -655,3 +655,19 @@ export function teaserSlot(count: number, at: { kind: 'teaser' | 'intro' | 'outr
     if (!at || at.kind !== 'teaser') return count;
     return Math.min(count, at.ms < at.lengthMs / 2 ? at.index : at.index + 1);
 }
+
+// Spec 022 stage 3b: where a clip dragged to `viewMs` goes among the whole video's clips (`order`, their ids in play
+// order, the episode among them): before the first one (the dragged one aside) whose middle is past the pointer.
+// Returns its place once taken out (lib/programme.ts moveClip).
+export function clipDrop(axis: TimelineAxis, order: string[], id: string, viewMs: number, episodeId = 'episode'): number {
+    const tail = axis.extras.find(c => c.viewStart >= axis.leadMs);
+    const episodeEnd = tail ? tail.viewStart + (tail.joinMs ?? 0) : axis.lengthMs;
+    const middle = (cid: string) => {
+        if (cid === episodeId) return (axis.leadMs + episodeEnd) / 2;
+        const c = axis.extras.find(x => x.id === cid);
+        return c ? c.viewStart + c.lengthMs / 2 : Infinity;
+    };
+    const rest = order.filter(x => x !== id);
+    const at = rest.findIndex(cid => middle(cid) > viewMs);
+    return at < 0 ? rest.length : at;
+}

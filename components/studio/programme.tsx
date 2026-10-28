@@ -18,6 +18,7 @@ import {
     type OldTeaserSounds, type Programme, type ProgrammeEdit, type ProgrammePiece, type Teaser,
 } from '@/lib/programme';
 import { sectionJoins, type SectionJoins, type Transition } from '@/lib/transitions';
+import type { OpeningMusic } from '@/lib/audio';
 import { draw } from '@/components/studio/transitionPreview';
 import { secondary } from '@/components/studio/ui';
 
@@ -28,6 +29,9 @@ export interface ProgrammeSetup {
     teasers: Teaser[];
     studioIntro: { name: string; url: string } | null;
     oldSounds?: Omit<OldTeaserSounds, 'sections'> | null;
+    // Spec 022 stage 3b: what Build the opening places: the approved notes' teaser clips, the Studio's transitions, and
+    // the music it remembers (or the Studio had under the teasers).
+    opening?: { teasers: Teaser[]; sections: SectionJoins; remembered: OpeningMusic | null; old: OpeningMusic | null } | null;
 }
 
 // The whole video's clips for an edit, as the render reads them (lib/programme.ts programmeEdit): the old teaser

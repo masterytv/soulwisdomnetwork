@@ -49,20 +49,21 @@ import { ElementsPanel } from '@/components/studio/elements';
 import { PropertiesPanel } from '@/components/studio/properties';
 import { ClipSoundProperties, ClipSoundsPreview, SoundProperties, SoundsPreview } from '@/components/studio/sounds';
 import { soundBlocked } from '@/components/studio/mediaBin';
-import { newSound, uploadKind, type Sound } from '@/lib/audio';
+import { newSound, openingMusicDefault, uploadKind, type OpeningMusic, type Sound } from '@/lib/audio';
 import { layerFromBin, layersOf, type BinItem, type Brand, type Layer } from '@/lib/layers';
 import { DEFAULT_BRAND } from '@/lib/studioSettings';
 import { ShortcutSheet, Workspace, type WorkspacePanel } from '@/components/studio/workspace';
 import { playStep, previewRanges, sequenceLength, sequenceOf, timelineTime } from '@/lib/sequence';
 import { joinKey, sectionJoins, studioOnlySummary, TRANSITION_LABELS, type SectionJoins } from '@/lib/transitions';
-import { TransitionsPanel } from '@/components/studio/transitionsPanel';
+import { TransitionsPanel, type ClipChange } from '@/components/studio/transitionsPanel';
 import { TransitionPreview, type PreviewJoin } from '@/components/studio/transitionPreview';
 import { CutBridge } from '@/components/studio/cutBridge';
 import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 import { clipsOf, ProgrammePlayer, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
-import { addTeaser as withTeaser, clipStretches, setEnds, setProgramme, withoutEnd, withTeasers, type ProgrammeEdit, type ProgrammeSound } from '@/lib/programme';
+import { buildOpening, changeJoin, clipStretches, insertClip, openingClips, setClipJoin, setEnds, setProgramme, type ProgrammeEdit, type ProgrammeSound } from '@/lib/programme';
+import { studioFetch } from '@/lib/studioClient';
 import { teaserSlot } from '@/lib/timeline';
 
 // No media videos: one array, so the Parts panel does not redraw on every render.
@@ -71,6 +72,18 @@ const NO_VIDEOS: BinItem[] = [];
 const NO_SPLITS: number[] = [];
 const NO_SOUNDS: Sound[] = [];
 const NO_CLIP_SOUNDS: ProgrammeSound[] = [];
+
+// Spec 022: each change between the whole video's clips that play, for the Transitions panel: into which clip, its own
+// transition, and the default for its kind of change.
+function clipChanges(prog: NonNullable<ReturnType<typeof useProgramme>>, sections: SectionJoins): ClipChange[] {
+    return prog.pieces.slice(1).map((p, i) => {
+        const clip = prog.clips.clips.find(c => c.id === p.id);
+        const before = prog.clips.clips.find(c => c.id === prog.pieces[i].id);
+        const def = clip && before ? changeJoin(before.kind, clip.kind) : null;
+        const name = p.kind === 'teaser' ? `Teaser ${p.index + 1}${p.name ? ` · ${p.name}` : ''}` : p.label;
+        return { id: p.id, label: `Into ${name}`, own: clip?.join ?? null, inherited: def ? sections[def] : null };
+    });
+}
 
 interface SpeakerPara {
     speaker: string;
@@ -275,6 +288,8 @@ export function Editor({
     const bridgeSkips = useMemo(() => sequence.joins.flatMap(j => (j.transition === 'starlight' ? [] : [j.aEndMs])), [sequence.joins]);
     // The split whose transition the Transitions panel shows first (chosen on the timeline).
     const [joinFocus, setJoinFocus] = useState<number | null>(null);
+    // Spec 022: a change between clips chosen on the timeline, shown first in the Transitions panel.
+    const [clipJoinFocus, setClipJoinFocus] = useState<string | null>(null);
 
     // One total for both numbers: videoDuration || last word end.
     const totalMs = videoDuration || (words.length > 0 ? words[words.length - 1].end : 0);
@@ -330,19 +345,40 @@ export function Editor({
     // Spec 022: the teasers' actions change the whole video's clips, and the old fields with them (lib/programme.ts).
     const changeClips = useCallback((f: (p: ProgrammeEdit) => ProgrammeEdit) =>
         updateEdit(prev => setProgramme(prev, f(clipsOf(prev, programme, studioJoins)))), [updateEdit, programme, studioJoins]);
-    // Item E14: a stretch of the recording (a section or stretch chosen on the timeline, made a teaser or copied and
-    // pasted) added as a teaser where the preview is among the teasers (before the one it shows in that one's first
-    // half, after it in its second), or after the last one; then chosen on the timeline.
+    // Item E14: a stretch of the recording (a section or stretch chosen on the timeline, made a clip or copied and
+    // pasted) added as a clip of the opening where the preview is among the opening's clips (before the one it shows in
+    // that one's first half, after it in its second), or after the last one; then chosen on the timeline.
     const addTeaser = useCallback((stretch: { startMs: number; endMs: number }) => {
         if (!prog) return;
         const pos = prog.control.position();
         const piece = pos ? prog.pieces[pos.piece] : null;
-        const at = teaserSlot(prog.teasers.length, piece && pos ? { kind: piece.kind, index: piece.index, ms: pos.ms, lengthMs: piece.lengthMs } : null);
-        const next = withTeaser(prog.teasers, stretch, at, words);
-        if (next === prog.teasers) return;
-        changeClips(p => withTeasers(p, next));
-        setTimelineSel({ kind: 'teaser', index: at });
+        const opening = openingClips(prog.clips);
+        const k = piece?.kind === 'teaser' ? opening.findIndex(c => c.id === piece.id) : -1;
+        const at = teaserSlot(opening.length, piece && pos && k >= 0 ? { kind: 'teaser', index: k, ms: pos.ms, lengthMs: piece.lengthMs } : null);
+        const next = insertClip(prog.clips, stretch, at, words);
+        if (next === prog.clips) return;
+        changeClips(() => next);
+        setTimelineSel({ kind: 'clip', id: next.clips[at].id });
     }, [prog, words, changeClips, setTimelineSel]);
+    // Spec 022 stage 3b: Build the opening (the Parts panel): the notes' teaser clips, the music it would pick (the last
+    // one used, the Studio's old teaser music, or the first in the library) and the others it could; building replaces
+    // the opening (Undo puts it back) and remembers the music for next time.
+    const openingBuild = useMemo(() => {
+        const o = programme?.opening;
+        if (!o || !prog) return null;
+        const library = (media?.items ?? []).flatMap(i => (i.source === 'library' && i.sound ? [{ id: i.id.replace(/^lib-/, ''), kind: i.sound.kind, path: i.path, name: i.name, checked: i.sound.checked }] : []));
+        const choices = library.filter(e => e.kind === 'music' && e.checked).map(e => ({ library: e.id, path: e.path, name: e.name.slice(0, 150) }));
+        return {
+            count: o.teasers.length,
+            has: openingClips(prog.clips).length > 0,
+            music: openingMusicDefault({ remembered: o.remembered, old: o.old, library }),
+            choices,
+            onBuild: (music: OpeningMusic | null) => {
+                updateEdit(prev => setProgramme(prev, buildOpening(clipsOf(prev, programme, studioJoins), { teasers: o.teasers, sections: sectionJoins(prev.joins, studioJoins ?? undefined), music })));
+                studioFetch('/api/studio/opening-music', { method: 'POST', body: JSON.stringify({ music }) }).catch(() => {});
+            },
+        };
+    }, [programme, prog, media?.items, updateEdit, studioJoins]);
     // Choosing a layer on the preview or the timeline keeps the keys with the editor (Delete removes it),
     // even when the element that was clicked goes away. Not from the panel, whose fields need the keys.
     const pickLayer = useCallback((id: string | null) => {
@@ -1407,7 +1443,8 @@ export function Editor({
                                         const old = programme?.oldSounds ? { ...programme.oldSounds, sections: sectionJoins(prev.joins, studioJoins ?? undefined) } : null;
                                         return Object.keys(ends).length ? setEnds(next, ends, programme?.teasers ?? [], old) : next;
                                     })}
-                                    onSeek={ms => seekToTime(ms / 1000)} />
+                                    onSeek={ms => seekToTime(ms / 1000)}
+                                    build={openingBuild} />
                             ),
                         },
                         {
@@ -1420,6 +1457,10 @@ export function Editor({
                                     studio={studioJoins}
                                     warnings={sequence.skipped}
                                     focus={joinFocus}
+                                    changes={prog ? clipChanges(prog, sectionJoins(edit.joins, studioJoins ?? undefined)) : []}
+                                    focusClip={clipJoinFocus}
+                                    onChange={(id, t) => changeClips(p => setClipJoin(p, id, t))}
+                                    onJumpClip={id => { const k = prog?.pieces.findIndex(p => p.id === id) ?? -1; if (k >= 0) prog!.control.cue(k, 0); }}
                                     onJoins={joins => updateEdit(prev => ({ ...prev, joins }))}
                                     onSeek={ms => seekToTime(ms / 1000)}
                                 />
@@ -1473,13 +1514,13 @@ export function Editor({
                             overlaps={sequence.joins.flatMap(j => [{ fromMs: j.aFromMs, toMs: j.aEndMs }, { fromMs: j.bStartMs, toMs: j.bUntilMs }])}
                             onJoin={splitMs => { setJoinFocus(splitMs); setPanelId('transitions'); }}
                             programme={prog && {
-                                teasers: prog.teasers,
+                                clips: prog.clips,
                                 pieces: prog.pieces,
                                 control: prog.control,
-                                onTeasers: teasers => changeClips(p => withTeasers(p, teasers)),
+                                onClips: next => changeClips(() => next),
                                 onMakeTeaser: addTeaser,
-                                onEnd: key => changeClips(p => withoutEnd(p, key)),
                                 onParts: () => setPanelId('parts'),
+                                onClipJoin: id => { setClipJoinFocus(id); setPanelId('transitions'); },
                             }}
                             split={{
                                 splits: edit.splits ?? NO_SPLITS,

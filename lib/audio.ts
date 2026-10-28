@@ -168,6 +168,32 @@ export const TeaserSoundSchema = z.object({
     gainDb: z.number().min(-40).max(6),
 }).strict();
 export type TeaserSound = z.infer<typeof TeaserSoundSchema>;
+
+// ─── the opening's music (spec 022 stage 3b) ─────────────────────────────────
+
+// The music Build the opening puts under the opening: a show library music file.
+export const OpeningMusicSchema = z.object({
+    library: z.string().regex(/^[\w-]{1,40}$/),
+    path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
+    name: z.string().trim().max(150),
+}).strict();
+export type OpeningMusic = z.infer<typeof OpeningMusicSchema>;
+
+// What Build the opening picks unless told otherwise (Tom's D3: music by default, since taking it out is easier than
+// adding it): the music the last opening was built with, else the Studio's old "Music under the teasers", else the
+// first show library music by name; each only while it is in the library as music with its licence checked. None
+// when there is none.
+export function openingMusicDefault(o: {
+    remembered: OpeningMusic | null; old: Pick<OpeningMusic, 'library' | 'path' | 'name'> | null;
+    library: { id: string; kind: LibraryKind; path: string; name: string; checked: unknown }[];
+}): OpeningMusic | null {
+    const usable = o.library.filter(e => e.kind === 'music' && !!e.checked);
+    const ok = (m: OpeningMusic | null) => !!m && usable.some(e => e.id === m.library && e.path === m.path);
+    if (ok(o.remembered)) return o.remembered;
+    if (o.old && ok({ library: o.old.library, path: o.old.path, name: o.old.name })) return { library: o.old.library, path: o.old.path, name: o.old.name };
+    const first = [...usable].sort((a, b) => a.name.localeCompare(b.name))[0];
+    return first ? { library: first.id, path: first.path, name: first.name.slice(0, 150) } : null;
+}
 export const TEASER_MUSIC_DB = -16, TEASER_WHOOSH_DB = -12;
 // The music fades in over the first half second and out over the last teaser's last 1.5 s; the whoosh
 // starts a little before each change, so it peaks on the cut.

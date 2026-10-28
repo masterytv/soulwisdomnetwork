@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, changeJoin, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setEnds, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, buildOpening, changeJoin, duplicateClip, insertClip, moveClip, removeClip, setClipJoin, setLabel, splitClip, trimClip, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setEnds, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 import type { EpisodeEdit } from './edit';
@@ -272,4 +272,70 @@ test('spec 022 3a: teasers keep their clips (and the sounds on them) through the
     assert.ok(legacyFields(moved, {}).teasers!.every(t => !('id' in t)));
     assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [sound('s9', 'episode')] }).success, 'a sound on the episode belongs to edit.audio');
     assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [{ ...sound('s9', 't1'), anchor: { clip: 't1', ms: -20_000 } }] }).success, 'leads in by 10 s at most');
+});
+
+// ─── Spec 022 stage 3b: editing clips, and building the opening ───────────────
+
+test('spec 022 3b: clips cut, duplicated, moved anywhere, trimmed, taken out, added, joined and labelled', () => {
+    const base = programmeEdit({ teasers: [{ startMs: 1000, endMs: 5000, speaker: 'Ana' }, { startMs: 9000, endMs: 10_000, speaker: 'Bo' }] });
+    const wind = { ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'w' };
+    const p = { ...base, audio: [{ ...wind, anchor: { clip: 't1', ms: 3000 } }, { ...wind, id: 'w2', anchor: { clip: 't1', ms: 0 } }] };
+    // Cut in two at 2.5 s of the recording: a straight cut, the sound past the cut moves with its part, the label is cut short.
+    const cut = splitClip(p, 't1', 2500);
+    assert.deepEqual(cut.clips.slice(0, 2).map(c => c.kind === 'recording' && [c.id, c.inMs, c.outMs, c.join?.transition ?? null]), [['t1', 1000, 2500, null], ['c1', 2500, 5000, 'cut']]);
+    assert.deepEqual(cut.audio!.map(s => [s.id, s.anchor.clip, s.anchor.ms]), [['w', 'c1', 1500], ['w2', 't1', 0]]);
+    assert.deepEqual(cut.layers.map(l => [l.anchor.clip, l.durationMs]), [['t1', 1500], ['t2', 1000]]);
+    assert.equal(splitClip(p, 't1', 1200), p, 'half a second each side at least');
+    // Duplicated: a copy right after it, with copies of its label and sounds.
+    const dup = duplicateClip(p, 't2');
+    assert.deepEqual(dup.clips.map(c => c.id), ['t1', 't2', 'c1', 'intro', 'episode', 'outro']);
+    assert.deepEqual(dup.layers.map(l => [l.id, l.anchor.clip]), [['tag-t1', 't1'], ['tag-t2', 't2'], ['c1-tag-t2', 'c1']]);
+    assert.equal(duplicateClip(p, 'intro'), p, 'the intro plays once');
+    assert.ok(ProgrammeSchema.safeParse(dup).success);
+    // Moved anywhere: after the outro; the episode stays put.
+    assert.deepEqual(moveClip(p, 't1', 4).clips.map(c => c.id), ['t2', 'intro', 'episode', 'outro', 't1']);
+    assert.deepEqual(moveClip(p, 'intro', 0).clips.map(c => c.id), ['intro', 't1', 't2', 'episode', 'outro']);
+    assert.equal(moveClip(p, 'episode', 0), p);
+    // Trimmed: the label that reached the end still does.
+    const trimmed = trimClip(p, 't1', 'end', 3000);
+    assert.deepEqual([trimmed.clips[0].kind === 'recording' && trimmed.clips[0].outMs, trimmed.layers[0].durationMs], [3000, 2000]);
+    // Taken out, with what was on it.
+    const gone = removeClip(p, 't1');
+    assert.deepEqual([gone.clips.length, gone.layers.length, gone.audio!.length], [4, 1, 0]);
+    assert.equal(removeClip(p, 'episode'), p);
+    // Added from the episode, at a place, with its label.
+    const added = insertClip(p, { startMs: 20_000, endMs: 21_000 }, 5, [w('hi', 20_100, 20_400, 'Cy')]);
+    assert.deepEqual(added.clips.map(c => c.id), ['t1', 't2', 'intro', 'episode', 'outro', 'c1']);
+    assert.deepEqual(added.layers.at(-1)!.fields, { speaker: 'Cy' });
+    // A change's own transition, and back to the default; labels on and off and renamed.
+    const joined = setClipJoin(p, 't2', { transition: 'fade', durationMs: 1000 });
+    assert.deepEqual(joined.clips[1].join, { transition: 'fade', durationMs: 1000 });
+    assert.ok(!('join' in setClipJoin(joined, 't2', null).clips[1]));
+    assert.deepEqual(setLabel(p, 't1', { on: false }).layers.map(l => l.anchor.clip), ['t2']);
+    assert.deepEqual(setLabel(setLabel(p, 't1', { on: false }), 't1', { on: true }).layers.at(-1)!.fields, { speaker: 'Ana' });
+    assert.deepEqual(setLabel(p, 't2', { speaker: ' Bo Guest ' }).layers[1].fields, { speaker: 'Bo Guest' });
+    assert.deepEqual(setLabel(p, 'outro', { on: true }).layers.at(-1)!.anchor, { clip: 'outro', ms: 0 });
+});
+
+test('spec 022 3b: Build the opening places clips, dissolves, labels, the wind at each change and the music, replacing the old opening', () => {
+    const old = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'Old' }] });
+    const kept = { ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'k', anchor: { clip: 'outro', ms: 0 } };
+    const notes: Teaser[] = [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }, { startMs: 8000, endMs: 10_000, speaker: 'Bo' }, { startMs: 12_000, endMs: 13_000, speaker: 'Cy' }];
+    const music = { library: 'bed', path: 'library/bed.mp3', name: 'Bed' };
+    const built = buildOpening({ ...old, audio: [kept, { ...kept, id: 'gone', anchor: { clip: 't1', ms: 0 } }] }, { teasers: notes, sections: DEFAULT_SECTION_JOINS, music });
+    assert.deepEqual(built.clips.map(c => [c.id, c.join?.transition ?? null]), [['c1', null], ['c2', 'dissolve'], ['c3', 'dissolve'], ['intro', null], ['episode', null], ['outro', null]]);
+    assert.deepEqual(built.layers.map(l => [l.anchor.clip, l.fields.speaker, l.durationMs]), [['c1', 'Ana', 3000], ['c2', 'Bo', 2000], ['c3', 'Cy', 1000]]);
+    // Pieces at 0, 2500 and 4000 (each dissolving in over 0.5 s): the music under all 5 s, the wind 250 ms into each dissolve's start.
+    assert.deepEqual(built.audio!.map(s => [s.id, s.track, s.anchor.clip, s.anchor.ms, s.durationMs, s.gainDb]), [
+        ['music-c1', 2, 'c1', 0, 5000, -16],
+        ['wind-c2', 3, 'c2', 0, 1200, -18],
+        ['wind-c3', 3, 'c3', 0, 1200, -18],
+        ['k', 3, 'outro', 0, kept.durationMs, 0],
+    ]);
+    assert.equal(built.audio![1].media.path, 'studio/sounds/soul-wisdom-wind-breath.wav');
+    assert.ok(ProgrammeSchema.safeParse(built).success);
+    // The Studio's own dissolve length; no music; and built again it replaces itself.
+    const own = buildOpening(old, { teasers: notes.slice(0, 2), sections: { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'fade', durationMs: 1000 } }, music: null });
+    assert.deepEqual([own.clips[1].join, own.audio!.map(s => [s.id, s.anchor.ms])], [{ transition: 'fade', durationMs: 1000 }, [['wind-c2', 250]]]);
+    assert.deepEqual(buildOpening(built, { teasers: notes.slice(0, 1), sections: DEFAULT_SECTION_JOINS, music: null }).clips.map(c => c.id), ['c1', 'intro', 'episode', 'outro']);
 });
