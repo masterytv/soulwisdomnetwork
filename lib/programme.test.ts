@@ -7,6 +7,7 @@ import { addTeaser, changeJoin, clipJoins, firstEdit, legacyFields, programmeEdi
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 import type { EpisodeEdit } from './edit';
+import { newSound, teaserSoundPlan } from './audio';
 
 const w = (text: string, start: number, end: number, speaker = 'A'): SpokenWord => ({ text, start, end, speaker } as SpokenWord);
 
@@ -172,13 +173,14 @@ test('spec 022: an old edit converts to clips, and back to the same old fields',
 test('spec 022: the teasers\' actions on clips keep the rest of the video, and the edit keeps its old fields in step', () => {
     const p = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }], intro: false });
     const next = withTeasers(p, [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
-    assert.deepEqual(next.clips.map(c => c.id), ['t1', 't2', 'episode', 'outro']);
-    assert.deepEqual(next.layers.map(l => l.anchor.clip), ['t2']);
+    // Teasers that carry no clip id are new clips, never taking the id of one that was there (stage 3a).
+    assert.deepEqual(next.clips.map(c => c.id), ['t2', 't3', 'episode', 'outro']);
+    assert.deepEqual(next.layers.map(l => l.anchor.clip), ['t3']);
     assert.deepEqual(teasersOf(next), [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
     const base: EpisodeEdit = { cuts: [], version: 1, intro: false, outro: null };
     const edit = setProgramme(base, withoutEnd(next, 'outro'));
     assert.deepEqual([edit.intro, edit.outro, edit.teasers?.length], [false, false, 2]);
-    assert.deepEqual(programmeEdit({ ...edit, programme: null }).clips.map(c => c.id), ['t1', 't2', 'episode']);
+    assert.deepEqual(programmeEdit({ ...edit, programme: null }).clips.map(c => c.id), ['t1', 't2', 'episode']);   // converted again, numbered afresh
 });
 
 test('spec 022: what may be saved', () => {
@@ -221,4 +223,53 @@ test('spec 022: the Parts panel\'s intro and outro take their clip off and put i
     const back = setEnds(off, { intro: null, outro: own });
     assert.deepEqual(back.programme!.clips.map(c => c.kind), ['recording', 'intro', 'episode', 'outro']);
     assert.deepEqual([back.intro, back.outro], [null, own]);
+});
+
+// ─── Spec 022 stage 3a: sounds on clips ───────────────────────────────────────
+
+const bed = { library: 'bed', path: 'library/bed.mp3', name: 'Bed', gainDb: -16 };
+const whoosh = { library: 'wh', path: 'library/wh.wav', name: 'Whoosh', gainDb: -12 };
+
+test('spec 022 3a: the old teaser music and whoosh become sounds on the clips, where the render mixed them', () => {
+    const sections: SectionJoins = { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'dissolve', durationMs: 500 } };
+    const teasers: Teaser[] = [{ startMs: 0, endMs: 2000, speaker: 'A' }, { startMs: 5000, endMs: 6500, speaker: 'B' }, { startMs: 8000, endMs: 9000, speaker: 'C' }];
+    const p = programmeEdit({ teasers }, [], { music: bed, whoosh, whooshMs: 800, sections });
+    // The plan the render used: the pieces 0, 1500 and 2500 long 2000, 1500 and 1000, each dissolving in over 0.5 s.
+    const plan = teaserSoundPlan([0, 1500, 2500].map((atMs, i) => ({ kind: 'teaser', atMs, lengthMs: [2000, 1500, 1000][i], joinMs: i ? 500 : 0 })));
+    assert.deepEqual(plan, { music: { startMs: 0, endMs: 3500 }, whooshes: [1500, 2500] });
+    assert.deepEqual(p.audio!.map(s => [s.id, s.anchor.clip, s.anchor.ms, s.durationMs, s.gainDb, s.loop, s.duck]), [
+        ['teaserMusic', 't1', 0, 3500, -16, true, true],
+        ['teaserWhoosh1', 't2', 0, 800, -12, false, false],
+        ['teaserWhoosh2', 't3', 0, 800, -12, false, false],
+    ]);
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    // A straight cut: the whoosh leads into the clip by 250 ms.
+    assert.equal(programmeEdit({ teasers }, [], { music: null, whoosh, whooshMs: null, sections: DEFAULT_SECTION_JOINS }).audio![0].anchor.ms, -250);
+    // Saved with sounds (even none): those are its own.
+    assert.deepEqual(programmeEdit({ programme: { ...p, audio: [] } }, [], { music: bed, whoosh, whooshMs: 800, sections }).audio, []);
+    // No settings: none; no opening: none.
+    assert.equal(programmeEdit({ teasers }).audio, undefined);
+    assert.deepEqual(programmeEdit({ teasers: [] }, [], { music: bed, whoosh, whooshMs: 800, sections }).audio, []);
+});
+
+test('spec 022 3a: teasers keep their clips (and the sounds on them) through the editor\'s actions', () => {
+    const p0 = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }, { startMs: 5000, endMs: 6500, speaker: 'B' }] });
+    const sound = (id: string, clip: string) => ({ ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id, anchor: { clip, ms: 0 } });
+    const p = { ...p0, audio: [sound('s1', 't1'), sound('s2', 't2'), sound('s3', 'outro')] };
+    const shown = teasersOf(p, true);
+    assert.deepEqual(shown.map(t => t.id), ['t1', 't2']);
+    // Moved (t2 first), the first trimmed: each stays its clip, sounds and all.
+    const moved = withTeasers(p, [shown[1], { ...shown[0], endMs: 1500 }]);
+    assert.deepEqual(moved.clips.slice(0, 2).map(c => c.id), ['t2', 't1']);
+    assert.deepEqual(moved.audio!.map(s => s.anchor.clip), ['t1', 't2', 'outro']);
+    // One taken out: its sounds go with it; a new one gets a fresh id.
+    const fewer = withTeasers(p, [shown[1], { startMs: 9000, endMs: 9900, speaker: 'C' }]);
+    assert.deepEqual(fewer.clips.slice(0, 2).map(c => c.id), ['t2', 't3']);
+    assert.deepEqual(fewer.audio!.map(s => s.id), ['s2', 's3']);
+    // The outro taken out: its sounds too.
+    assert.deepEqual(withoutEnd(p, 'outro').audio!.map(s => s.id), ['s1', 's2']);
+    // Old fields never carry the ids.
+    assert.ok(legacyFields(moved, {}).teasers!.every(t => !('id' in t)));
+    assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [sound('s9', 'episode')] }).success, 'a sound on the episode belongs to edit.audio');
+    assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [{ ...sound('s9', 't1'), anchor: { clip: 't1', ms: -20_000 } }] }).success, 'leads in by 10 s at most');
 });

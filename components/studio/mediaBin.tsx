@@ -23,11 +23,13 @@ const GROUPS: { title: string; sources: BinSource[]; only?: (i: BinItem) => bool
     { title: 'The Studio\'s logo', sources: ['logo'] },
     { title: 'Show library: music', sources: ['library'], only: i => i.sound?.kind === 'music' },
     { title: 'Show library: effects', sources: ['library'], only: i => i.sound?.kind === 'effect' },
+    { title: 'Studio sounds', sources: ['studio'] },
 ];
 
 // Why a sound cannot be placed yet, or null when it can.
 export function soundBlocked(item: BinItem): string | null {
     if (item.kind !== 'audio') return null;
+    if (item.source === 'studio') return null;
     if (item.source === 'library') return item.sound?.checked ? null : 'Licence not checked';
     return item.rights ? null : 'Rights not declared';
 }

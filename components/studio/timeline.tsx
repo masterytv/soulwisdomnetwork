@@ -38,7 +38,7 @@ import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from '@/lib/reframe';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
-import { MAX_TEASERS, moveTeaser, setTeaserTag, TEASER_SHORTEST_MS, trimTeaser, type Teaser } from '@/lib/programme';
+import { MAX_TEASERS, moveTeaser, setTeaserTag, TEASER_SHORTEST_MS, trimTeaser, type ProgrammeSound, type Teaser } from '@/lib/programme';
 import type { ProgrammeControl, ShownPiece } from '@/components/studio/programme';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
@@ -48,7 +48,7 @@ import {
     preciseTime, rangeOf, removedRanges, roundToStep, SNAP_PX, snapMs, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticksBetween, tickText, wordEdges, zoomAround, timelineAxis, dropPosition, type SpeakerBlock, type TimelineAxis,
     playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, joinMarks, type AxisPiece, type JoinMark,
-    withProgramme, extraAt, teaserEdgeAt, teaserDrop, type ProgrammeClip,
+    withProgramme, extraAt, teaserEdgeAt, teaserDrop, clipSoundView, soundPlace, DRAG_STEP_MS, type ProgrammeClip,
 } from '@/lib/timeline';
 import { secondary } from '@/components/studio/ui';
 import { useVideoTime } from '@/components/studio/useVideoTime';
@@ -580,9 +580,14 @@ const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/
 
 // A layer being dragged on V2 or V3, or a sound on A2 or A3 (item E7): its whole body moves it, an end trims it.
 type Placed = Layer | Sound;
-interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null }
+// `view`: where a dragged sound's start is on the timeline, which may be off the episode (spec 022: it then goes onto
+// the clip there).
+interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null; view?: number }
 const NO_CUES: Cue[] = [];
 const NO_TEASERS: Teaser[] = [];
+const NO_CLIP_SOUNDS: ProgrammeSound[] = [];
+// A sound on a clip other than the episode being dragged (spec 022): where its start and end are drawn now.
+interface ClipSoundDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: ProgrammeSound; from: number; to: number; moved: boolean }
 // How long an intro or outro whose length is not known yet is drawn.
 const UNKNOWN_FILE_MS = 3000;
 
@@ -632,7 +637,7 @@ function toggleMuted(video: HTMLVideoElement | null) {
 export interface SplitTransition { splitMs: number; label: string | null; playing: boolean }
 
 export function Timeline({
-    words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
+    words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia, clipSounds = NO_CLIP_SOUNDS, onAllSounds,
     sounds = [], onSounds, mutedTracks = [], onMutedTracks, captions: cues = NO_CUES, captionsShown = false, onCaptionsShown,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin, programme,
@@ -648,7 +653,12 @@ export function Timeline({
     onSelectLayer?: (id: string | null) => void;
     onLayers?: (layers: Layer[]) => void;   // a whole drag, as one change; missing: layers cannot be changed
     highlightIssues?: Map<string, string>;  // spec 021 M3: why a highlight cannot stay as saved, by id
-    onDropMedia?: (itemId: string, srcMs: number) => void;
+    // Spec 022: dropped where a clip other than the episode is, `onClip` says which and how far into it.
+    onDropMedia?: (itemId: string, srcMs: number, onClip?: { clip: string; ms: number }) => void;
+    // Spec 022: the sounds on the clips other than the episode, and both lists changed at once (a sound dragged from the
+    // episode onto another clip, or back).
+    clipSounds?: ProgrammeSound[];
+    onAllSounds?: (episode: Sound[], onClips: ProgrammeSound[]) => void;
     sounds?: Sound[];                       // item E7: music on A2, effects on A3
     onSounds?: (sounds: Sound[]) => void;
     mutedTracks?: number[];                 // sound tracks muted in the preview
@@ -688,6 +698,10 @@ export function Timeline({
     const layerDragRef = useRef<LayerDrag | null>(null);
     const [layerDrag, setLayerDragState] = useState<LayerDrag | null>(null);
     const setLayerDrag = (d: LayerDrag | null) => { layerDragRef.current = d; setLayerDragState(d); };
+    // Spec 022: a sound on another clip being dragged.
+    const clipDragRef = useRef<ClipSoundDrag | null>(null);
+    const [clipDrag, setClipDragState] = useState<ClipSoundDrag | null>(null);
+    const setClipDrag = (d: ClipSoundDrag | null) => { clipDragRef.current = d; setClipDragState(d); };
     const [snapOn, setSnapOn] = useState(true);
     // Item E13: off, only what plays, closed up; on, the whole recording with its cuts.
     const [showCuts, setShowCuts] = useState(false);
@@ -734,17 +748,22 @@ export function Timeline({
         // A file's length is known once it loads; until then (or when it cannot play) it is drawn this long.
         const clip = (kind: 'intro' | 'outro') => {
             const p = pieces?.find(x => x.kind === kind);
-            return p ? [{ kind, index: 0, lengthMs: p.lengthMs || UNKNOWN_FILE_MS, srcStart: 0 }] : [];
+            return p ? [{ kind, index: 0, lengthMs: p.lengthMs || UNKNOWN_FILE_MS, srcStart: 0, id: p.id, joinMs: p.joinMs }] : [];
         };
         return { intro: clip('intro'), outro: clip('outro') };
     }, [pieces]);
     const lead = useMemo(() => programme ? [
-        ...teasers.map((t, index) => ({ kind: 'teaser' as const, index, lengthMs: t.endMs - t.startMs, srcStart: t.startMs })), ...ends.intro,
-    ] : [], [programme, teasers, ends]);
+        // Spec 022: each with its clip's id and drawn where it plays, overlapping the one before by its transition.
+        ...teasers.map((t, index) => ({
+            kind: 'teaser' as const, index, lengthMs: t.endMs - t.startMs, srcStart: t.startMs, id: t.id,
+            joinMs: pieces?.find(p => p.kind === 'teaser' && p.id === t.id)?.joinMs ?? 0,
+        })), ...ends.intro,
+    ] : [], [programme, teasers, ends, pieces]);
     const tail = useMemo(() => (programme ? ends.outro : []), [programme, ends]);
-    const sectionsAxis = useMemo(() => withProgramme(timelineAxis(splits, split?.order, totalMs), lead, tail), [splits, split?.order, totalMs, lead, tail]);
+    const episodeJoin = pieces?.find(p => p.kind === 'episode')?.joinMs ?? 0;
+    const sectionsAxis = useMemo(() => withProgramme(timelineAxis(splits, split?.order, totalMs), lead, tail, episodeJoin), [splits, split?.order, totalMs, lead, tail, episodeJoin]);
     const playClips = useMemo(() => playOrder({ cuts: shownCuts, splits, order: split?.order }, totalMs, words), [shownCuts, splits, split?.order, totalMs, words]);
-    const playAxis = useMemo(() => withProgramme(playedAxis(playClips, splits, split?.order, totalMs), lead, tail), [playClips, splits, split?.order, totalMs, lead, tail]);
+    const playAxis = useMemo(() => withProgramme(playedAxis(playClips, splits, split?.order, totalMs), lead, tail, episodeJoin), [playClips, splits, split?.order, totalMs, lead, tail, episodeJoin]);
     const axis = showCuts ? sectionsAxis : playAxis;
     const lengthMs = axis.lengthMs;
     // Item E14: each teaser, intro and outro's number among the programme's pieces (for the second video), and its name.
@@ -1085,12 +1104,17 @@ export function Timeline({
         if (!bounds) return;
         const delta = (e.clientX - d.x0) / pxPerMs;
         const from = d.mode === 'end' ? bounds.toMs : bounds.fromMs;
-        setLayerDrag({ ...dragLayerTo(d, axis.toSrc(axis.toView(from) + delta), e.altKey), moved: true });
+        setLayerDrag({ ...dragLayerTo(d, axis.toSrc(axis.toView(from) + delta), e.altKey), moved: true, view: axis.toView(from) + delta });
     };
     const onLayerUp = () => {
         const d = layerDragRef.current;
         if (!d) return;
-        if (d.moved && isSound(d.draft)) onSounds?.(sounds.map(s => (s.id === d.id ? d.draft as Sound : s)));
+        // Spec 022: a sound moved off the episode goes onto the clip there.
+        const onto = d.moved && d.mode === 'move' && isSound(d.draft) && onAllSounds && d.view !== undefined ? soundPlace(axis, d.view) : null;
+        if (onto && 'clip' in onto) {
+            onAllSounds!(sounds.filter(s => s.id !== d.id), [...clipSounds, { ...(d.draft as Sound), anchor: onto }]);
+            onSelectLayer?.(d.id);
+        } else if (d.moved && isSound(d.draft)) onSounds?.(sounds.map(s => (s.id === d.id ? d.draft as Sound : s)));
         else if (d.moved) onLayers?.(layers.map(l => (l.id === d.id ? d.draft as Layer : l)));
         else if (!d.moved) {
             const b = layerBounds(d.base, clips, editedMs);
@@ -1100,6 +1124,44 @@ export function Timeline({
     };
     const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft as Layer : l));
     const shownSounds = sounds.map(s => (layerDrag?.id === s.id ? layerDrag.draft as Sound : s));
+
+    // ── Sounds on the other clips (spec 022) ──
+    const onClipSoundDown = (e: React.PointerEvent<HTMLElement>, s: ProgrammeSound, mode: ClipSoundDrag['mode']) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        onSelectLayer?.(s.id);
+        const v = clipSoundView(axis, s);
+        if (!onAllSounds || !v) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setClipDrag({ id: s.id, mode, x0: e.clientX, base: s, from: v.fromMs, to: v.toMs, moved: false });
+    };
+    const onClipSoundMove = (e: React.PointerEvent<HTMLElement>) => {
+        const d = clipDragRef.current;
+        if (!d) return;
+        const moved = d.moved || Math.abs(e.clientX - d.x0) >= CLICK_PX;
+        if (!moved) return;
+        const v = clipSoundView(axis, d.base)!;
+        const delta = Math.round((e.clientX - d.x0) / pxPerMs / DRAG_STEP_MS) * DRAG_STEP_MS;
+        if (d.mode === 'move') setClipDrag({ ...d, moved, from: Math.max(0, v.fromMs + delta), to: Math.max(0, v.fromMs + delta) + d.base.durationMs });
+        else if (d.mode === 'start') setClipDrag({ ...d, moved, from: Math.max(0, Math.min(v.toMs - LAYER_MIN_MS, v.fromMs + delta)), to: v.toMs });
+        else setClipDrag({ ...d, moved, from: v.fromMs, to: Math.max(v.fromMs + LAYER_MIN_MS, v.toMs + delta) });
+    };
+    const onClipSoundUp = () => {
+        const d = clipDragRef.current;
+        if (!d) return;
+        setClipDrag(null);
+        if (!d.moved) { seekView(d.from); return; }
+        const durationMs = Math.round(d.mode === 'move' ? d.base.durationMs : d.to - d.from);
+        const onto = soundPlace(axis, d.from);
+        if ('clip' in onto) {
+            onAllSounds!(sounds, clipSounds.map(s => (s.id === d.id ? { ...d.base, anchor: onto, durationMs } : s)));
+            return;
+        }
+        // Into the episode: music stays at its time in the edit, an effect with its words.
+        const at = timelineTime(clips, onto.srcMs, true) ?? 0;
+        onAllSounds!([...sounds, { ...d.base, durationMs, anchor: d.base.track === SOUND_TRACK.music ? { atMs: Math.round(at) } : { srcMs: onto.srcMs } }],
+            clipSounds.filter(s => s.id !== d.id));
+    };
     const selectedLayerShown: Placed | null = shownLayers.find(l => l.id === selectedLayer) ?? shownSounds.find(s => s.id === selectedLayer) ?? null;
     const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
 
@@ -1643,7 +1705,9 @@ export function Timeline({
                                     const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
                                     if (!id || !onDropMedia) return;
                                     e.preventDefault();
-                                    onDropMedia(id, pointAt(e).ms);
+                                    // Spec 022: onto the clip there, when it is not the episode.
+                                    const p = pointAt(e), onto = axis.extras.length ? soundPlace(axis, p.view) : null;
+                                    onDropMedia(id, p.ms, onto && 'clip' in onto ? onto : undefined);
                                 }}
                             >
                                 {/* What the transitions overlap: the end of one part and the start of the next. */}
@@ -1754,6 +1818,35 @@ export function Timeline({
                                             <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
                                             {onSounds && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, s, edge)} {...handles}
+                                                    className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
+                                                    style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Spec 022: the sounds on the other clips, where they play on the whole video. */}
+                                {clipSounds.map(s => {
+                                    const v = clipDrag?.id === s.id ? { fromMs: clipDrag.from, toMs: clipDrag.to } : clipSoundView(axis, s);
+                                    if (!v || v.toMs < startMs || v.fromMs > endMs) return null;
+                                    const isSel = s.id === selectedLayer;
+                                    const handles = { onPointerMove: onClipSoundMove, onPointerUp: onClipSoundUp, onPointerCancel: () => setClipDrag(null) };
+                                    const on = axis.extras.find(c => c.id === s.anchor.clip);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label={`${s.track === SOUND_TRACK.music ? 'Music' : 'Effect'}: ${s.media.name} on ${on ? clipNames[axis.extras.indexOf(on)] : 'a clip'}`}
+                                            title={`${s.media.name}${s.duck ? ' (ducked under the voice)' : ''}, on ${on ? clipNames[axis.extras.indexOf(on)] : 'a clip'}: drag to move (onto any clip, or the episode), drag an end to trim`}
+                                            onPointerDown={e => onClipSoundDown(e, s, 'move')}
+                                            {...handles}
+                                            className={`absolute rounded-sm ${s.track === SOUND_TRACK.music ? 'bg-rose-400/80' : 'bg-orange-300/80'} ${mutedTracks.includes(s.track) ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onAllSounds ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
+                                            style={{ left: x(v.fromMs), width: Math.max(4, (v.toMs - v.fromMs) * pxPerMs), top: soundTop(s.track) + 3, height: LANE_H - 6 }}
+                                        >
+                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
+                                            {onAllSounds && (v.toMs - v.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
+                                                <span key={edge} role="presentation" onPointerDown={e => onClipSoundDown(e, s, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
                                                     style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
                                             ))}

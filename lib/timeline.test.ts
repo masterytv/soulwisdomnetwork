@@ -10,7 +10,7 @@ import {
     msAt, nearest, pct, preciseTime, rangeOf, removedRanges, snapMs, SPEAKER_COLORS, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticks, ticksBetween, tickStep, tickText, wordEdges, zoomAround,
     timelineAxis, dropPosition, playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, uncut, joinMarks, MIN_PIECE_MS,
-    withProgramme, extraAt, teaserEdgeAt, teaserDrop, teaserSlot,
+    withProgramme, extraAt, teaserEdgeAt, teaserDrop, teaserSlot, clipSoundView, soundPlace,
 } from './timeline';
 import { playOrder } from './sequence';
 
@@ -361,4 +361,30 @@ test('a teaser\'s ends, where a dragged one lands, and where a new one goes', ()
     assert.equal(teaserSlot(3, { kind: 'teaser', index: 1, ms: 1_500, lengthMs: 2_000 }), 2);
     assert.equal(teaserSlot(3, { kind: 'intro', index: 0, ms: 0, lengthMs: 3_000 }), 3);
     assert.equal(teaserSlot(0, { kind: 'episode', index: 0, ms: 0, lengthMs: 9 }), 0);
+});
+
+// ---- Spec 022: the true clock outside the episode, and sounds on clips ----
+
+test('spec 022: clips around the episode overlap by their transitions, and sounds on them are drawn from their clip', () => {
+    const inner = timelineAxis([], null, 60_000);
+    const a = withProgramme(inner, [
+        { ...teaser(0, 30_000, 4_000), id: 't1' },
+        { ...teaser(1, 5_000, 2_000), id: 't2', joinMs: 500 },
+        { kind: 'intro', index: 0, srcStart: 0, lengthMs: 3_000, id: 'intro', joinMs: 300 },
+    ], [{ kind: 'outro', index: 0, srcStart: 0, lengthMs: 3_000, id: 'outro', joinMs: 1_000 }], 500);
+    assert.deepEqual(a.extras.map(c => [c.id, c.viewStart]), [['t1', 0], ['t2', 3_500], ['intro', 5_200], ['outro', 7_700 + 60_000 - 1_000]]);
+    assert.equal(a.leadMs, 7_700);                 // the intro ends at 8.2 s; the episode dissolves in over its last 0.5 s
+    assert.equal(a.lengthMs, 7_700 + 60_000 - 1_000 + 3_000);
+    // A wind leading 250 ms into t2, a bed under the opening, one past the end cut short, one on a clip that is gone.
+    assert.deepEqual(clipSoundView(a, { anchor: { clip: 't2', ms: -250 }, durationMs: 1_200 }), { fromMs: 3_250, toMs: 4_450 });
+    assert.deepEqual(clipSoundView(a, { anchor: { clip: 't1', ms: 0 }, durationMs: 5_500 }), { fromMs: 0, toMs: 5_500 });
+    assert.deepEqual(clipSoundView(a, { anchor: { clip: 'outro', ms: 2_000 }, durationMs: 9_000 }), { fromMs: a.extras[3].viewStart + 2_000, toMs: a.lengthMs });
+    assert.equal(clipSoundView(a, { anchor: { clip: 'gone', ms: 0 }, durationMs: 1_000 }), null);
+    // Where a dragged sound lands: on the clip under it (the earlier one where two overlap), or in the episode.
+    assert.deepEqual(soundPlace(a, 3_600), { clip: 't1', ms: 3_600 });
+    assert.deepEqual(soundPlace(a, 4_100), { clip: 't2', ms: 600 });
+    assert.deepEqual(soundPlace(a, 7_700 + 1_000), { srcMs: 1_000 });
+    assert.deepEqual(soundPlace(a, a.lengthMs + 500), { clip: 'outro', ms: 3_500 });
+    // No overlaps given: end to end, as before.
+    assert.deepEqual(withProgramme(inner, [teaser(0, 0, 1_000), teaser(1, 0, 1_000)], []).extras.map(c => c.viewStart), [0, 1_000]);
 });

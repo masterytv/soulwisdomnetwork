@@ -9,10 +9,12 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import {
-    fileTimeAt, soundGainAt, soundSpan, SOUND_TRACK, SOUND_TRACK_LABELS, type Sound,
+    fileTimeAt, isStudioSound, soundGainAt, soundSpan, SOUND_TRACK, SOUND_TRACK_LABELS, type Sound,
 } from "@/lib/audio";
 import { isWhole, LAYER_MIN_MS, startAt, WHOLE_EPISODE_MS, type BinItem, type Span } from "@/lib/layers";
 import { sourceTime, timelineTime, type Clip } from "@/lib/sequence";
+import { MAX_LEAD_MS, type ProgrammeSound } from "@/lib/programme";
+import type { ProgrammeView } from "@/components/studio/programme";
 import type { SpokenWord } from "@/lib/showNotes";
 import { field, hint, secondary } from "@/components/studio/ui";
 import { useFrameTime } from "@/components/studio/layers";
@@ -95,7 +97,6 @@ export function SoundProperties({ sound, clips, editedMs, video, bin, onChange, 
     const span = soundSpan(s, clips, editedMs);
     const nowEdited = timelineTime(clips, currentMs, true) ?? 0;
     const set = (part: Partial<Sound>) => onChange({ ...s, ...part });
-    const item = bin?.find(i => i.path === s.media.path && (s.library ? i.source === 'library' : i.source === 'upload'));
     const pinned = 'atMs' in s.anchor;
     const small = `${field} !w-auto !py-1 !px-2 text-xs`;
 
@@ -108,11 +109,7 @@ export function SoundProperties({ sound, clips, editedMs, video, bin, onChange, 
                 <span className="grow" />
                 <button type="button" className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(s.id)}>Remove</button>
             </div>
-            <p className={hint}>
-                {s.library
-                    ? item?.sound ? `From the show library: ${item.sound.licence || 'licence'}${item.sound.checked ? ', checked' : ', NOT checked (it will be left out of the render)'}.${item.sound.credit ? ` Credit in the description: “${item.sound.credit}”.` : ''}` : 'From the show library.'
-                    : item?.rights ? `Uploaded for this episode; ${item.rights.name} said it is theirs to use (${item.rights.on}).` : 'Uploaded for this episode.'}
-            </p>
+            <p className={hint}>{soundSource(s, bin)}</p>
 
             <Section title="Time">
                 <label className="flex items-center gap-2">
@@ -165,30 +162,189 @@ export function SoundProperties({ sound, clips, editedMs, video, bin, onChange, 
                 </div>
             </Section>
 
-            <Section title="Level">
+            <SoundLevel s={s} set={set} />
+        </section>
+    );
+}
+
+// Spec 022: the sounds on the clips other than the episode, on the whole video's clock: the programme player's while it
+// shows a teaser, the intro or the outro, else the episode's start plus where the editor's video is in the edit. Each
+// plays from its clip's start at its level and fades, lowered while someone speaks (the words of a teaser's stretch or
+// of the episode; never in the intro or outro), as the render mixes them over the whole video. A sketch of the mix, as
+// the episode's sounds are.
+export function ClipSoundsPreview({ prog, sounds, video, clips, words, urls, mutedTracks }: {
+    prog: ProgrammeView;
+    sounds: ProgrammeSound[];
+    video: React.RefObject<HTMLVideoElement | null>;
+    clips: Clip[];
+    words: SpokenWord[];
+    urls: Record<string, string>;
+    mutedTracks: number[];
+}) {
+    const refs = useRef(new Map<string, HTMLAudioElement>());
+    useEffect(() => {
+        let raf = 0, last: number | null = null;
+        const tick = () => {
+            raf = requestAnimationFrame(tick);
+            const pos = prog.control.position();
+            const piece = pos ? prog.pieces[pos.piece] : null;
+            const main = video.current;
+            let now: number, speaking = false, playing: boolean;
+            if (piece && pos) {
+                now = piece.atMs + pos.ms;
+                // Playing while the programme's clock moves on; a jump (a seek, a click on the timeline) is not playing.
+                playing = last !== null && now > last && now - last < 500;
+                if (piece.kind === 'teaser') speaking = speakingAt(words, piece.fromMs + pos.ms);
+            } else {
+                const src = (main?.currentTime ?? 0) * 1000;
+                now = prog.programme.episodeAtMs + (timelineTime(clips, src, true) ?? 0);
+                playing = !!main && !main.paused;
+                speaking = speakingAt(words, src);
+            }
+            last = now;
+            for (const s of sounds) {
+                const el = refs.current.get(s.id);
+                if (!el) continue;
+                const p = prog.pieces.find(x => x.id === s.anchor.clip);
+                const startMs = p ? Math.max(0, p.atMs + s.anchor.ms) : 0;
+                const span = { startMs, endMs: Math.min(prog.programme.lengthMs, startMs + s.durationMs) };
+                const gain = p ? soundGainAt(s, span, now, speaking) : null;
+                const fileMs = Number.isFinite(el.duration) ? el.duration * 1000 : null;
+                const at = fileTimeAt(s, span, now, fileMs);
+                if (gain === null || !playing || mutedTracks.includes(s.track) || (!s.loop && fileMs !== null && at >= fileMs)) {
+                    if (!el.paused) el.pause();
+                    continue;
+                }
+                el.volume = Math.max(0, Math.min(1, gain));
+                if (Math.abs(el.currentTime * 1000 - at) > 300) el.currentTime = at / 1000;
+                if (el.paused) void el.play().catch(() => {});
+            }
+        };
+        raf = requestAnimationFrame(tick);
+        const els = refs.current;
+        return () => { cancelAnimationFrame(raf); els.forEach(el => el.pause()); };
+    }, [prog, sounds, video, clips, words, mutedTracks]);
+    return (
+        <div hidden>
+            {sounds.filter(s => urls[s.media.path]).map(s => (
+                <audio key={s.id} ref={el => { if (el) refs.current.set(s.id, el); else refs.current.delete(s.id); }}
+                    src={urls[s.media.path]} preload="auto" loop={s.loop} aria-hidden />
+            ))}
+        </div>
+    );
+}
+
+// A sound's level, fades and ducking, wherever it is.
+function SoundLevel({ s, set }: { s: Pick<Sound, "gainDb" | "fadeInMs" | "fadeOutMs" | "duck">; set: (part: Partial<Pick<Sound, "gainDb" | "fadeInMs" | "fadeOutMs" | "duck">>) => void }) {
+    return (
+    <Section title="Level">
+        <label className="flex items-center gap-2">
+            Level
+            <input type="range" min={-40} max={6} value={Math.max(-40, s.gainDb)} aria-label="Level" onChange={e => set({ gainDb: Number(e.target.value) })} />
+            <NumberField label="Level, dB" value={s.gainDb} min={-60} max={12} onChange={v => set({ gainDb: Math.round(v) })} />
+            dB
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1">
+                Fade in
+                <NumberField label="Fade in, seconds" value={s.fadeInMs / 1000} min={0} max={10} step={0.25} onChange={v => set({ fadeInMs: Math.round(v * 1000) })} />
+                s
+            </label>
+            <label className="flex items-center gap-1">
+                out
+                <NumberField label="Fade out, seconds" value={s.fadeOutMs / 1000} min={0} max={10} step={0.25} onChange={v => set({ fadeOutMs: Math.round(v * 1000) })} />
+                s
+            </label>
+        </div>
+        <label className="flex items-center gap-1">
+            <input type="checkbox" checked={s.duck} aria-label="Duck under the voice" onChange={e => set({ duck: e.target.checked })} />
+            Lower it while anyone speaks (ducking)
+        </label>
+    </Section>
+    );
+}
+
+// Where a sound came from and whether it may play: the Studio's own, the show library's (its licence), or an upload.
+function soundSource(s: Pick<Sound, "library" | "media">, bin: BinItem[] | null): string {
+    const item = bin?.find(i => i.path === s.media.path && (s.library ? i.source === 'library' : i.source === 'upload'));
+    return isStudioSound(s.media.path) ? 'One of the Studio\'s own sounds: the show\'s to use, with no licence to check.'
+        : s.library
+        ? item?.sound ? `From the show library: ${item.sound.licence || 'licence'}${item.sound.checked ? ', checked' : ', NOT checked (it will be left out of the render)'}.${item.sound.credit ? ` Credit in the description: “${item.sound.credit}”.` : ''}` : 'From the show library.'
+        : item?.rights ? `Uploaded for this episode; ${item.rights.name} said it is theirs to use (${item.rights.on}).` : 'Uploaded for this episode.';
+}
+
+// Spec 022: a sound on a clip other than the episode in the Properties panel: which clip it is on and how far from that
+// clip's start (it may lead in), how long, its file, level, fades and ducking. It plays on to the end of the video at
+// the latest.
+export function ClipSoundProperties({ sound: s, clips, bin, onChange, onRemove, onSeek }: {
+    sound: ProgrammeSound;
+    clips: { id: string; name: string }[];      // the clips it may sit on, in play order
+    bin: BinItem[] | null;
+    onChange: (s: ProgrammeSound) => void;
+    onRemove: (id: string) => void;
+    onSeek: (clip: string, ms: number) => void;
+}) {
+    const set = (part: Partial<ProgrammeSound>) => onChange({ ...s, ...part });
+    const small = `${field} !w-auto !py-1 !px-2 text-xs`;
+    return (
+        <section aria-label="Properties" className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-semibold text-gray-200">Properties</h2>
+                <span className="px-1.5 py-0.5 rounded text-xs bg-rose-500/20 text-rose-200">{s.track === SOUND_TRACK.music ? 'Music' : 'Effect'}</span>
+                <span className="text-xs text-gray-300 truncate max-w-[14rem]" title={s.media.name}>{s.media.name}</span>
+                <span className="grow" />
+                <button type="button" className={`${secondary} px-2 py-0.5`} onClick={() => onRemove(s.id)}>Remove</button>
+            </div>
+            <p className={hint}>{soundSource(s, bin)}</p>
+            <Section title="Time">
                 <label className="flex items-center gap-2">
-                    Level
-                    <input type="range" min={-40} max={6} value={Math.max(-40, s.gainDb)} aria-label="Level" onChange={e => set({ gainDb: Number(e.target.value) })} />
-                    <NumberField label="Level, dB" value={s.gainDb} min={-60} max={12} onChange={v => set({ gainDb: Math.round(v) })} />
-                    dB
+                    Track
+                    <select aria-label="Track" value={s.track} className={small} onChange={e => set({ track: Number(e.target.value) })}>
+                        {[SOUND_TRACK.music, SOUND_TRACK.effects].map(t => <option key={t} value={t}>{SOUND_TRACK_LABELS[t]}</option>)}
+                    </select>
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1">
-                        Fade in
-                        <NumberField label="Fade in, seconds" value={s.fadeInMs / 1000} min={0} max={10} step={0.25} onChange={v => set({ fadeInMs: Math.round(v * 1000) })} />
-                        s
+                        On
+                        <select aria-label="The clip it is on" value={s.anchor.clip} className={small} onChange={e => set({ anchor: { clip: e.target.value, ms: s.anchor.ms } })}>
+                            {clips.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
                     </label>
                     <label className="flex items-center gap-1">
-                        out
-                        <NumberField label="Fade out, seconds" value={s.fadeOutMs / 1000} min={0} max={10} step={0.25} onChange={v => set({ fadeOutMs: Math.round(v * 1000) })} />
+                        at
+                        <NumberField label="Seconds from the clip's start (less than 0 leads into it)" value={s.anchor.ms / 1000} min={-MAX_LEAD_MS / 1000} max={86_399} step={0.05}
+                            onChange={v => set({ anchor: { clip: s.anchor.clip, ms: Math.round(v * 1000) } })} />
                         s
                     </label>
+                    <button type="button" className={`${secondary} px-2 py-0.5`} title="Play from there" onClick={() => onSeek(s.anchor.clip, Math.max(0, s.anchor.ms))}>▶</button>
                 </div>
-                <label className="flex items-center gap-1">
-                    <input type="checkbox" checked={s.duck} aria-label="Duck under the voice" onChange={e => set({ duck: e.target.checked })} />
-                    Lower it while anyone speaks (ducking)
-                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={isWhole(s)} aria-label="To the end of the video"
+                            onChange={e => set({ durationMs: e.target.checked ? WHOLE_EPISODE_MS : 10_000 })} />
+                        To the end of the video
+                    </label>
+                    {!isWhole(s) && (
+                        <label className="flex items-center gap-1">
+                            for
+                            <NumberField label="Seconds it plays" value={s.durationMs / 1000} min={LAYER_MIN_MS / 1000} max={86_399} step={0.5} onChange={v => set({ durationMs: Math.round(v * 1000) })} />
+                            s
+                        </label>
+                    )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                    <label className="flex items-center gap-1">
+                        From
+                        <NumberField label="Start in the file, seconds" value={s.inMs / 1000} min={0} max={86_399} step={0.5} onChange={v => set({ inMs: Math.round(v * 1000) })} />
+                        s into the file
+                    </label>
+                    <label className="flex items-center gap-1">
+                        <input type="checkbox" checked={s.loop} aria-label="Loop" onChange={e => set({ loop: e.target.checked })} />
+                        Loop when it ends
+                    </label>
+                </div>
             </Section>
+            <SoundLevel s={s} set={set} />
         </section>
     );
 }

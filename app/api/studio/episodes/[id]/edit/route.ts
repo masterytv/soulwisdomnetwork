@@ -25,7 +25,7 @@ import { highlightProblems } from '@/lib/reframe';
 import { binItems, binPaths } from '@/lib/server/mediaBin';
 import { libraryEntries } from '@/lib/server/library';
 import { getSettings } from '@/lib/server/studioSettings';
-import { SoundsSchema, type Sound } from '@/lib/audio';
+import { isStudioSound, SoundsSchema, studioSoundUrl, type Sound, type TeaserSound } from '@/lib/audio';
 import { VOICE_CLEANUPS, type VoiceCleanup } from '@/lib/voice';
 import { brollBlock } from '@/lib/brollGate';
 import { loadSilences } from '@/lib/server/buildEdit';
@@ -61,9 +61,11 @@ export const GET = handle<Context>(async (request, { params }) => {
         const url = await adminBucket().file(l.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[l.media.path] = url;
     }
-    // And to every sound (item E7), so the preview can play them.
-    for (const snd of edit.audio ?? []) {
+    // And to every sound (item E7), on the episode and on the other clips (spec 022), so the preview can play them; the
+    // Studio's own sounds are served with the site.
+    for (const snd of [...(edit.audio ?? []), ...(edit.programme?.audio ?? [])]) {
         if (overlayUrls[snd.media.path]) continue;
+        if (isStudioSound(snd.media.path)) { overlayUrls[snd.media.path] = studioSoundUrl(snd.media.path); continue; }
         const url = await adminBucket().file(snd.media.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
         if (url) overlayUrls[snd.media.path] = url;
     }
@@ -79,15 +81,21 @@ export const GET = handle<Context>(async (request, { params }) => {
     const introUrl = intro === 'site' ? SHOW_INTRO_URL
         : intro ? await adminBucket().file(intro.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null) : null;
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
-    // The teasers' music and whoosh (Studio settings), for the preview: only while their licences are checked, as the render plays them.
-    const picks = ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []));
-    const pickEntries = picks.length ? await libraryEntries(picks.map(x => x.t.library)) : new Map();
-    const teaserSounds: Record<string, { name: string; url: string; gainDb: number }> = {};
-    for (const { k, t } of picks) {
-        const e = pickEntries.get(t.library);
-        if (!e || e.path !== t.path || !e.checked) continue;
-        const url = await adminBucket().file(t.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
-        if (url) teaserSounds[k] = { name: t.name, url, gainDb: t.gainDb };
+    // Spec 022 stage 3a: for an edit saved before it (no sounds on its clips yet), the Studio settings' old teaser music
+    // and whoosh, which the editor converts into sounds on its clips as the render does (lib/programme.ts
+    // oldTeaserSounds), with the whoosh's length; and links to them while their licences are checked.
+    let oldSounds: { music: TeaserSound | null; whoosh: TeaserSound | null; whooshMs: number | null } | null = null;
+    if (!edit.programme?.audio && (settings.teaserMusic || settings.teaserWhoosh)) {
+        const picks = [settings.teaserMusic, settings.teaserWhoosh].flatMap(t => (t ? [t] : []));
+        const entries = await libraryEntries(picks.map(t => t.library));
+        for (const t of picks) {
+            const e = entries.get(t.library);
+            if (!e || e.path !== t.path || !e.checked || overlayUrls[t.path]) continue;
+            const url = await adminBucket().file(t.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
+            if (url) overlayUrls[t.path] = url;
+        }
+        const whooshEntry = settings.teaserWhoosh && entries.get(settings.teaserWhoosh.library);
+        oldSounds = { music: settings.teaserMusic, whoosh: settings.teaserWhoosh, whooshMs: whooshEntry ? whooshEntry.durationMs : null };
     }
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
     // Spec 021 M2: what a fresh edit's motion graphics are placed from (the editor itself has the words
@@ -101,7 +109,7 @@ export const GET = handle<Context>(async (request, { params }) => {
         logoBug: settings.placeLogoBug,
     };
     return Response.json({
-        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, teaserSounds, graphics,
+        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, oldSounds, graphics,
         // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
         highlightsOff: settings.highlightDensity === 'off',
     });
@@ -233,11 +241,16 @@ export const PUT = handle<Context>(async (request, { params }) => {
 
     // A sound is checked when it first appears on the edit: a show library file must be there with its
     // licence checked, and an episode's own sound must be in its bin with its uploader's word on the rights.
-    if (audio?.length) {
+    // The same for the sounds on the other clips (spec 022). The Studio's own sounds are free to use; the settings' old
+    // teaser music and whoosh, converted onto an edit's clips, were checked when they were set.
+    const placed = [...(audio ?? []), ...(programme?.audio ?? [])];
+    if (placed.length) {
         const episode = (await ref.get()).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
-        const saved = new Set((episode.edit?.audio ?? []).map(s => `${s.library ?? ''}|${s.media.path}`));
-        const fresh = audio.filter(s => !saved.has(`${s.library ?? ''}|${s.media.path}`));
+        const settings = await getSettings();
+        const saved = new Set([...(episode.edit?.audio ?? []), ...(episode.edit?.programme?.audio ?? [])].map(s => `${s.library ?? ''}|${s.media.path}`)
+            .concat([settings.teaserMusic, settings.teaserWhoosh].flatMap(t => (t ? [`${t.library}|${t.path}`] : []))));
+        const fresh = placed.filter(s => !saved.has(`${s.library ?? ''}|${s.media.path}`) && !(!s.library && isStudioSound(s.media.path)));
         const library = await libraryEntries(fresh.flatMap(s => (s.library ? [s.library] : [])));
         let bin: BinItem[] | null = null;
         for (const s of fresh) {
@@ -247,7 +260,7 @@ export const PUT = handle<Context>(async (request, { params }) => {
                 if (!entry.checked) throw new HttpError(400, `"${s.media.name}": licence not checked, so it cannot be placed yet`);
                 continue;
             }
-            bin ??= await binItems(ref.id, episode, await getSettings());
+            bin ??= await binItems(ref.id, episode, settings);
             const item = bin.find(i => i.source === 'upload' && i.kind === 'audio' && i.path === s.media.path);
             if (!item) throw new HttpError(400, `"${s.media.name}" is not in this episode's media`);
             if (!item.rights) throw new HttpError(400, `"${s.media.name}": nobody has said it is theirs to use`);

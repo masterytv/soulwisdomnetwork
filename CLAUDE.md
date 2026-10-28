@@ -73,9 +73,12 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin
-              (the teasers, before the episode, get theirs from the Studio settings instead: teaserMusic and teaserWhoosh, lib/audio.ts
-              teaserSoundPlan, mixed over the programme by the render and played by components/studio/teaserSounds.tsx);
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use), the bin,
+              or the Studio's own wind sounds (public/studio/sounds, made by scripts/windSounds.py, no licence: lib/audio.ts STUDIO_SOUNDS);
+              spec 022 stage 3a puts sounds on any clip of the whole video too (edit.programme.audio, anchored to a clip, mixed over
+              the whole video by the render, played by components/studio/sounds.tsx ClipSoundsPreview), and the old teaserMusic and
+              teaserWhoosh settings, no longer shown, are converted into such sounds for edits saved before it (lib/programme.ts
+              oldTeaserSounds);
               the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
               editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
               components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,

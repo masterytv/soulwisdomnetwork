@@ -94,9 +94,20 @@ export const SOUND_TRACK = { music: 2, effects: 3 } as const;
 export const SOUND_TRACK_LABELS: Record<number, string> = { 2: 'A2 Music', 3: 'A3 Effects' };
 export const SOUNDS_MAX = 200;
 
-// Where a sound's file is: the show library, or the episode's own media.
+// The Studio's own sounds, shipped with it in public/studio/sounds (made by scripts/windSounds.py, so no one else
+// holds rights in them): placed like a library effect, with no licence to check, played by the preview from the site
+// and copied by the render from the repository. Build the opening (spec 022) puts Wind: breath at each change.
+export const STUDIO_SOUNDS = [
+    { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', durationMs: 1200 },
+    { path: 'studio/sounds/soul-wisdom-wind-breeze.wav', name: 'Wind: breeze', durationMs: 1600 },
+    { path: 'studio/sounds/soul-wisdom-wind-swell.wav', name: 'Wind: swell', durationMs: 2000 },
+] as const;
+export const isStudioSound = (path: string) => STUDIO_SOUNDS.some(s => s.path === path);
+export const studioSoundUrl = (path: string) => `/${path}`;
+
+// Where a sound's file is: the show library, the episode's own media, or one of the Studio's own sounds.
 export const SoundPathSchema = z.string().max(300)
-    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+)$/, 'Not a Studio sound')
+    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+|studio\/sounds\/[\w.-]+)$/, 'Not a Studio sound')
     .refine(p => !p.includes('..'), 'Not a Studio sound');
 
 export const SoundSchema = z.object({
@@ -143,14 +154,13 @@ export function newSound(file: { path: string; name: string; durationMs?: number
 // An episode upload counts as music when it is long enough to be a bed.
 export const uploadKind = (durationMs: number | null | undefined): LibraryKind => ((durationMs ?? 0) >= 30_000 ? 'music' : 'effect');
 
-// ─── the teasers' music and whoosh ──────────────────────────────────────────
+// ─── the teasers' music and whoosh, as they were (converted by spec 022) ─────
 
-// Under the "In this episode" teasers, which play before the episode on the programme's clock (so no
-// sound on the edit can reach them): a music bed from the show library under all of them, ducked under
-// their voices and faded out as the last one ends, and a short effect (a soft whoosh) at each change from
-// one teaser to the next. Both are Studio settings (lib/studioSettings.ts teaserMusic, teaserWhoosh), so
-// every episode with teasers gets them; the render mixes them over the programme (podcast/editRender.ts)
-// and the editor's preview plays them with the teasers (components/studio/teaserSounds.tsx).
+// Before spec 022 stage 3a, a music bed from the show library under all the "In this episode" teasers, ducked under
+// their voices and faded out as the last one ends, and a short effect (a soft whoosh) at each change from one teaser
+// to the next, were Studio settings (lib/studioSettings.ts teaserMusic, teaserWhoosh) that every episode with teasers
+// got. They are no longer shown or saved: an edit saved before stage 3a converts them into ordinary sounds on its
+// clips at the places and levels below (lib/programme.ts programmeEdit), so its render keeps them.
 export const TeaserSoundSchema = z.object({
     library: z.string().regex(/^[\w-]{1,40}$/),            // the library entry, for its licence check and credit
     path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
