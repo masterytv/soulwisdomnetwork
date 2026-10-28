@@ -245,6 +245,13 @@ export function soundGainAt(s: Pick<Sound, 'gainDb' | 'fadeInMs' | 'fadeOutMs' |
     return g;
 }
 
+// How far a sound's start may move when its left end is dragged by `byMs` (later when positive): the file then
+// starts that much further in (`inMs`), so what is left plays where it did, as in any editor. It cannot start
+// before the file does, nor leave less than LAYER_MIN_MS.
+export function startTrimMs(s: Pick<Sound, 'inMs' | 'durationMs'>, byMs: number): number {
+    return Math.round(Math.max(-s.inMs, Math.min(s.durationMs - LAYER_MIN_MS, byMs))) || 0;   // never -0
+}
+
 // Where in its file a sound is at `nowMs`: from `inMs`, round again when it loops (the render loops the
 // whole file and then skips `inMs`, so this is the same).
 export function fileTimeAt(s: Pick<Sound, 'inMs' | 'loop'>, span: Span, nowMs: number, fileMs: number | null): number {
