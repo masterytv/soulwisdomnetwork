@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EpisodeEdit, KeptRange } from '@/lib/edit';
-import { pieceLabel, playedAt, programmeOf, recordingAt, type Programme, type ProgrammePiece, type Teaser } from '@/lib/programme';
+import { pieceLabel, playedAt, programmeEdit, programmeOf, recordingAt, teasersOf, timedClips, type Programme, type ProgrammeEdit, type ProgrammePiece, type Teaser } from '@/lib/programme';
 import { sectionJoins, type SectionJoins, type Transition } from '@/lib/transitions';
 import { draw } from '@/components/studio/transitionPreview';
 import { secondary } from '@/components/studio/ui';
@@ -78,6 +78,8 @@ export interface ShownPiece extends ProgrammePiece {
 export interface ProgrammeView {
     pieces: ShownPiece[];
     programme: Programme;
+    // The whole video's clips (spec 022, lib/programme.ts), and the teasers they make (its recording clips before the episode).
+    clips: ProgrammeEdit;
     teasers: Teaser[];
     control: ProgrammeControl;
     ends: { start: Transition; end: Transition };   // the fade in at the video's start and out at its end (item E16)
@@ -100,41 +102,45 @@ function useMediaLength(url: string | null): number | null {
     return url && known?.url === url ? known.ms : null;
 }
 
-// The programme for an edit: its teasers (or, for an edit saved before it had them, the ones the notes give), its own
-// intro and outro or the Studio's, and the transitions between them (its own or the Studio's).
+// The programme for an edit: its clips (spec 022: its own, or converted from its teasers, or for an edit saved before it
+// had them, the ones the notes give), its own intro and outro or the Studio's, and the transition at each change (its
+// own, or the default for its kind of change: the edit's or the Studio's).
 export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: {
     setup: ProgrammeSetup | null; edit: EpisodeEdit; urls: Record<string, string>; studioJoins: SectionJoins | null; src: string; editedMs: number;
 }): ProgrammeView | null {
     const [control] = useState(() => new ProgrammeControl());
-    // The episode's own, none (false, item E14), or the Studio's.
-    const intro = useMemo(() => edit.intro === false ? null : edit.intro ? { name: edit.intro.name, url: urls[edit.intro.path] ?? null } : setup?.studioIntro ?? null,
-        [edit.intro, urls, setup?.studioIntro]);
-    const outro = useMemo(() => edit.outro === false ? null : edit.outro ? { name: edit.outro.name, url: urls[edit.outro.path] ?? null } : setup?.studioIntro ?? null,
-        [edit.outro, urls, setup?.studioIntro]);
+    const clips = useMemo(() => programmeEdit(edit, setup?.teasers ?? []),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- what programmeEdit reads
+        [edit.programme, edit.teasers, edit.intro, edit.outro, setup?.teasers]);
+    // The episode's own, none (no intro or outro clip, item E14), or the Studio's.
+    const hasIntro = clips.clips.some(c => c.kind === 'intro'), hasOutro = clips.clips.some(c => c.kind === 'outro');
+    const intro = useMemo(() => !hasIntro ? null : edit.intro ? { name: edit.intro.name, url: urls[edit.intro.path] ?? null } : setup?.studioIntro ?? null,
+        [hasIntro, edit.intro, urls, setup?.studioIntro]);
+    const outro = useMemo(() => !hasOutro ? null : edit.outro ? { name: edit.outro.name, url: urls[edit.outro.path] ?? null } : setup?.studioIntro ?? null,
+        [hasOutro, edit.outro, urls, setup?.studioIntro]);
     const introMs = useMediaLength(intro?.url ?? null);
     const outroMs = useMediaLength(outro?.url ?? null);
-    const teasers = useMemo(() => edit.teasers ?? setup?.teasers ?? [], [edit.teasers, setup?.teasers]);
+    const teasers = useMemo(() => teasersOf(clips), [clips]);
     const sections = useMemo(() => sectionJoins(edit.joins, studioJoins ?? undefined), [edit.joins, studioJoins]);
     return useMemo(() => {
         if (!setup) return null;
         const programme = programmeOf({
-            teasers: teasers.map(t => t.endMs - t.startMs),
-            introMs: intro ? introMs ?? 0 : null,
-            outroMs: outro ? outroMs ?? 0 : null,
-            episodeMs: editedMs,
+            clips: timedClips(clips, { introMs: intro ? introMs ?? 0 : null, outroMs: outro ? outroMs ?? 0 : null, episodeMs: editedMs }),
             sections,
         });
         const pieces = programme.pieces.map((p): ShownPiece => {
             const label = pieceLabel(p);
-            if (p.kind === 'teaser') {
-                const t = teasers[p.index];
-                return { ...p, label, name: t.speaker, src, fromMs: t.startMs, toMs: t.endMs, speaker: t.speaker, tag: t.tag !== false };
+            const c = clips.clips.find(x => x.id === p.id);
+            if (c?.kind === 'recording') {
+                const tag = clips.layers.find(l => l.anchor.clip === c.id);
+                const speaker = tag ? tag.fields.speaker : c.name;
+                return { ...p, label, name: speaker, src, fromMs: c.inMs, toMs: c.outMs, speaker, tag: !!tag };
             }
             const file = p.kind === 'intro' ? intro : p.kind === 'outro' ? outro : null;
             return { ...p, label, name: file?.name ?? 'The edited episode', src: file?.url ?? null, fromMs: 0, toMs: Infinity };
         });
-        return { pieces, programme, teasers, control, ends: { start: sections.start, end: sections.end }, episodeSrc: src };
-    }, [setup, teasers, intro, outro, introMs, outroMs, editedMs, sections, src, control]);
+        return { pieces, programme, clips, teasers, control, ends: { start: sections.start, end: sections.end }, episodeSrc: src };
+    }, [setup, clips, teasers, intro, outro, introMs, outroMs, editedMs, sections, src, control]);
 }
 
 // The second video, over the editor's: it plays the teasers, intro and outro, then hands the episode to the editor's

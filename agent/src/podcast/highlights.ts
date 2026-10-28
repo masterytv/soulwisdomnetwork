@@ -12,6 +12,7 @@ import {
 } from '../../../lib/highlights';
 import type { HighlightLayer } from '../../../lib/layers';
 import { editedDuration, keepRanges } from '../../../lib/edit';
+import { clipStretches } from '../../../lib/programme';
 import type { SpokenWord } from '../../../lib/showNotes';
 import { producerInstructions, type StudioSettings } from '../../../lib/studioSettings';
 import type { Episode } from '../../../types/episode';
@@ -56,7 +57,7 @@ export async function suggestHighlights(
 
     const { verified, unverified } = verifyMoments(parsed.moments, words);
     const { kept, dropped } = paceMoments(verified, words, {
-        cuts: edit.cuts, teasers: edit.teasers ?? [], durationMs, density, keyQuotes,
+        cuts: edit.cuts, teasers: clipStretches(edit), durationMs, density, keyQuotes,
         allowed: settings.highlightLayouts,
     });
     return {

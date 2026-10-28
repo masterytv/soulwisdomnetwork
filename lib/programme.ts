@@ -346,6 +346,12 @@ export function teasersOf(p: ProgrammeEdit): Teaser[] {
     });
 }
 
+// The stretches of the recording the whole video plays again outside the episode (its recording clips), which a
+// highlight must keep off (lib/reframe.ts highlightProblems).
+export function clipStretches(edit: Pick<EpisodeEdit, 'programme' | 'teasers' | 'intro' | 'outro'>): { startMs: number; endMs: number }[] {
+    return programmeEdit(edit).clips.flatMap(c => (c.kind === 'recording' ? [{ startMs: c.inMs, endMs: c.outMs }] : []));
+}
+
 // The whole video with its opening (the recording clips before the intro, or the episode) made from `teasers`, the
 // teasers' actions of spec 020 (trim, move, take out, add, the tag's name) working on clips; the intro, the episode
 // and the outro stay where they are.
@@ -360,6 +366,28 @@ export function withTeasers(p: ProgrammeEdit, teasers: Teaser[]): ProgrammeEdit 
 // The whole video with the intro or outro taken out (spec 020 item E14's Delete).
 export function withoutEnd(p: ProgrammeEdit, kind: 'intro' | 'outro'): ProgrammeEdit {
     return { clips: p.clips.filter(c => c.kind !== kind), layers: p.layers.filter(l => l.anchor.clip !== kind) };
+}
+
+// The whole video with the intro or outro put back (the Parts panel's choice of one): the intro just before the
+// episode, the outro just after it; unchanged when it is there.
+export function withEnd(p: ProgrammeEdit, kind: 'intro' | 'outro'): ProgrammeEdit {
+    if (p.clips.some(c => c.kind === kind)) return p;
+    const at = p.clips.findIndex(c => c.kind === 'episode') + (kind === 'outro' ? 1 : 0);
+    const clips = [...p.clips];
+    clips.splice(at, 0, kind === 'intro' ? { id: INTRO_CLIP, kind: 'intro' } : { id: OUTRO_CLIP, kind: 'outro' });
+    return { ...p, clips };
+}
+
+// The edit with its intro or outro chosen (the Parts panel): none takes the clip out, the Studio's or a file of its
+// own puts it back where it goes.
+export function setEnds<E extends EpisodeEdit>(edit: E, patch: Partial<Pick<EpisodeEdit, 'intro' | 'outro'>>, fallback: Teaser[] = []): E {
+    let p = programmeEdit(edit, fallback);
+    const next = { ...edit, ...patch };
+    for (const kind of ['intro', 'outro'] as const) {
+        if (!(kind in patch)) continue;
+        p = patch[kind] === false ? withoutEnd(p, kind) : withEnd(p, kind);
+    }
+    return setProgramme(next, p);
 }
 
 // The old fields the whole video says, written with it on every save while code from before spec 022 still reads

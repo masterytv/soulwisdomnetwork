@@ -2,7 +2,8 @@
 
 **Date:** 28 October 2026
 **Status:** Approved by Tom on 28 October 2026, with his answers to D1–D7 (end of this page). Stage 1 (this spec) is
-PR #232; stages 2, 3a and 3b follow, each a PR into `staging`.
+PR #232. **Stage 2 is built** (branch `claude/spec-022-stage-2`; see "Stage 2 — built" below); 3a and 3b follow, each a
+PR into `staging`.
 **Author:** Claude, from Tom's request: make the Studio editor a regular editor, "one timeline for the whole video",
 where the "In this episode" opening is ordinary clips he can cut, duplicate, move, trim, dissolve, label and put sound
 under, not the locked teaser box it is now.
@@ -123,7 +124,8 @@ episode's start, as today. The render keeps every length in whole frames, as it 
 
 `programmeEdit(edit, old)` gives the edit's own `programme`, or converts the old fields when it has none. The editor,
 the edit route, the render job and Build for Studio editor all call it, so they cannot disagree. Nothing is written
-until the edit is next saved; then it is saved in the new form.
+until the whole video is first changed in the editor (a teaser, the intro or outro); from then on the edit carries
+`programme`, with the old fields written from it.
 
 | What the edit had | What it becomes |
 |---|---|
@@ -253,6 +255,34 @@ site and every render read edits the old way. To keep that safe:
 | 2 | **The model and the conversion.** `edit.programme` with its schema and limits in the edit route (kept when a save leaves it out, and the old fields derived on save); `programmeEdit` for every old shape; `programmeOf` and the timeline's whole-video axis (`withProgramme`) built from the clips; the preview, the "In this episode" graphics, the render job and `renderEdit` reading it; today's teaser actions (trim, move, + Teaser, the tag's name, Delete) working on clips. **Nothing new to see or hear**: the teasers' music and whoosh still come from the settings. | Extra: it changes the saved edit's shape and the render's timing path | The window-key and sound-plan tests above; `lib/programme.test.ts`, `lib/timeline.test.ts`, `editRenderJob.test.ts`, `editRender.test.ts`; the route's schema tests; in Chromium, an old edit opening, playing and saving unchanged |
 | 3a | **Sounds anywhere.** Sounds on clips (model, route, timeline lanes, Properties' anchor, the preview's player, the render's mix), the true clock outside the episode, #231's Studio sounds, and the teaser settings removed with their conversion | Extra | `lib/audio.test.ts`; the render puts a wind at the planned sample (as `editRender.test.ts` checks the whoosh today); the converted settings' sounds land where `teaserSoundPlan` put them; in Chromium, a sound dragged from the episode onto the opening and heard there |
 | 3b | **The opening as ordinary clips.** Build the opening; cut, duplicate, move anywhere, trim, delete; a transition at each change; graphics on any clip from the Elements panel; + Opening clip | High | `lib/programme.test.ts` (Build, Blade, duplicate, move, trim with labels following, delete with items); the render of a built opening (dissolves, labels, winds); in Chromium, building an opening, cutting one clip in two, changing one change to a cut, moving a clip after the intro, and Undo |
+
+### Stage 2 — built
+
+- **The model** (`lib/programme.ts`): `ProgrammeEdit` (`clips`, `layers`), `ProgrammeSchema` (the episode once, clips at
+  least half a second, ids once, graphics only on clips that are there and not on the episode; stage 2's graphics are
+  the "In this episode" label at the clip's start), `programmeEdit` (an edit's own, or its old fields converted),
+  `teasersOf`, `withTeasers`, `withoutEnd`, `withEnd`, `setEnds`, `legacyFields` and `setProgramme` (the old fields
+  written from the clips), `changeJoin` and `clipJoins` (each change's transition), `timedClips` and `programmeOf` (the
+  whole video's clock, built from the clips), `clipStretches` (what a highlight keeps off).
+- **The edit route** checks `programme` and keeps it when a save leaves it out; a save that changes the old fields
+  without it drops it (it is then converted from them again); with it, the old fields are written from it, and no
+  recording clip may run past the recording.
+- **The editor**: `useProgramme` plays the clips; today's teaser actions (trim, move, + Teaser, Remove, the label's
+  name and on or off, Delete on the intro or outro, the Parts panel's intro and outro) change the clips through
+  `withTeasers`, `withoutEnd` and `setEnds`.
+- **The render**: the job cuts each recording clip exactly with its label (motion, or the burned-in banner without the
+  graphics renderer) and gives `renderEdit` the whole video in order (`programme`, each change resolved by
+  `clipJoins`); `renderEdit` keeps `teasers`, `intro` and `outro` for the command line (`legacyProgramme`). D1: an edit
+  saved before E10 gets the notes' clips (the package's clip files are no longer used). D2: starlight at each change
+  (`clip:<id>`), and none at a change that does not play (an outro with no file).
+- **Checked:** `agent/src/podcast/programmeGolden.test.ts`, recorded on the code before stage 2 (its first commit), runs
+  the whole job with the real renderer on three stand-in episodes and finds every ffmpeg and ffprobe command unchanged,
+  with the local ffmpeg 6.1 and the CI's pinned build; `lib/programme.test.ts` (conversion both ways, the schema, each
+  change's transition, the Parts panel's ends); `editRenderJob.test.ts` and `editRenderOptions.test.ts` (updated for
+  D1 and D2); in Chromium with the API mocked and an old edit (two teasers, one unlabelled, a dissolve, the Studio's
+  intro and outro): V1 and V3 as before, the whole video 0:26, playing through the dissolve into teaser 2, trimming
+  teaser 1 (its label following), deleting teaser 2, the intro taken off (0:24) and put back, each save carrying the
+  clips and the old fields in step.
 
 Stage 3 is two PRs so each stays one concern; 3a first, since Build places sounds. Each stage updates CLAUDE.md's map,
 spec 020's notes and this page's status.

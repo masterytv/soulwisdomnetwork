@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, changeJoin, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, changeJoin, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setEnds, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
 import type { EpisodeEdit } from './edit';
@@ -210,4 +210,15 @@ test('spec 022: each change\'s transition, its own or the default for its kind',
     assert.equal(changeJoin('intro', 'episode'), 'afterIntro');
     assert.equal(changeJoin('episode', 'outro'), 'beforeOutro');
     assert.equal(changeJoin('outro', 'recording'), null);
+});
+
+test('spec 022: the Parts panel\'s intro and outro take their clip off and put it back where it goes', () => {
+    const base: EpisodeEdit = { cuts: [], version: 1, teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }] };
+    const off = setEnds(base, { intro: false, outro: false });
+    assert.deepEqual(off.programme!.clips.map(c => c.kind), ['recording', 'episode']);
+    assert.deepEqual([off.intro, off.outro], [false, false]);
+    const own = { path: 'episodes/abcdefghij/media/o.mp4', name: 'Bye' };
+    const back = setEnds(off, { intro: null, outro: own });
+    assert.deepEqual(back.programme!.clips.map(c => c.kind), ['recording', 'intro', 'episode', 'outro']);
+    assert.deepEqual([back.intro, back.outro], [null, own]);
 });

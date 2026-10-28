@@ -92,7 +92,12 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               closed up, with a marker where each cut was, and a clip's end dragged out brings back what was cut there or in cuts more,
               everything after it moving along (item E13, lib/timeline.ts playedAxis and rippleTrim; Show cuts draws the whole
               recording, cuts and all); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
-              and the show's intro is public/studio/show-intro.mp4, which the editor plays too
+              and the show's intro is public/studio/show-intro.mp4, which the editor plays too; spec 022 (one timeline,
+              being built) makes V1 a list of clips, `edit.programme` (lib/programme.ts: recording clips, the intro, the
+              episode once, the outro, each change's own transition or its kind's default, the label as a graphic on its
+              clip), which the editor, the edit route and the render read; an old edit converts (programmeEdit) and every
+              save writes the old fields from it (legacyFields) while code from before 022 still reads edits;
+              podcast/programmeGolden.test.ts checks old edits still run exactly the render commands they ran
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, motion graphics and highlights (spec 021), Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)

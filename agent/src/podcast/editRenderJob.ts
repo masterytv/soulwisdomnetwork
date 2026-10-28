@@ -28,7 +28,7 @@ import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
 import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type HighlightLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
-import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
+import { asVideoLayer, episodeAnchored, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
 import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LABELS } from '../../../lib/reframe';
 import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';

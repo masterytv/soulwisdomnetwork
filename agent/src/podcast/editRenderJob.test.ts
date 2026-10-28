@@ -152,7 +152,7 @@ test('job: renders on stand-in data and saves everything', { timeout: 600_000 },
         removeFolder: async prefix => { removed.push(prefix); },
         render: renderEdit,
         now: () => 'NOW',
-        cutClip: (input, output, start, seconds) => cutClip(input, output, start, seconds, true),
+        cutClip: async (input, output, start, seconds) => { await cutClip(input, output, start, seconds, true); },
     };
     const result = await runEditRender(ID, deps, path.join(dir, 'work'), '222');
 
