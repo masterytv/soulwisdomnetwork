@@ -89,3 +89,10 @@ test('who makes the final cut (spec 020 item E15): the Studio editor by default;
     assert.equal(withDefaults(stored).finalSource, 'descript');
     assert.equal(withDefaults({ finalCutBy: 'nonsense' }).finalSource, 'editorLight');
 });
+
+test('the teasers\' music and whoosh: none by default; a saved one is kept, a broken one dropped', () => {
+    assert.deepEqual([DEFAULT_SETTINGS.teaserMusic, DEFAULT_SETTINGS.teaserWhoosh], [null, null]);
+    const bed = { library: 'lib1', path: 'library/bed.mp3', name: 'Starlit bed', gainDb: -16 };
+    assert.deepEqual(withDefaults({ teaserMusic: bed }).teaserMusic, bed);
+    assert.equal(withDefaults({ teaserWhoosh: { ...bed, path: '/etc/passwd' } }).teaserWhoosh, null);
+});
