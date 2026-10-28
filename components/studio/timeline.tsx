@@ -41,7 +41,7 @@ import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
 import {
-    duplicateClip, MAX_CLIPS, moveClip, removeClip, setLabel, splitClip, TEASER_SHORTEST_MS, trimClip, type ProgrammeEdit, type ProgrammeSound,
+    duplicateClip, LABEL_TEXT, MAX_CLIPS, moveClip, removeClip, setLabel, splitClip, TEASER_SHORTEST_MS, trimClip, type ProgrammeEdit, type ProgrammeSound,
 } from '@/lib/programme';
 import { TRANSITION_LABELS } from '@/lib/transitions';
 import type { ProgrammeControl, ShownPiece } from '@/components/studio/programme';
@@ -1914,7 +1914,7 @@ export function Timeline({
                                             key={l.id}
                                             type="button"
                                             aria-label={`The "In this episode" label on ${clipName(c.id ?? '')}: ${l.fields.speaker}`}
-                                            title={`"In this episode" label${l.fields.speaker ? `: ${l.fields.speaker}` : ''}. Click to change the name or take it off.`}
+                                            title={`"In this episode" label${l.fields.speaker ? `: ${l.fields.speaker}` : ''}. Click to change its words in Properties, or take it off.`}
                                             onPointerDown={e => e.stopPropagation()}
                                             onClick={() => { onSelectLayer?.(null); if (c.id) onSelect({ kind: 'label', id: c.id }); cueClip(c, l.anchor.ms); }}
                                             className={`absolute flex items-stretch overflow-hidden rounded-sm text-left ${isSel ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-amber-200'}`}
@@ -1923,7 +1923,7 @@ export function Timeline({
                                             <span className="shrink-0 w-[3px]" style={{ background: TEASER }} />
                                             {w > 40 && (
                                                 <span className="flex items-center gap-1 px-1 whitespace-nowrap text-[9px] leading-none">
-                                                    <span className="font-black tracking-wider" style={{ color: TEASER }}>IN THIS EPISODE</span>
+                                                    <span className="font-black tracking-wider" style={{ color: TEASER }}>{l.fields.label ?? LABEL_TEXT}</span>
                                                     {l.fields.speaker && <span className="font-semibold text-white">{l.fields.speaker}</span>}
                                                 </span>
                                             )}

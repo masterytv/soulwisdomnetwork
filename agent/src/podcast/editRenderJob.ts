@@ -66,8 +66,8 @@ export interface EditRenderDeps {
     siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
     publicDir?: string;                  // the repository's public/, where the Studio's own sounds are (lib/audio.ts STUDIO_SOUNDS)
     // Cuts a teaser clip from the recording: plainly, when there is no edit package to take clips from, or with the
-    // "In this episode" tag and its speaker (`tag`) for the edit's own teasers (item E10).
-    cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number, tag?: { speaker: string }) => Promise<void>;
+    // "In this episode" tag and its speaker (`tag`; `label`, its top line when changed) for the edit's own teasers (item E10).
+    cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number, tag?: { speaker: string; label?: string }) => Promise<void>;
     // The show library's entries for the sounds' files (spec 020 item E7), and its log of uses.
     library?: (ids: string[]) => Promise<Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>>;
     logUses?: (ids: string[], use: LibraryUse) => Promise<void>;
@@ -212,7 +212,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // renderer, burned in by the cutter as before; a clip with no label is cut plainly. The intro and outro are the
     // episode's own or the Studio's (the outro is the Studio's intro, as always).
     const motionTags = !!deps.graphics && !!deps.overlayClip;
-    const tagLater: { id: string; file: string; speaker: string; durationMs: number }[] = [];
+    const tagLater: { id: string; file: string; fields: { speaker: string; label?: string }; durationMs: number }[] = [];
     const graphicWarnings: string[] = [];
     const files = new Map<string, string>();
     let cut = 0;
@@ -222,8 +222,8 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const label = plan.programme.layers.find(l => l.anchor.clip === c.id);
         if (label && motionTags) {
             await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000);
-            tagLater.push({ id: c.id, file: out, speaker: label.fields.speaker, durationMs: label.durationMs });
-        } else await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000, label ? { speaker: label.fields.speaker } : undefined);
+            tagLater.push({ id: c.id, file: out, fields: label.fields, durationMs: label.durationMs });
+        } else await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000, label ? label.fields : undefined);
         files.set(c.id, out);
     }
     const studioIntro = plan.intro ? await get(plan.intro, 'intro')
@@ -237,7 +237,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const label = plan.programme.layers.find(l => l.anchor.clip === id);
         const file = files.get(id);
         if (!label || !file) continue;
-        if (motionTags) tagLater.push({ id, file, speaker: label.fields.speaker, durationMs: label.durationMs });
+        if (motionTags) tagLater.push({ id, file, fields: label.fields, durationMs: label.durationMs });
         else graphicWarnings.push(`The "In this episode" label on the ${id} was left out: the graphics renderer is not on this runner.`);
     }
     // Each change's transition, its own or the default for its kind (lib/programme.ts clipJoins, as the editor plays it).
@@ -344,7 +344,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         // The motion "In this episode" label onto each cut clip, its progress line spanning the label.
         for (const t of tagLater) {
             const { local } = await drawClip({
-                template: 'teaserTag', fields: { speaker: t.speaker }, colors: settings.colors,
+                template: 'teaserTag', fields: t.fields, colors: settings.colors,
                 durationMs: t.durationMs, width: 1920, height: 1080,
             });
             // A cut clip's own file, or (the intro and outro, whose file may serve both) a copy of its own.

@@ -19,12 +19,15 @@ const RULE = 8;
 // the box grows for long names.
 const boxWidth = (speaker: string) => Math.min(WIDTH - 2 * LEFT, Math.max(460, RULE + 2 * PAD + speaker.length * 16));
 
-export function teaserAss({ speaker = '', durationMs, matte = false }: { speaker?: string; durationMs: number; matte?: boolean }) {
+export function teaserAss({ speaker = '', label = '', durationMs, matte = false }: { speaker?: string; label?: string; durationMs: number; matte?: boolean }) {
     // The matte (for the transparent PNG) is the same drawing all in white.
     const c = (colour: string) => (matte ? WHITE : colour);
     const name = safe(speaker);
+    const tag = safe(label) || 'IN THIS EPISODE';    // its top line, when changed in the editor (spec 022)
     const top = BOTTOM - (name ? 150 : 96);
-    const right = LEFT + boxWidth(name);
+    // A longer top line widens the box (Outfit Black at 44 px, spaced, is about 25 px a character).
+    const tagWidth = label ? Math.min(WIDTH - 2 * LEFT, RULE + 2 * PAD + tag.length * 25) : 0;
+    const right = LEFT + Math.max(boxWidth(name), tagWidth);
     const rect = (x1: number, y1: number, x2: number, y2: number) => `{\\pos(0,0)\\p1}m ${x1} ${y1} l ${x2} ${y1} l ${x2} ${y2} l ${x1} ${y2}{\\p0}`;
     const end = time(durationMs);
     const line = (layer: number, style: string, text: string) => `Dialogue: ${layer},0:00:00.00,${end},${style},,0,0,0,,${text}`;
@@ -49,7 +52,7 @@ export function teaserAss({ speaker = '', durationMs, matte = false }: { speaker
         'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
         line(0, 'Box', rect(LEFT, top, right, BOTTOM)),
         line(1, 'Rule', rect(LEFT, top, LEFT + RULE, BOTTOM)),
-        line(2, 'Tag', `{\\pos(${LEFT + RULE + PAD - 8},${top + 26})}IN THIS EPISODE`),
+        line(2, 'Tag', `{\\pos(${LEFT + RULE + PAD - 8},${top + 26})}${tag}`),
         ...(name ? [line(2, 'Speaker', `{\\pos(${LEFT + RULE + PAD - 8},${top + 86})}${name}`)] : []),
         '',
     ].join('\n');

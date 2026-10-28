@@ -62,6 +62,7 @@ html, body { margin: 0; background: transparent; }
         root.style.setProperty('--gold-rgb', rgb(colors.accent).join(', '));
         root.style.setProperty('--gold-pale', lighten(colors.accent, 0.35));
     } else root.style.setProperty('--gold-rgb', '247, 198, 91');
+    if (f.label) el('label').textContent = f.label;   // its top line, when changed in the editor (spec 022)
     el('speaker').textContent = f.speaker || '';
     if (!f.speaker) el('speaker').style.display = 'none';
 

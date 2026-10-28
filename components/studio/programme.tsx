@@ -87,6 +87,7 @@ export interface ShownPiece extends ProgrammePiece {
     toMs: number;                // Infinity: to the file's end
     speaker?: string;
     tag?: boolean;               // a teaser's "In this episode" tag (item E14: it can be taken off)
+    tagText?: string;            // its top line, when changed from "IN THIS EPISODE"
 }
 
 export interface ProgrammeView {
@@ -149,7 +150,7 @@ export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: 
             if (c?.kind === 'recording') {
                 const tag = clips.layers.find(l => l.anchor.clip === c.id);
                 const speaker = tag ? tag.fields.speaker : c.name;
-                return { ...p, label, name: speaker, src, fromMs: c.inMs, toMs: c.outMs, speaker, tag: !!tag };
+                return { ...p, label, name: speaker, src, fromMs: c.inMs, toMs: c.outMs, speaker, tag: !!tag, ...(tag?.fields.label ? { tagText: tag.fields.label } : {}) };
             }
             const file = p.kind === 'intro' ? intro : p.kind === 'outro' ? outro : null;
             return { ...p, label, name: file?.name ?? 'The edited episode', src: file?.url ?? null, fromMs: 0, toMs: Infinity };
