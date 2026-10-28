@@ -24,7 +24,8 @@ import { mmss } from '../../../lib/showNotes';
 import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
 import type { CaptionStyle } from '../../../lib/onScreen';
 import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLayer, type TextLayer, type VideoLayer } from '../../../lib/layers';
-import { soundFilter, soundsMix, soundSpan, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from '../../../lib/audio';
+import { soundFilter, soundsMix, soundSpan, SOUND_TRACK, type Sound } from '../../../lib/audio';
+import type { ProgrammeSound } from '../../../lib/programme';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
 import { auphonicInput, deepFilterTrack, placeAt, speakerMix, studioSoundTrack } from './voiceCleanup';
@@ -145,12 +146,16 @@ interface RenderReport {
     qc: RenderQc;                 // the quality report on the finished file (renderQc.ts)
     warnings: string[];           // transitions that played as straight cuts, and why
     soundsPlayed: string[];       // the sounds (item E7) the episode plays, by id in the order they start, for credits and the log
-    teaserSoundsPlayed?: ('music' | 'whoosh')[];   // the teasers' music and whoosh, when they played (Studio settings)
+    // Spec 022: the sounds on the other clips that played, by id, with where each starts in the finished video, and
+    // where the episode starts in it (for the credits' order).
+    programmeSoundsPlayed?: { id: string; atMs: number }[];
+    episodeAtMs?: number;
 }
 
 // A piece of the whole video for the render (spec 022): a file, or the episode, and the transition into it.
 export interface ProgrammeInput {
     kind: PlannedPiece['kind'];
+    id?: string;                  // the clip's (lib/programme.ts), for the sounds on it
     file?: string;
     join: { transition: Transition; label: string; key: string } | null;
 }
@@ -224,9 +229,9 @@ export async function renderEdit(opts: {
     // Music and effects (spec 020 item E7, lib/audio.ts), each with its local file: mixed under the voice
     // on the edited episode, the ducked ones lowered while anyone speaks.
     sounds?: { sound: Sound; file: string }[];
-    // The teasers' music bed and the whoosh at each change between them (Studio settings, lib/audio.ts
-    // teaserSoundPlan), each with its local file, mixed over the programme while the teasers play.
-    teaserSounds?: { music?: { sound: TeaserSound; file: string }; whoosh?: { sound: TeaserSound; file: string } };
+    // Sounds on the clips other than the episode (spec 022, lib/programme.ts), each with its local file: placed from
+    // its clip's start in the finished video, mixed over the whole video's sound and ducked under it.
+    programmeSounds?: { sound: ProgrammeSound; file: string }[];
     // Where finished windows (and an expensive voice clean-up) are kept, so a retried run skips them (spec 019
     // item 4.2): `get` fetches a kept file to `local` and says whether there was one.
     store?: { get: (name: string, local: string) => Promise<boolean>; put: (local: string, name: string) => Promise<void> };
@@ -407,9 +412,12 @@ export async function renderEdit(opts: {
         };
         // The whole video in order (spec 022): the job's, or the teasers, intro and outro as before.
         let episodePiece = -1;
+        const pieceOfClip = new Map<string, number>();
         for (const p of opts.programme ?? legacyProgramme(opts, sections)) {
+            if (p.kind !== 'episode' && !p.file) continue;
+            if (p.id) pieceOfClip.set(p.id, pieces.length);
             if (p.kind === 'episode') { episodePiece = pieces.length; put('episode', null, episodeFrames, p.join); }
-            else if (p.file) put(p.kind, p.file, await framesOfFile(p.file), p.join);
+            else put(p.kind, p.file!, await framesOfFile(p.file!), p.join);
         }
         if (episodePiece < 0) throw new Error('The video has no episode in it');
         const programme = chainStarts(pieces);
@@ -545,39 +553,39 @@ export async function renderEdit(opts: {
             }
             asm.close();
         }
-        // The teasers' music and whoosh (Studio settings), over the programme's sound while the teasers play:
-        // the bed ducked under their voices, a whoosh at each change.
+        // The sounds on the other clips (spec 022), over the whole video's sound: each from its clip's start, to the end
+        // of the video at the latest, the ducked ones lowered under it. Music before effects, each in the order it
+        // starts (and named as the teasers' music and whoosh were, so an edit converted from them runs the same commands).
         let finalRaw = programmeRaw;
-        const teaserPlayed: ('music' | 'whoosh')[] = [];
-        if (opts.teaserSounds?.music || opts.teaserSounds?.whoosh) {
+        const programmeSoundsPlayed: { id: string; atMs: number }[] = [];
+        if (opts.programmeSounds?.length) {
             const ms = (frames: number) => frames * 1000 / FPS;
-            const plan = teaserSoundPlan(pieces.map(p => ({ kind: p.kind, atMs: ms(p.start), lengthMs: ms(p.frames), joinMs: ms(p.join) })));
-            const { music, whoosh } = opts.teaserSounds;
+            const endMs = ms(programme.frames);
+            const placed = opts.programmeSounds.flatMap(s => {
+                const k = pieceOfClip.get(s.sound.anchor.clip);
+                if (k === undefined) { warnings.push(`The sound "${s.sound.media.name}" is on a clip that does not play, so it was left out.`); return []; }
+                const startMs = Math.max(0, ms(pieces[k].start) + s.sound.anchor.ms);
+                const span = { startMs, endMs: Math.min(endMs, startMs + s.sound.durationMs) };
+                return span.endMs > span.startMs ? [{ ...s, span }] : [];
+            }).sort((a, b) => a.sound.track - b.sound.track || a.span.startMs - b.span.startMs);
             const args = ['-y', '-hide_banner', '-loglevel', 'error', ...S16, '-i', programmeRaw];
             let f = '[0:a]anull[pga];';
             const ducked: string[] = [], others: string[] = [];
-            if (music && plan.music) {
-                args.push('-stream_loop', '-1', '-i', music.file);
-                f += soundFilter(1, 'tmus', teaserMusicSound(music.sound, plan.music), plan.music);
-                ducked.push('tmus');
-                teaserPlayed.push('music');
+            let music = 0, effects = 0;
+            for (const p of placed) {
+                args.push(...(p.sound.loop ? ['-stream_loop', '-1'] : []), '-i', p.file);
+                const label = p.sound.track === SOUND_TRACK.music ? (music++ ? `tmus${music - 1}` : 'tmus') : `twh${effects++}`;
+                f += soundFilter(args.filter(a => a === '-i').length - 1, label, { ...p.sound, anchor: { atMs: 0 } }, p.span);
+                (p.sound.duck ? ducked : others).push(label);
+                programmeSoundsPlayed.push({ id: p.sound.id, atMs: Math.round(p.span.startMs) });
             }
-            if (whoosh && plan.whooshes.length) {
-                const fileMs = await probeDuration(whoosh.file).then(d => d * 1000).catch(() => null);
-                plan.whooshes.forEach((at, i) => {
-                    const sound = teaserWhooshSound(whoosh.sound, at, fileMs);
-                    args.push('-i', whoosh.file);
-                    f += soundFilter(args.filter(a => a === '-i').length - 1, `twh${i}`, sound, { startMs: at, endMs: at + sound.durationMs });
-                    others.push(`twh${i}`);
-                });
-                teaserPlayed.push('whoosh');
-            }
-            if (ducked.length || others.length) {
+            if (placed.length) {
                 f += soundsMix('pga', ducked, others, 'pgm');
                 f += `[pgm]apad,atrim=end_sample=${programme.frames * SAMPLES_PER_FRAME}[mix]`;
                 finalRaw = raw('programme_teasers.raw');
                 await run('ffmpeg', [...args, '-filter_complex', f, '-map', '[mix]', ...S16, finalRaw]);
             }
+            programmeSoundsPlayed.sort((a, b) => a.atMs - b.atMs);
         }
         // At the very start and end, a transition is a fade from or to black, and the sound fades with it.
         const fades = [
@@ -726,7 +734,8 @@ export async function renderEdit(opts: {
             qc,
             warnings,
             soundsPlayed: [...sounds].sort((a, b) => a.span.startMs - b.span.startMs).map(s => s.sound.id),
-            ...(teaserPlayed.length ? { teaserSoundsPlayed: teaserPlayed } : {}),
+            ...(programmeSoundsPlayed.length ? { programmeSoundsPlayed } : {}),
+            episodeAtMs: Math.round(programme.starts[episodePiece] * 1000 / FPS),
         };
         const base = opts.out.replace(/\.\w+$/, '');
         if (opts.words?.length || opts.chapters?.length || opts.quotes?.length) {

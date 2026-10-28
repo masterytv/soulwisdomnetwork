@@ -9,11 +9,14 @@ import { replaceSuggestions, suggestCuts, SUGGESTED_REASONS, type EpisodeEdit, t
 import type { SpokenWord } from './showNotes';
 import { SECTION_JOIN_LABELS, TransitionSchema, type SectionJoin, type SectionJoins, type Transition, type TransitionKind } from './transitions';
 import { LAYER_MIN_MS, TRACK, type GraphicLayer } from './layers';
+import { SoundSchema, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from './audio';
 import { GRAPHIC_MAX_MS } from './graphics';
 
 // A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker; `tag`
 // false takes the tag off that teaser (item E14).
-export interface Teaser { startMs: number; endMs: number; speaker: string; tag?: boolean }
+// `id` is the clip it is in the whole video (spec 022), carried through the editor's teaser actions so the sounds on a
+// clip stay on it; it is never saved on a teaser.
+export interface Teaser { startMs: number; endMs: number; speaker: string; tag?: boolean; id?: string }
 
 // Breathing room around a clip the notes picked, and its shortest length: as the edit package has always cut them.
 export const TEASER_LEAD_MS = 300;
@@ -255,10 +258,16 @@ export type RecordingClip = Extract<ProgrammeClip, { kind: 'recording' }>;
 export interface ClipAnchor { clip: string; ms: number }
 // The "In this episode" label on a clip (stage 2: the teaser's tag; any graphic in stage 3b).
 export type ProgrammeLayer = Omit<Extract<GraphicLayer, { template: 'teaserTag' }>, 'anchor'> & { anchor: ClipAnchor };
-export interface ProgrammeEdit { clips: ProgrammeClip[]; layers: ProgrammeLayer[] }
+// A sound on a clip other than the episode (stage 3a): on the whole video's clock from `ms` after its clip starts (it may
+// lead into the clip by up to MAX_LEAD_MS), across changes, to the end of the video at the latest.
+export type ProgrammeSound = Omit<Sound, 'anchor'> & { anchor: ClipAnchor };
+// `audio` missing (saved before stage 3a): the Studio settings' old teaser music and whoosh, converted (programmeEdit).
+export interface ProgrammeEdit { clips: ProgrammeClip[]; layers: ProgrammeLayer[]; audio?: ProgrammeSound[] }
 
 export const MAX_CLIPS = 40;
 export const MAX_CLIP_LAYERS = 100;
+export const MAX_CLIP_SOUNDS = 100;
+export const MAX_LEAD_MS = 10_000;
 // The episode and the intro and outro have these ids; a recording clip's is its own.
 export const EPISODE_CLIP = 'episode', INTRO_CLIP = 'intro', OUTRO_CLIP = 'outro';
 
@@ -281,10 +290,15 @@ const ProgrammeLayerSchema = z.object({
     fields: z.object({ speaker: z.string().trim().max(200) }).strict(),
 }).strict();
 
+const ProgrammeSoundSchema = SoundSchema.omit({ anchor: true }).extend({
+    anchor: z.object({ clip: clipId, ms: z.number().int().min(-MAX_LEAD_MS).max(24 * 3600_000) }).strict(),
+}).strict();
+
 // What the Studio may save as `edit.programme` (app/api/studio/episodes/[id]/edit).
 export const ProgrammeSchema = z.object({
     clips: z.array(z.union([RecordingClipSchema, fixedClip('intro', INTRO_CLIP), fixedClip('episode', EPISODE_CLIP), fixedClip('outro', OUTRO_CLIP)])).max(MAX_CLIPS),
     layers: z.array(ProgrammeLayerSchema).max(MAX_CLIP_LAYERS),
+    audio: z.array(ProgrammeSoundSchema).max(MAX_CLIP_SOUNDS).optional(),
 }).strict().superRefine((p, ctx) => {
     const ids = p.clips.map(c => c.id);
     if (new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', message: 'Two clips have the same id' });
@@ -293,6 +307,12 @@ export const ProgrammeSchema = z.object({
     for (const l of p.layers) {
         const on = p.clips.find(c => c.id === l.anchor.clip);
         if (!on || on.kind === 'episode') ctx.addIssue({ code: 'custom', message: 'A graphic is on a clip that is not there' });
+    }
+    const audio = p.audio ?? [];
+    if (new Set(audio.map(s => s.id)).size !== audio.length) ctx.addIssue({ code: 'custom', message: 'Two sounds have the same id' });
+    for (const a of audio) {
+        const on = p.clips.find(c => c.id === a.anchor.clip);
+        if (!on || on.kind === 'episode') ctx.addIssue({ code: 'custom', message: 'A sound is on a clip that is not there' });
     }
 });
 
@@ -312,19 +332,32 @@ export function clipLabel(clip: string, speaker: string, lengthMs: number): Prog
 
 // The opening as clips from a list of teasers: a recording clip each, named by its speaker, with its label unless its
 // tag was taken off.
-function openingOf(teasers: Teaser[]): ProgrammeEdit {
-    const clips: ProgrammeClip[] = teasers.map((t, i) => ({ id: `t${i + 1}`, kind: 'recording', inMs: t.startMs, outMs: t.endMs, name: t.speaker }));
-    const layers = teasers.flatMap((t, i) => (t.tag === false ? [] : [clipLabel(`t${i + 1}`, t.speaker, t.endMs - t.startMs)]));
-    return { clips, layers };
+// Each teaser keeps the clip id it carries (`id`, once, and not one of the fixed clips'); one without gets `t<n>` (as a
+// converted edit's are numbered) or, when that is taken, a new one.
+function openingOf(teasers: Teaser[], taken: Set<string> = new Set(), retired: Set<string> = new Set()): ProgrammeEdit & { audio: ProgrammeSound[] } {
+    const used = new Set(taken);
+    const ids = teasers.map(t => {
+        const ok = t.id && /^[\w-]{1,40}$/.test(t.id) && !used.has(t.id) && ![EPISODE_CLIP, INTRO_CLIP, OUTRO_CLIP].includes(t.id);
+        if (ok) used.add(t.id!);
+        return ok ? t.id! : null;
+    });
+    const fresh = () => { let n = 1; while (used.has(`t${n}`) || retired.has(`t${n}`) || ids.includes(`t${n}`)) n++; used.add(`t${n}`); return `t${n}`; };
+    const named = ids.map(id => id ?? fresh());
+    const clips: ProgrammeClip[] = teasers.map((t, i) => ({ id: named[i], kind: 'recording', inMs: t.startMs, outMs: t.endMs, name: t.speaker }));
+    const layers = teasers.flatMap((t, i) => (t.tag === false ? [] : [clipLabel(named[i], t.speaker, t.endMs - t.startMs)]));
+    return { clips, layers, audio: [] };
 }
 
 // The edit's whole video: its own (`edit.programme`), or converted from what it had before spec 022: its teasers (or,
 // saved before it had them, `fallback`: the approved notes' teaser clips, when the Studio plays teasers, as the editor
 // shows them), then the intro unless it was taken out, the episode and the outro unless it was taken out.
-export function programmeEdit(edit: Pick<EpisodeEdit, 'programme' | 'teasers' | 'intro' | 'outro'>, fallback: Teaser[] = []): ProgrammeEdit {
-    if (edit.programme) return edit.programme;
+// An edit saved before stage 3a (no `audio` on its whole video) gets the Studio settings' old teaser music and whoosh
+// as sounds on its clips, when `old` gives them (oldTeaserSounds).
+export function programmeEdit(edit: Pick<EpisodeEdit, 'programme' | 'teasers' | 'intro' | 'outro'>, fallback: Teaser[] = [], old?: OldTeaserSounds | null): ProgrammeEdit {
+    const withSounds = (p: ProgrammeEdit): ProgrammeEdit => (p.audio || !old ? p : { ...p, audio: oldTeaserSounds(p, old) });
+    if (edit.programme) return withSounds(edit.programme);
     const opening = openingOf(edit.teasers ?? fallback);
-    return {
+    return withSounds({
         clips: [
             ...opening.clips,
             ...(edit.intro === false ? [] : [{ id: INTRO_CLIP, kind: 'intro' as const }]),
@@ -332,17 +365,42 @@ export function programmeEdit(edit: Pick<EpisodeEdit, 'programme' | 'teasers' | 
             ...(edit.outro === false ? [] : [{ id: OUTRO_CLIP, kind: 'outro' as const }]),
         ],
         layers: opening.layers,
-    };
+    });
+}
+
+// The Studio settings' teaser music and whoosh as they were (lib/audio.ts), with what places them: the transitions
+// between the teasers (the edit's or the Studio's) and the whoosh file's length (null: not known, 1.5 s).
+export interface OldTeaserSounds { music: TeaserSound | null; whoosh: TeaserSound | null; whooshMs: number | null; sections: SectionJoins }
+
+// The old teaser music and whoosh as sounds on the opening's clips (the recording clips before the episode), where the
+// render mixed them (lib/audio.ts teaserSoundPlan): the bed on the first clip for the whole opening, the whoosh on each
+// later one, at the middle of the transition into it less WHOOSH_LEAD_MS.
+export function oldTeaserSounds(p: ProgrammeEdit, old: OldTeaserSounds): ProgrammeSound[] {
+    const episode = p.clips.findIndex(c => c.kind === 'episode');
+    const opening = p.clips.slice(0, episode).filter((c): c is RecordingClip => c.kind === 'recording');
+    if (!opening.length) return [];
+    const pg = programmeOf({ clips: opening.map(c => ({ kind: c.kind, id: c.id, lengthMs: c.outMs - c.inMs, ...(c.join ? { join: c.join } : {}) })), sections: old.sections });
+    const plan = teaserSoundPlan(pg.pieces);
+    const out: ProgrammeSound[] = [];
+    const onClip = (s: Sound, clip: string, ms: number): ProgrammeSound => ({ ...s, anchor: { clip, ms: Math.round(ms) } });
+    if (old.music && plan.music) out.push(onClip(teaserMusicSound(old.music, plan.music), opening[0].id, 0));
+    if (old.whoosh) {
+        pg.pieces.slice(1).forEach((piece, i) => {
+            const at = plan.whooshes[i];
+            out.push(onClip({ ...teaserWhooshSound(old.whoosh!, at, old.whooshMs), id: `teaserWhoosh${i + 1}` }, piece.id, at - piece.atMs));
+        });
+    }
+    return out;
 }
 
 // The recording clips before the episode, as the teasers they were: their stretch, their label's name (else the clip's)
 // and `tag` false when they have no label.
-export function teasersOf(p: ProgrammeEdit): Teaser[] {
+export function teasersOf(p: ProgrammeEdit, withIds = false): Teaser[] {
     const episode = p.clips.findIndex(c => c.kind === 'episode');
     return p.clips.slice(0, episode < 0 ? p.clips.length : episode).flatMap(c => {
         if (c.kind !== 'recording') return [];
         const label = p.layers.find(l => l.anchor.clip === c.id);
-        return [{ startMs: c.inMs, endMs: c.outMs, speaker: label ? label.fields.speaker : c.name, ...(label ? {} : { tag: false as const }) }];
+        return [{ startMs: c.inMs, endMs: c.outMs, speaker: label ? label.fields.speaker : c.name, ...(label ? {} : { tag: false as const }), ...(withIds ? { id: c.id } : {}) }];
     });
 }
 
@@ -355,17 +413,28 @@ export function clipStretches(edit: Pick<EpisodeEdit, 'programme' | 'teasers' | 
 // The whole video with its opening (the recording clips before the intro, or the episode) made from `teasers`, the
 // teasers' actions of spec 020 (trim, move, take out, add, the tag's name) working on clips; the intro, the episode
 // and the outro stay where they are.
+// A teaser that carries its clip's id (teasersOf withIds, passed through the editor's actions) stays that clip, with
+// its sounds; a clip whose teaser is gone takes its sounds with it.
 export function withTeasers(p: ProgrammeEdit, teasers: Teaser[]): ProgrammeEdit {
-    const opening = openingOf(teasers);
     const before = p.clips.findIndex(c => c.kind !== 'recording');
     const rest = before < 0 ? [] : p.clips.slice(before);
-    const kept = new Set(rest.map(c => c.id));
-    return { clips: [...opening.clips, ...rest], layers: [...opening.layers, ...p.layers.filter(l => kept.has(l.anchor.clip))] };
+    // A new teaser never takes the id of a clip that was there, so no sound of a clip taken out lands on it.
+    const opening = openingOf(teasers, new Set(rest.map(c => c.id)), new Set(p.clips.map(c => c.id)));
+    const kept = new Set([...rest, ...opening.clips].map(c => c.id));
+    return {
+        clips: [...opening.clips, ...rest],
+        layers: [...opening.layers, ...p.layers.filter(l => rest.some(c => c.id === l.anchor.clip))],
+        ...(p.audio ? { audio: p.audio.filter(s => kept.has(s.anchor.clip)) } : {}),
+    };
 }
 
 // The whole video with the intro or outro taken out (spec 020 item E14's Delete).
 export function withoutEnd(p: ProgrammeEdit, kind: 'intro' | 'outro'): ProgrammeEdit {
-    return { clips: p.clips.filter(c => c.kind !== kind), layers: p.layers.filter(l => l.anchor.clip !== kind) };
+    const id = kind === 'intro' ? INTRO_CLIP : OUTRO_CLIP;
+    return {
+        clips: p.clips.filter(c => c.kind !== kind), layers: p.layers.filter(l => l.anchor.clip !== id),
+        ...(p.audio ? { audio: p.audio.filter(s => s.anchor.clip !== id) } : {}),
+    };
 }
 
 // The whole video with the intro or outro put back (the Parts panel's choice of one): the intro just before the
@@ -396,7 +465,7 @@ export function setEnds<E extends EpisodeEdit>(edit: E, patch: Partial<Pick<Epis
 export function legacyFields(p: ProgrammeEdit, edit: Pick<EpisodeEdit, 'intro' | 'outro'>): Pick<EpisodeEdit, 'teasers' | 'intro' | 'outro'> {
     const has = (kind: ClipKind) => p.clips.some(c => c.kind === kind);
     return {
-        teasers: teasersOf(p),
+        teasers: teasersOf(p),     // without ids: old code checks teasers strictly
         intro: has('intro') ? (edit.intro || null) : false,
         outro: has('outro') ? (edit.outro || null) : false,
     };
