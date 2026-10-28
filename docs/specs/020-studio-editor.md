@@ -719,7 +719,8 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 
 ### E7 — Built (#160)
 
-- **The teasers' music and whoosh** (added after E7, Tom, 28 October 2026). A sound on the edit sits on the edited
+- **The teasers' music and whoosh** (added after E7, Tom, 28 October 2026; **replaced by spec 022 stage 3a**, where sounds
+  sit on any clip of the whole video and these settings are converted into such sounds). A sound on the edit sits on the edited
   episode's clock, so none can reach the "In this episode" teasers, which play before it. Two Studio settings
   (Settings → Finished video, under the teasers) cover them for every episode: `teaserMusic`, a library music file
   under all the teasers (looped, ducked under their voices, fading in over 0.5 s and out over the last teaser's last

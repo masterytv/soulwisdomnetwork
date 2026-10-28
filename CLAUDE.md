@@ -73,9 +73,12 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use) or the bin
-              (the teasers, before the episode, get theirs from the Studio settings instead: teaserMusic and teaserWhoosh, lib/audio.ts
-              teaserSoundPlan, mixed over the programme by the render and played by components/studio/teaserSounds.tsx);
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use), the bin,
+              or the Studio's own wind sounds (public/studio/sounds, made by scripts/windSounds.py, no licence: lib/audio.ts STUDIO_SOUNDS);
+              spec 022 stage 3a puts sounds on any clip of the whole video too (edit.programme.audio, anchored to a clip, mixed over
+              the whole video by the render, played by components/studio/sounds.tsx ClipSoundsPreview), and the old teaserMusic and
+              teaserWhoosh settings, no longer shown, are converted into such sounds for edits saved before it (lib/programme.ts
+              oldTeaserSounds);
               the YouTube caption track shows on the timeline's CC lane and in the Captions panel before rendering (item E8: lib/captions.ts
               editCues, the same cues as the render's .srt), with Part I's burned-in option; copy and paste and J/K/L are in
               components/studio/editorKeys.tsx; a second video covers each cut in the preview (components/studio/cutBridge.tsx,
@@ -92,14 +95,23 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               closed up, with a marker where each cut was, and a clip's end dragged out brings back what was cut there or in cuts more,
               everything after it moving along (item E13, lib/timeline.ts playedAxis and rippleTrim; Show cuts draws the whole
               recording, cuts and all); the render cuts exactly the edit's `teasers`, with the "In this episode" tag,
-              and the show's intro is public/studio/show-intro.mp4, which the editor plays too
+              and the show's intro is public/studio/show-intro.mp4, which the editor plays too; spec 022 (one timeline,
+              built) makes V1 a list of clips, `edit.programme` (lib/programme.ts: recording clips, the intro, the
+              episode once, the outro, each change's own transition or its kind's default, the label as a graphic on its
+              clip), which the editor, the edit route and the render read; an old edit converts (programmeEdit) and every
+              save writes the old fields from it (legacyFields) while code from before 022 still reads edits; the timeline
+              edits the clips by id (stage 3b: Blade, trim, drag anywhere, Duplicate, Delete, labels, a ◆ at each change
+              for its transition) and Build the opening in the Parts panel places the notes' teaser clips with dissolves,
+              labels, Wind: breath and music (buildOpening; the music remembered as openingMusic, lib/audio.ts
+              openingMusicDefault);
+              podcast/programmeGolden.test.ts checks old edits still run exactly the render commands they ran
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, motion graphics and highlights (spec 021), Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-021; docs/BACKLOG.md lists features agreed for later;
+docs/specs/   numbered specs, 001-022 (022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)

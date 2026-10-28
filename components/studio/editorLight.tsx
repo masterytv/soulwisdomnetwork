@@ -41,7 +41,8 @@ import type { HighlightsView, RetakesView, WordFixResult } from '@/types/studio'
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
 import { layersOf, motionGraphics, withLayers, type BinItem, type Brand } from '@/lib/layers';
-import { firstEdit, type Teaser } from '@/lib/programme';
+import { firstEdit, withBuiltOpening, type Teaser } from '@/lib/programme';
+import { openingMusicDefault } from '@/lib/audio';
 import type { ProgrammeSetup } from '@/components/studio/programme';
 
 // What an edit was set up with (item E10), in a line: "Set up for you: 214 filler words, 87 long pauses ...".
@@ -258,7 +259,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         Promise.all([
             studioFetch<{
                 edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
-                fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro']; teaserSounds?: ProgrammeSetup['teaserSounds'];
+                fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro']; oldSounds?: ProgrammeSetup['oldSounds']; opening?: ProgrammeSetup['opening'];
                 graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[]; logoBug?: boolean } | null;
                 highlightsOff?: boolean;
             }>(`/api/studio/episodes/${episodeId}/edit`),
@@ -267,12 +268,19 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             .then(([data, items]) => {
                 setBin(items);
                 setBrollHeld(data.brollBlock ?? null);
-                setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null, teaserSounds: data.teaserSounds ?? {} });
+                setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null, oldSounds: data.oldSounds ?? null, opening: data.opening ?? null });
                 setHighlightsOff(data.highlightsOff ?? false);
                 // No saved edit yet: set one up (item E10), and save it.
                 const setUp = data.fresh && !data.brollBlock
                     ? firstEdit(data.edit, { words: accepted, silences: data.silences ?? null, teasers: data.teasers ?? [] }) : null;
-                const opened = withoutEmptyCuts(setUp?.edit ?? data.edit);
+                let opened = withoutEmptyCuts(setUp?.edit ?? data.edit);
+                // Spec 022 stage 3b: a new edit's opening is built (clips, dissolves, labels, wind, music) when the
+                // Studio plays teasers, with the music Build would pick.
+                if (setUp && data.opening && data.teasers?.length) {
+                    const library = (items ?? []).flatMap(i => (i.source === 'library' && i.sound ? [{ id: i.id.replace(/^lib-/, ''), kind: i.sound.kind, path: i.path, name: i.name, checked: i.sound.checked }] : []));
+                    const music = items ? openingMusicDefault({ remembered: data.opening.remembered, old: data.opening.old, library }) : data.opening.remembered;
+                    opened = withBuiltOpening(opened, { teasers: data.teasers, sections: data.opening.sections, music });
+                }
                 let shown = workspace && items ? withLayers(opened, items) : opened;
                 // The motion graphics (spec 021 M2, Tom's D2: on), placed once with the b-roll on a fresh
                 // edit; one that already has any ("Build for Studio editor" placed them) gets none again.

@@ -19,10 +19,12 @@
 // Item E11: the sections between splits are drawn in the order they play (lib/timeline.ts timelineAxis), and a section on
 // V1 can be dragged to a new place (`split.onOrder`); every time here is the recording's, drawn through that axis.
 // Item E10: the whole video's teasers, intro and outro (components/studio/programme.tsx); item E14 draws them as clips on
-// V1 before and after the episode (lib/timeline.ts withProgramme), each teaser with its pictures and voice and its "In this
-// episode" graphic on V3: a teaser's ends trim it (between words), dragging it moves it among the teasers, and Delete takes
-// a teaser, its graphic, the intro or the outro out; a section or stretch chosen in the episode becomes a new teaser
-// (Make teaser, or copy and paste). The playhead follows the second video through them.
+// V1 before and after the episode (lib/timeline.ts withProgramme). Spec 022 stage 3b: they are the edit's clips
+// (lib/programme.ts), ordinary ones: a recording clip shows its pictures and voice and its "In this episode" label on
+// V3; its ends trim it (between words), the Blade cuts it in two, and any clip but the episode can be dragged anywhere
+// on V1; Duplicate (⌘D) copies one, Delete takes it out with what is on it; a marker at each change opens its
+// transition; a section or stretch chosen in the episode becomes a new clip (+ Opening clip, or copy and paste). The
+// playhead follows the second video through them.
 // Item E13: the timeline shows only what plays, closed up in play order (lib/timeline.ts playedAxis), with a marker at
 // each join where something is cut; an end of a kept stretch is dragged out to bring back what was cut there, or in to
 // cut more (rippleTrim), and everything after it moves with it. Show cuts draws the whole recording, cuts and all, as before.
@@ -38,7 +40,10 @@ import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from '@/lib/reframe';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, type Sound } from '@/lib/audio';
 import { cueTooFast, type Cue } from '@/lib/captions';
 import { playOrder, sourceTime, timelineTime, type Clip } from '@/lib/sequence';
-import { MAX_TEASERS, moveTeaser, setTeaserTag, TEASER_SHORTEST_MS, trimTeaser, type Teaser } from '@/lib/programme';
+import {
+    duplicateClip, MAX_CLIPS, moveClip, removeClip, setLabel, splitClip, TEASER_SHORTEST_MS, trimClip, type ProgrammeEdit, type ProgrammeSound,
+} from '@/lib/programme';
+import { TRANSITION_LABELS } from '@/lib/transitions';
 import type { ProgrammeControl, ShownPiece } from '@/components/studio/programme';
 import { BIN_DRAG_TYPE } from '@/components/studio/mediaBin';
 import { columnPeaks, peakLevels } from '@/lib/peaks';
@@ -48,7 +53,7 @@ import {
     preciseTime, rangeOf, removedRanges, roundToStep, SNAP_PX, snapMs, speakerBlocks, speakerColors, stepFor, tickLabel,
     ticksBetween, tickText, wordEdges, zoomAround, timelineAxis, dropPosition, type SpeakerBlock, type TimelineAxis,
     playedAxis, pieceEdgeAt, hiddenAt, rippleLimits, rippleTrim, joinMarks, type AxisPiece, type JoinMark,
-    withProgramme, extraAt, teaserEdgeAt, teaserDrop, type ProgrammeClip,
+    withProgramme, extraAt, teaserEdgeAt, clipDrop, clipSoundView, soundPlace, DRAG_STEP_MS, type ProgrammeClip,
 } from '@/lib/timeline';
 import { secondary } from '@/components/studio/ui';
 import { useVideoTime } from '@/components/studio/useVideoTime';
@@ -68,24 +73,22 @@ export type TimelineSelection =
     | { kind: 'cut'; startMs: number; endMs: number }
     | { kind: 'section'; startMs: number; endMs: number }
     | { kind: 'join'; startMs: number; endMs: number }
-    // Item E14: a teaser (by its place), its "In this episode" graphic, the intro or the outro.
-    | { kind: 'teaser'; index: number }
-    | { kind: 'tag'; index: number }
-    | { kind: 'intro' }
-    | { kind: 'outro' };
+    // Spec 022: a clip of the whole video other than the episode (by its id), or the "In this episode" label on one.
+    | { kind: 'clip'; id: string }
+    | { kind: 'label'; id: string };
 
-// Item E14: the whole video around the episode. The teasers (the edit's, or a draft while one is trimmed), the
-// programme's pieces (the intro and outro, their names and lengths, and each piece's number for `control`), and what
-// changes them. `onMakeTeaser` adds a stretch of the recording as a teaser where the preview is (the editor's
-// addTeaser); `onEnd` takes the intro or outro out of this episode; `onParts` opens the Parts panel to change them.
+// Item E14, spec 022: the whole video around the episode. Its clips (lib/programme.ts), the programme's pieces (where
+// each plays, the intro's and outro's names and lengths, and each piece's number for `control`), and what changes them.
+// `onMakeTeaser` adds a stretch of the recording as a clip where the preview is (the editor's addTeaser); `onParts`
+// opens the Parts panel; `onClipJoin` the Transitions panel at the change into a clip.
 export interface TimelineProgramme {
-    teasers: Teaser[];
+    clips: ProgrammeEdit;
     pieces: ShownPiece[];
     control: ProgrammeControl;
-    onTeasers: (teasers: Teaser[]) => void;
+    onClips: (clips: ProgrammeEdit) => void;
     onMakeTeaser: (stretch: { startMs: number; endMs: number }) => void;
-    onEnd: (key: 'intro' | 'outro') => void;
     onParts: () => void;
+    onClipJoin?: (id: string) => void;
 }
 
 // Splits: set at the playhead (S) or with the Blade tool, they divide the episode into sections, as
@@ -354,7 +357,8 @@ function drawTimeline(ctx: CanvasRenderingContext2D, d: DrawInput) {
     });
     // Where the episode starts and ends among them.
     if (d.axis.extras.length) {
-        const epEnd = d.axis.lengthMs - d.axis.extras.filter(c => c.kind === 'outro').reduce((t, c) => t + c.lengthMs, 0);
+        const after = d.axis.extras.find(c => c.viewStart >= d.axis.leadMs);
+        const epEnd = after ? after.viewStart + (after.joinMs ?? 0) : d.axis.lengthMs;
         ctx.fillStyle = '#0b0619';
         for (const at of [d.axis.leadMs, epEnd]) if (at > 0 && at < d.axis.lengthMs) ctx.fillRect(x(at) - 1, V1_TOP, 2, V1_H);
     }
@@ -519,33 +523,34 @@ function SplitButton({ split, video, totalMs, disabled }: {
     );
 }
 
-// Item E14: a section or stretch chosen in the episode, made a teaser where the preview is (copy and paste does the same).
+// Item E14: a section or stretch chosen in the episode, made a clip of the opening where the preview is (copy and paste
+// does the same).
 function MakeTeaser({ programme, stretch, disabled }: { programme: TimelineProgramme; stretch: { startMs: number; endMs: number }; disabled: boolean }) {
-    const full = programme.teasers.length >= MAX_TEASERS;
+    const full = programme.clips.clips.length >= MAX_CLIPS;
     const short = stretch.endMs - stretch.startMs < TEASER_SHORTEST_MS;
     return (
         <button onClick={() => programme.onMakeTeaser({ startMs: stretch.startMs, endMs: stretch.endMs })} disabled={disabled || full || short}
-            title={full ? `There are ${MAX_TEASERS} teasers already` : short ? 'Too short for a teaser'
-                : 'Make this a teaser (or copy it with ⌘C or Ctrl+C and paste it with ⌘V): it goes where the preview is among the teasers, or after the last one'}
-            className={`${secondary} px-2 py-0.5 shrink-0`}>+ Teaser</button>
+            title={full ? `There are ${MAX_CLIPS} clips already` : short ? 'Too short for a clip'
+                : 'Make this a clip of the opening (or copy it with ⌘C or Ctrl+C and paste it with ⌘V): it goes where the preview is among the opening\'s clips, or after the last one'}
+            className={`${secondary} px-2 py-0.5 shrink-0`}>+ Opening clip</button>
     );
 }
 
 // Item E14: a teaser's "In this episode" graphic chosen: the name on it (kept as it is typed, saved on Enter or leaving
 // the box) and taking it off.
-function TagEditor({ name, index, disabled, onName, onRemove, onClose }: {
-    name: string; index: number; disabled: boolean; onName: (name: string) => void; onRemove: () => void; onClose: () => void;
+function TagEditor({ name, on, disabled, onName, onRemove, onClose }: {
+    name: string; on: string; disabled: boolean; onName: (name: string) => void; onRemove: () => void; onClose: () => void;
 }) {
     const [value, setValue] = useState(name);
     const save = () => { if (value.trim() !== name) onName(value); };
     return (
         <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
-            <span className="text-amber-200 shrink-0">“In this episode” on teaser {index + 1}</span>
+            <span className="text-amber-200 shrink-0">“In this episode” on {on}</span>
             <input value={value} onChange={e => setValue(e.target.value)} onBlur={save} disabled={disabled} maxLength={200}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); (e.target as HTMLInputElement).blur(); } }}
                 aria-label="The name on the graphic" placeholder="The speaker's name"
                 className="w-40 min-w-0 rounded border border-white/10 bg-[#1a1036] px-1.5 py-0.5 text-xs text-gray-100" />
-            <button onClick={onRemove} disabled={disabled} title="Take the graphic off this teaser (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
+            <button onClick={onRemove} disabled={disabled} title="Take the label off this clip (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
             <button onClick={onClose} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
         </span>
     );
@@ -564,12 +569,12 @@ type Drag =
         kind: 'trim'; section: Section; edge: 'start' | 'end'; base: Cut[]; from: number;
         limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Cut[];
     }
-    // Item E14: a teaser's end dragged (`from` and `ms` in the recording), or a teaser dragged to a new place.
+    // Item E14, spec 022: a recording clip's end dragged (`from` and `ms` in the recording), or a clip dragged to a new place.
     | {
-        kind: 'teaserTrim'; index: number; edge: 'start' | 'end'; base: Teaser[]; from: number; x0: number; moved: boolean;
-        limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: Teaser[]; atMs: number;
+        kind: 'clipTrim'; id: string; edge: 'start' | 'end'; base: ProgrammeEdit; from: number; x0: number; moved: boolean;
+        limits: [number, number]; targets: number[][]; ms: number; guide: number | null; draft: ProgrammeEdit; atMs: number;
     }
-    | { kind: 'teaserMove'; from: number; x0: number; grabMs: number; viewMs: number; moved: boolean }
+    | { kind: 'clipMove'; id: string; x0: number; grabMs: number; viewMs: number; moved: boolean }
     // Item E13: an end of a kept stretch on the closed-up timeline, dragged out or in from `from` of the recording.
     | {
         kind: 'ripple'; piece: AxisPiece; edge: 'start' | 'end'; base: Cut[]; from: number; x0: number; moved: boolean;
@@ -580,9 +585,13 @@ const iconButton = 'p-0.5 rounded text-gray-400 hover:text-white hover:bg-white/
 
 // A layer being dragged on V2 or V3, or a sound on A2 or A3 (item E7): its whole body moves it, an end trims it.
 type Placed = Layer | Sound;
-interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null }
+// `view`: where a dragged sound's start is on the timeline, which may be off the episode (spec 022: it then goes onto
+// the clip there).
+interface LayerDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: Placed; draft: Placed; moved: boolean; guide: number | null; view?: number }
 const NO_CUES: Cue[] = [];
-const NO_TEASERS: Teaser[] = [];
+const NO_CLIP_SOUNDS: ProgrammeSound[] = [];
+// A sound on a clip other than the episode being dragged (spec 022): where its start and end are drawn now.
+interface ClipSoundDrag { id: string; mode: 'move' | 'start' | 'end'; x0: number; base: ProgrammeSound; from: number; to: number; moved: boolean }
 // How long an intro or outro whose length is not known yet is drawn.
 const UNKNOWN_FILE_MS = 3000;
 
@@ -632,7 +641,7 @@ function toggleMuted(video: HTMLVideoElement | null) {
 export interface SplitTransition { splitMs: number; label: string | null; playing: boolean }
 
 export function Timeline({
-    words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia,
+    words, cuts, ranges, layers = [], clips = [], editedMs = 0, selectedLayer = null, onSelectLayer, onLayers, onDropMedia, clipSounds = NO_CLIP_SOUNDS, onAllSounds,
     sounds = [], onSounds, mutedTracks = [], onMutedTracks, captions: cues = NO_CUES, captionsShown = false, onCaptionsShown,
     totalMs, video, onSeek, split, media, selection, onSelect, onCuts, onHear, keys,
     overlaysHidden = false, onOverlaysHidden, transitions = [], overlaps = [], onJoin, programme,
@@ -648,7 +657,12 @@ export function Timeline({
     onSelectLayer?: (id: string | null) => void;
     onLayers?: (layers: Layer[]) => void;   // a whole drag, as one change; missing: layers cannot be changed
     highlightIssues?: Map<string, string>;  // spec 021 M3: why a highlight cannot stay as saved, by id
-    onDropMedia?: (itemId: string, srcMs: number) => void;
+    // Spec 022: dropped where a clip other than the episode is, `onClip` says which and how far into it.
+    onDropMedia?: (itemId: string, srcMs: number, onClip?: { clip: string; ms: number }) => void;
+    // Spec 022: the sounds on the clips other than the episode, and both lists changed at once (a sound dragged from the
+    // episode onto another clip, or back).
+    clipSounds?: ProgrammeSound[];
+    onAllSounds?: (episode: Sound[], onClips: ProgrammeSound[]) => void;
     sounds?: Sound[];                       // item E7: music on A2, effects on A3
     onSounds?: (sounds: Sound[]) => void;
     mutedTracks?: number[];                 // sound tracks muted in the preview
@@ -688,6 +702,10 @@ export function Timeline({
     const layerDragRef = useRef<LayerDrag | null>(null);
     const [layerDrag, setLayerDragState] = useState<LayerDrag | null>(null);
     const setLayerDrag = (d: LayerDrag | null) => { layerDragRef.current = d; setLayerDragState(d); };
+    // Spec 022: a sound on another clip being dragged.
+    const clipDragRef = useRef<ClipSoundDrag | null>(null);
+    const [clipDrag, setClipDragState] = useState<ClipSoundDrag | null>(null);
+    const setClipDrag = (d: ClipSoundDrag | null) => { clipDragRef.current = d; setClipDragState(d); };
     const [snapOn, setSnapOn] = useState(true);
     // Item E13: off, only what plays, closed up; on, the whole recording with its cuts.
     const [showCuts, setShowCuts] = useState(false);
@@ -727,33 +745,46 @@ export function Timeline({
     const shownCuts = draft ?? cuts;
     // Item E11: the sections in play order; every moment of the recording is drawn at axis.toView of it. Item E13: unless
     // Show cuts is on, only what plays, closed up (and as the edit would be, while an end is dragged).
-    // Item E14: the teasers and intro before the episode, the outro after it (a teaser being trimmed, as it would be).
-    const teasers = drag?.kind === 'teaserTrim' ? drag.draft : programme?.teasers ?? NO_TEASERS;
+    // Item E14, spec 022: the clips before the episode and after it, in play order (a clip being trimmed, as it would be),
+    // each with its id and drawn where it plays, overlapping the one before by its transition. A recording clip is a
+    // 'teaser' here, numbered among them; an intro or outro with no file is not drawn.
+    const pclips = drag?.kind === 'clipTrim' ? drag.draft : programme?.clips;
     const pieces = programme?.pieces;
-    const ends = useMemo(() => {
-        // A file's length is known once it loads; until then (or when it cannot play) it is drawn this long.
-        const clip = (kind: 'intro' | 'outro') => {
-            const p = pieces?.find(x => x.kind === kind);
-            return p ? [{ kind, index: 0, lengthMs: p.lengthMs || UNKNOWN_FILE_MS, srcStart: 0 }] : [];
-        };
-        return { intro: clip('intro'), outro: clip('outro') };
-    }, [pieces]);
-    const lead = useMemo(() => programme ? [
-        ...teasers.map((t, index) => ({ kind: 'teaser' as const, index, lengthMs: t.endMs - t.startMs, srcStart: t.startMs })), ...ends.intro,
-    ] : [], [programme, teasers, ends]);
-    const tail = useMemo(() => (programme ? ends.outro : []), [programme, ends]);
-    const sectionsAxis = useMemo(() => withProgramme(timelineAxis(splits, split?.order, totalMs), lead, tail), [splits, split?.order, totalMs, lead, tail]);
+    const { lead, tail } = useMemo(() => {
+        if (!pclips) return { lead: [], tail: [] };
+        let n = 0;
+        const all = pclips.clips.map(c => {
+            const p = pieces?.find(x => x.id === c.id);
+            if (c.kind === 'episode') return null;
+            if (c.kind === 'recording') return { kind: 'teaser' as const, index: n++, lengthMs: c.outMs - c.inMs, srcStart: c.inMs, id: c.id, joinMs: p?.joinMs ?? 0 };
+            // A file's length is known once it loads; until then (or when it cannot play) it is drawn this long.
+            return p ? { kind: c.kind, index: 0, lengthMs: p.lengthMs || UNKNOWN_FILE_MS, srcStart: 0, id: c.id, joinMs: p.joinMs } : undefined;
+        });
+        const e = pclips.clips.findIndex(c => c.kind === 'episode');
+        const keep = <T,>(xs: (T | null | undefined)[]) => xs.filter((x): x is T => !!x);
+        return { lead: keep(all.slice(0, e)), tail: keep(all.slice(e + 1)) };
+    }, [pclips, pieces]);
+    const episodeJoin = pieces?.find(p => p.kind === 'episode')?.joinMs ?? 0;
+    const sectionsAxis = useMemo(() => withProgramme(timelineAxis(splits, split?.order, totalMs), lead, tail, episodeJoin), [splits, split?.order, totalMs, lead, tail, episodeJoin]);
     const playClips = useMemo(() => playOrder({ cuts: shownCuts, splits, order: split?.order }, totalMs, words), [shownCuts, splits, split?.order, totalMs, words]);
-    const playAxis = useMemo(() => withProgramme(playedAxis(playClips, splits, split?.order, totalMs), lead, tail), [playClips, splits, split?.order, totalMs, lead, tail]);
+    const playAxis = useMemo(() => withProgramme(playedAxis(playClips, splits, split?.order, totalMs), lead, tail, episodeJoin), [playClips, splits, split?.order, totalMs, lead, tail, episodeJoin]);
     const axis = showCuts ? sectionsAxis : playAxis;
     const lengthMs = axis.lengthMs;
-    // Item E14: each teaser, intro and outro's number among the programme's pieces (for the second video), and its name.
-    const pieceOf = useCallback((c: ProgrammeClip) => pieces?.findIndex(p => p.kind === c.kind && (c.kind !== 'teaser' || p.index === c.index)) ?? -1, [pieces]);
-    const clipNames = useMemo(() => axis.extras.map(c => {
-        if (c.kind === 'teaser') return `T${c.index + 1}${teasers[c.index]?.speaker ? ` · ${teasers[c.index].speaker}` : ''}`;
-        const name = pieces?.find(p => p.kind === c.kind)?.name;
-        return `${c.kind === 'intro' ? 'Intro' : 'Outro'}${name ? ` · ${name}` : ''}`;
-    }), [axis.extras, teasers, pieces]);
+    // Item E14: each clip's number among the programme's pieces (for the second video), and its name: a recording clip's
+    // its label's (or its own), numbered.
+    const pieceOf = useCallback((c: ProgrammeClip) => pieces?.findIndex(p => p.id === c.id) ?? -1, [pieces]);
+    const clipName = useCallback((id: string) => {
+        const c = pclips?.clips.find(x => x.id === id);
+        if (!c) return '';
+        if (c.kind === 'recording') {
+            const n = pclips!.clips.filter(x => x.kind === 'recording').indexOf(c) + 1;
+            const name = pclips!.layers.find(l => l.anchor.clip === id)?.fields.speaker ?? c.name;
+            return `T${n}${name ? ` · ${name}` : ''}`;
+        }
+        const name = pieces?.find(p => p.id === id)?.name;
+        return `${c.kind === 'intro' ? 'Intro' : c.kind === 'outro' ? 'Outro' : 'Episode'}${name ? ` · ${name}` : ''}`;
+    }, [pclips, pieces]);
+    const clipNames = useMemo(() => axis.extras.map(c => clipName(c.id ?? '')), [axis.extras, clipName]);
     const fit = fitPxPerMs(lengthMs, size.w);
     const pxPerMs = view.zoom === null ? fit : clampZoom(view.zoom, fit);
     const contentW = Math.max(size.w, Math.ceil(lengthMs * pxPerMs));
@@ -911,17 +942,23 @@ export function Timeline({
         });
     }, [size.w, a1H, startMs, pxPerMs, totalMs, lengthMs, levels, thumbs, drawn, colors, axis, loadedSheets, clipNames]);
 
-    // Item E14: Delete (or Backspace) takes the chosen teaser, its graphic, the intro or the outro out.
+    // Item E14, spec 022: Delete (or Backspace) takes the chosen clip (with what is on it) or label out; ⌘D or Ctrl+D
+    // duplicates the chosen recording clip.
     useEffect(() => {
         const el = keys?.current;
         if (!el || !programme) return;
         const onKey = (e: KeyboardEvent) => {
-            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
             const t = e.target as HTMLElement;
             if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable || locked || !selection) return;
-            if (selection.kind === 'teaser') programme.onTeasers(programme.teasers.filter((_, i) => i !== selection.index));
-            else if (selection.kind === 'tag') programme.onTeasers(setTeaserTag(programme.teasers, selection.index, { tag: false }));
-            else if (selection.kind === 'intro' || selection.kind === 'outro') programme.onEnd(selection.kind);
+            if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd' && selection.kind === 'clip') {
+                e.preventDefault();
+                const next = duplicateClip(programme.clips, selection.id);
+                if (next !== programme.clips) { programme.onClips(next); onSelect({ kind: 'clip', id: next.clips[next.clips.findIndex(c => c.id === selection.id) + 1].id }); }
+                return;
+            }
+            if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+            if (selection.kind === 'clip') programme.onClips(removeClip(programme.clips, selection.id));
+            else if (selection.kind === 'label') programme.onClips(setLabel(programme.clips, selection.id, { on: false }));
             else return;
             e.preventDefault();
             onSelect(null);
@@ -980,7 +1017,7 @@ export function Timeline({
         if (k >= 0) programme?.control.cue(k, ms, playing);
     };
     const selectClip = (c: ProgrammeClip, ms: number) => {
-        onSelect(c.kind === 'teaser' ? { kind: 'teaser', index: c.index } : { kind: c.kind });
+        if (c.id) onSelect({ kind: 'clip', id: c.id });
         cueClip(c, ms);
     };
     const seekView = (view: number) => {
@@ -988,23 +1025,34 @@ export function Timeline({
         if (c) cueClip(c, view - c.viewStart);
         else onSeek(axis.toSrc(view));
     };
-    // A press on a teaser, the intro or the outro: a teaser's end trims it, its body (on V1) moves it among the teasers;
-    // anything else chooses the clip and shows it in the preview.
-    const clipDown = (c: ProgrammeClip, lane: string, px: number, view: number) => {
+    // A press on a clip of the whole video: with the Blade, a recording clip is cut in two there (between words unless
+    // Alt is held or Snap is off); with Select, a recording clip's end trims it, and any clip's body (on V1) moves it
+    // anywhere; anything else chooses the clip and shows it in the preview.
+    const clipDown = (c: ProgrammeClip, lane: string, px: number, view: number, alt: boolean) => {
         onSelectLayer?.(null);
-        if (c.kind === 'teaser' && programme && !locked && tool === 'select' && (lane === 'v1' || lane === 'a1')) {
-            const hit = c.lengthMs * pxPerMs >= PIECE_GRAB_PX ? teaserEdgeAt(axis, view, EDGE_PX / pxPerMs) : null;
-            if (hit) {
-                const t = teasers[hit.index];
-                const from = hit.edge === 'start' ? t.startMs : t.endMs;
+        const rec = programme?.clips.clips.find(x => x.id === c.id);
+        if (programme && !locked && (lane === 'v1' || lane === 'a1') && rec?.kind === 'recording') {
+            if (tool === 'blade') {
+                const at = place(rec.inMs + (view - c.viewStart), alt, words, [rec.inMs, rec.outMs], [rec.inMs, rec.outMs], [edgesOfWords]).ms;
+                programme.onClips(splitClip(programme.clips, rec.id, at));
+                return;
+            }
+            const hit = tool === 'select' && c.lengthMs * pxPerMs >= PIECE_GRAB_PX ? teaserEdgeAt(axis, view, EDGE_PX / pxPerMs) : null;
+            const hitClip = hit ? axis.extras.find(x => x.kind === 'teaser' && x.index === hit.index) : null;
+            const t = hitClip && programme.clips.clips.find(x => x.id === hitClip.id);
+            if (hit && t?.kind === 'recording') {
+                const from = hit.edge === 'start' ? t.inMs : t.outMs;
                 setDrag({
-                    kind: 'teaserTrim', index: hit.index, edge: hit.edge, base: teasers, from, x0: px, moved: false,
-                    limits: hit.edge === 'start' ? [0, t.endMs - TEASER_SHORTEST_MS] : [t.startMs + TEASER_SHORTEST_MS, totalMs],
-                    targets: [edgesOfWords], ms: from, guide: null, draft: teasers, atMs: view - c.viewStart,
+                    kind: 'clipTrim', id: t.id, edge: hit.edge, base: programme.clips, from, x0: px, moved: false,
+                    limits: hit.edge === 'start' ? [0, t.outMs - TEASER_SHORTEST_MS] : [t.inMs + TEASER_SHORTEST_MS, totalMs],
+                    targets: [edgesOfWords], ms: from, guide: null, draft: programme.clips, atMs: view - c.viewStart,
                 });
                 return;
             }
-            if (lane === 'v1') { setDrag({ kind: 'teaserMove', from: c.index, x0: px, grabMs: view - c.viewStart, viewMs: view, moved: false }); return; }
+        }
+        if (programme && !locked && tool === 'select' && lane === 'v1' && c.id) {
+            setDrag({ kind: 'clipMove', id: c.id, x0: px, grabMs: view - c.viewStart, viewMs: view, moved: false });
+            return;
         }
         selectClip(c, view - c.viewStart);
     };
@@ -1085,12 +1133,17 @@ export function Timeline({
         if (!bounds) return;
         const delta = (e.clientX - d.x0) / pxPerMs;
         const from = d.mode === 'end' ? bounds.toMs : bounds.fromMs;
-        setLayerDrag({ ...dragLayerTo(d, axis.toSrc(axis.toView(from) + delta), e.altKey), moved: true });
+        setLayerDrag({ ...dragLayerTo(d, axis.toSrc(axis.toView(from) + delta), e.altKey), moved: true, view: axis.toView(from) + delta });
     };
     const onLayerUp = () => {
         const d = layerDragRef.current;
         if (!d) return;
-        if (d.moved && isSound(d.draft)) onSounds?.(sounds.map(s => (s.id === d.id ? d.draft as Sound : s)));
+        // Spec 022: a sound moved off the episode goes onto the clip there.
+        const onto = d.moved && d.mode === 'move' && isSound(d.draft) && onAllSounds && d.view !== undefined ? soundPlace(axis, d.view) : null;
+        if (onto && 'clip' in onto) {
+            onAllSounds!(sounds.filter(s => s.id !== d.id), [...clipSounds, { ...(d.draft as Sound), anchor: onto }]);
+            onSelectLayer?.(d.id);
+        } else if (d.moved && isSound(d.draft)) onSounds?.(sounds.map(s => (s.id === d.id ? d.draft as Sound : s)));
         else if (d.moved) onLayers?.(layers.map(l => (l.id === d.id ? d.draft as Layer : l)));
         else if (!d.moved) {
             const b = layerBounds(d.base, clips, editedMs);
@@ -1100,6 +1153,44 @@ export function Timeline({
     };
     const shownLayers = layers.map(l => (layerDrag?.id === l.id ? layerDrag.draft as Layer : l));
     const shownSounds = sounds.map(s => (layerDrag?.id === s.id ? layerDrag.draft as Sound : s));
+
+    // ── Sounds on the other clips (spec 022) ──
+    const onClipSoundDown = (e: React.PointerEvent<HTMLElement>, s: ProgrammeSound, mode: ClipSoundDrag['mode']) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        onSelectLayer?.(s.id);
+        const v = clipSoundView(axis, s);
+        if (!onAllSounds || !v) return;
+        e.currentTarget.setPointerCapture(e.pointerId);
+        setClipDrag({ id: s.id, mode, x0: e.clientX, base: s, from: v.fromMs, to: v.toMs, moved: false });
+    };
+    const onClipSoundMove = (e: React.PointerEvent<HTMLElement>) => {
+        const d = clipDragRef.current;
+        if (!d) return;
+        const moved = d.moved || Math.abs(e.clientX - d.x0) >= CLICK_PX;
+        if (!moved) return;
+        const v = clipSoundView(axis, d.base)!;
+        const delta = Math.round((e.clientX - d.x0) / pxPerMs / DRAG_STEP_MS) * DRAG_STEP_MS;
+        if (d.mode === 'move') setClipDrag({ ...d, moved, from: Math.max(0, v.fromMs + delta), to: Math.max(0, v.fromMs + delta) + d.base.durationMs });
+        else if (d.mode === 'start') setClipDrag({ ...d, moved, from: Math.max(0, Math.min(v.toMs - LAYER_MIN_MS, v.fromMs + delta)), to: v.toMs });
+        else setClipDrag({ ...d, moved, from: v.fromMs, to: Math.max(v.fromMs + LAYER_MIN_MS, v.toMs + delta) });
+    };
+    const onClipSoundUp = () => {
+        const d = clipDragRef.current;
+        if (!d) return;
+        setClipDrag(null);
+        if (!d.moved) { seekView(d.from); return; }
+        const durationMs = Math.round(d.mode === 'move' ? d.base.durationMs : d.to - d.from);
+        const onto = soundPlace(axis, d.from);
+        if ('clip' in onto) {
+            onAllSounds!(sounds, clipSounds.map(s => (s.id === d.id ? { ...d.base, anchor: onto, durationMs } : s)));
+            return;
+        }
+        // Into the episode: music stays at its time in the edit, an effect with its words.
+        const at = timelineTime(clips, onto.srcMs, true) ?? 0;
+        onAllSounds!([...sounds, { ...d.base, durationMs, anchor: d.base.track === SOUND_TRACK.music ? { atMs: Math.round(at) } : { srcMs: onto.srcMs } }],
+            clipSounds.filter(s => s.id !== d.id));
+    };
     const selectedLayerShown: Placed | null = shownLayers.find(l => l.id === selectedLayer) ?? shownSounds.find(s => s.id === selectedLayer) ?? null;
     const selectedBounds = selectedLayerShown ? layerBounds(selectedLayerShown, clips, editedMs) : null;
 
@@ -1121,7 +1212,7 @@ export function Timeline({
         if (lane === 'ruler') { seekView(view); setDrag({ kind: 'scrub' }); return; }
         // Item E14: the teasers, intro and outro.
         const clip = axis.extras.length ? extraAt(axis, view) : null;
-        if (clip) { clipDown(clip, lane, px, view); return; }
+        if (clip) { clipDown(clip, lane, px, view, e.altKey); return; }
         if (lane === 'v2' || lane === 'sounds') { onSelectLayer?.(null); onSeek(ms); return; }
         if (lane === 'cc') { onSelectLayer?.(null); onSelect(null); onSeek(captionAt(ms)?.fromMs ?? ms); return; }
         const targets = [[timeOf(video)], edgesOfWords, edgesOfCuts, splits];
@@ -1208,16 +1299,18 @@ export function Timeline({
             if (clip) {
                 if (tool === 'blade') setBladeAt(null);
                 let cursor = 'pointer';
-                let title = clip.kind === 'teaser'
-                    ? `Teaser ${clip.index + 1}: click to see it in the preview`
-                    : `The ${clip.kind}: click to see it in the preview; Delete takes it out of this episode`;
-                if (clip.kind === 'teaser' && !locked && tool === 'select' && (lane === 'v1' || lane === 'a1')) {
-                    if (clip.lengthMs * pxPerMs >= PIECE_GRAB_PX && teaserEdgeAt(axis, view, EDGE_PX / pxPerMs)) {
+                const name = clipName(clip.id ?? '');
+                let title = `${name}: click to see it in the preview; Delete takes it out`;
+                if (!locked && (lane === 'v1' || lane === 'a1')) {
+                    if (clip.kind === 'teaser' && tool === 'blade') {
+                        cursor = 'crosshair';
+                        title = `${name}: click to cut it in two there (between words unless Option (Alt) is held or Snap is off)`;
+                    } else if (clip.kind === 'teaser' && tool === 'select' && clip.lengthMs * pxPerMs >= PIECE_GRAB_PX && teaserEdgeAt(axis, view, EDGE_PX / pxPerMs)) {
                         cursor = 'ew-resize';
-                        title = 'Drag to trim the teaser (it stops between words unless Option (Alt) is held or Snap is off)';
-                    } else if (lane === 'v1') {
+                        title = 'Drag to trim the clip (it stops between words unless Option (Alt) is held or Snap is off)';
+                    } else if (lane === 'v1' && tool === 'select') {
                         cursor = 'grab';
-                        title = `Teaser ${clip.index + 1}: click to see it in the preview, drag it to another place among the teasers, drag an end to trim it`;
+                        title = `${name}: click to see it in the preview, drag it anywhere on V1${clip.kind === 'teaser' ? ', drag an end to trim it, the Blade cuts it' : ''}`;
                     }
                 }
                 e.currentTarget.style.cursor = cursor;
@@ -1249,13 +1342,13 @@ export function Timeline({
             return;
         }
         if (drag.kind === 'scrub') seekView(view);
-        else if (drag.kind === 'teaserTrim') {
+        else if (drag.kind === 'clipTrim') {
             // As an end of a clip in the episode: it moves as far as the pointer has, between words unless Alt.
             const moved = drag.moved || Math.abs(px - drag.x0) >= CLICK_PX;
             if (!moved) return;
             const p = place(drag.from + (px - drag.x0) / pxPerMs, e.altKey, words, drag.limits, drag.limits, drag.targets);
-            if (!drag.moved || p.ms !== drag.ms) setDrag({ ...drag, moved, ms: p.ms, guide: null, draft: trimTeaser(drag.base, drag.index, drag.edge, p.ms, totalMs) });
-        } else if (drag.kind === 'teaserMove') {
+            if (!drag.moved || p.ms !== drag.ms) setDrag({ ...drag, moved, ms: p.ms, guide: null, draft: trimClip(drag.base, drag.id, drag.edge, p.ms, totalMs) });
+        } else if (drag.kind === 'clipMove') {
             const moved = drag.moved || Math.abs(px - drag.x0) >= CLICK_PX;
             if (moved) { e.currentTarget.style.cursor = 'grabbing'; setDrag({ ...drag, moved, viewMs: view }); }
         }
@@ -1296,18 +1389,18 @@ export function Timeline({
             }
         } else if (drag.kind === 'trim') {
             if (drag.ms !== drag.from) onCuts(drag.draft);
-        } else if (drag.kind === 'teaserTrim') {
-            const c = axis.extras.find(x => x.kind === 'teaser' && x.index === drag.index);
-            if (drag.moved && drag.ms !== drag.from) { programme?.onTeasers(drag.draft); onSelect({ kind: 'teaser', index: drag.index }); }
+        } else if (drag.kind === 'clipTrim') {
+            const c = axis.extras.find(x => x.id === drag.id);
+            if (drag.moved && drag.ms !== drag.from) { programme?.onClips(drag.draft); onSelect({ kind: 'clip', id: drag.id }); }
             else if (!drag.moved && c) selectClip(c, drag.atMs);
-        } else if (drag.kind === 'teaserMove') {
+        } else if (drag.kind === 'clipMove') {
             e.currentTarget.style.cursor = 'grab';
-            const c = axis.extras.find(x => x.kind === 'teaser' && x.index === drag.from);
+            const c = axis.extras.find(x => x.id === drag.id);
             if (!drag.moved) { if (c) selectClip(c, drag.grabMs); }
-            else {
-                const to = teaserDrop(axis, drag.from, drag.viewMs);
-                if (to !== drag.from) programme?.onTeasers(moveTeaser(teasers, drag.from, to));
-                onSelect({ kind: 'teaser', index: to });
+            else if (programme) {
+                const to = clipDrop(axis, programme.clips.clips.map(x => x.id), drag.id, drag.viewMs);
+                programme.onClips(moveClip(programme.clips, drag.id, to));
+                onSelect({ kind: 'clip', id: drag.id });
             }
         } else if (drag.kind === 'ripple') {
             if (drag.moved) {
@@ -1355,7 +1448,7 @@ export function Timeline({
     const range = drag?.kind === 'range' && drag.moved ? rangeOf(drag.anchor, drag.ms, totalMs)
         : selection?.kind === 'range' ? selection : null;
     const shownCut = drag?.kind === 'edge' ? drag.draft[drag.base.indexOf(drag.cut)] : selectedCut;
-    const guide = drag && 'guide' in drag && drag.kind !== 'teaserTrim' ? drag.guide : layerDrag?.moved ? layerDrag.guide : null;
+    const guide = drag && 'guide' in drag && drag.kind !== 'clipTrim' ? drag.guide : layerDrag?.moved ? layerDrag.guide : null;
     // Where a dragged section would land: its play position, and the line on the timeline where it goes in.
     const moving = drag?.kind === 'move' && drag.moved ? (() => {
         const to = dropPosition(axis, drag.from, drag.viewMs);
@@ -1398,16 +1491,15 @@ export function Timeline({
         const c = axis.extras.find(x => pieceOf(x) === piece);
         return c ? c.viewStart + Math.max(0, Math.min(c.lengthMs, ms)) : null;
     };
-    // What the chosen teaser, graphic, intro or outro is (null once it is gone), and taking it out (Delete): a teaser,
-    // or its graphic, from the edit; the intro or outro from this episode.
-    const chosenClip = selection && (selection.kind === 'teaser' || selection.kind === 'tag' || selection.kind === 'intro' || selection.kind === 'outro')
-        ? axis.extras.find(c => (selection.kind === 'teaser' || selection.kind === 'tag' ? c.kind === 'teaser' && c.index === selection.index : c.kind === selection.kind)) ?? null
-        : null;
+    // What the chosen clip or label is on (null once it is gone), and taking it out (Delete): a clip with what is on
+    // it, or a label.
+    const chosenClip = selection && (selection.kind === 'clip' || selection.kind === 'label') ? axis.extras.find(c => c.id === selection.id) ?? null : null;
+    const chosen = chosenClip ? programme?.clips.clips.find(c => c.id === chosenClip.id) ?? null : null;
+    const chosenLabel = chosen ? programme?.clips.layers.find(l => l.anchor.clip === chosen.id) ?? null : null;
     const removeChosen = () => {
         if (!programme || !selection || locked) return;
-        if (selection.kind === 'teaser') programme.onTeasers(programme.teasers.filter((_, i) => i !== selection.index));
-        else if (selection.kind === 'tag') programme.onTeasers(setTeaserTag(programme.teasers, selection.index, { tag: false }));
-        else if (selection.kind === 'intro' || selection.kind === 'outro') programme.onEnd(selection.kind);
+        if (selection.kind === 'clip') programme.onClips(removeClip(programme.clips, selection.id));
+        else if (selection.kind === 'label') programme.onClips(setLabel(programme.clips, selection.id, { on: false }));
         else return;
         onSelect(null);
     };
@@ -1487,39 +1579,41 @@ export function Timeline({
                         </span>
                     );
                 })()}
-                {/* Item E14: the chosen teaser, its graphic, the intro or the outro. */}
-                {programme && chosenClip && selection?.kind === 'teaser' && teasers[selection.index] && (() => {
-                    const t = teasers[selection.index];
-                    return (
-                        <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
-                            <span className="text-amber-200 truncate min-w-0">
-                                Teaser {selection.index + 1} of {teasers.length}{t.speaker ? ` · ${t.speaker}` : ''} · {preciseTime(t.startMs)}–{preciseTime(t.endMs)} of the recording ({((t.endMs - t.startMs) / 1000).toFixed(1)} s)
-                            </span>
-                            <button onClick={() => cueClip(chosenClip, 0, true)} title="Play this teaser" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Play</button>
-                            <button onClick={() => { onSelect(null); onSeek(t.startMs); }} title="Go to where it is in the episode" className={`${secondary} px-2 py-0.5 shrink-0`}>In the episode</button>
-                            {t.tag === false && (
-                                <button onClick={() => programme.onTeasers(setTeaserTag(teasers, selection.index, { tag: true }))} disabled={locked}
-                                    title={'Put the "In this episode" graphic back on it'} className={`${secondary} px-2 py-0.5 shrink-0`}>+ Graphic</button>
-                            )}
-                            <button onClick={removeChosen} disabled={locked} title="Take this teaser out (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
-                            <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
+                {/* Spec 022: the chosen clip, or its label. */}
+                {programme && chosenClip && chosen?.kind === 'recording' && selection?.kind === 'clip' && (
+                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                        <span className="text-amber-200 truncate min-w-0">
+                            {clipName(chosen.id)} · {preciseTime(chosen.inMs)}–{preciseTime(chosen.outMs)} of the recording ({((chosen.outMs - chosen.inMs) / 1000).toFixed(1)} s)
                         </span>
-                    );
-                })()}
-                {programme && chosenClip && selection?.kind === 'tag' && teasers[selection.index] && (
-                    <TagEditor key={`${selection.index}-${teasers[selection.index].speaker}`} name={teasers[selection.index].speaker} index={selection.index} disabled={locked}
-                        onName={name => programme.onTeasers(setTeaserTag(teasers, selection.index, { speaker: name }))}
+                        <button onClick={() => cueClip(chosenClip, 0, true)} title="Play this clip" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Play</button>
+                        <button onClick={() => { onSelect(null); onSeek(chosen.inMs); }} title="Go to where it is in the episode" className={`${secondary} px-2 py-0.5 shrink-0`}>In the episode</button>
+                        <button onClick={() => { const next = duplicateClip(programme.clips, chosen.id); if (next !== programme.clips) programme.onClips(next); }} disabled={locked || programme.clips.clips.length >= MAX_CLIPS}
+                            title="A copy right after it, with its label and sounds (⌘D or Ctrl+D)" className={`${secondary} px-2 py-0.5 shrink-0`}>Duplicate</button>
+                        {!chosenLabel && (
+                            <button onClick={() => programme.onClips(setLabel(programme.clips, chosen.id, { on: true }))} disabled={locked}
+                                title={'Put the "In this episode" label on it'} className={`${secondary} px-2 py-0.5 shrink-0`}>+ Label</button>
+                        )}
+                        <button onClick={removeChosen} disabled={locked} title="Take this clip out, with what is on it (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
+                        <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
+                    </span>
+                )}
+                {programme && chosen && selection?.kind === 'label' && chosenLabel && (
+                    <TagEditor key={`${chosen.id}-${chosenLabel.fields.speaker}`} name={chosenLabel.fields.speaker} on={clipName(chosen.id)} disabled={locked}
+                        onName={name => programme.onClips(setLabel(programme.clips, chosen.id, { speaker: name }))}
                         onRemove={removeChosen} onClose={() => onSelect(null)} />
                 )}
-                {programme && chosenClip && (selection?.kind === 'intro' || selection?.kind === 'outro') && (
+                {programme && chosenClip && (chosen?.kind === 'intro' || chosen?.kind === 'outro') && selection?.kind === 'clip' && (
                     <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
                         <span className="text-violet-200 truncate min-w-0">
-                            {selection.kind === 'intro' ? 'Intro' : 'Outro'}: {programme.pieces.find(p => p.kind === selection.kind)?.name ?? ''}
-                            {' '}({(chosenClip.lengthMs / 1000).toFixed(1)} s)
+                            {clipName(chosen.id)} ({(chosenClip.lengthMs / 1000).toFixed(1)} s)
                         </span>
-                        <button onClick={() => cueClip(chosenClip, 0, true)} title={`Play the ${selection.kind}`} className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Play</button>
-                        <button onClick={programme.onParts} title={`Choose another ${selection.kind} for this episode (the Parts panel)`} className={`${secondary} px-2 py-0.5 shrink-0`}>Change</button>
-                        <button onClick={removeChosen} disabled={locked} title={`No ${selection.kind} in this episode (Delete; the Parts panel puts it back)`} className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
+                        <button onClick={() => cueClip(chosenClip, 0, true)} title={`Play the ${chosen.kind}`} className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Play</button>
+                        <button onClick={programme.onParts} title={`Choose another ${chosen.kind} for this episode (the Parts panel)`} className={`${secondary} px-2 py-0.5 shrink-0`}>Change</button>
+                        {!chosenLabel && (
+                            <button onClick={() => programme.onClips(setLabel(programme.clips, chosen.id, { on: true }))} disabled={locked}
+                                title={'Put an "In this episode" label on it'} className={`${secondary} px-2 py-0.5 shrink-0`}>+ Label</button>
+                        )}
+                        <button onClick={removeChosen} disabled={locked} title={`No ${chosen.kind} in this episode (Delete; the Parts panel puts it back)`} className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
                         <button onClick={() => onSelect(null)} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
                     </span>
                 )}
@@ -1643,7 +1737,9 @@ export function Timeline({
                                     const id = e.dataTransfer.getData(BIN_DRAG_TYPE);
                                     if (!id || !onDropMedia) return;
                                     e.preventDefault();
-                                    onDropMedia(id, pointAt(e).ms);
+                                    // Spec 022: onto the clip there, when it is not the episode.
+                                    const p = pointAt(e), onto = axis.extras.length ? soundPlace(axis, p.view) : null;
+                                    onDropMedia(id, p.ms, onto && 'clip' in onto ? onto : undefined);
                                 }}
                             >
                                 {/* What the transitions overlap: the end of one part and the start of the next. */}
@@ -1761,6 +1857,35 @@ export function Timeline({
                                     );
                                 })}
 
+                                {/* Spec 022: the sounds on the other clips, where they play on the whole video. */}
+                                {clipSounds.map(s => {
+                                    const v = clipDrag?.id === s.id ? { fromMs: clipDrag.from, toMs: clipDrag.to } : clipSoundView(axis, s);
+                                    if (!v || v.toMs < startMs || v.fromMs > endMs) return null;
+                                    const isSel = s.id === selectedLayer;
+                                    const handles = { onPointerMove: onClipSoundMove, onPointerUp: onClipSoundUp, onPointerCancel: () => setClipDrag(null) };
+                                    const on = axis.extras.find(c => c.id === s.anchor.clip);
+                                    return (
+                                        <div
+                                            key={s.id}
+                                            role="button"
+                                            tabIndex={-1}
+                                            aria-label={`${s.track === SOUND_TRACK.music ? 'Music' : 'Effect'}: ${s.media.name} on ${on ? clipNames[axis.extras.indexOf(on)] : 'a clip'}`}
+                                            title={`${s.media.name}${s.duck ? ' (ducked under the voice)' : ''}, on ${on ? clipNames[axis.extras.indexOf(on)] : 'a clip'}: drag to move (onto any clip, or the episode), drag an end to trim`}
+                                            onPointerDown={e => onClipSoundDown(e, s, 'move')}
+                                            {...handles}
+                                            className={`absolute rounded-sm ${s.track === SOUND_TRACK.music ? 'bg-rose-400/80' : 'bg-orange-300/80'} ${mutedTracks.includes(s.track) ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onAllSounds ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
+                                            style={{ left: x(v.fromMs), width: Math.max(4, (v.toMs - v.fromMs) * pxPerMs), top: soundTop(s.track) + 3, height: LANE_H - 6 }}
+                                        >
+                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
+                                            {onAllSounds && (v.toMs - v.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
+                                                <span key={edge} role="presentation" onPointerDown={e => onClipSoundDown(e, s, edge)} {...handles}
+                                                    className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
+                                                    style={{ [edge === 'start' ? 'left' : 'right']: 0 }} />
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+
                                 {/* Splits: a handle on the ruler removes one (not while locked). */}
                                 {!locked && splits.filter(s => shown(s, s)).map(s => (
                                     <button
@@ -1775,59 +1900,82 @@ export function Timeline({
                                     >×</button>
                                 ))}
 
-                                {/* Item E14: each teaser's "In this episode" graphic on V3, drawn as the render burns it in: click to
-                                    choose it (its name can be changed, or it taken off). */}
-                                {programme && axis.extras.filter(c => c.kind === 'teaser' && teasers[c.index] && teasers[c.index].tag !== false
-                                    && c.viewStart <= endMs && c.viewStart + c.lengthMs >= startMs).map(c => {
-                                    const isSel = selection?.kind === 'tag' && selection.index === c.index;
-                                    const w = Math.max(6, c.lengthMs * pxPerMs - 2);
+                                {/* Spec 022: each clip's "In this episode" label on V3, drawn as the render lays it: click to choose it
+                                    (its name can be changed, or it taken off). */}
+                                {programme && pclips && pclips.layers.map(l => {
+                                    const c = axis.extras.find(x => x.id === l.anchor.clip);
+                                    if (!c) return null;
+                                    const from = c.viewStart + l.anchor.ms, len = Math.min(l.durationMs, c.lengthMs - l.anchor.ms);
+                                    if (len <= 0 || from > endMs || from + len < startMs) return null;
+                                    const isSel = selection?.kind === 'label' && selection.id === c.id;
+                                    const w = Math.max(6, len * pxPerMs - 2);
                                     return (
                                         <button
-                                            key={`tag-${c.index}`}
+                                            key={l.id}
                                             type="button"
-                                            aria-label={`The "In this episode" graphic on teaser ${c.index + 1}: ${teasers[c.index].speaker}`}
-                                            title={`"In this episode" graphic${teasers[c.index].speaker ? `: ${teasers[c.index].speaker}` : ''}. Click to change the name or take it off.`}
+                                            aria-label={`The "In this episode" label on ${clipName(c.id ?? '')}: ${l.fields.speaker}`}
+                                            title={`"In this episode" label${l.fields.speaker ? `: ${l.fields.speaker}` : ''}. Click to change the name or take it off.`}
                                             onPointerDown={e => e.stopPropagation()}
-                                            onClick={() => { onSelectLayer?.(null); onSelect({ kind: 'tag', index: c.index }); cueClip(c, 0); }}
+                                            onClick={() => { onSelectLayer?.(null); if (c.id) onSelect({ kind: 'label', id: c.id }); cueClip(c, l.anchor.ms); }}
                                             className={`absolute flex items-stretch overflow-hidden rounded-sm text-left ${isSel ? 'ring-2 ring-white' : 'hover:ring-1 hover:ring-amber-200'}`}
-                                            style={{ left: x(c.viewStart) + 1, width: w, top: V3_TOP + 2, height: LANE_H - 4, background: 'rgba(42,21,82,0.92)' }}
+                                            style={{ left: x(from) + 1, width: w, top: V3_TOP + 2, height: LANE_H - 4, background: 'rgba(42,21,82,0.92)' }}
                                         >
                                             <span className="shrink-0 w-[3px]" style={{ background: TEASER }} />
                                             {w > 40 && (
                                                 <span className="flex items-center gap-1 px-1 whitespace-nowrap text-[9px] leading-none">
                                                     <span className="font-black tracking-wider" style={{ color: TEASER }}>IN THIS EPISODE</span>
-                                                    {teasers[c.index].speaker && <span className="font-semibold text-white">{teasers[c.index].speaker}</span>}
+                                                    {l.fields.speaker && <span className="font-semibold text-white">{l.fields.speaker}</span>}
                                                 </span>
                                             )}
                                         </button>
                                     );
                                 })}
 
-                                {/* Item E14: the chosen teaser, intro or outro. */}
-                                {chosenClip && selection?.kind !== 'tag' && (
+                                {/* Spec 022: a marker at each change between clips; click it for its transition. */}
+                                {programme?.onClipJoin && (programme.pieces ?? []).slice(1).map(p => {
+                                    const c = axis.extras.find(x => x.id === p.id);
+                                    const at = p.kind === 'episode' ? axis.leadMs : c ? c.viewStart + (c.joinMs ?? 0) / 2 : null;
+                                    if (at === null || at < startMs || at > endMs) return null;
+                                    const plays = p.transition !== 'cut';
+                                    return (
+                                        <button key={`change-${p.id}`} type="button" aria-label={`The transition into ${clipName(p.id)}`}
+                                            title={`Into ${clipName(p.id)}: ${plays ? TRANSITION_LABELS[p.transition] : 'a straight cut'}. Click to change it.`}
+                                            onPointerDown={e => e.stopPropagation()}
+                                            onClick={() => programme.onClipJoin?.(p.id)}
+                                            className={`absolute w-3 h-3 rotate-45 rounded-[2px] border ${plays ? 'bg-amber-300 border-amber-100' : 'bg-[#130b29] border-white/60'} hover:scale-125`}
+                                            style={{ left: x(at) - 6, top: V1_TOP - 6 }} />
+                                    );
+                                })}
+
+                                {/* The chosen clip. */}
+                                {chosenClip && selection?.kind === 'clip' && (
                                     <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300/80 bg-amber-300/5"
                                         style={{ left: x(chosenClip.viewStart), width: Math.max(6, chosenClip.lengthMs * pxPerMs), top: V1_TOP, bottom: 1 }} />
                                 )}
 
-                                {/* Item E14: a teaser being moved (where it would go in), or trimmed (where its end is, and the moment of the recording). */}
-                                {drag?.kind === 'teaserMove' && drag.moved && (() => {
-                                    const to = teaserDrop(axis, drag.from, drag.viewMs);
-                                    const all = axis.extras.filter(c => c.kind === 'teaser');
-                                    const target = all[to], dragged = all[drag.from];
-                                    if (!target || !dragged) return null;
-                                    const lineMs = to <= drag.from ? target.viewStart : target.viewStart + target.lengthMs;
+                                {/* A clip being moved (where it would go in), or trimmed (where its end is, and the moment of the recording). */}
+                                {drag?.kind === 'clipMove' && drag.moved && programme && (() => {
+                                    const order = programme.clips.clips.map(c => c.id);
+                                    const to = clipDrop(axis, order, drag.id, drag.viewMs);
+                                    const rest = order.filter(id => id !== drag.id);
+                                    const dragged = axis.extras.find(c => c.id === drag.id);
+                                    if (!dragged) return null;
+                                    // The line goes at the start of the clip it would go before (the episode's start), or after the last.
+                                    const before = rest[to];
+                                    const beforeClip = before ? axis.extras.find(c => c.id === before) : null;
+                                    const lineMs = before === 'episode' ? axis.leadMs : beforeClip ? beforeClip.viewStart : axis.lengthMs;
                                     return <>
                                         <div aria-hidden className="absolute pointer-events-none w-0.5 bg-amber-300" style={{ left: x(lineMs) - 1, top: RULER_H, bottom: 0 }} />
                                         <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300 bg-amber-300/20"
                                             style={{ left: x(drag.viewMs - drag.grabMs), width: Math.max(6, dragged.lengthMs * pxPerMs), top: V1_TOP, height: V1_H }} />
                                         <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
-                                            style={{ left: Math.min(size.w - 140, Math.max(0, x(drag.viewMs - drag.grabMs))), top: V2_TOP + 2 }}>
-                                            Teaser {drag.from + 1} → place {to + 1} of {all.length}
+                                            style={{ left: Math.min(size.w - 200, Math.max(0, x(drag.viewMs - drag.grabMs))), top: V2_TOP + 2 }}>
+                                            {clipName(drag.id)} → {before ? `before ${before === 'episode' ? 'the episode' : clipName(before)}` : 'at the end'}
                                         </span>
                                     </>;
                                 })()}
-                                {drag?.kind === 'teaserTrim' && drag.moved && (() => {
-                                    const c = axis.extras.find(x => x.kind === 'teaser' && x.index === drag.index);
+                                {drag?.kind === 'clipTrim' && drag.moved && (() => {
+                                    const c = axis.extras.find(x => x.id === drag.id);
                                     if (!c) return null;
                                     const at = drag.edge === 'start' ? c.viewStart : c.viewStart + c.lengthMs;
                                     const by = drag.edge === 'end' ? drag.ms - drag.from : drag.from - drag.ms;

@@ -3,9 +3,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addTeaser, firstEdit, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
+import { addTeaser, buildOpening, changeJoin, duplicateClip, insertClip, moveClip, removeClip, setClipJoin, setLabel, splitClip, trimClip, clipJoins, firstEdit, legacyFields, programmeEdit, ProgrammeSchema, setEnds, setProgramme, teasersOf, withoutEnd, withTeasers, type Teaser, playedAt, recordingAt, moveTeaser, pickTeaserWord, setTeaserTag, wordsAround, programmeOf, studioIntro, teasersFromNotes, TeasersSchema, trimTeaser } from './programme';
 import { DEFAULT_SECTION_JOINS, type SectionJoins } from './transitions';
 import type { SpokenWord } from './showNotes';
+import type { EpisodeEdit } from './edit';
+import { newSound, teaserSoundPlan } from './audio';
 
 const w = (text: string, start: number, end: number, speaker = 'A'): SpokenWord => ({ text, start, end, speaker } as SpokenWord);
 
@@ -40,8 +42,19 @@ test('the first edit: fillers, stammers and long pauses cut, the teasers placed,
     assert.deepEqual(firstEdit({ cuts: [], version: 0, teasers: [] }, { words, silences: null, teasers: [{ startMs: 0, endMs: 1, speaker: 'A' }] }).edit.teasers, []);
 });
 
+// The whole video before spec 022: teasers, then the intro, the episode and the outro (null: none), as clips.
+const old = (o: { teasers: number[]; introMs: number | null; outroMs: number | null; episodeMs: number; sections: SectionJoins }) => programmeOf({
+    sections: o.sections,
+    clips: [
+        ...o.teasers.map((lengthMs, i) => ({ kind: 'recording' as const, id: `t${i + 1}`, lengthMs })),
+        ...(o.introMs === null ? [] : [{ kind: 'intro' as const, id: 'intro', lengthMs: o.introMs }]),
+        { kind: 'episode' as const, id: 'episode', lengthMs: o.episodeMs },
+        ...(o.outroMs === null ? [] : [{ kind: 'outro' as const, id: 'outro', lengthMs: o.outroMs }]),
+    ],
+});
+
 test('the programme in order, joined as the render joins it', () => {
-    const p = programmeOf({ teasers: [5000, 4000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections: DEFAULT_SECTION_JOINS });
+    const p = old({ teasers: [5000, 4000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections: DEFAULT_SECTION_JOINS });
     assert.deepEqual(p.pieces.map(x => [x.kind, x.atMs, x.lengthMs]), [
         ['teaser', 0, 5000], ['teaser', 5000, 4000], ['intro', 9000, 3000], ['episode', 12_000, 60_000], ['outro', 72_000, 3000],
     ]);
@@ -55,7 +68,7 @@ test('the programme in order, joined as the render joins it', () => {
         betweenTeasers: { transition: 'dissolve', durationMs: 3000 },
         beforeOutro: { transition: 'fade', durationMs: 500 },
     };
-    const q = programmeOf({ teasers: [5000, 2000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections });
+    const q = old({ teasers: [5000, 2000], introMs: 3000, outroMs: 3000, episodeMs: 60_000, sections });
     assert.deepEqual(q.pieces.map(x => [x.kind, x.atMs, x.joinMs]), [
         ['teaser', 0, 0], ['teaser', 5000, 0], ['intro', 7000, 0], ['episode', 9000, 1000], ['outro', 68_500, 500],
     ]);
@@ -65,7 +78,7 @@ test('the programme in order, joined as the render joins it', () => {
     assert.deepEqual(q.pieces.map(x => x.transition), ['cut', 'cut', 'cut', 'dissolve', 'fade']);
 
     // Nothing but the episode.
-    const r = programmeOf({ teasers: [], introMs: null, outroMs: null, episodeMs: 1000, sections });
+    const r = old({ teasers: [], introMs: null, outroMs: null, episodeMs: 1000, sections });
     assert.deepEqual(r.pieces.map(x => x.kind), ['episode']);
     assert.equal(r.episodeAtMs, 0);
 });
@@ -131,4 +144,198 @@ test('the preview\'s hand-over: the recording at a moment of the edited episode,
     assert.deepEqual([0, 500, 2000, 2500, 3000, 3999, 9999].map(ms => recordingAt(ranges, ms)), [1000, 1500, 10_000, 10_500, 5000, 5999, 6000]);
     assert.deepEqual([1000, 2999, 3000, 10_500, 5500, 7000].map(ms => playedAt(ranges, ms)), [0, 1999, null, 2500, 3500, null]);
     assert.equal(recordingAt([], 100), 0);
+});
+
+// ─── Spec 022: the whole video as clips ───────────────────────────────────────
+
+test('spec 022: an old edit converts to clips, and back to the same old fields', () => {
+    const teasers: Teaser[] = [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }, { startMs: 9000, endMs: 9600, speaker: 'Bo', tag: false }];
+    const p = programmeEdit({ teasers, intro: null, outro: null });
+    assert.deepEqual(p.clips.map(c => [c.kind, c.id]), [['recording', 't1'], ['recording', 't2'], ['intro', 'intro'], ['episode', 'episode'], ['outro', 'outro']]);
+    assert.deepEqual(p.clips[0], { id: 't1', kind: 'recording', inMs: 1000, outMs: 4000, name: 'Ana' });
+    // A label on the tagged teaser only, the whole clip long; a short clip's label is drawn for a second, as before.
+    assert.deepEqual(p.layers.map(l => [l.anchor.clip, l.fields.speaker, l.durationMs]), [['t1', 'Ana', 3000]]);
+    assert.equal(programmeEdit({ teasers: [{ startMs: 0, endMs: 600, speaker: 'C' }] }).layers[0].durationMs, 1000);
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    assert.deepEqual(legacyFields(p, { intro: null, outro: null }), { teasers, intro: null, outro: null });
+    // Taken out: no clip; and back to false.
+    const own = { path: 'episodes/abcdefghij/media/i.mp4', name: 'Mine' };
+    const q = programmeEdit({ teasers: [], intro: own, outro: false });
+    assert.deepEqual(q.clips.map(c => c.kind), ['intro', 'episode']);
+    assert.deepEqual(legacyFields(q, { intro: own, outro: false }), { teasers: [], intro: own, outro: false });
+    // Saved before the edit had teasers: the ones the editor shows (the notes' clips), D1.
+    assert.deepEqual(programmeEdit({ teasers: null }, teasers).clips.length, 5);
+    assert.deepEqual(programmeEdit({}).clips.map(c => c.kind), ['intro', 'episode', 'outro']);
+    // Its own wins.
+    assert.equal(programmeEdit({ programme: q, teasers }), q);
+});
+
+test('spec 022: the teasers\' actions on clips keep the rest of the video, and the edit keeps its old fields in step', () => {
+    const p = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }], intro: false });
+    const next = withTeasers(p, [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
+    // Teasers that carry no clip id are new clips, never taking the id of one that was there (stage 3a).
+    assert.deepEqual(next.clips.map(c => c.id), ['t2', 't3', 'episode', 'outro']);
+    assert.deepEqual(next.layers.map(l => l.anchor.clip), ['t3']);
+    assert.deepEqual(teasersOf(next), [{ startMs: 5000, endMs: 6000, speaker: 'B', tag: false }, { startMs: 0, endMs: 2000, speaker: 'A' }]);
+    const base: EpisodeEdit = { cuts: [], version: 1, intro: false, outro: null };
+    const edit = setProgramme(base, withoutEnd(next, 'outro'));
+    assert.deepEqual([edit.intro, edit.outro, edit.teasers?.length], [false, false, 2]);
+    assert.deepEqual(programmeEdit({ ...edit, programme: null }).clips.map(c => c.id), ['t1', 't2', 'episode']);   // converted again, numbered afresh
+});
+
+test('spec 022: what may be saved', () => {
+    const p = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }] });
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    const bad = (q: unknown) => !ProgrammeSchema.safeParse(q).success;
+    assert.ok(bad({ ...p, clips: p.clips.filter(c => c.kind !== 'episode') }), 'the episode once');
+    assert.ok(bad({ ...p, clips: [...p.clips, { id: 'episode', kind: 'episode' }] }), 'not twice');
+    assert.ok(bad({ ...p, clips: [{ id: 't1', kind: 'recording', inMs: 0, outMs: 100, name: '' }, ...p.clips.slice(1)] }), 'half a second at least');
+    assert.ok(bad({ ...p, layers: [{ ...p.layers[0], anchor: { clip: 'gone', ms: 0 } }] }), 'a graphic on a clip that is there');
+    assert.ok(bad({ ...p, layers: [{ ...p.layers[0], anchor: { clip: 'episode', ms: 0 } }] }), 'not on the episode');
+    assert.ok(bad({ ...p, clips: [...p.clips.slice(0, 1), { id: 't9', kind: 'recording', inMs: 0, outMs: 900, name: 'x' }, ...p.clips.slice(1)].concat(p.clips[0]) }), 'ids once');
+});
+
+test('spec 022: each change\'s transition, its own or the default for its kind', () => {
+    const sections: SectionJoins = { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'dissolve', durationMs: 500 }, afterTeasers: { transition: 'wipeLeft', durationMs: 300 } };
+    const clips = [
+        { kind: 'recording' as const, id: 'a', lengthMs: 2000 },
+        { kind: 'recording' as const, id: 'b', lengthMs: 2000, join: { transition: 'cut' as const, durationMs: 500 } },
+        { kind: 'intro' as const, id: 'intro', lengthMs: null },           // no file: skipped
+        { kind: 'episode' as const, id: 'episode', lengthMs: 9000 },
+        { kind: 'recording' as const, id: 'c', lengthMs: 1000 },             // after the episode: a straight cut by default
+    ];
+    assert.deepEqual(clipJoins(clips, sections).map(j => [j.clip.id, j.join?.transition ?? null, j.label]), [
+        ['a', null, ''], ['b', 'cut', 'Into b'], ['episode', 'wipeLeft', 'After the teasers'], ['c', null, 'Into c'],
+    ]);
+    const pg = programmeOf({ clips, sections });
+    assert.deepEqual(pg.pieces.map(x => [x.id, x.atMs, x.joinMs]), [['a', 0, 0], ['b', 2000, 0], ['episode', 3700, 300], ['c', 12_700, 0]]);
+    assert.equal(changeJoin('intro', 'episode'), 'afterIntro');
+    assert.equal(changeJoin('episode', 'outro'), 'beforeOutro');
+    assert.equal(changeJoin('outro', 'recording'), null);
+});
+
+test('spec 022: the Parts panel\'s intro and outro take their clip off and put it back where it goes', () => {
+    const base: EpisodeEdit = { cuts: [], version: 1, teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }] };
+    const off = setEnds(base, { intro: false, outro: false });
+    assert.deepEqual(off.programme!.clips.map(c => c.kind), ['recording', 'episode']);
+    assert.deepEqual([off.intro, off.outro], [false, false]);
+    const own = { path: 'episodes/abcdefghij/media/o.mp4', name: 'Bye' };
+    const back = setEnds(off, { intro: null, outro: own });
+    assert.deepEqual(back.programme!.clips.map(c => c.kind), ['recording', 'intro', 'episode', 'outro']);
+    assert.deepEqual([back.intro, back.outro], [null, own]);
+});
+
+// ─── Spec 022 stage 3a: sounds on clips ───────────────────────────────────────
+
+const bed = { library: 'bed', path: 'library/bed.mp3', name: 'Bed', gainDb: -16 };
+const whoosh = { library: 'wh', path: 'library/wh.wav', name: 'Whoosh', gainDb: -12 };
+
+test('spec 022 3a: the old teaser music and whoosh become sounds on the clips, where the render mixed them', () => {
+    const sections: SectionJoins = { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'dissolve', durationMs: 500 } };
+    const teasers: Teaser[] = [{ startMs: 0, endMs: 2000, speaker: 'A' }, { startMs: 5000, endMs: 6500, speaker: 'B' }, { startMs: 8000, endMs: 9000, speaker: 'C' }];
+    const p = programmeEdit({ teasers }, [], { music: bed, whoosh, whooshMs: 800, sections });
+    // The plan the render used: the pieces 0, 1500 and 2500 long 2000, 1500 and 1000, each dissolving in over 0.5 s.
+    const plan = teaserSoundPlan([0, 1500, 2500].map((atMs, i) => ({ kind: 'teaser', atMs, lengthMs: [2000, 1500, 1000][i], joinMs: i ? 500 : 0 })));
+    assert.deepEqual(plan, { music: { startMs: 0, endMs: 3500 }, whooshes: [1500, 2500] });
+    assert.deepEqual(p.audio!.map(s => [s.id, s.anchor.clip, s.anchor.ms, s.durationMs, s.gainDb, s.loop, s.duck]), [
+        ['teaserMusic', 't1', 0, 3500, -16, true, true],
+        ['teaserWhoosh1', 't2', 0, 800, -12, false, false],
+        ['teaserWhoosh2', 't3', 0, 800, -12, false, false],
+    ]);
+    assert.ok(ProgrammeSchema.safeParse(p).success);
+    // A straight cut: the whoosh leads into the clip by 250 ms.
+    assert.equal(programmeEdit({ teasers }, [], { music: null, whoosh, whooshMs: null, sections: DEFAULT_SECTION_JOINS }).audio![0].anchor.ms, -250);
+    // Saved with sounds (even none): those are its own.
+    assert.deepEqual(programmeEdit({ programme: { ...p, audio: [] } }, [], { music: bed, whoosh, whooshMs: 800, sections }).audio, []);
+    // No settings: none; no opening: none.
+    assert.equal(programmeEdit({ teasers }).audio, undefined);
+    assert.deepEqual(programmeEdit({ teasers: [] }, [], { music: bed, whoosh, whooshMs: 800, sections }).audio, []);
+});
+
+test('spec 022 3a: teasers keep their clips (and the sounds on them) through the editor\'s actions', () => {
+    const p0 = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'A' }, { startMs: 5000, endMs: 6500, speaker: 'B' }] });
+    const sound = (id: string, clip: string) => ({ ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id, anchor: { clip, ms: 0 } });
+    const p = { ...p0, audio: [sound('s1', 't1'), sound('s2', 't2'), sound('s3', 'outro')] };
+    const shown = teasersOf(p, true);
+    assert.deepEqual(shown.map(t => t.id), ['t1', 't2']);
+    // Moved (t2 first), the first trimmed: each stays its clip, sounds and all.
+    const moved = withTeasers(p, [shown[1], { ...shown[0], endMs: 1500 }]);
+    assert.deepEqual(moved.clips.slice(0, 2).map(c => c.id), ['t2', 't1']);
+    assert.deepEqual(moved.audio!.map(s => s.anchor.clip), ['t1', 't2', 'outro']);
+    // One taken out: its sounds go with it; a new one gets a fresh id.
+    const fewer = withTeasers(p, [shown[1], { startMs: 9000, endMs: 9900, speaker: 'C' }]);
+    assert.deepEqual(fewer.clips.slice(0, 2).map(c => c.id), ['t2', 't3']);
+    assert.deepEqual(fewer.audio!.map(s => s.id), ['s2', 's3']);
+    // The outro taken out: its sounds too.
+    assert.deepEqual(withoutEnd(p, 'outro').audio!.map(s => s.id), ['s1', 's2']);
+    // Old fields never carry the ids.
+    assert.ok(legacyFields(moved, {}).teasers!.every(t => !('id' in t)));
+    assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [sound('s9', 'episode')] }).success, 'a sound on the episode belongs to edit.audio');
+    assert.ok(!ProgrammeSchema.safeParse({ ...p, audio: [{ ...sound('s9', 't1'), anchor: { clip: 't1', ms: -20_000 } }] }).success, 'leads in by 10 s at most');
+});
+
+// ─── Spec 022 stage 3b: editing clips, and building the opening ───────────────
+
+test('spec 022 3b: clips cut, duplicated, moved anywhere, trimmed, taken out, added, joined and labelled', () => {
+    const base = programmeEdit({ teasers: [{ startMs: 1000, endMs: 5000, speaker: 'Ana' }, { startMs: 9000, endMs: 10_000, speaker: 'Bo' }] });
+    const wind = { ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'w' };
+    const p = { ...base, audio: [{ ...wind, anchor: { clip: 't1', ms: 3000 } }, { ...wind, id: 'w2', anchor: { clip: 't1', ms: 0 } }] };
+    // Cut in two at 2.5 s of the recording: a straight cut, the sound past the cut moves with its part, the label is cut short.
+    const cut = splitClip(p, 't1', 2500);
+    assert.deepEqual(cut.clips.slice(0, 2).map(c => c.kind === 'recording' && [c.id, c.inMs, c.outMs, c.join?.transition ?? null]), [['t1', 1000, 2500, null], ['c1', 2500, 5000, 'cut']]);
+    assert.deepEqual(cut.audio!.map(s => [s.id, s.anchor.clip, s.anchor.ms]), [['w', 'c1', 1500], ['w2', 't1', 0]]);
+    assert.deepEqual(cut.layers.map(l => [l.anchor.clip, l.durationMs]), [['t1', 1500], ['t2', 1000]]);
+    assert.equal(splitClip(p, 't1', 1200), p, 'half a second each side at least');
+    // Duplicated: a copy right after it, with copies of its label and sounds.
+    const dup = duplicateClip(p, 't2');
+    assert.deepEqual(dup.clips.map(c => c.id), ['t1', 't2', 'c1', 'intro', 'episode', 'outro']);
+    assert.deepEqual(dup.layers.map(l => [l.id, l.anchor.clip]), [['tag-t1', 't1'], ['tag-t2', 't2'], ['c1-tag-t2', 'c1']]);
+    assert.equal(duplicateClip(p, 'intro'), p, 'the intro plays once');
+    assert.ok(ProgrammeSchema.safeParse(dup).success);
+    // Moved anywhere: after the outro; the episode stays put.
+    assert.deepEqual(moveClip(p, 't1', 4).clips.map(c => c.id), ['t2', 'intro', 'episode', 'outro', 't1']);
+    assert.deepEqual(moveClip(p, 'intro', 0).clips.map(c => c.id), ['intro', 't1', 't2', 'episode', 'outro']);
+    assert.equal(moveClip(p, 'episode', 0), p);
+    // Trimmed: the label that reached the end still does.
+    const trimmed = trimClip(p, 't1', 'end', 3000);
+    assert.deepEqual([trimmed.clips[0].kind === 'recording' && trimmed.clips[0].outMs, trimmed.layers[0].durationMs], [3000, 2000]);
+    // Taken out, with what was on it.
+    const gone = removeClip(p, 't1');
+    assert.deepEqual([gone.clips.length, gone.layers.length, gone.audio!.length], [4, 1, 0]);
+    assert.equal(removeClip(p, 'episode'), p);
+    // Added from the episode, at a place, with its label.
+    const added = insertClip(p, { startMs: 20_000, endMs: 21_000 }, 5, [w('hi', 20_100, 20_400, 'Cy')]);
+    assert.deepEqual(added.clips.map(c => c.id), ['t1', 't2', 'intro', 'episode', 'outro', 'c1']);
+    assert.deepEqual(added.layers.at(-1)!.fields, { speaker: 'Cy' });
+    // A change's own transition, and back to the default; labels on and off and renamed.
+    const joined = setClipJoin(p, 't2', { transition: 'fade', durationMs: 1000 });
+    assert.deepEqual(joined.clips[1].join, { transition: 'fade', durationMs: 1000 });
+    assert.ok(!('join' in setClipJoin(joined, 't2', null).clips[1]));
+    assert.deepEqual(setLabel(p, 't1', { on: false }).layers.map(l => l.anchor.clip), ['t2']);
+    assert.deepEqual(setLabel(setLabel(p, 't1', { on: false }), 't1', { on: true }).layers.at(-1)!.fields, { speaker: 'Ana' });
+    assert.deepEqual(setLabel(p, 't2', { speaker: ' Bo Guest ' }).layers[1].fields, { speaker: 'Bo Guest' });
+    assert.deepEqual(setLabel(p, 'outro', { on: true }).layers.at(-1)!.anchor, { clip: 'outro', ms: 0 });
+});
+
+test('spec 022 3b: Build the opening places clips, dissolves, labels, the wind at each change and the music, replacing the old opening', () => {
+    const old = programmeEdit({ teasers: [{ startMs: 0, endMs: 2000, speaker: 'Old' }] });
+    const kept = { ...newSound({ path: 'library/x.wav', name: 'x', library: 'x' }, 'effect', { srcMs: 0, atMs: 0 }), id: 'k', anchor: { clip: 'outro', ms: 0 } };
+    const notes: Teaser[] = [{ startMs: 1000, endMs: 4000, speaker: 'Ana' }, { startMs: 8000, endMs: 10_000, speaker: 'Bo' }, { startMs: 12_000, endMs: 13_000, speaker: 'Cy' }];
+    const music = { library: 'bed', path: 'library/bed.mp3', name: 'Bed' };
+    const built = buildOpening({ ...old, audio: [kept, { ...kept, id: 'gone', anchor: { clip: 't1', ms: 0 } }] }, { teasers: notes, sections: DEFAULT_SECTION_JOINS, music });
+    assert.deepEqual(built.clips.map(c => [c.id, c.join?.transition ?? null]), [['c1', null], ['c2', 'dissolve'], ['c3', 'dissolve'], ['intro', null], ['episode', null], ['outro', null]]);
+    assert.deepEqual(built.layers.map(l => [l.anchor.clip, l.fields.speaker, l.durationMs]), [['c1', 'Ana', 3000], ['c2', 'Bo', 2000], ['c3', 'Cy', 1000]]);
+    // Pieces at 0, 2500 and 4000 (each dissolving in over 0.5 s): the music under all 5 s, the wind 250 ms into each dissolve's start.
+    assert.deepEqual(built.audio!.map(s => [s.id, s.track, s.anchor.clip, s.anchor.ms, s.durationMs, s.gainDb]), [
+        ['music-c1', 2, 'c1', 0, 5000, -16],
+        ['wind-c2', 3, 'c2', 0, 1200, -18],
+        ['wind-c3', 3, 'c3', 0, 1200, -18],
+        ['k', 3, 'outro', 0, kept.durationMs, 0],
+    ]);
+    assert.equal(built.audio![1].media.path, 'studio/sounds/soul-wisdom-wind-breath.wav');
+    assert.ok(ProgrammeSchema.safeParse(built).success);
+    // The Studio's own dissolve length; no music; and built again it replaces itself.
+    const own = buildOpening(old, { teasers: notes.slice(0, 2), sections: { ...DEFAULT_SECTION_JOINS, betweenTeasers: { transition: 'fade', durationMs: 1000 } }, music: null });
+    assert.deepEqual([own.clips[1].join, own.audio!.map(s => [s.id, s.anchor.ms])], [{ transition: 'fade', durationMs: 1000 }, [['wind-c2', 250]]]);
+    assert.deepEqual(buildOpening(built, { teasers: notes.slice(0, 1), sections: DEFAULT_SECTION_JOINS, music: null }).clips.map(c => c.id), ['c1', 'intro', 'episode', 'outro']);
 });

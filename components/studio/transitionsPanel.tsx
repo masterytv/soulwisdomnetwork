@@ -4,6 +4,7 @@
 // sections meet: the start and end of the video, between the teasers, the intro, the episode and the
 // outro (the Studio settings choose them for every episode; an episode can choose its own), and at
 // each split inside the episode. Dissolve and Fade come first; the rest are ffmpeg's xfade kinds.
+// Spec 022 stage 3b: and at each change between the whole video's clips, its own or the default for its kind.
 
 import { tickText } from '@/lib/timeline';
 import {
@@ -13,6 +14,8 @@ import {
 import { field, hint, secondary } from '@/components/studio/ui';
 
 const seconds = (ms: number) => `${ms / 1000} s`;
+// A change whose kind has no default (say, after the outro) is a straight cut unless it has its own.
+const CUT_DEFAULT: Transition = { transition: 'cut', durationMs: JOIN_MS.default };
 const small = `${field} !w-auto !py-1 !px-2 text-xs`;
 
 function Choice({ label, value, inherited, onChange, warning, onJump, highlight }: {
@@ -55,7 +58,11 @@ function Choice({ label, value, inherited, onChange, warning, onJump, highlight 
     );
 }
 
-export function TransitionsPanel({ joins, splits, studio, warnings = {}, focus, hasTeasers = true, hasIntro = true, onJoins, onSeek }: {
+// A change between two of the whole video's clips (spec 022): into which clip, its own transition (null: the default),
+// and the default for its kind of change (null: a straight cut).
+export interface ClipChange { id: string; label: string; own: Transition | null; inherited: Transition | null; warning?: string }
+
+export function TransitionsPanel({ joins, splits, studio, warnings = {}, focus, hasTeasers = true, hasIntro = true, onJoins, onSeek, changes = [], focusClip, onChange, onJumpClip }: {
     joins: Join[];
     splits: number[];
     studio: SectionJoins | null;            // the Studio settings' choices; null until they load
@@ -65,6 +72,10 @@ export function TransitionsPanel({ joins, splits, studio, warnings = {}, focus, 
     hasIntro?: boolean;
     onJoins: (joins: Join[]) => void;
     onSeek: (ms: number) => void;
+    changes?: ClipChange[];
+    focusClip?: string | null;
+    onChange?: (id: string, t: Transition | null) => void;
+    onJumpClip?: (id: string) => void;
 }) {
     const own = new Map(joins.map(j => [joinKey(j.at), { transition: j.transition, durationMs: j.durationMs }] as const));
     const set = (at: JoinAt) => (t: Transition | null) => onJoins(setJoin(joins, at, t));
@@ -80,6 +91,19 @@ export function TransitionsPanel({ joins, splits, studio, warnings = {}, focus, 
                     teasers, intro and outro); the render can look slightly different.
                 </p>
             </div>
+
+            {changes.length > 0 && onChange && (
+                <section aria-label="Between clips" className="flex flex-col gap-1">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Between clips</h3>
+                    <p className={hint}>Each change in the whole video: its own transition, or the default below for its kind.</p>
+                    <ul className="flex flex-col gap-0.5">
+                        {changes.map(c => (
+                            <Choice key={c.id} label={c.label} value={c.own} inherited={c.inherited ?? CUT_DEFAULT} onChange={t => onChange(c.id, t)}
+                                onJump={onJumpClip ? () => onJumpClip(c.id) : undefined} highlight={focusClip === c.id} warning={c.warning} />
+                        ))}
+                    </ul>
+                </section>
+            )}
 
             <section aria-label="At splits" className="flex flex-col gap-1">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">At splits</h3>

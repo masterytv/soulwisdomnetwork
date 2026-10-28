@@ -16,7 +16,9 @@
 // Spec 019 item 3.2: the voice clean-up is the edit's own choice or the Studio's (lib/voice.ts), recorded with the render.
 // Item E9 (spec 020): the edit's own play order of sections goes with it; its own intro and outro replace the Studio's.
 // Item E10 (spec 020): the edit's own teasers (lib/programme.ts), as the Studio editor shows them, are cut from the recording
-// exactly, with the "In this episode" tag; an edit saved before them gets the package's clips or the notes' as before.
+// exactly, with the "In this episode" tag. Spec 022: the whole video is the edit's clips (lib/programme.ts programmeEdit, an
+// old edit converted as the editor converts it), each recording clip cut exactly with its label, the intro and outro where
+// the clips put them, and each change's transition its own or the default for its kind (clipJoins).
 // Item 3.3: when the episode has speaker tracks (lib/speakerTracks.ts), the voice is made from them unless its edit says not.
 // Item 4.1: files that open the edit's cuts in Resolve, Premiere or Final Cut are saved beside it (editExport.ts); when
 // they cannot be made, the render is still kept, with a warning.
@@ -26,11 +28,11 @@ import * as path from 'path';
 import type { EpisodeEdit } from '../../../lib/edit';
 import { captionLook, type CaptionStyle } from '../../../lib/onScreen';
 import { isPicture, layersOf, SITE_LOGO, type GraphicLayer, type HighlightLayer, type PictureLayer, type TextLayer } from '../../../lib/layers';
-import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
+import { asVideoLayer, episodeAnchored, graphicSpec, highlightTemplate, type GraphicSpec } from '../../../lib/graphics';
 import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LABELS } from '../../../lib/reframe';
 import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';
-import { soundCredits, type LibraryEntry, type LibraryUse, type Sound, type TeaserSound } from '../../../lib/audio';
+import { isStudioSound, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -38,10 +40,11 @@ import { voiceFor, WARMTH_DB, type VoiceCleanup } from '../../../lib/voice';
 import { usesTracks, type SpeakerTrack } from '../../../lib/speakerTracks';
 import { turnsOf, type ReviewedLine, type Turn } from './studioSound';
 import type { Episode, EpisodeEditRender } from '../../../types/episode';
-import type { renderEdit } from './editRender';
+import type { ProgrammeInput, renderEdit } from './editRender';
 import type { ExportResult } from './editExport';
 import { sequenceOf, type Clip } from '../../../lib/sequence';
-import { studioIntro } from '../../../lib/programme';
+import { clipJoins, INTRO_CLIP, OUTRO_CLIP, oldTeaserSounds, programmeEdit, studioIntro, teasersFromNotes, type ProgrammeEdit, type ProgrammeSound } from '../../../lib/programme';
+import { probeDuration } from './media';
 
 export interface EditRenderDeps {
     getEpisode: () => Promise<Episode | undefined>;
@@ -61,6 +64,7 @@ export interface EditRenderDeps {
     settings?: StudioSettings;           // the defaults when left out
     showIntro?: string;                  // the show's intro in the repository, when there is no edit package
     siteLogo?: string;                   // the site's logo in the repository (lib/layers.ts SITE_LOGO)
+    publicDir?: string;                  // the repository's public/, where the Studio's own sounds are (lib/audio.ts STUDIO_SOUNDS)
     // Cuts a teaser clip from the recording: plainly, when there is no edit package to take clips from, or with the
     // "In this episode" tag and its speaker (`tag`) for the edit's own teasers (item E10).
     cutClip?: (input: string, output: string, startSeconds: number, durationSeconds: number, tag?: { speaker: string }) => Promise<void>;
@@ -90,19 +94,13 @@ export interface EditRenderDeps {
 export interface EditRenderPlan {
     edit: EpisodeEdit;
     video: string;                       // Storage path of the source
-    teasers: string[];                   // Storage paths, in order (from the edit package)
-    // To cut from the recording: the edit's own teasers (item E10: exactly, with the "In this episode" tag and their
-    // speaker, as the editor shows them; `exact`), or the notes' clips when there is no package (plainly, with room around them).
-    teaserClips: { startMs: number; endMs: number; speaker?: string; tag?: boolean }[];
-    exact: boolean;
+    // The whole video (spec 022): the edit's clips in order, with the graphics on them.
+    programme: ProgrammeEdit;
     intro: string | null;                // Storage path; also closes the episode as the outro
     showIntro: boolean;                  // use the show's intro from the repository (no package)
     // The episode's own intro and outro (spec 020 item E9), from its media bin: they replace the Studio's.
     ownIntro: string | null;
     ownOutro: string | null;
-    // Item E14: no intro or outro in this episode (the edit's `intro` or `outro` is false).
-    introOff?: boolean;
-    outroOff?: boolean;
     broll: { atMs: number; seconds: number; image: string }[];   // image = Storage path
     // On screen: the captions look (null for none), text layers, and picture and video layers (Storage paths).
     onScreen: { captions: CaptionStyle | null; texts: TextLayer[]; pictures: PictureLayer[] };
@@ -124,10 +122,6 @@ export interface EditRenderPlan {
 // The renderer's name for each voice clean-up.
 const CLEAN_FOR = { standard: 'light', studio: 'studio', deepfilter: 'deepfilter', auphonic: 'auphonic' } as const satisfies Record<VoiceCleanup, string>;
 
-// Breathing room around a teaser clip cut here, as the edit package gives its clips.
-const CLIP_LEAD_MS = 300;
-const CLIP_TAIL_MS = 600;
-
 // Drive allows almost anything in a name, but the file gets downloaded to Macs and PCs.
 export const safeName = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, ' ').trim().slice(0, 120);
 
@@ -144,35 +138,23 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
     const notes = episode.notes?.status === 'approved' ? episode.notes.approved : undefined;
     if (!notes) warnings.push('The show notes are not approved, so no chapter or quote times were made.');
 
-    // The edit's own teasers (item E10), as the Studio editor shows them, cut from the recording exactly; for an edit
-    // saved before them, the edit package's clips, or the notes' cut plainly.
-    const own = edit.teasers ?? null;
-    const teasers = !own && settings.teasers && pkg ? pkg.clipPaths ?? [] : [];
-    const teaserClips = own ? own.map(t => ({ startMs: t.startMs, endMs: t.endMs, speaker: t.speaker, ...(t.tag === false ? { tag: false } : {}) }))
-        : settings.teasers && !pkg
-            ? (notes?.teaserClips ?? []).filter(c => c.endMs > c.startMs).map(c => ({ startMs: c.startMs, endMs: c.endMs }))
-            : [];
+    // The whole video (spec 022): the edit's own clips, or its old fields converted as the Studio editor converts them;
+    // an edit saved before it had teasers gets the approved notes' teaser clips, as the editor shows it (D1).
+    const programme = programmeEdit(edit, settings.teasers && notes ? teasersFromNotes(notes.teaserClips ?? []) : []);
     const studio = studioIntro(settings, pkg);
     const intro = studio && studio !== 'site' ? studio.path : null;
     const showIntro = studio === 'site';
     const captions = captionLook(edit, settings);
     const wordsPath = episode.review?.reviewedPath ?? null;
     if (captions && !wordsPath) warnings.push('Captions are on, but the transcript is not accepted, so no captions were burned in.');
-    if (!pkg && !own && settings.teasers) {
-        warnings.push('The edit package is not built, so the teaser clips are cut plainly from the recording.');
-    }
     return {
         edit,
         video,
-        teasers,
-        teaserClips,
-        exact: !!own,
+        programme,
         intro,
         showIntro,
         ownIntro: edit.intro ? edit.intro.path : null,
         ownOutro: edit.outro ? edit.outro.path : null,
-        introOff: edit.intro === false,
-        outroOff: edit.outro === false,
         // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
         // first opened the edit), so the notes plan's is drawn only for an edit without.
         broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
@@ -218,38 +200,56 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const known = fetched.get(storagePath);
         if (known) return known;
         const local = path.join(workDir, `${name}${path.extname(storagePath) || '.mp4'}`);
-        await deps.download(storagePath, local);
+        // The Studio's own sounds ship in the repository (public/studio/sounds), not in Storage.
+        if (isStudioSound(storagePath)) fs.copyFileSync(path.join(deps.publicDir!, storagePath), local);
+        else await deps.download(storagePath, local);
         fetched.set(storagePath, local);
         return local;
     };
     const video = await get(plan.video, 'source');
-    const teasers: string[] = [];
-    for (const [i, t] of plan.teasers.entries()) teasers.push(await get(t, `teaser-${i + 1}`));
-    // The edit's own teasers get the motion "In this episode" tag (spec 021: teaserTag.html, overlaid
-    // below once the graphics are drawn); without a graphics renderer, the ASS banner as before.
-    const motionTags = plan.exact && !!deps.graphics && !!deps.overlayClip;
-    const tagLater: { index: number; speaker: string; lengthMs: number }[] = [];
-    if (plan.teaserClips.length && deps.cutClip) {
-        for (const [i, c] of plan.teaserClips.entries()) {
-            const out = path.join(workDir, `teaser-cut-${i + 1}.mp4`);
-            // A teaser whose tag was taken off in the Studio editor (item E14) is cut plainly.
-            const tag = plan.exact && c.tag !== false;
-            if (plan.exact && tag && motionTags) {
-                await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000);
-                tagLater.push({ index: teasers.length, speaker: c.speaker ?? '', lengthMs: c.endMs - c.startMs });
-            } else if (plan.exact) await deps.cutClip(video, out, c.startMs / 1000, (c.endMs - c.startMs) / 1000, tag ? { speaker: c.speaker ?? '' } : undefined);
-            else {
-                const start = Math.max(0, c.startMs - CLIP_LEAD_MS);
-                await deps.cutClip(video, out, start / 1000, (c.endMs + CLIP_TAIL_MS - start) / 1000);
-            }
-            teasers.push(out);
-        }
+    // The whole video (spec 022): each recording clip cut from the recording exactly, with its "In this episode" label
+    // as the motion tag (spec 021: teaserTag.html, overlaid below once the graphics are drawn) or, without a graphics
+    // renderer, burned in by the cutter as before; a clip with no label is cut plainly. The intro and outro are the
+    // episode's own or the Studio's (the outro is the Studio's intro, as always).
+    const motionTags = !!deps.graphics && !!deps.overlayClip;
+    const tagLater: { id: string; file: string; speaker: string; durationMs: number }[] = [];
+    const graphicWarnings: string[] = [];
+    const files = new Map<string, string>();
+    let cut = 0;
+    for (const c of plan.programme.clips) {
+        if (c.kind !== 'recording' || !deps.cutClip) continue;
+        const out = path.join(workDir, `teaser-cut-${++cut}.mp4`);
+        const label = plan.programme.layers.find(l => l.anchor.clip === c.id);
+        if (label && motionTags) {
+            await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000);
+            tagLater.push({ id: c.id, file: out, speaker: label.fields.speaker, durationMs: label.durationMs });
+        } else await deps.cutClip(video, out, c.inMs / 1000, (c.outMs - c.inMs) / 1000, label ? { speaker: label.fields.speaker } : undefined);
+        files.set(c.id, out);
     }
     const studioIntro = plan.intro ? await get(plan.intro, 'intro')
         : plan.showIntro && deps.showIntro && fs.existsSync(deps.showIntro) ? deps.showIntro : undefined;
-    // The episode's own intro or outro replaces the Studio's; the outro is otherwise the Studio's intro, as always.
-    const intro = plan.introOff ? undefined : plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro;
-    const outro = plan.outroOff ? undefined : plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro;
+    const intro = plan.programme.clips.some(c => c.kind === 'intro') ? (plan.ownIntro ? await get(plan.ownIntro, 'own-intro') : studioIntro) : undefined;
+    const outro = plan.programme.clips.some(c => c.kind === 'outro') ? (plan.ownOutro ? await get(plan.ownOutro, 'own-outro') : studioIntro) : undefined;
+    if (intro) files.set(INTRO_CLIP, intro);
+    if (outro) files.set(OUTRO_CLIP, outro);
+    // Spec 022 stage 3b: a label on the intro or outro is laid over its file too (only with the graphics renderer).
+    for (const id of [INTRO_CLIP, OUTRO_CLIP]) {
+        const label = plan.programme.layers.find(l => l.anchor.clip === id);
+        const file = files.get(id);
+        if (!label || !file) continue;
+        if (motionTags) tagLater.push({ id, file, speaker: label.fields.speaker, durationMs: label.durationMs });
+        else graphicWarnings.push(`The "In this episode" label on the ${id} was left out: the graphics renderer is not on this runner.`);
+    }
+    // Each change's transition, its own or the default for its kind (lib/programme.ts clipJoins, as the editor plays it).
+    const names = new Map(plan.programme.clips.map(c => [c.id, c.kind === 'recording' ? `"${c.name || 'a clip'}"` : `the ${c.kind}`]));
+    const joins = clipJoins(plan.programme.clips.map(c => ({
+        kind: c.kind, id: c.id, ...(c.join ? { join: c.join } : {}), lengthMs: c.kind === 'episode' || files.has(c.id) ? 1 : null,
+    })), plan.sections, c => names.get(c.id) ?? c.id);
+    const programme: ProgrammeInput[] = joins.map(({ clip, join, label, key }) => ({
+        kind: clip.kind === 'recording' ? 'teaser' : clip.kind, id: clip.id,
+        ...(clip.kind === 'episode' ? {} : { file: files.get(clip.id)! }),
+        join: join ? { transition: join, label, key } : null,
+    }));
     const broll: { atMs: number; seconds: number; image: string }[] = [];
     for (const [i, b] of plan.broll.entries()) broll.push({ ...b, image: await get(b.image, `broll-${i + 1}`) });
     // Each picture's file, downloaded once; the renderer leaves out what has nothing to show.
@@ -266,7 +266,6 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // draws what changed. Episode-anchored graphics go to the renderer as silent video layers (looped when
     // their clip is shorter than the layer: the whole-episode logo bug); the end screen and the starlight
     // clips are overlaid on the programme's own clock (renderEdit's `overlays`).
-    const graphicWarnings: string[] = [];
     const overlays: NonNullable<Parameters<typeof renderEdit>[0]['overlays']> = [];
     const highlights: NonNullable<Parameters<typeof renderEdit>[0]['highlights']> = [];
     // The motion graphic layers' drawn clips, for the editor hand-off (spec 021 M5): one file each,
@@ -276,8 +275,9 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     let graphicsMs = 0;
     // The starlight joins this edit plays (lib/transitions.ts): the Studio's or the edit's at sections,
     // and the edit's own at splits that are there.
+    // Spec 022 (D2): one at each change that has it.
     const starlight = [
-        ...Object.entries(plan.sections).flatMap(([at, t]) => (t.transition === 'starlight' ? [{ key: at, durationMs: t.durationMs }] : [])),
+        ...programme.flatMap(p => (p.join?.transition.transition === 'starlight' ? [{ key: p.join.key, durationMs: p.join.transition.durationMs }] : [])),
         ...(plan.edit.joins ?? []).flatMap(j => (typeof j.at === 'object' && j.transition === 'starlight' && (plan.edit.splits ?? []).includes(j.at.atSplit)
             ? [{ key: `split:${j.at.atSplit}`, durationMs: j.durationMs }] : [])),
     ];
@@ -341,42 +341,56 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
                 },
             });
         }
-        // The motion "In this episode" tag onto each cut teaser, its progress line spanning the clip.
+        // The motion "In this episode" label onto each cut clip, its progress line spanning the label.
         for (const t of tagLater) {
             const { local } = await drawClip({
                 template: 'teaserTag', fields: { speaker: t.speaker }, colors: settings.colors,
-                durationMs: Math.max(1000, Math.min(t.lengthMs, GRAPHIC_MAX_MS)), width: 1920, height: 1080,
+                durationMs: t.durationMs, width: 1920, height: 1080,
             });
-            const tagged = teasers[t.index].replace(/\.mp4$/, '-tagged.mp4');
-            await deps.overlayClip!(teasers[t.index], local, tagged);
-            teasers[t.index] = tagged;
+            // A cut clip's own file, or (the intro and outro, whose file may serve both) a copy of its own.
+            const tagged = /teaser-cut-\d+\.mp4$/.test(t.file) ? t.file.replace(/\.mp4$/, '-tagged.mp4') : path.join(workDir, `${t.id}-tagged.mp4`);
+            await deps.overlayClip!(t.file, local, tagged);
+            for (const p of programme) if (p.id === t.id) p.file = tagged;
         }
     }
-    // Each sound's file. A show library file plays only while its licence is checked (an admin can take a
-    // check back after the sound was placed); the others are left out, with a warning.
-    // The teasers' music and whoosh (Studio settings) go by the same rule, and only when there are teasers.
-    const teaserPicks = teasers.length
-        ? ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []))
-        : [];
-    const libraryIds = [...new Set([...plan.sounds.flatMap(s => (s.library ? [s.library] : [])), ...teaserPicks.map(x => x.t.library)])];
+    // Each sound's file, on the episode (edit.audio) and on the other clips (spec 022). A show library file plays only
+    // while its licence is checked (an admin can take a check back after the sound was placed), and the Studio's own
+    // sounds come from the repository; the others are left out, with a warning. An edit saved before spec 022 stage 3a
+    // gets the Studio settings' old teaser music and whoosh as sounds on its clips (lib/programme.ts oldTeaserSounds),
+    // the whoosh's length read from its file as the render read it.
+    const oldPicks = plan.programme.audio ? [] : [settings.teaserMusic, settings.teaserWhoosh].flatMap(t => (t ? [t] : []));
+    const libraryIds = [...new Set([...plan.sounds, ...(plan.programme.audio ?? [])].flatMap(s => (s.library ? [s.library] : [])).concat(oldPicks.map(t => t.library)))];
     const library = libraryIds.length && deps.library ? await deps.library(libraryIds) : new Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>();
-    const sounds: { sound: Sound; file: string }[] = [];
     const soundWarnings: string[] = [];
-    for (const [i, s] of plan.sounds.entries()) {
-        if (s.library) {
-            const entry = library.get(s.library);
-            if (!entry || entry.path !== s.media.path) { soundWarnings.push(`The sound "${s.media.name}" is no longer in the show library, so it was left out.`); continue; }
-            if (!entry.checked) { soundWarnings.push(`The sound "${s.media.name}": its licence is not checked, so it was left out.`); continue; }
+    // Whether a sound's file may play: from the show library with its licence checked, one of the Studio's own (found
+    // with the render), or the episode's own upload.
+    const playable = (s: { library?: string; media: { path: string; name: string } }) => {
+        if (isStudioSound(s.media.path)) {
+            if (deps.publicDir && fs.existsSync(path.join(deps.publicDir, s.media.path))) return true;
+            soundWarnings.push(`The Studio sound "${s.media.name}" was not found with the render, so it was left out.`);
+            return false;
         }
-        sounds.push({ sound: s, file: await get(s.media.path, `sound-${i + 1}`) });
+        if (!s.library) return true;
+        const entry = library.get(s.library);
+        if (!entry || entry.path !== s.media.path) { soundWarnings.push(`The sound "${s.media.name}" is no longer in the show library, so it was left out.`); return false; }
+        if (!entry.checked) { soundWarnings.push(`The sound "${s.media.name}": its licence is not checked, so it was left out.`); return false; }
+        return true;
+    };
+    const sounds: { sound: Sound; file: string }[] = [];
+    for (const [i, s] of plan.sounds.entries()) if (playable(s)) sounds.push({ sound: s, file: await get(s.media.path, `sound-${i + 1}`) });
+    let clipSounds = plan.programme.audio;
+    if (!clipSounds) {
+        const whoosh = settings.teaserWhoosh, entry = whoosh && library.get(whoosh.library);
+        const whooshMs = whoosh && entry?.checked && entry.path === whoosh.path
+            ? await probeDuration(await get(whoosh.path, 'teaser-whoosh')).then(d => d * 1000).catch(() => null) : null;
+        clipSounds = oldTeaserSounds(plan.programme, { music: settings.teaserMusic, whoosh, whooshMs, sections: plan.sections });
     }
-    const teaserSounds: { music?: { sound: TeaserSound; file: string }; whoosh?: { sound: TeaserSound; file: string } } = {};
-    for (const { k, t } of teaserPicks) {
-        const entry = library.get(t.library);
-        const label = k === 'music' ? 'The teasers\' music' : 'The teasers\' whoosh';
-        if (!entry || entry.path !== t.path) { soundWarnings.push(`${label} "${t.name}" is no longer in the show library, so it was left out.`); continue; }
-        if (!entry.checked) { soundWarnings.push(`${label} "${t.name}": its licence is not checked, so it was left out.`); continue; }
-        teaserSounds[k] = { sound: t, file: await get(t.path, `teaser-${k}`) };
+    const programmeSounds: { sound: ProgrammeSound; file: string }[] = [];
+    for (const [i, s] of clipSounds.entries()) {
+        if (!playable(s)) continue;
+        // The converted teaser music and whoosh keep the names their files had, so they run the same commands.
+        const name = s.id === 'teaserMusic' ? 'teaser-music' : s.id.startsWith('teaserWhoosh') ? 'teaser-whoosh' : `clip-sound-${i + 1}`;
+        programmeSounds.push({ sound: s, file: await get(s.media.path, name) });
     }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
@@ -398,8 +412,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const out = path.join(workDir, 'episode.mp4');
     const report = await deps.render({
         video, edit: plan.edit, out,
-        teasers: teasers.length ? teasers : undefined,
-        intro, outro,
+        programme,
         broll: broll.length ? broll : undefined,
         ...(onScreen ? { onScreen } : {}),
         words, chapters: plan.chapters, quotes: plan.quotes,
@@ -407,7 +420,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...(overlays.length ? { overlays } : {}),
         ...(highlights.length ? { highlights } : {}),
         ...(sounds.length ? { sounds } : {}),
-        ...(teaserSounds.music || teaserSounds.whoosh ? { teaserSounds } : {}),
+        ...(programmeSounds.length ? { programmeSounds } : {}),
         ...(deps.exists ? { store: {
             get: async (name: string, local: string) => {
                 const at = `${work}/${name}`;
@@ -426,15 +439,19 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         },
     });
     // The credits the library files it played ask for, and those files, for the description and the log.
+    // In the order they are heard: the sounds on clips before the episode, the episode's, then the ones after it.
     const order = report.soundsPlayed ?? [];
     const played = new Set(order);
-    // The teasers' sounds play first, before the episode, so their credits come first.
-    const teaserUsed = (report.teaserSoundsPlayed ?? []).flatMap(k => (teaserSounds[k] ? [teaserSounds[k]!.sound.library] : []));
-    const credits = [...new Set([
-        ...teaserUsed.flatMap(id => { const c = library.get(id)?.licence.credit.trim(); return c ? [c] : []; }),
-        ...soundCredits(plan.sounds.map(s => ({ sound: s, span: played.has(s.id) ? { startMs: order.indexOf(s.id), endMs: order.indexOf(s.id) + 1 } : null })), library),
-    ])];
-    const usedLibrary = [...new Set([...teaserUsed, ...plan.sounds.flatMap(s => (played.has(s.id) && s.library && library.has(s.library) ? [s.library] : []))])];
+    const onClips = report.programmeSoundsPlayed ?? [];
+    const clipLibrary = (before: boolean) => onClips.filter(x => (x.atMs < (report.episodeAtMs ?? 0)) === before)
+        .flatMap(x => { const s = clipSounds!.find(c => c.id === x.id); return s?.library ? [s.library] : []; });
+    const heard = [
+        ...clipLibrary(true),
+        ...plan.sounds.filter(s => played.has(s.id)).sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).flatMap(s => (s.library ? [s.library] : [])),
+        ...clipLibrary(false),
+    ].filter(id => library.has(id));
+    const credits = [...new Set(heard.flatMap(id => { const c = library.get(id)?.licence.credit.trim(); return c ? [c] : []; }))];
+    const usedLibrary = [...new Set(heard)];
 
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
     // it was given words, chapters or quotes; each one found is kept with the video.

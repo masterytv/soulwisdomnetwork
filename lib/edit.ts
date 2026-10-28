@@ -8,7 +8,7 @@ import type { Join } from './transitions';
 import type { Layer } from './layers';
 import type { Sound } from './audio';
 import type { VoiceCleanup } from './voice';
-import type { Teaser } from './programme';
+import type { ProgrammeEdit, Teaser } from './programme';
 import { isFiller } from './fillers';
 
 export interface Cut {
@@ -53,6 +53,10 @@ export interface EpisodeEdit {
     // as the Studio editor shows them (lib/programme.ts); an empty list for none. Null or missing (an edit saved
     // before E10): the edit package's clips, or the notes' cut plainly, as the render always made them.
     teasers?: Teaser[] | null;
+    // Spec 022: the whole video as clips (lib/programme.ts): V1 in play order, the episode one of them, and the graphics
+    // on the other clips. Null or missing (an edit saved before it): converted from `teasers`, `intro` and `outro`
+    // (programmeEdit), which every save also writes from it while code from before spec 022 still reads edits.
+    programme?: ProgrammeEdit | null;
 }
 
 // What the Studio may save as an edit (app/api/studio/episodes/[id]/edit). A two-hour episode

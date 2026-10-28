@@ -94,9 +94,20 @@ export const SOUND_TRACK = { music: 2, effects: 3 } as const;
 export const SOUND_TRACK_LABELS: Record<number, string> = { 2: 'A2 Music', 3: 'A3 Effects' };
 export const SOUNDS_MAX = 200;
 
-// Where a sound's file is: the show library, or the episode's own media.
+// The Studio's own sounds, shipped with it in public/studio/sounds (made by scripts/windSounds.py, so no one else
+// holds rights in them): placed like a library effect, with no licence to check, played by the preview from the site
+// and copied by the render from the repository. Build the opening (spec 022) puts Wind: breath at each change.
+export const STUDIO_SOUNDS = [
+    { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', durationMs: 1200 },
+    { path: 'studio/sounds/soul-wisdom-wind-breeze.wav', name: 'Wind: breeze', durationMs: 1600 },
+    { path: 'studio/sounds/soul-wisdom-wind-swell.wav', name: 'Wind: swell', durationMs: 2000 },
+] as const;
+export const isStudioSound = (path: string) => STUDIO_SOUNDS.some(s => s.path === path);
+export const studioSoundUrl = (path: string) => `/${path}`;
+
+// Where a sound's file is: the show library, the episode's own media, or one of the Studio's own sounds.
 export const SoundPathSchema = z.string().max(300)
-    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+)$/, 'Not a Studio sound')
+    .regex(/^(library\/[\w.-]+|episodes\/[\w-]{10,}\/media\/[\w.-]+|studio\/sounds\/[\w.-]+)$/, 'Not a Studio sound')
     .refine(p => !p.includes('..'), 'Not a Studio sound');
 
 export const SoundSchema = z.object({
@@ -143,14 +154,13 @@ export function newSound(file: { path: string; name: string; durationMs?: number
 // An episode upload counts as music when it is long enough to be a bed.
 export const uploadKind = (durationMs: number | null | undefined): LibraryKind => ((durationMs ?? 0) >= 30_000 ? 'music' : 'effect');
 
-// ─── the teasers' music and whoosh ──────────────────────────────────────────
+// ─── the teasers' music and whoosh, as they were (converted by spec 022) ─────
 
-// Under the "In this episode" teasers, which play before the episode on the programme's clock (so no
-// sound on the edit can reach them): a music bed from the show library under all of them, ducked under
-// their voices and faded out as the last one ends, and a short effect (a soft whoosh) at each change from
-// one teaser to the next. Both are Studio settings (lib/studioSettings.ts teaserMusic, teaserWhoosh), so
-// every episode with teasers gets them; the render mixes them over the programme (podcast/editRender.ts)
-// and the editor's preview plays them with the teasers (components/studio/teaserSounds.tsx).
+// Before spec 022 stage 3a, a music bed from the show library under all the "In this episode" teasers, ducked under
+// their voices and faded out as the last one ends, and a short effect (a soft whoosh) at each change from one teaser
+// to the next, were Studio settings (lib/studioSettings.ts teaserMusic, teaserWhoosh) that every episode with teasers
+// got. They are no longer shown or saved: an edit saved before stage 3a converts them into ordinary sounds on its
+// clips at the places and levels below (lib/programme.ts programmeEdit), so its render keeps them.
 export const TeaserSoundSchema = z.object({
     library: z.string().regex(/^[\w-]{1,40}$/),            // the library entry, for its licence check and credit
     path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
@@ -158,6 +168,32 @@ export const TeaserSoundSchema = z.object({
     gainDb: z.number().min(-40).max(6),
 }).strict();
 export type TeaserSound = z.infer<typeof TeaserSoundSchema>;
+
+// ─── the opening's music (spec 022 stage 3b) ─────────────────────────────────
+
+// The music Build the opening puts under the opening: a show library music file.
+export const OpeningMusicSchema = z.object({
+    library: z.string().regex(/^[\w-]{1,40}$/),
+    path: z.string().max(300).regex(/^library\/[\w.-]+$/, 'Not a show library file'),
+    name: z.string().trim().max(150),
+}).strict();
+export type OpeningMusic = z.infer<typeof OpeningMusicSchema>;
+
+// What Build the opening picks unless told otherwise (Tom's D3: music by default, since taking it out is easier than
+// adding it): the music the last opening was built with, else the Studio's old "Music under the teasers", else the
+// first show library music by name; each only while it is in the library as music with its licence checked. None
+// when there is none.
+export function openingMusicDefault(o: {
+    remembered: OpeningMusic | null; old: Pick<OpeningMusic, 'library' | 'path' | 'name'> | null;
+    library: { id: string; kind: LibraryKind; path: string; name: string; checked: unknown }[];
+}): OpeningMusic | null {
+    const usable = o.library.filter(e => e.kind === 'music' && !!e.checked);
+    const ok = (m: OpeningMusic | null) => !!m && usable.some(e => e.id === m.library && e.path === m.path);
+    if (ok(o.remembered)) return o.remembered;
+    if (o.old && ok({ library: o.old.library, path: o.old.path, name: o.old.name })) return { library: o.old.library, path: o.old.path, name: o.old.name };
+    const first = [...usable].sort((a, b) => a.name.localeCompare(b.name))[0];
+    return first ? { library: first.id, path: first.path, name: first.name.slice(0, 150) } : null;
+}
 export const TEASER_MUSIC_DB = -16, TEASER_WHOOSH_DB = -12;
 // The music fades in over the first half second and out over the last teaser's last 1.5 s; the whoosh
 // starts a little before each change, so it peaks on the cut.

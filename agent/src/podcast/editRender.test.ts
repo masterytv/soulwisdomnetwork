@@ -11,6 +11,7 @@ import * as os from 'os';
 import { keepRanges, editedDuration, editedTime, type Cut, type EpisodeEdit } from '../../../lib/edit';
 import { playOrder, sequenceLength } from '../../../lib/sequence';
 import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
+import { newSound } from '../../../lib/audio';
 import { chainPieces, FPS, frameAt, framesOf, renderEdit } from './editRender';
 import { spawnSync } from 'child_process';
 
@@ -593,7 +594,7 @@ function meanVolume(file: string, from: number, seconds: number, filter: string)
     return !m || m[1] === '-inf' ? -120 : Number(m[1]);
 }
 
-test('the teasers\' music and whoosh (Studio settings): the bed under the teasers, a whoosh before each change, nothing after', async () => {
+test('sounds on clips (spec 022): a bed under both teasers, a wind leading into the change, nothing after', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-teaser-sounds-'));
     const clip = (name: string, colour: string, seconds: number) => {
         const f = path.join(dir, name);
@@ -611,15 +612,23 @@ test('the teasers\' music and whoosh (Studio settings): the bed under the teaser
     const whoosh = await tone('whoosh.wav', 3000, 0.4);
     const out = path.join(dir, 'out.mp4');
     const cut = { transition: 'cut' as const, durationMs: 500 };
+    const sections = { start: cut, betweenTeasers: cut, afterTeasers: cut, afterIntro: cut, beforeOutro: cut, end: cut };
+    const bed = { ...newSound({ path: 'library/bed.wav', name: 'Bed', library: 'bed' }, 'music', { srcMs: 0, atMs: 0 }), id: 'bed', durationMs: 4000, gainDb: -6, fadeInMs: 500, fadeOutMs: 1500 };
+    const wind = { ...newSound({ path: 'library/whoosh.wav', name: 'Whoosh', library: 'wh', durationMs: 400 }, 'effect', { srcMs: 0, atMs: 0 }), id: 'wind' };
     const report = await renderEdit({
-        video, edit: { cuts: [], version: 1 }, out, clean: 'off', teasers: [t1, t2],
-        sections: { start: cut, betweenTeasers: cut, afterTeasers: cut, afterIntro: cut, beforeOutro: cut, end: cut },
-        teaserSounds: {
-            music: { sound: { library: 'bed', path: 'library/bed.wav', name: 'Bed', gainDb: -6 }, file: music },
-            whoosh: { sound: { library: 'wh', path: 'library/whoosh.wav', name: 'Whoosh', gainDb: 0 }, file: whoosh },
-        },
+        video, edit: { cuts: [], version: 1 }, out, clean: 'off', sections,
+        programme: [
+            { kind: 'teaser', id: 'a', file: t1, join: null },
+            { kind: 'teaser', id: 'b', file: t2, join: { transition: cut, label: '', key: 'clip:b' } },
+            { kind: 'episode', id: 'episode', join: { transition: cut, label: '', key: 'clip:episode' } },
+        ],
+        programmeSounds: [
+            { sound: { ...wind, anchor: { clip: 'b', ms: -250 } }, file: whoosh },
+            { sound: { ...bed, anchor: { clip: 'a', ms: 0 } }, file: music },
+        ],
     });
-    assert.deepEqual(report.teaserSoundsPlayed, ['music', 'whoosh']);
+    assert.deepEqual(report.programmeSoundsPlayed, [{ id: 'bed', atMs: 0 }, { id: 'wind', atMs: 1750 }]);
+    assert.equal(report.episodeAtMs, 4000);
     const low = 'lowpass=f=1000', high = 'highpass=f=2000';
     // The bed under both teasers (looped past its 1.5 s), and gone once the episode starts at 4 s.
     const bed1 = meanVolume(out, 0.6, 0.8, low), bed2 = meanVolume(out, 2.6, 0.8, low), after = meanVolume(out, 4.6, 1.5, low);
