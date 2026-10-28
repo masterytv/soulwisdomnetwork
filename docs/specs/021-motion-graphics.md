@@ -45,7 +45,7 @@ Two parts that share one renderer.
 | `chapter` | Chapter banner over the bottom third: numeral, "CHAPTER TWO", title | Automatically, at each approved chapter after the first |
 | `pullQuote` | Full-screen quote, line by line | By hand, or as a highlight (Part B, `iris` covers the same need) |
 | `keyIdea` | Side card: "KEY IDEA", a term, a one-line definition | Suggested by Claude (Part B's picker), approved in the editor |
-| `endScreen` | 20 s end screen with spaces for YouTube's two video elements and subscribe button | Automatically, over the outro's last 20 s |
+| `endScreen` | 20 s end screen with spaces for YouTube's two video elements and subscribe button | By hand, from Elements (no longer placed automatically: Tom, 28 October 2026) |
 | `logoSting` | Logo reveal | Optional, at the start of the outro |
 | `starlight` | The starlight wipe | **A transition**, added to `lib/transitions.ts` beside the `xfade` ones, not a layer |
 | `short` | Shorts overlay with word-by-word captions | **Later** (D5); listed so the template contract fits it |
