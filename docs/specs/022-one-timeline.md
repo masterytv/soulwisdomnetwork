@@ -2,8 +2,8 @@
 
 **Date:** 28 October 2026
 **Status:** Approved by Tom on 28 October 2026, with his answers to D1–D7 (end of this page). Stage 1 (this spec) is
-PR #232. **Stage 2 is built** (branch `claude/spec-022-stage-2`; see "Stage 2 — built" below); 3a and 3b follow, each a
-PR into `staging`.
+PR #232. **Stage 2 is built** (PR #233) and **stage 3a is built** (branch `claude/spec-022-stage-3a`; see "Stage 3a — built"
+below); 3b follows, a PR into `staging`.
 **Author:** Claude, from Tom's request: make the Studio editor a regular editor, "one timeline for the whole video",
 where the "In this episode" opening is ordinary clips he can cut, duplicate, move, trim, dissolve, label and put sound
 under, not the locked teaser box it is now.
@@ -283,6 +283,38 @@ site and every render read edits the old way. To keep that safe:
   intro and outro): V1 and V3 as before, the whole video 0:26, playing through the dissolve into teaser 2, trimming
   teaser 1 (its label following), deleting teaser 2, the intro taken off (0:24) and put back, each save carrying the
   clips and the old fields in step.
+
+### Stage 3a — built
+
+- **Sounds on clips** (`lib/programme.ts`): `ProgrammeSound`, `programme.audio` (at most 100, ids once, each on a clip
+  that is there and not the episode, leading in by 10 s at most). `audio` missing (saved before 3a) converts the
+  settings' old teaser music and whoosh (`oldTeaserSounds`, placed by `teaserSoundPlan` as the render placed them; the
+  whoosh's length from its file in the render, from its library entry in the editor). Teasers carry their clip's id
+  through the editor's actions (`teasersOf(p, true)`, `withTeasers`), so the sounds on a clip stay on it; a new clip
+  never takes the id of one taken out, and a clip taken out takes its sounds with it.
+- **The render** mixes them over the whole video's sound from their clip's start (`programmeSounds`, replacing
+  `teaserSounds`), ducked under it, to the end of the video at the latest; the job checks each like the episode's
+  (library licence checked, the Studio's own copied from the repository, `publicDir`) and credits every library sound
+  in the order it is heard. **The golden test still finds every command unchanged**, including the first fixture's
+  music and whoosh, now converted into sounds on its clips.
+- **The Studio's own sounds** (#231): `public/studio/sounds` (Wind: breath, breeze, swell), `scripts/windSounds.py`,
+  `STUDIO_SOUNDS`, the Media panel's "Studio sounds", free to place anywhere.
+- **The editor**: A2 and A3 run under the whole video. Outside the episode the timeline draws the true clock (clips
+  overlap by their transitions: `withProgramme`'s `joinMs`), so a sound against a change lines up with it when heard.
+  A sound on a clip is drawn there (`clipSoundView`), dragged and trimmed there, and dragged onto the episode (music
+  keeps its time in the edit, an effect its words) or back (`soundPlace`); a sound dropped from the Media panel onto a
+  clip, or added at the playhead while the preview shows one, goes on that clip. Properties shows which clip and how far
+  from its start (`ClipSoundProperties`); Delete removes it. The preview plays them on the whole video's clock
+  (`ClipSoundsPreview`, replacing `teaserSounds.tsx`), ducked while someone speaks.
+- **Settings**: the teasers' music and whoosh pickers are gone; the stored values are kept as they are by every save,
+  only to convert older edits.
+- **Checked:** `lib/programme.test.ts` (the old sounds where `teaserSoundPlan` put them, ids kept through moves, trims
+  and removals), `lib/timeline.test.ts` (the true clock, where a sound on a clip is drawn and where a dragged one
+  lands), `lib/audio.test.ts` (the wind files), `editRender.test.ts` (a bed under two teasers and a wind leading into
+  the change, heard where placed), `editRenderJob.test.ts` (the old sounds converted and checked, a Studio sound copied
+  from the repository), the golden test; in Chromium with an old edit whose settings had music and a whoosh: both on
+  the timeline over the opening, playing with ▶ Whole video (the bed ducked), the whoosh dragged into the episode and
+  back onto teaser 1, and Wind: breath dropped from the Media panel onto teaser 2.
 
 Stage 3 is two PRs so each stays one concern; 3a first, since Build places sounds. Each stage updates CLAUDE.md's map,
 spec 020's notes and this page's status.

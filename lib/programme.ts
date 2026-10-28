@@ -449,8 +449,8 @@ export function withEnd(p: ProgrammeEdit, kind: 'intro' | 'outro'): ProgrammeEdi
 
 // The edit with its intro or outro chosen (the Parts panel): none takes the clip out, the Studio's or a file of its
 // own puts it back where it goes.
-export function setEnds<E extends EpisodeEdit>(edit: E, patch: Partial<Pick<EpisodeEdit, 'intro' | 'outro'>>, fallback: Teaser[] = []): E {
-    let p = programmeEdit(edit, fallback);
+export function setEnds<E extends EpisodeEdit>(edit: E, patch: Partial<Pick<EpisodeEdit, 'intro' | 'outro'>>, fallback: Teaser[] = [], old?: OldTeaserSounds | null): E {
+    let p = programmeEdit(edit, fallback, old);
     const next = { ...edit, ...patch };
     for (const kind of ['intro', 'outro'] as const) {
         if (!(kind in patch)) continue;

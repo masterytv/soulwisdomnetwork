@@ -258,7 +258,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         Promise.all([
             studioFetch<{
                 edit: EpisodeEdit; overlayUrls?: Record<string, string>; silences?: Silence[] | null; brollBlock?: string | null;
-                fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro']; teaserSounds?: ProgrammeSetup['teaserSounds'];
+                fresh?: boolean; teasers?: Teaser[]; studioIntro?: ProgrammeSetup['studioIntro']; oldSounds?: ProgrammeSetup['oldSounds'];
                 graphics?: { title: string; show: string; chapters: { title: string; startMs: number }[]; hosts?: string[]; logoBug?: boolean } | null;
                 highlightsOff?: boolean;
             }>(`/api/studio/episodes/${episodeId}/edit`),
@@ -267,7 +267,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             .then(([data, items]) => {
                 setBin(items);
                 setBrollHeld(data.brollBlock ?? null);
-                setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null, teaserSounds: data.teaserSounds ?? {} });
+                setProgramme({ teasers: data.teasers ?? [], studioIntro: data.studioIntro ?? null, oldSounds: data.oldSounds ?? null });
                 setHighlightsOff(data.highlightsOff ?? false);
                 // No saved edit yet: set one up (item E10), and save it.
                 const setUp = data.fresh && !data.brollBlock

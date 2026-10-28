@@ -324,8 +324,9 @@ export interface TimelineAxis {
 }
 
 // A clip of the whole video that is not the episode (item E14): a teaser (a stretch of the recording: `srcStart`), the
-// intro or the outro (files), where it is on the timeline and how long it is. `index` numbers the teasers.
-export interface ProgrammeClip { kind: 'teaser' | 'intro' | 'outro'; index: number; viewStart: number; lengthMs: number; srcStart: number }
+// intro or the outro (files), where it is on the timeline and how long it is. `index` numbers the teasers. Spec 022:
+// `id` is the clip's (lib/programme.ts), and `joinMs` how much the transition into it overlaps the clip before.
+export interface ProgrammeClip { kind: 'teaser' | 'intro' | 'outro'; index: number; viewStart: number; lengthMs: number; srcStart: number; id?: string; joinMs?: number }
 
 // The sections the splits make, and the play order when it is a valid one that moves something.
 function sectionsAndOrder(splits: number[], order: number[] | null | undefined, totalMs: number) {
@@ -573,16 +574,18 @@ export function dropPosition(axis: TimelineAxis, from: number, viewMs: number): 
 
 // ---- The whole video on the timeline (spec 020 item E14) ----
 
-// The timeline with the teasers and the intro laid before the episode and the outro after it, end to end (transitions
-// between them are not overlapped here, as within the episode). Every moment of the recording is still drawn where the
-// episode plays it: a teaser's copy of it is a clip of its own.
-export function withProgramme(axis: TimelineAxis, lead: Omit<ProgrammeClip, 'viewStart'>[], tail: Omit<ProgrammeClip, 'viewStart'>[]): TimelineAxis {
+// The timeline with the teasers and the intro laid before the episode and the outro after it. Every moment of the
+// recording is still drawn where the episode plays it: a teaser's copy of it is a clip of its own. Spec 022: each clip
+// is drawn where it plays (the true clock), overlapping the one before by the transition into it (`joinMs`), and the
+// episode by `episodeJoinMs`, so a sound placed against a change lines up with it when heard. Inside the episode,
+// transitions at splits are still not overlapped (item E13).
+export function withProgramme(axis: TimelineAxis, lead: Omit<ProgrammeClip, 'viewStart'>[], tail: Omit<ProgrammeClip, 'viewStart'>[], episodeJoinMs = 0): TimelineAxis {
     if (!lead.length && !tail.length) return axis;
     let at = 0;
-    const before = lead.map(c => { const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
-    const leadMs = at;
+    const before = lead.map((c, i) => { if (i) at -= c.joinMs ?? 0; const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
+    const leadMs = Math.max(0, at - (lead.length ? episodeJoinMs : 0));
     at = leadMs + axis.lengthMs;
-    const after = tail.map(c => { const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
+    const after = tail.map(c => { at -= c.joinMs ?? 0; const x = { ...c, viewStart: at }; at += c.lengthMs; return x; });
     return {
         moved: axis.moved || leadMs > 0,
         reordered: axis.reordered,
@@ -596,6 +599,26 @@ export function withProgramme(axis: TimelineAxis, lead: Omit<ProgrammeClip, 'vie
         extras: [...before, ...after],
         leadMs,
     };
+}
+
+// Spec 022: where a sound on a clip is drawn, from its clip's start (`ms` after it) for its length, to the end of the
+// timeline at the latest; null when its clip is not on the timeline.
+export function clipSoundView(axis: TimelineAxis, s: { anchor: { clip: string; ms: number }; durationMs: number }): { fromMs: number; toMs: number } | null {
+    const c = axis.extras.find(x => x.id === s.anchor.clip);
+    if (!c) return null;
+    const fromMs = Math.max(0, c.viewStart + s.anchor.ms);
+    const toMs = Math.min(axis.lengthMs, fromMs + s.durationMs);
+    return toMs > fromMs ? { fromMs, toMs } : null;
+}
+
+// Spec 022: where a sound whose start is dragged or dropped to `viewMs` lands: on the clip there (the teaser, intro or
+// outro, `ms` after its start), or in the episode (`srcMs`, the moment of the recording drawn there). Before the
+// first clip it lands at the first one's start.
+export function soundPlace(axis: TimelineAxis, viewMs: number): { clip: string; ms: number } | { srcMs: number } {
+    const v = Math.max(0, viewMs);
+    const c = extraAt(axis, v) ?? (v >= axis.lengthMs ? axis.extras[axis.extras.length - 1] : null);
+    if (c?.id) return { clip: c.id, ms: Math.round(v - c.viewStart) };
+    return { srcMs: Math.round(axis.toSrc(v)) };
 }
 
 // The teaser, intro or outro at a moment of the timeline; null in the episode.

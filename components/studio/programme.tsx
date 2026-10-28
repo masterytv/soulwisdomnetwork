@@ -13,18 +13,28 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { EpisodeEdit, KeptRange } from '@/lib/edit';
-import { pieceLabel, playedAt, programmeEdit, programmeOf, recordingAt, teasersOf, timedClips, type Programme, type ProgrammeEdit, type ProgrammePiece, type Teaser } from '@/lib/programme';
+import {
+    pieceLabel, playedAt, programmeEdit, programmeOf, recordingAt, teasersOf, timedClips,
+    type OldTeaserSounds, type Programme, type ProgrammeEdit, type ProgrammePiece, type Teaser,
+} from '@/lib/programme';
 import { sectionJoins, type SectionJoins, type Transition } from '@/lib/transitions';
 import { draw } from '@/components/studio/transitionPreview';
 import { secondary } from '@/components/studio/ui';
 
 // What the editor's page loaded for the programme: the teasers a new edit gets, and the Studio's intro (also its outro).
-// And the teasers' music and whoosh from the Studio settings, when set and licence-checked (components/studio/teaserSounds.tsx).
-export interface TeaserSoundLink { name: string; url: string; gainDb: number }
+// And (spec 022 stage 3a) the Studio settings' old teaser music and whoosh, which an edit saved before then converts into
+// sounds on its clips, as the render does.
 export interface ProgrammeSetup {
     teasers: Teaser[];
     studioIntro: { name: string; url: string } | null;
-    teaserSounds?: { music?: TeaserSoundLink; whoosh?: TeaserSoundLink };
+    oldSounds?: Omit<OldTeaserSounds, 'sections'> | null;
+}
+
+// The whole video's clips for an edit, as the render reads them (lib/programme.ts programmeEdit): the old teaser
+// music and whoosh placed by the edit's transitions or the Studio's.
+export function clipsOf(edit: EpisodeEdit, setup: ProgrammeSetup | null, studioJoins: SectionJoins | null): ProgrammeEdit {
+    const old = setup?.oldSounds ? { ...setup.oldSounds, sections: sectionJoins(edit.joins, studioJoins ?? undefined) } : null;
+    return programmeEdit(edit, setup?.teasers ?? [], old);
 }
 
 // Which piece the second video is playing (null: none; the editor's video has the episode), shared by the player and
@@ -109,9 +119,9 @@ export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: 
     setup: ProgrammeSetup | null; edit: EpisodeEdit; urls: Record<string, string>; studioJoins: SectionJoins | null; src: string; editedMs: number;
 }): ProgrammeView | null {
     const [control] = useState(() => new ProgrammeControl());
-    const clips = useMemo(() => programmeEdit(edit, setup?.teasers ?? []),
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- what programmeEdit reads
-        [edit.programme, edit.teasers, edit.intro, edit.outro, setup?.teasers]);
+    const clips = useMemo(() => clipsOf(edit, setup, studioJoins),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- what clipsOf reads
+        [edit.programme, edit.teasers, edit.intro, edit.outro, edit.joins, setup, studioJoins]);
     // The episode's own, none (no intro or outro clip, item E14), or the Studio's.
     const hasIntro = clips.clips.some(c => c.kind === 'intro'), hasOutro = clips.clips.some(c => c.kind === 'outro');
     const intro = useMemo(() => !hasIntro ? null : edit.intro ? { name: edit.intro.name, url: urls[edit.intro.path] ?? null } : setup?.studioIntro ?? null,
@@ -120,7 +130,8 @@ export function useProgramme({ setup, edit, urls, studioJoins, src, editedMs }: 
         [hasOutro, edit.outro, urls, setup?.studioIntro]);
     const introMs = useMediaLength(intro?.url ?? null);
     const outroMs = useMediaLength(outro?.url ?? null);
-    const teasers = useMemo(() => teasersOf(clips), [clips]);
+    // With their clips' ids, so the teasers' actions keep each clip (and the sounds on it).
+    const teasers = useMemo(() => teasersOf(clips, true), [clips]);
     const sections = useMemo(() => sectionJoins(edit.joins, studioJoins ?? undefined), [edit.joins, studioJoins]);
     return useMemo(() => {
         if (!setup) return null;
