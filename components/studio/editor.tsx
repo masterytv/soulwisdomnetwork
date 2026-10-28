@@ -62,6 +62,7 @@ import { PartsPanel } from '@/components/studio/partsPanel';
 import { FindReplace } from '@/components/studio/review/FindReplace';
 import { fixGroup, fixOp, isUnsure, putBackOp, unsureTitle, type FixOp } from '@/lib/wordFixes';
 import { ProgrammePlayer, useProgramme, type ProgrammeSetup } from '@/components/studio/programme';
+import { TeaserSoundsPreview } from '@/components/studio/teaserSounds';
 import { addTeaser as withTeaser } from '@/lib/programme';
 import { teaserSlot } from '@/lib/timeline';
 
@@ -1064,6 +1065,9 @@ export function Editor({
                 <SoundsPreview sounds={sounds} clips={kept} editedMs={editedMs} video={videoRef} urls={mediaUrls} words={words} mutedTracks={mutedTracks} />
             )}
             {prog && <ProgrammePlayer view={prog} video={videoRef} ranges={ranges} hold={previewRef} active={playMode === 'edited'} />}
+            {prog && programme?.teaserSounds && (programme.teaserSounds.music || programme.teaserSounds.whoosh) && (
+                <TeaserSoundsPreview prog={prog} sounds={programme.teaserSounds} />
+            )}
             {workspace && !overlaysHidden && prog && (
                 <ProgrammeGraphics layers={layers} prog={prog} video={videoRef} clips={kept} editedMs={editedMs}
                     colors={brand.colors} logo={graphicsLogo} starlights={starlightSplits} />

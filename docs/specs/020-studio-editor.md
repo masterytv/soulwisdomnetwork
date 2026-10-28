@@ -719,6 +719,19 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 
 ### E7 — Built (#160)
 
+- **The teasers' music and whoosh** (added after E7, Tom, 28 October 2026). A sound on the edit sits on the edited
+  episode's clock, so none can reach the "In this episode" teasers, which play before it. Two Studio settings
+  (Settings → Finished video, under the teasers) cover them for every episode: `teaserMusic`, a library music file
+  under all the teasers (looped, ducked under their voices, fading in over 0.5 s and out over the last teaser's last
+  1.5 s, −16 dB by default), and `teaserWhoosh`, a library effect at each change from one teaser to the next (starting
+  250 ms before the cut, or the middle of a transition, so it peaks on it; −12 dB by default). Both are
+  `TeaserSoundSchema` (`lib/audio.ts`), timed by `teaserSoundPlan` on the programme's clock. They need a library entry
+  of the right kind with its licence checked (refused on save, left out of a render with a warning if the check is
+  later taken back) and are credited and logged like any library sound, first. The render mixes them over the
+  programme's sound (`podcast/editRender.ts`, `teaserSounds`); the editor's preview plays them with the programme
+  player (`components/studio/teaserSounds.tsx`). Tested in `lib/audio.test.ts`, `editRender.test.ts` (heard where
+  planned) and `editRenderJob.test.ts`.
+
 - **Model** (`lib/audio.ts`, tested in `lib/audio.test.ts`): `edit.audio`, at most 200 sounds, ids unique. A sound is a file
   on **A2 Music** or **A3 Effects** with the layers' `anchor` and `durationMs` (so `layerSpan`, `startAt` and the timeline's
   drag code serve both), and `inMs` (where in the file it starts), `loop`, `gainDb`, `fadeInMs`, `fadeOutMs` and `duck`.

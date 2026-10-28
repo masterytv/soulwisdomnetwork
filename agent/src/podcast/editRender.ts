@@ -24,7 +24,7 @@ import { mmss } from '../../../lib/showNotes';
 import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
 import type { CaptionStyle } from '../../../lib/onScreen';
 import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLayer, type TextLayer, type VideoLayer } from '../../../lib/layers';
-import { soundFilter, soundsMix, soundSpan, type Sound } from '../../../lib/audio';
+import { soundFilter, soundsMix, soundSpan, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from '../../../lib/audio';
 import type { RenderQc } from '../../../types/episode';
 import { assCheck, measureRender, onScreenChecks } from './renderQc';
 import { auphonicInput, deepFilterTrack, placeAt, speakerMix, studioSoundTrack } from './voiceCleanup';
@@ -140,6 +140,7 @@ interface RenderReport {
     qc: RenderQc;                 // the quality report on the finished file (renderQc.ts)
     warnings: string[];           // transitions that played as straight cuts, and why
     soundsPlayed: string[];       // the sounds (item E7) the episode plays, by id in the order they start, for credits and the log
+    teaserSoundsPlayed?: ('music' | 'whoosh')[];   // the teasers' music and whoosh, when they played (Studio settings)
 }
 
 // ─── the render ─────────────────────────────────────────────────────────────
@@ -194,6 +195,9 @@ export async function renderEdit(opts: {
     // Music and effects (spec 020 item E7, lib/audio.ts), each with its local file: mixed under the voice
     // on the edited episode, the ducked ones lowered while anyone speaks.
     sounds?: { sound: Sound; file: string }[];
+    // The teasers' music bed and the whoosh at each change between them (Studio settings, lib/audio.ts
+    // teaserSoundPlan), each with its local file, mixed over the programme while the teasers play.
+    teaserSounds?: { music?: { sound: TeaserSound; file: string }; whoosh?: { sound: TeaserSound; file: string } };
     // Where finished windows (and an expensive voice clean-up) are kept, so a retried run skips them (spec 019
     // item 4.2): `get` fetches a kept file to `local` and says whether there was one.
     store?: { get: (name: string, local: string) => Promise<boolean>; put: (local: string, name: string) => Promise<void> };
@@ -510,18 +514,52 @@ export async function renderEdit(opts: {
             }
             asm.close();
         }
+        // The teasers' music and whoosh (Studio settings), over the programme's sound while the teasers play:
+        // the bed ducked under their voices, a whoosh at each change.
+        let finalRaw = programmeRaw;
+        const teaserPlayed: ('music' | 'whoosh')[] = [];
+        if (opts.teaserSounds?.music || opts.teaserSounds?.whoosh) {
+            const ms = (frames: number) => frames * 1000 / FPS;
+            const plan = teaserSoundPlan(pieces.map(p => ({ kind: p.kind, atMs: ms(p.start), lengthMs: ms(p.frames), joinMs: ms(p.join) })));
+            const { music, whoosh } = opts.teaserSounds;
+            const args = ['-y', '-hide_banner', '-loglevel', 'error', ...S16, '-i', programmeRaw];
+            let f = '[0:a]anull[pga];';
+            const ducked: string[] = [], others: string[] = [];
+            if (music && plan.music) {
+                args.push('-stream_loop', '-1', '-i', music.file);
+                f += soundFilter(1, 'tmus', teaserMusicSound(music.sound, plan.music), plan.music);
+                ducked.push('tmus');
+                teaserPlayed.push('music');
+            }
+            if (whoosh && plan.whooshes.length) {
+                const fileMs = await probeDuration(whoosh.file).then(d => d * 1000).catch(() => null);
+                plan.whooshes.forEach((at, i) => {
+                    const sound = teaserWhooshSound(whoosh.sound, at, fileMs);
+                    args.push('-i', whoosh.file);
+                    f += soundFilter(args.filter(a => a === '-i').length - 1, `twh${i}`, sound, { startMs: at, endMs: at + sound.durationMs });
+                    others.push(`twh${i}`);
+                });
+                teaserPlayed.push('whoosh');
+            }
+            if (ducked.length || others.length) {
+                f += soundsMix('pga', ducked, others, 'pgm');
+                f += `[pgm]apad,atrim=end_sample=${programme.frames * SAMPLES_PER_FRAME}[mix]`;
+                finalRaw = raw('programme_teasers.raw');
+                await run('ffmpeg', [...args, '-filter_complex', f, '-map', '[mix]', ...S16, finalRaw]);
+            }
+        }
         // At the very start and end, a transition is a fade from or to black, and the sound fades with it.
         const fades = [
             ...(edgeFrames.start ? [`afade=t=in:st=0:d=${(edgeFrames.start / FPS).toFixed(6)}`] : []),
             ...(edgeFrames.end ? [`afade=t=out:st=${((programme.frames - edgeFrames.end) / FPS).toFixed(6)}:d=${(edgeFrames.end / FPS).toFixed(6)}`] : []),
         ];
         const programmeWav = raw('programme.wav'), audioOut = raw('programme.m4a');
-        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...S16, '-i', programmeRaw,
+        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...S16, '-i', finalRaw,
             '-af', [...fades, `atrim=end_sample=${programme.frames * SAMPLES_PER_FRAME}`].join(','), '-c:a', 'pcm_s16le', programmeWav]);
         let normalization: string | null = null;
         if (clean !== 'off') ({ normalization } = await normalizeLoudness(programmeWav, audioOut));
         else await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', programmeWav, '-c:a', 'aac', '-b:a', '192k', audioOut]);
-        for (const f of [voiceRaw, episodeRaw, mixedRaw, programmeRaw, programmeWav]) { try { fs.unlinkSync(f); } catch {} }
+        for (const f of [voiceRaw, episodeRaw, mixedRaw, programmeRaw, finalRaw, programmeWav]) { try { fs.unlinkSync(f); } catch {} }
 
         // ── The picture, in windows, each encoded once ──────────────────────────
         const starts = windowStarts(pieces, parts, programme.frames,
@@ -657,6 +695,7 @@ export async function renderEdit(opts: {
             qc,
             warnings,
             soundsPlayed: [...sounds].sort((a, b) => a.span.startMs - b.span.startMs).map(s => s.sound.id),
+            ...(teaserPlayed.length ? { teaserSoundsPlayed: teaserPlayed } : {}),
         };
         const base = opts.out.replace(/\.\w+$/, '');
         if (opts.words?.length || opts.chapters?.length || opts.quotes?.length) {

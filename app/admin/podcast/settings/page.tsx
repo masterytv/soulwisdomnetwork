@@ -23,6 +23,50 @@ import { PODCAST_CATEGORIES, PODCAST_SUBCATEGORIES, subcategoryOf } from "@/lib/
 import { DENSITY_LABELS, HIGHLIGHT_DENSITIES } from "@/lib/highlights";
 import { HIGHLIGHT_LABELS, HIGHLIGHT_LAYOUTS } from "@/lib/reframe";
 import type { SettingsView } from "@/lib/server/studioSettings";
+import { TEASER_MUSIC_DB, TEASER_WHOOSH_DB, type LibraryEntry, type TeaserSound } from "@/lib/audio";
+
+// The teasers' music or whoosh (lib/audio.ts teaserSoundPlan): a show library file of the right kind whose licence an
+// admin has checked, and its level; "None" plays nothing.
+function TeaserSoundPick({ label, kind, value, defaultDb, disabled, onChange, note }: {
+    label: string; kind: LibraryEntry["kind"]; value: TeaserSound | null; defaultDb: number; disabled: boolean;
+    onChange: (v: TeaserSound | null) => void; note: string;
+}) {
+    const [entries, setEntries] = useState<LibraryEntry[] | null>(null);
+    useEffect(() => {
+        studioFetch<{ entries: LibraryEntry[] }>("/api/studio/library").then(r => setEntries(r.entries)).catch(() => setEntries([]));
+    }, []);
+    const usable = (entries ?? []).filter(e => e.kind === kind && e.checked);
+    const chosen = entries?.find(e => e.id === value?.library);
+    return (
+        <div className="flex flex-col gap-1 text-sm text-gray-200">
+            <div className="flex flex-wrap items-center gap-2">
+                <span>{label}</span>
+                <select aria-label={label} disabled={disabled || entries === null} className={`${field} !w-auto !py-1 !px-2 text-xs`} value={value?.library ?? ""}
+                    onChange={e => {
+                        const pick = usable.find(x => x.id === e.target.value);
+                        onChange(pick ? { library: pick.id, path: pick.path, name: pick.name.slice(0, 150), gainDb: value?.gainDb ?? defaultDb } : null);
+                    }}>
+                    <option value="">None</option>
+                    {value && !usable.some(e => e.id === value.library) && <option value={value.library}>{value.name} (licence not checked)</option>}
+                    {usable.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                </select>
+                {value && (
+                    <label className="flex items-center gap-1" title="Its level, in decibels (0 is as the file is)">
+                        Level
+                        <input type="range" min={-40} max={0} step={1} value={value.gainDb} aria-label={`${label}: level`} disabled={disabled}
+                            onChange={e => onChange({ ...value, gainDb: Number(e.target.value) })} />
+                        <span className="tabular-nums w-12">{value.gainDb} dB</span>
+                    </label>
+                )}
+                {chosen?.url && <audio src={chosen.url} controls preload="none" className="h-8" />}
+            </div>
+            <span className={hint}>
+                {note} From the <Link href="/admin/podcast/library" className="underline">show library</Link>{kind === "music" ? " (Music)" : " (Effects)"}, once its licence is checked.
+                {entries !== null && !usable.length && ` Nothing there yet: add one and check its licence first.`}
+            </span>
+        </div>
+    );
+}
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
     return (
@@ -279,6 +323,16 @@ export default function StudioSettingsPage() {
                                     <input type="checkbox" checked={s.teasers} onChange={e => set("teasers", e.target.checked)} disabled={off} className="mt-1" />
                                     <span>&ldquo;In this episode&rdquo; teaser clips before the intro<span className={`block ${hint}`}>Taken from the teaser clips in the approved show notes.</span></span>
                                 </label>
+                                {s.teasers && (
+                                    <div className="flex flex-col gap-2 pl-6">
+                                        <TeaserSoundPick label="Music under the teasers" kind="music" value={s.teaserMusic} defaultDb={TEASER_MUSIC_DB} disabled={off}
+                                            onChange={v => set("teaserMusic", v)}
+                                            note="A bed under all the teasers, lowered while they speak, fading out as the last one ends." />
+                                        <TeaserSoundPick label="Sound between teasers" kind="effect" value={s.teaserWhoosh} defaultDb={TEASER_WHOOSH_DB} disabled={off}
+                                            onChange={v => set("teaserWhoosh", v)}
+                                            note="A short effect, such as a soft whoosh, at each change from one teaser to the next." />
+                                    </div>
+                                )}
                                 {/* Spec 020 item E4: transitions around the episode, for every episode's render. */}
                                 <fieldset disabled={off} className="flex flex-col gap-1">
                                     <span className="text-sm text-gray-200">Transitions</span>

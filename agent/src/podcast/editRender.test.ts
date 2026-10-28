@@ -585,3 +585,48 @@ test('highlights (spec 021 M3): the picture pans, shrinks and dims by the keyfra
     assert.ok(near(await pixelAt(out, at(9000) + 2.5, 1400, 540), [255, 0, 0]), `bright red after, got ${await pixelAt(out, at(9000) + 2.5, 1400, 540)}`);
     fs.rmSync(dir, { recursive: true, force: true });
 });
+
+// The mean level, in dB, of a stretch of a file's sound after a filter (a band of it).
+function meanVolume(file: string, from: number, seconds: number, filter: string): number {
+    const r = spawnSync('ffmpeg', ['-hide_banner', '-ss', String(from), '-t', String(seconds), '-i', file, '-vn', '-af', `${filter},volumedetect`, '-f', 'null', '-'], { encoding: 'utf8' });
+    const m = /mean_volume: (-?[\d.]+|-inf) dB/.exec(r.stderr);
+    return !m || m[1] === '-inf' ? -120 : Number(m[1]);
+}
+
+test('the teasers\' music and whoosh (Studio settings): the bed under the teasers, a whoosh before each change, nothing after', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-teaser-sounds-'));
+    const clip = (name: string, colour: string, seconds: number) => {
+        const f = path.join(dir, name);
+        return run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `color=c=${colour}:s=640x360:r=30:d=${seconds}`,
+            '-f', 'lavfi', '-i', `anullsrc=channel_layout=stereo:sample_rate=48000`, '-t', String(seconds),
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', f]).then(() => f);
+    };
+    const [t1, t2, video] = [await clip('t1.mp4', 'red', 2), await clip('t2.mp4', 'green', 2), await clip('episode.mp4', 'blue', 3)];
+    const tone = async (name: string, hz: number, seconds: number) => {
+        const f = path.join(dir, name);
+        await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', `sine=frequency=${hz}:duration=${seconds}:sample_rate=48000`, '-ac', '2', f]);
+        return f;
+    };
+    const music = await tone('bed.wav', 440, 1.5);       // shorter than the teasers, so it must loop
+    const whoosh = await tone('whoosh.wav', 3000, 0.4);
+    const out = path.join(dir, 'out.mp4');
+    const cut = { transition: 'cut' as const, durationMs: 500 };
+    const report = await renderEdit({
+        video, edit: { cuts: [], version: 1 }, out, clean: 'off', teasers: [t1, t2],
+        sections: { start: cut, betweenTeasers: cut, afterTeasers: cut, afterIntro: cut, beforeOutro: cut, end: cut },
+        teaserSounds: {
+            music: { sound: { library: 'bed', path: 'library/bed.wav', name: 'Bed', gainDb: -6 }, file: music },
+            whoosh: { sound: { library: 'wh', path: 'library/whoosh.wav', name: 'Whoosh', gainDb: 0 }, file: whoosh },
+        },
+    });
+    assert.deepEqual(report.teaserSoundsPlayed, ['music', 'whoosh']);
+    const low = 'lowpass=f=1000', high = 'highpass=f=2000';
+    // The bed under both teasers (looped past its 1.5 s), and gone once the episode starts at 4 s.
+    const bed1 = meanVolume(out, 0.6, 0.8, low), bed2 = meanVolume(out, 2.6, 0.8, low), after = meanVolume(out, 4.6, 1.5, low);
+    assert.ok(bed1 > -50 && bed2 > -50, `the bed under the teasers: ${bed1} and ${bed2} dB`);
+    assert.ok(after < bed1 - 30, `no bed over the episode: ${after} dB against ${bed1}`);
+    // The whoosh 250 ms before the change at 2 s, and nowhere else.
+    const at = meanVolume(out, 1.78, 0.35, high), before = meanVolume(out, 0.6, 0.8, high), later = meanVolume(out, 4.6, 1.5, high);
+    assert.ok(at > before + 25 && at > later + 25, `the whoosh at the change: ${at} dB against ${before} before and ${later} later`);
+    fs.rmSync(dir, { recursive: true, force: true });
+});

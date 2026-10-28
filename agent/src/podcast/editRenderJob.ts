@@ -30,7 +30,7 @@ import { asVideoLayer, episodeAnchored, GRAPHIC_MAX_MS, graphicSpec, highlightTe
 import { HIGHLIGHT_KEYFRAMES, HIGHLIGHT_LABELS } from '../../../lib/reframe';
 import { HIGHLIGHT_PLANES } from './graphics/reframe';
 import { createHash } from 'crypto';
-import { soundCredits, type LibraryEntry, type LibraryUse, type Sound } from '../../../lib/audio';
+import { soundCredits, type LibraryEntry, type LibraryUse, type Sound, type TeaserSound } from '../../../lib/audio';
 import { MIN_CHAPTER_MS, type TimedWord } from '../../../lib/retime';
 import { DEFAULT_SETTINGS, type StudioSettings } from '../../../lib/studioSettings';
 import { sectionJoins, type SectionJoins } from '../../../lib/transitions';
@@ -354,7 +354,11 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
     // Each sound's file. A show library file plays only while its licence is checked (an admin can take a
     // check back after the sound was placed); the others are left out, with a warning.
-    const libraryIds = [...new Set(plan.sounds.flatMap(s => (s.library ? [s.library] : [])))];
+    // The teasers' music and whoosh (Studio settings) go by the same rule, and only when there are teasers.
+    const teaserPicks = teasers.length
+        ? ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []))
+        : [];
+    const libraryIds = [...new Set([...plan.sounds.flatMap(s => (s.library ? [s.library] : [])), ...teaserPicks.map(x => x.t.library)])];
     const library = libraryIds.length && deps.library ? await deps.library(libraryIds) : new Map<string, Pick<LibraryEntry, 'path' | 'checked' | 'licence'>>();
     const sounds: { sound: Sound; file: string }[] = [];
     const soundWarnings: string[] = [];
@@ -365,6 +369,14 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             if (!entry.checked) { soundWarnings.push(`The sound "${s.media.name}": its licence is not checked, so it was left out.`); continue; }
         }
         sounds.push({ sound: s, file: await get(s.media.path, `sound-${i + 1}`) });
+    }
+    const teaserSounds: { music?: { sound: TeaserSound; file: string }; whoosh?: { sound: TeaserSound; file: string } } = {};
+    for (const { k, t } of teaserPicks) {
+        const entry = library.get(t.library);
+        const label = k === 'music' ? 'The teasers\' music' : 'The teasers\' whoosh';
+        if (!entry || entry.path !== t.path) { soundWarnings.push(`${label} "${t.name}" is no longer in the show library, so it was left out.`); continue; }
+        if (!entry.checked) { soundWarnings.push(`${label} "${t.name}": its licence is not checked, so it was left out.`); continue; }
+        teaserSounds[k] = { sound: t, file: await get(t.path, `teaser-${k}`) };
     }
     const onScreen = plan.onScreen.captions || plan.onScreen.texts.length || pictures.length
         ? { captions: plan.onScreen.captions, texts: plan.onScreen.texts, pictures } : undefined;
@@ -395,6 +407,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         ...(overlays.length ? { overlays } : {}),
         ...(highlights.length ? { highlights } : {}),
         ...(sounds.length ? { sounds } : {}),
+        ...(teaserSounds.music || teaserSounds.whoosh ? { teaserSounds } : {}),
         ...(deps.exists ? { store: {
             get: async (name: string, local: string) => {
                 const at = `${work}/${name}`;
@@ -415,8 +428,13 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     // The credits the library files it played ask for, and those files, for the description and the log.
     const order = report.soundsPlayed ?? [];
     const played = new Set(order);
-    const credits = soundCredits(plan.sounds.map(s => ({ sound: s, span: played.has(s.id) ? { startMs: order.indexOf(s.id), endMs: order.indexOf(s.id) + 1 } : null })), library);
-    const usedLibrary = [...new Set(plan.sounds.flatMap(s => (played.has(s.id) && s.library && library.has(s.library) ? [s.library] : [])))];
+    // The teasers' sounds play first, before the episode, so their credits come first.
+    const teaserUsed = (report.teaserSoundsPlayed ?? []).flatMap(k => (teaserSounds[k] ? [teaserSounds[k]!.sound.library] : []));
+    const credits = [...new Set([
+        ...teaserUsed.flatMap(id => { const c = library.get(id)?.licence.credit.trim(); return c ? [c] : []; }),
+        ...soundCredits(plan.sounds.map(s => ({ sound: s, span: played.has(s.id) ? { startMs: order.indexOf(s.id), endMs: order.indexOf(s.id) + 1 } : null })), library),
+    ])];
+    const usedLibrary = [...new Set([...teaserUsed, ...plan.sounds.flatMap(s => (played.has(s.id) && s.library && library.has(s.library) ? [s.library] : []))])];
 
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
     // it was given words, chapters or quotes; each one found is kept with the video.

@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
     EMPTY_LICENCE, fileTimeAt, licenceMissing, licenceProblem, newSound, soundCredits, soundFilter, soundGainAt, soundsMix,
     SoundSchema, SoundsSchema, soundSpan, SOUND_TRACK, uploadKind, type Licence,
+    teaserMusicSound, teaserSoundPlan, TeaserSoundSchema, teaserWhooshSound, WHOOSH_LEAD_MS, TEASER_MUSIC_DB,
 } from './audio';
 import { WHOLE_EPISODE_MS } from './layers';
 import { youtubeDescription, type ShowNotes } from './showNotes';
@@ -103,4 +104,34 @@ test('credits go in the YouTube description before the hashtags, and in a Short\
     assert.equal(youtubeDescription(notes, links), 'About it.\n\nSubscribe.\n\n#soul');
     const meta = shortMetadata({ title: 'T', speaker: 'Ana', synthetic: false }, 'Words.', { url: '', linkText: '', hashtags: ['soul'], tags: [], credits: ['Music: Calm by A'] });
     assert.equal(meta.description, '“Words.” — Ana\n\nMusic and sound\nMusic: Calm by A\n\n#soul #shorts');
+});
+
+// The teasers' music and whoosh (Studio settings): timed on the programme's clock, before the episode.
+const TS = { library: 'lib1', path: 'library/bed.mp3', name: 'Starlit bed', gainDb: TEASER_MUSIC_DB };
+const piece = (kind: string, atMs: number, lengthMs: number, joinMs = 0) => ({ kind, atMs, lengthMs, joinMs });
+
+test('teaser sounds: the bed spans the teasers; a whoosh leads each change, mid-transition when there is one', () => {
+    const plan = teaserSoundPlan([
+        piece('teaser', 0, 7000), piece('teaser', 7000, 5000), piece('teaser', 11_500, 6000, 500),
+        piece('intro', 17_500, 10_000), piece('episode', 27_500, 600_000),
+    ]);
+    assert.deepEqual(plan.music, { startMs: 0, endMs: 17_500 });
+    assert.deepEqual(plan.whooshes, [7000 - WHOOSH_LEAD_MS, 11_750 - WHOOSH_LEAD_MS]);
+    // No teasers: nothing; one teaser: the bed and no whoosh.
+    assert.deepEqual(teaserSoundPlan([piece('intro', 0, 10_000), piece('episode', 10_000, 60_000)]), { music: null, whooshes: [] });
+    assert.deepEqual(teaserSoundPlan([piece('teaser', 0, 4000), piece('episode', 4000, 60_000)]).whooshes, []);
+});
+
+test('teaser sounds: valid sounds for the render, and the setting checks its file and level', () => {
+    const bed = teaserMusicSound(TS, { startMs: 0, endMs: 17_500 });
+    assert.equal(SoundSchema.safeParse(bed).success, true);
+    assert.deepEqual([bed.loop, bed.duck, bed.durationMs, bed.gainDb], [true, true, 17_500, TEASER_MUSIC_DB]);
+    const whoosh = teaserWhooshSound({ ...TS, gainDb: -12 }, 6750, 820.4);
+    assert.equal(SoundSchema.safeParse(whoosh).success, true);
+    assert.deepEqual([whoosh.loop, whoosh.duck, whoosh.durationMs], [false, false, 820]);
+    assert.equal(teaserWhooshSound(TS, 0, null).durationMs, 1500, 'an unknown length plays 1.5 s');
+    assert.equal(TeaserSoundSchema.safeParse(TS).success, true);
+    for (const bad of [{ ...TS, path: 'episodes/abcdefghij/media/x.mp3' }, { ...TS, gainDb: 12 }, { ...TS, extra: 1 }, { ...TS, library: '../x' }]) {
+        assert.equal(TeaserSoundSchema.safeParse(bad).success, false, JSON.stringify(bad));
+    }
 });

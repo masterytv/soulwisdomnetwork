@@ -79,6 +79,16 @@ export const GET = handle<Context>(async (request, { params }) => {
     const introUrl = intro === 'site' ? SHOW_INTRO_URL
         : intro ? await adminBucket().file(intro.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null) : null;
     const studio = introUrl ? { name: settings.intro === 'custom' ? 'Your intro' : 'The show\'s intro', url: introUrl } : null;
+    // The teasers' music and whoosh (Studio settings), for the preview: only while their licences are checked, as the render plays them.
+    const picks = ([['music', settings.teaserMusic], ['whoosh', settings.teaserWhoosh]] as const).flatMap(([k, t]) => (t ? [{ k, t }] : []));
+    const pickEntries = picks.length ? await libraryEntries(picks.map(x => x.t.library)) : new Map();
+    const teaserSounds: Record<string, { name: string; url: string; gainDb: number }> = {};
+    for (const { k, t } of picks) {
+        const e = pickEntries.get(t.library);
+        if (!e || e.path !== t.path || !e.checked) continue;
+        const url = await adminBucket().file(t.path).getSignedUrl({ action: 'read', expires: Date.now() + 6 * 3600_000 }).then(([u]) => u).catch(() => null);
+        if (url) teaserSounds[k] = { name: t.name, url, gainDb: t.gainDb };
+    }
     // Why editing is held, if it is: the b-roll images are neither made nor skipped (lib/brollGate.ts).
     // Spec 021 M2: what a fresh edit's motion graphics are placed from (the editor itself has the words
     // and the hosts); null once an edit is saved, so they are never placed twice — and null when the
@@ -91,7 +101,7 @@ export const GET = handle<Context>(async (request, { params }) => {
         logoBug: settings.placeLogoBug,
     };
     return Response.json({
-        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, graphics,
+        edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, teaserSounds, graphics,
         // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
         highlightsOff: settings.highlightDensity === 'off',
     });
