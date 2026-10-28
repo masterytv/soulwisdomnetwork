@@ -17,7 +17,7 @@ import { cutClip, probeDuration } from './media';
 import { highlight, logoBug, motionEndScreen, motionLogoBug, motionLowerThird, SITE_LOGO } from '../../../lib/layers';
 import { HIGHLIGHT_KEYFRAMES } from '../../../lib/reframe';
 import { EMPTY_LICENCE, newSound, STUDIO_SOUNDS, type LicenceCheck } from '../../../lib/audio';
-import { programmeEdit, setProgramme } from '../../../lib/programme';
+import { buildOpening, programmeEdit, setLabel, setProgramme } from '../../../lib/programme';
 import type { EpisodeEdit } from '../../../lib/edit';
 
 const ID = 'testEpisode123';
@@ -752,4 +752,45 @@ test('spec 022 3a: sounds on clips go to the render with their files; the Studio
     assert.ok(!downloads.some(p => p.startsWith('studio/')), downloads.join(', '));
     assert.deepEqual(pieces, [{ kind: 'teaser', id: 't1' }, { kind: 'teaser', id: 't2' }, { kind: 'episode', id: 'episode' }]);
     fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('spec 022 3b: a built opening goes to the render as clips, dissolves, labels and winds; a label on the intro is laid over it alone', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'edit-render-built-'));
+    const base = { version: 1, cuts: [] } as EpisodeEdit;
+    const notes = [{ startMs: 1000, endMs: 3000, speaker: 'Ana' }, { startMs: 5000, endMs: 7000, speaker: 'Ben' }];
+    const built = buildOpening(programmeEdit(base), { teasers: notes, sections: DEFAULT_SETTINGS.joins, music: null });
+    const edit = setProgramme(base, setLabel(built, 'intro', { on: true, speaker: 'Welcome' }));
+    const overlaid: string[] = [];
+    let given: { programme: { kind: string; id?: string; file?: string; join: string | null }[]; sounds: string[] } = { programme: [], sounds: [] };
+    await runEditRender(ID, {
+        getEpisode: async () => episode({ package: undefined, review: {}, broll: undefined, edit }),
+        download: async (_p, dest) => { fs.writeFileSync(dest, ''); },
+        upload: async () => {},
+        saveToDrive: async () => null,
+        update: async () => {},
+        cutClip: async (_in, out) => { fs.writeFileSync(out, ''); },
+        overlayClip: async (input, _overlay, out) => { overlaid.push(`${path.basename(input)} → ${path.basename(out)}`); fs.writeFileSync(out, ''); },
+        render: async opts => {
+            given = {
+                programme: (opts.programme ?? []).map(p => ({ kind: p.kind, id: p.id, file: p.file && path.basename(p.file), join: p.join ? `${p.join.transition.transition} ${p.join.transition.durationMs}` : null })),
+                sounds: (opts.programmeSounds ?? []).map(s => `${s.sound.id} on ${s.sound.anchor.clip} at ${s.sound.anchor.ms}`),
+            };
+            fs.writeFileSync(opts.out, '');
+            return { inputSeconds: 1, outputSeconds: 1, cuts: 0, timeSavedSeconds: 0, renderSeconds: 1, qc: {} as never, warnings: [], soundsPlayed: [] };
+        },
+        now: () => 'NOW',
+        settings: { ...DEFAULT_SETTINGS, intro: 'custom', introPath: 'settings/intro-1.mp4' },
+        graphics: { name: spec => `${spec.template}-${JSON.stringify(spec.fields).length}.mov`, draw: async (_spec, out) => { fs.writeFileSync(out, ''); } },
+        publicDir: path.resolve('public'),
+    }, path.join(dir, 'work'), '5');
+    fs.rmSync(dir, { recursive: true, force: true });
+    assert.deepEqual(given.programme, [
+        { kind: 'teaser', id: 'c1', file: 'teaser-cut-1-tagged.mp4', join: null },
+        { kind: 'teaser', id: 'c2', file: 'teaser-cut-2-tagged.mp4', join: 'dissolve 500' },
+        { kind: 'intro', id: 'intro', file: 'intro-tagged.mp4', join: 'cut 500' },
+        { kind: 'episode', id: 'episode', file: undefined, join: 'cut 500' },
+        { kind: 'outro', id: 'outro', file: 'intro.mp4', join: 'cut 500' },
+    ]);
+    assert.deepEqual(overlaid, ['teaser-cut-1.mp4 → teaser-cut-1-tagged.mp4', 'teaser-cut-2.mp4 → teaser-cut-2-tagged.mp4', 'intro.mp4 → intro-tagged.mp4']);
+    assert.deepEqual(given.sounds, ['wind-c2 on c2 at 0']);
 });

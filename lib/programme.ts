@@ -9,7 +9,7 @@ import { replaceSuggestions, suggestCuts, SUGGESTED_REASONS, type EpisodeEdit, t
 import type { SpokenWord } from './showNotes';
 import { SECTION_JOIN_LABELS, TransitionSchema, type SectionJoin, type SectionJoins, type Transition, type TransitionKind } from './transitions';
 import { LAYER_MIN_MS, TRACK, type GraphicLayer } from './layers';
-import { SOUND_TRACK, SoundSchema, TEASER_MUSIC_FADE_IN_MS, TEASER_MUSIC_FADE_OUT_MS, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from './audio';
+import { SOUND_TRACK, SoundSchema, type OpeningMusic, TEASER_MUSIC_FADE_IN_MS, TEASER_MUSIC_FADE_OUT_MS, teaserMusicSound, teaserSoundPlan, teaserWhooshSound, type Sound, type TeaserSound } from './audio';
 import { GRAPHIC_MAX_MS } from './graphics';
 
 // A teaser: a stretch of the recording played before the intro, with the "In this episode" tag and its speaker; `tag`
@@ -627,7 +627,6 @@ export function setLabel(p: ProgrammeEdit, id: string, change: { on?: boolean; s
 // The Studio's breath of wind at each change in a built opening (Tom, 28 October 2026), and the music under it.
 export const OPENING_WIND = { path: 'studio/sounds/soul-wisdom-wind-breath.wav', name: 'Wind: breath', durationMs: 1200, gainDb: -18 };
 export const OPENING_MUSIC_DB = -16;
-export interface OpeningMusic { library: string; path: string; name: string }
 
 // The opening: the recording clips before the first clip that is not one (the intro, or the episode).
 export function openingClips(p: ProgrammeEdit): RecordingClip[] {
@@ -671,4 +670,11 @@ export function buildOpening(p: ProgrammeEdit, o: { teasers: Teaser[]; sections:
         }));
     }
     return { clips: [...clips, ...rest.clips], layers: [...layers, ...rest.layers], audio: [...audio, ...rest.audio!] };
+}
+
+// A new edit with its opening built (the editor's first open, item E10, and Build for Studio editor, E15): when there
+// are teaser clips to build it from (the Studio settings play teasers and the notes have some).
+export function withBuiltOpening<E extends EpisodeEdit>(edit: E, o: { teasers: Teaser[]; sections: SectionJoins; music: OpeningMusic | null }): E {
+    if (!o.teasers.length) return edit;
+    return setProgramme(edit, buildOpening(programmeEdit({ ...edit, teasers: [] }), o));
 }

@@ -10,7 +10,8 @@ import { FieldValue } from 'firebase-admin/firestore';
 import type { Episode } from '@/types/episode';
 import { SilencesFileSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { motionGraphics, withLayers } from '@/lib/layers';
-import { firstEdit, teasersFromNotes } from '@/lib/programme';
+import { firstEdit, teasersFromNotes, withBuiltOpening } from '@/lib/programme';
+import { openingMusicDefault } from '@/lib/audio';
 import { brollBlock } from '@/lib/brollGate';
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { binItems } from './mediaBin';
@@ -78,7 +79,10 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
         const teasers = settings.teasers && notes ? teasersFromNotes(notes.teaserClips ?? []) : [];
         const blank: EpisodeEdit = { cuts: [], version: 0 };
         const setUp = firstEdit(blank, { words, silences, teasers });
-        const edit = withLayers(setUp.edit, bin);
+        // Spec 022 stage 3b: the opening built as the editor builds it on first opening, with the music Build would pick.
+        const library = bin.flatMap(i => (i.source === 'library' && i.sound ? [{ id: i.id.replace(/^lib-/, ''), kind: i.sound.kind, path: i.path, name: i.name, checked: i.sound.checked }] : []));
+        const music = openingMusicDefault({ remembered: settings.openingMusic, old: settings.teaserMusic, library });
+        const edit = withLayers(withBuiltOpening(setUp.edit, { teasers, sections: settings.joins, music }), bin);
         // The motion graphics (spec 021 M2, on by default — the Studio setting turns them off, item M5):
         // placed once, with the b-roll, on a fresh edit.
         if (settings.motionGraphics) {
@@ -99,7 +103,7 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
                 edit: {
                     cuts: edit.cuts, version: 1, updatedAt: new Date().toISOString(), updatedBy: uid,
                     overlays: [], layers: edit.layers ?? [], captions: null, voice: null, speakerTracks: null, order: null,
-                    intro: null, outro: null, teasers: edit.teasers ?? null, splits: [], joins: [],
+                    intro: null, outro: null, teasers: edit.teasers ?? null, programme: edit.programme ?? null, splits: [], joins: [],
                 },
                 updatedAt: FieldValue.serverTimestamp(),
             });

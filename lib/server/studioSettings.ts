@@ -6,6 +6,8 @@ import { SETTINGS_DOC, StudioSettingsSchema, toStored, withDefaults, type Studio
 import { adminBucket, adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
 import { checkUploaded } from './uploads';
+import { libraryEntries } from './library';
+import { OpeningMusicSchema, type OpeningMusic } from '@/lib/audio';
 
 const LINK_MS = 60 * 60_000;
 
@@ -51,6 +53,23 @@ export async function saveSettings(input: unknown, uid: string): Promise<StudioS
     const stored = await getSettings();
     s.teaserMusic = stored.teaserMusic;
     s.teaserWhoosh = stored.teaserWhoosh;
+    // Spec 022 stage 3b: written by Build the opening, never by the Settings page.
+    s.openingMusic = stored.openingMusic;
     await ref().set({ ...toStored(s), updatedAt: FieldValue.serverTimestamp(), updatedBy: uid });
     return s;
+}
+
+// Spec 022 stage 3b: the music an opening was just built with (or none), remembered so Build the opening picks it next:
+// a show library music file with its licence checked.
+export async function rememberOpeningMusic(input: unknown): Promise<OpeningMusic | null> {
+    const parsed = OpeningMusicSchema.nullable().safeParse(input);
+    if (!parsed.success) throw new HttpError(400, 'Not a show library music file');
+    const m = parsed.data;
+    if (m) {
+        const e = (await libraryEntries([m.library])).get(m.library);
+        if (!e || e.path !== m.path || e.kind !== 'music') throw new HttpError(400, `"${m.name}" is not music in the show library`);
+        if (!e.checked) throw new HttpError(400, `"${m.name}" has no licence check yet`);
+    }
+    await ref().set({ openingMusic: m }, { merge: true });
+    return m;
 }

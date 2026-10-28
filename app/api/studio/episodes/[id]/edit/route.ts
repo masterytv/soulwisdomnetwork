@@ -110,6 +110,14 @@ export const GET = handle<Context>(async (request, { params }) => {
     };
     return Response.json({
         edit, overlayUrls, silences, brollBlock: brollBlock(data), fresh: !data.edit, teasers, studioIntro: studio, oldSounds, graphics,
+        // Spec 022 stage 3b: what Build the opening places (the approved notes' teaser clips, whatever the teasers
+        // setting), with the Studio's transitions and the music it remembers or had under the teasers.
+        opening: {
+            teasers: notes ? teasersFromNotes(notes.teaserClips ?? []) : [],
+            sections: settings.joins,
+            remembered: settings.openingMusic,
+            old: settings.teaserMusic ? { library: settings.teaserMusic.library, path: settings.teaserMusic.path, name: settings.teaserMusic.name } : null,
+        },
         // The highlight density setting turned off hides Suggest highlights (spec 021 item M5).
         highlightsOff: settings.highlightDensity === 'off',
     });

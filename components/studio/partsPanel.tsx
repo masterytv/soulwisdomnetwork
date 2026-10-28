@@ -4,8 +4,47 @@
 // order (also by dragging them on the timeline's V1, item E11, which draws them in play order), and the episode can have its
 // own intro or outro from its media instead of the Studio's. Everything that follows the edit's times (the preview,
 // captions, chapters, layers anchored to words, the render) follows the new order (lib/sequence.ts).
+// Spec 022 stage 3b: Build the opening, from the approved notes' teaser clips, with the music under it chosen here.
 
-import { memo } from "react";
+// What Build the opening needs: how many clips the notes give, whether there is an opening already (building again
+// replaces it, after a question), the music it would put under it and the others it could, and building it.
+export interface OpeningBuild {
+    count: number;
+    has: boolean;
+    music: OpeningMusic | null;
+    choices: OpeningMusic[];
+    onBuild: (music: OpeningMusic | null) => void;
+}
+
+function BuildOpening({ o, disabled }: { o: OpeningBuild; disabled: boolean }) {
+    const [pick, setPick] = useState<string | null>(null);
+    const chosen = pick === null ? o.music : pick === NONE ? null : o.choices.find(c => c.library === pick) ?? o.music;
+    return (
+        <div className="flex flex-col gap-2 border-b border-white/10 pb-3">
+            <span className="text-sm font-semibold text-gray-200">The opening</span>
+            <span className={hint}>
+                {o.count ? `Builds ${o.count} clip${o.count === 1 ? '' : 's'} from the approved notes' teaser clips, before the intro: a dissolve between them, an "In this episode" label on each, Wind: breath at each change and music under them. Change anything afterwards on the timeline.`
+                    : 'The approved show notes have no teaser clips to build it from.'}
+            </span>
+            <label className="flex flex-wrap items-center gap-2 text-sm text-gray-200">
+                Music under it
+                <select aria-label="Music under the opening" value={chosen?.library ?? NONE} disabled={disabled}
+                    onChange={e => setPick(e.target.value)} className="max-w-full min-w-0 rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
+                    <option value={NONE}>None</option>
+                    {[...(o.music && !o.choices.some(c => c.library === o.music!.library) ? [o.music] : []), ...o.choices].map(c => <option key={c.library} value={c.library}>{c.name}</option>)}
+                </select>
+            </label>
+            {!o.choices.length && <span className={hint}>No show library music has its licence checked yet.</span>}
+            <button type="button" disabled={disabled || !o.count} className={`${secondary} self-start`}
+                onClick={() => { if (!o.has || window.confirm('Replace the opening you have? (Undo puts it back.)')) o.onBuild(chosen); }}>
+                {o.has ? 'Build the opening again' : 'Build the opening'}
+            </button>
+        </div>
+    );
+}
+
+import { memo, useState } from "react";
+import type { OpeningMusic } from "@/lib/audio";
 import { moveSection, sectionsOf, validOrder, type EpisodeEdit } from "@/lib/edit";
 import type { BinItem } from "@/lib/layers";
 import type { Clip } from "@/lib/sequence";
@@ -17,7 +56,7 @@ const NONE = "__none";
 
 type Patch = Pick<EpisodeEdit, "order" | "intro" | "outro">;
 
-export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words, videos, onChange, onSeek }: {
+export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words, videos, onChange, onSeek, build }: {
     edit: EpisodeEdit;
     totalMs: number;
     clips: Clip[];                                  // the play order, for what each section keeps
@@ -25,6 +64,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
     videos: BinItem[];                              // the episode's media bin videos
     onChange: (patch: Partial<Patch>) => void;
     onSeek: (srcMs: number) => void;
+    build?: OpeningBuild | null;
 }) {
     const sections = sectionsOf(edit.splits ?? [], totalMs);
     const order = validOrder(edit.order, sections.length) ? edit.order : sections.map((_, i) => i);
@@ -37,6 +77,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
     };
     return (
         <section aria-label="Parts" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
+            {build && <BuildOpening o={build} disabled={false} />}
             <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold text-gray-200">Parts</span>
                 <span className={hint}>

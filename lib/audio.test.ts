@@ -7,7 +7,7 @@ import {
     EMPTY_LICENCE, fileTimeAt, licenceMissing, licenceProblem, newSound, soundCredits, soundFilter, soundGainAt, soundsMix,
     SoundSchema, SoundsSchema, soundSpan, SOUND_TRACK, uploadKind, type Licence,
     teaserMusicSound, teaserSoundPlan, TeaserSoundSchema, teaserWhooshSound, WHOOSH_LEAD_MS, TEASER_MUSIC_DB,
-    isStudioSound, STUDIO_SOUNDS, studioSoundUrl,
+    isStudioSound, STUDIO_SOUNDS, studioSoundUrl, openingMusicDefault, OpeningMusicSchema,
 } from './audio';
 import { WHOLE_EPISODE_MS } from './layers';
 import { youtubeDescription, type ShowNotes } from './showNotes';
@@ -149,4 +149,19 @@ test('the Studio\'s own sounds: shipped in public/, the length each says, placea
     const placed = { ...newSound({ path: breath, name: 'Wind: breath', durationMs: 1200 }, 'effect', { srcMs: 0, atMs: 0 }), id: 'w1' };
     assert.equal(SoundSchema.safeParse(placed).success, true);
     assert.equal(SoundSchema.safeParse({ ...placed, media: { ...placed.media, path: 'studio/../x.wav' } }).success, false);
+});
+
+test('spec 022 3b: the opening\'s music by default: the last one used, else the old teaser music, else the first in the library, while checked', () => {
+    const lib = [
+        { id: 'b', kind: 'music' as const, path: 'library/b.mp3', name: 'Bravo', checked: { by: 'u' } },
+        { id: 'a', kind: 'music' as const, path: 'library/a.mp3', name: 'Alpha', checked: { by: 'u' } },
+        { id: 'x', kind: 'music' as const, path: 'library/x.mp3', name: 'Aardvark', checked: null },
+        { id: 'e', kind: 'effect' as const, path: 'library/e.wav', name: 'AAA', checked: { by: 'u' } },
+    ];
+    const b = { library: 'b', path: 'library/b.mp3', name: 'Bravo' };
+    assert.deepEqual(openingMusicDefault({ remembered: b, old: null, library: lib }), b);
+    assert.deepEqual(openingMusicDefault({ remembered: null, old: b, library: lib }), b);
+    assert.deepEqual(openingMusicDefault({ remembered: { ...b, library: 'x', path: 'library/x.mp3' }, old: null, library: lib }), { library: 'a', path: 'library/a.mp3', name: 'Alpha' });
+    assert.equal(openingMusicDefault({ remembered: null, old: null, library: lib.slice(2) }), null);
+    assert.equal(OpeningMusicSchema.safeParse({ ...b, path: '/etc/passwd' }).success, false);
 });
