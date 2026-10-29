@@ -20,6 +20,7 @@ import * as path from 'node:path';
 import { buildCues, toSrt } from '../../../lib/captions';
 import { editedWords } from '../../../lib/edit';
 import type { Clip } from '../../../lib/sequence';
+import { AAC } from './media';
 
 function run(cmd: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -227,7 +228,7 @@ export async function makeEditExports(o: {
         const copyName = `${path.parse(media).name} (constant ${frameRate.fps.toFixed(2).replace(/\.00$/, '')} fps).mp4`;
         media = path.join(dir, copyName);
         await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', o.video, '-fps_mode', 'cfr', '-r', frameRate.rate,
-            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '192k',
+            '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', ...AAC, '-b:a', '192k',
             '-movflags', '+faststart', media]);
         files.push({ kind: 'constantRate', local: media, name: copyName, contentType: 'video/mp4' });
         warnings.push(`The recording's frame rate varies (${info.average} on average, ${info.nominal} nominal), which editor apps play as constant, so the picture would drift from the sound. The editor files use "${copyName}", a constant-frame-rate copy beside them: relink to that, not the original.`);

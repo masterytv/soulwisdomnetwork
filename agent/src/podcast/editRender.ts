@@ -21,7 +21,7 @@ import { sequenceLength, sequenceOf, timelineTime, type Clip } from '../../../li
 import { DEFAULT_SECTION_JOINS, SECTION_JOIN_LABELS, XFADE, type SectionJoin, type SectionJoins, type Transition } from '../../../lib/transitions';
 import { buildCues, editCues, toSrt } from '../../../lib/captions';
 import { mmss } from '../../../lib/showNotes';
-import { hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
+import { AAC, hasAudio, kenBurns, normalizeLoudness, probeDuration } from './media';
 import type { CaptionStyle } from '../../../lib/onScreen';
 import { layerAudioFilter, layersAss, layerSpan, pictureFilter, type PictureLayer, type TextLayer, type VideoLayer } from '../../../lib/layers';
 import { soundFilter, soundsMix, soundSpan, SOUND_TRACK, type Sound } from '../../../lib/audio';
@@ -597,7 +597,7 @@ export async function renderEdit(opts: {
             '-af', [...fades, `atrim=end_sample=${programme.frames * SAMPLES_PER_FRAME}`].join(','), '-c:a', 'pcm_s16le', programmeWav]);
         let normalization: string | null = null;
         if (clean !== 'off') ({ normalization } = await normalizeLoudness(programmeWav, audioOut));
-        else await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', programmeWav, '-c:a', 'aac', '-b:a', '192k', audioOut]);
+        else await run('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', programmeWav, ...AAC, '-b:a', '192k', audioOut]);
         for (const f of [voiceRaw, episodeRaw, mixedRaw, programmeRaw, finalRaw, programmeWav]) { try { fs.unlinkSync(f); } catch {} }
 
         // ── The picture, in windows, each encoded once ──────────────────────────
