@@ -10,19 +10,41 @@ function run(cmd: string, args: string[]): Promise<string> {
 // string; ffmpeg repeats the input URL in its errors, which end up in logs, emails and the Studio.
 const redactUrls = (text: string) => text.replace(/(https?:\/\/[^\s?]+)\?\S+/g, '$1?…');
 
-// Also returns the end of stderr, where ffmpeg's filters print their reports.
-export function runWithLog(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+// A command stopped for running past its time limit: something in its input made it wait for good, which
+// running it again will not change.
+export class TimedOutError extends PermanentError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'TimedOutError';
+    }
+}
+
+// Also returns the end of stderr, where ffmpeg's filters print their reports. With `timeoutMs`, a command
+// still running then is stopped and rejected with TimedOutError and the end of what it printed.
+export function runWithLog(cmd: string, args: string[], timeoutMs?: number): Promise<{ stdout: string; stderr: string }> {
     return new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
         let stdout = '';
         let stderr = '';
+        let settled = false;
+        const said = () => redactUrls(stderr.split('\n').slice(-5).join(' ').trim());
+        // Settled at once, not when the output closes: a child of the command may still hold it open.
+        const timer = timeoutMs ? setTimeout(() => {
+            settled = true;
+            child.kill('SIGKILL');
+            const last = said();
+            reject(new TimedOutError(`${cmd} was still running after ${Math.round(timeoutMs / 1000)} s, so it was stopped${last ? `: ${last}` : ''}`));
+        }, timeoutMs) : null;
         child.stdout.on('data', d => { stdout += d; });
         child.stderr.on('data', d => { stderr = (stderr + d).slice(-4000); });
-        child.on('error', reject);
+        child.on('error', error => { if (timer) clearTimeout(timer); if (!settled) reject(error); settled = true; });
         child.on('close', code => {
+            if (timer) clearTimeout(timer);
+            if (settled) return;
+            settled = true;
             if (code === 0) resolve({ stdout, stderr });
             // ffmpeg failing on a file is bad input, not a network blip.
-            else reject(new PermanentError(`${cmd} exited with ${code}: ${redactUrls(stderr.split('\n').slice(-5).join(' ').trim())}`));
+            else reject(new PermanentError(`${cmd} exited with ${code}: ${said()}`));
         });
     });
 }
@@ -258,17 +280,23 @@ export function urlInputOptions(input: string, readTimeoutSeconds = URL_READ_TIM
     return ['-rw_timeout', String(Math.round(readTimeoutSeconds * 1_000_000)), '-reconnect', '1', '-reconnect_on_network_error', '1', '-reconnect_delay_max', '10'];
 }
 
+// How long one short may take to make: it renders at about its own length on a runner, so two minutes plus four
+// times its length is far past a slow run; one still going then is stuck (28-29 October 2026: one short of
+// "on ufos and spirtuality" hung ffmpeg three runs running until the workflow's hour was up).
+export const shortTimeLimitMs = (durationSeconds: number) => Math.round((120 + 4 * durationSeconds) * 1000);
+
 // One vertical short: the final cut from `startSeconds`, its sides trimmed to `aspect` (width
 // over height), scaled to the frame's width and placed on the backdrop at `videoTop`, with the
 // headline, speaker and captions burned in from an ASS file. `input` may be a URL; reading it can
 // fail on the network, so that failure is retried (withRetry) rather than taken as bad input.
 export function renderShort(input: string, output: string, o: {
     startSeconds: number; durationSeconds: number; aspect: number; background: string; ass: string; fontsDir: string;
-    width: number; videoTop: number; readTimeoutSeconds?: number;
+    width: number; videoTop: number; readTimeoutSeconds?: number; timeLimitMs?: number;
 }) {
     const fadeOut = Math.max(0, o.durationSeconds - 0.25).toFixed(3);
-    return run('ffmpeg', [
-        '-y', '-hide_banner', '-loglevel', 'error',
+    return runWithLog('ffmpeg', [
+        // Warnings too, so a short stopped at its time limit says what ffmpeg was waiting on.
+        '-y', '-hide_banner', '-loglevel', 'warning',
         '-loop', '1', '-framerate', '30', '-i', o.background,
         ...urlInputOptions(input, o.readTimeoutSeconds),
         '-ss', o.startSeconds.toFixed(3), '-t', o.durationSeconds.toFixed(3), '-i', input,
@@ -285,8 +313,8 @@ export function renderShort(input: string, output: string, o: {
         '-t', o.durationSeconds.toFixed(3),
         '-movflags', '+faststart',
         output,
-    ]).catch(error => {
-        if (!isUrl(input)) throw error;
+    ], o.timeLimitMs ?? shortTimeLimitMs(o.durationSeconds)).then(r => r.stdout).catch(error => {
+        if (!isUrl(input) || error instanceof TimedOutError) throw error;
         throw Object.assign(new Error((error as Error).message), { code: 'ETIMEDOUT' });
     });
 }
