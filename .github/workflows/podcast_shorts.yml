@@ -74,6 +74,20 @@ jobs:
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: npx tsx agent/src/podcast/shorts.ts
 
+    # A debug run keeps the short's stretch of the final cut, its captions and backdrop for a day, so a hang can be
+    # tried again on the very same bytes.
+    - name: Keep the debug files
+      if: ${{ always() && inputs.debug_short != '' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: shorts-debug
+        path: |
+          ${{ runner.temp }}/shorts/${{ inputs.episode_id }}/*.mkv
+          ${{ runner.temp }}/shorts/${{ inputs.episode_id }}/*.ass
+          ${{ runner.temp }}/shorts/${{ inputs.episode_id }}/background.png
+        retention-days: 1
+        if-no-files-found: ignore
+
     # Only when the step above was cancelled or killed before it could record how it ended: marks the job
     # stopped, so the Studio offers to try again at once (agent/src/podcast/jobStopped.ts).
     # Never after a debug run, which leaves the episode as it was (and may run beside a real one).

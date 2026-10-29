@@ -365,7 +365,10 @@ function when(ms: number, timeZone = 'UTC') {
 // fails or hangs is reported and the next one still runs. The steps take apart what making a short does: read the
 // final cut over the network, cut the short's stretch out of it as it is, look at that stretch's timestamps, make the
 // short from the local copy, make it as the job does (from Storage), and upload it (to a debug path, then deleted).
-async function debugShort(episode: Episode, key: string) {
+// `key` is the short's number or id; "2 files" only cuts its stretch (and a wider one) for the workflow to keep as
+// a download, without the renders, so the real bytes can be tried anywhere.
+async function debugShort(episode: Episode, debug: string) {
+    const [key, only] = debug.split(/\s+/);
     const items = episode.shorts?.items ?? [];
     const item = /^\d+$/.test(key) ? items[Number(key) - 1] : items.find(i => i.id === key);
     if (!item) throw new Error(`No short ${key}: there are ${items.length}`);
@@ -414,12 +417,20 @@ async function debugShort(episode: Episode, key: string) {
         }
         return [...streams].map(([s, x]) => `stream ${s}: ${x.n} packets ${x.first}–${x.last} s, ${x.keys} key, ${x.back} going back, ${x.noPts} without a time, largest gap ${x.gap.toFixed(3)} s`).join(' | ');
     });
+    // Ten seconds either side too, for a stretch that hangs only when read from further back.
+    await attempt('cut a wider stretch (10 s either side)', async () => {
+        const wide = path.join(workDir, `${item.id}-wide.mkv`);
+        await runWithLog('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...urlInputOptions(url, 30),
+            '-ss', Math.max(0, inputs.startMs / 1000 - 10).toFixed(3), '-t', (durationMs / 1000 + 20).toFixed(3), '-i', url, '-map', '0', '-c', 'copy', wide], 240_000);
+        return `${fs.statSync(wide).size} bytes`;
+    });
     const ass = path.join(workDir, `${item.id}.ass`);
     fs.writeFileSync(ass, shortAss({
         headline: inputs.headline, speaker: inputs.speaker, words: wordsBetween(words, inputs.startMs, inputs.endMs),
         startMs: inputs.startMs, durationMs, aspect, colors: settings.colors,
     }));
     step(`captions file: ${fs.readFileSync(ass, 'utf8').split('\n').filter(l => l.startsWith('Dialogue')).length} lines; headline ${JSON.stringify(inputs.headline)}`);
+    if (only === 'files') { step('DEBUG done (files only): nothing was written to the episode'); return; }
     const l = shortLayout(aspect);
     const options = { startSeconds: inputs.startMs / 1000, durationSeconds: durationMs / 1000, aspect: aspectRatio(aspect), background, ass,
         fontsDir: FONTS_DIR, width: SHORT_WIDTH, videoTop: l.video.top, verbose: true };
