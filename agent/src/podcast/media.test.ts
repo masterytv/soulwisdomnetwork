@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import type { AddressInfo } from 'net';
-import { renderShort, runWithLog, shortTimeLimitMs, TimedOutError, urlInputOptions } from './media';
+import { AAC, renderShort, runWithLog, shortTimeLimitMs, TimedOutError, urlInputOptions } from './media';
 
 const FONTS = path.resolve(__dirname, '../../assets/fonts');
 
@@ -137,6 +137,21 @@ test('a short whose input keeps trickling in is stopped at its time limit and no
         for (const t of timers) clearInterval(t);
         server.closeAllConnections();
         server.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// 29 October 2026: the pinned ffmpeg build's new default AAC coder ('nmr') never finished on these 0.6 s of a
+// guest's voice between exact silences (three shorts hung on them), as it stands. The two-loop coder makes them
+// at once.
+test('the AAC encode finishes on the voice that hung the shorts', { timeout: 60_000 }, async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'aac-'));
+    try {
+        const out = path.join(dir, 'voice.m4a');
+        await runWithLog('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', '-i', path.join(__dirname, 'fixtures/aac-hang-voice.wav'),
+            '-ac', '2', ...AAC, '-b:a', '192k', '-ar', '48000', out], 30_000);
+        assert.ok(fs.statSync(out).size > 5_000);
+    } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
 });
