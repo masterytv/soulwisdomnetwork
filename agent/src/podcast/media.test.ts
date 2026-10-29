@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import type { AddressInfo } from 'net';
-import { renderShort, urlInputOptions } from './media';
+import { renderShort, runWithLog, shortTimeLimitMs, TimedOutError, urlInputOptions } from './media';
 
 const FONTS = path.resolve(__dirname, '../../assets/fonts');
 
@@ -91,6 +91,51 @@ test('a read that never comes back fails in time, as a network error worth retry
         assert.ok(!error.message.includes('secret'), 'the signed part of the link stays out of the message');
         assert.ok(Date.now() - started < 90_000);
     } finally {
+        server.close();
+        fs.rmSync(dir, { recursive: true, force: true });
+    }
+});
+
+// 29 October 2026: one short hung ffmpeg three runs running with the connection still sending, so the read time
+// limit never fired. Each short now has a time limit of its own; one past it is stopped, not retried.
+test('a command past its time limit is stopped, with what it printed', async () => {
+    const started = Date.now();
+    const error = await runWithLog('sh', ['-c', 'echo waiting on input >&2; exec sleep 30'], 500).then(() => null, e => e as Error);
+    assert.ok(error instanceof TimedOutError);
+    assert.match(error.message, /still running after 1 s, so it was stopped: waiting on input/);
+    assert.ok(Date.now() - started < 5000);
+    assert.deepEqual(await runWithLog('sh', ['-c', 'echo done'], 5000), { stdout: 'done\n', stderr: '' });
+});
+
+test('a short gets two minutes plus four times its length', () => {
+    assert.equal(shortTimeLimitMs(24), 216_000);
+    assert.equal(shortTimeLimitMs(180), 840_000);
+});
+
+test('a short whose input keeps trickling in is stopped at its time limit and not retried', { timeout: 120_000 }, async () => {
+    const { dir, video, options } = await setup();
+    const data = fs.readFileSync(video);
+    const timers = new Set<NodeJS.Timeout>();
+    const server = http.createServer((_req, res) => {
+        // A byte every 100 ms: never silent long enough for the read timeout, never enough to finish.
+        res.writeHead(200, { 'Content-Type': 'video/mp4', 'Content-Length': data.length });
+        let at = 0;
+        const t = setInterval(() => { if (at < data.length) res.write(data.subarray(at, ++at)); }, 100);
+        timers.add(t);
+        res.on('close', () => { clearInterval(t); timers.delete(t); });
+    });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/final.mp4?X-Goog-Signature=secret`;
+    try {
+        const started = Date.now();
+        const error = await renderShort(url, path.join(dir, 'short.mp4'), { ...options, timeLimitMs: 4000 }).then(() => null, e => e as Error & { code?: string });
+        assert.ok(error instanceof TimedOutError, `stopped at its limit, got ${error}`);
+        assert.notEqual((error as { code?: string }).code, 'ETIMEDOUT', 'a stuck short is not a network blip to try again');
+        assert.ok(!error.message.includes('secret'));
+        assert.ok(Date.now() - started < 20_000);
+    } finally {
+        for (const t of timers) clearInterval(t);
+        server.closeAllConnections();
         server.close();
         fs.rmSync(dir, { recursive: true, force: true });
     }
