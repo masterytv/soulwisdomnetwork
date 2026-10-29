@@ -209,6 +209,7 @@ async function render(episode: Episode, words: TimedWord[]) {
     // ffmpeg reads the final cut straight from Storage, only around each short.
     const [url] = await bucket.file(episode.final!.videoPath!).getSignedUrl({ action: 'read', expires: Date.now() + 3 * 60 * 60_000 });
     const warnings: string[] = [];
+    const fmtTime = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
     let done = 0;
     for (const item of todo) {
         const inputs = renderInputs(item, aspect, finalAt);
@@ -223,10 +224,19 @@ async function render(episode: Episode, words: TimedWord[]) {
             startMs: inputs.startMs, durationMs, aspect, colors: settings.colors,
         }));
         const local = path.join(workDir, `${item.id}.mp4`);
-        await withRetry('Render', () => renderShort(url, local, {
-            startSeconds: inputs.startMs / 1000, durationSeconds: durationMs / 1000, aspect: aspectRatio(aspect),
-            background, ass, fontsDir: FONTS_DIR, width: SHORT_WIDTH, videoTop: l.video.top,
-        }), 2);
+        // One short that cannot be made (stuck past its time limit, or refused by ffmpeg) is reported and the
+        // rest are still made: the job fails only when none could be.
+        try {
+            await withRetry('Render', () => renderShort(url, local, {
+                startSeconds: inputs.startMs / 1000, durationSeconds: durationMs / 1000, aspect: aspectRatio(aspect),
+                background, ass, fontsDir: FONTS_DIR, width: SHORT_WIDTH, videoTop: l.video.top,
+            }), 2);
+        } catch (error) {
+            const message = (error as Error).message;
+            console.warn(`  ⚠️ ${item.title}: ${message}`);
+            warnings.push(`"${item.title}" (${fmtTime(inputs.startMs)}–${fmtTime(inputs.endMs)}) could not be made: ${message.slice(0, 400)}`);
+            continue;
+        }
         const renderedAt = Date.now();
         const dest = `episodes/${episodeId}/shorts/${item.id}-${renderedAt}.mp4`;
         await withRetry('Storage upload', () => bucket.upload(local, { destination: dest, metadata: { contentType: 'video/mp4' } }));
