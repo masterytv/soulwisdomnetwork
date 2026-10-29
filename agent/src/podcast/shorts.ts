@@ -30,7 +30,7 @@ import { YOUTUBE_CATEGORY } from '../../../lib/youtube';
 import type { Episode, ShortItem } from '../../../types/episode';
 import { loadAlert } from './config';
 import { withRetry } from './errors';
-import { renderShort, shortBackground } from './media';
+import { redactUrls, renderShort, runWithLog, shortBackground, urlInputOptions } from './media';
 import { NOTES_EFFORT, NOTES_MODEL } from './notesDraft';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { loadSettings, storageBucket } from './settings';
@@ -57,6 +57,8 @@ function required(name: string) {
 const episodeId = required('EPISODE_ID');
 if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${episodeId}`);
 const mode = required('SHORTS_MODE') as Mode;
+// A debug run (podcast_shorts.yml debug_short): one short, every step timed, nothing written to the episode.
+const debugKey = process.env.SHORTS_DEBUG?.trim() || '';
 if (!['pick', 'titles', 'render', 'upload'].includes(mode)) throw new Error(`Not a shorts job: ${mode}`);
 const alert = loadAlert();
 const runUrl = process.env.GITHUB_RUN_URL || '';
@@ -189,15 +191,10 @@ async function writeTexts(episode: Episode, words: TimedWord[]) {
     };
 }
 
-async function render(episode: Episode, words: TimedWord[]) {
-    const shorts = episode.shorts!;
-    const finalAt = finalAtOf(episode);
-    const aspect: ShortAspect = shorts.aspect ?? DEFAULT_ASPECT;
-    const todo = shorts.items.filter(i => !i.youtube && !sameRender(i.render, renderInputs(i, aspect, finalAt)));
-    if (!todo.length) throw new Error('Every short is already made; change one first');
+// The backdrop every short of this aspect is drawn on: the settings' logo when one is uploaded, the site's otherwise.
+async function makeBackground(aspect: ShortAspect) {
     const l = shortLayout(aspect);
     const background = path.join(workDir, 'background.png');
-    // The settings' logo when one is uploaded, the site's logo otherwise.
     let logo = LOGO;
     if (settings.logoPath) {
         logo = path.join(workDir, `logo${path.extname(settings.logoPath)}`);
@@ -206,8 +203,28 @@ async function render(episode: Episode, words: TimedWord[]) {
     await shortBackground(logo, background, {
         width: SHORT_WIDTH, height: SHORT_HEIGHT, logoSize: l.logo.size, logoTop: l.logo.top, videoTop: l.video.top, videoHeight: l.video.height,
     }, settings.colors);
-    // ffmpeg reads the final cut straight from Storage, only around each short.
+    return background;
+}
+
+// ffmpeg reads the final cut straight from Storage, only around each short.
+async function finalCutUrl(episode: Episode) {
     const [url] = await bucket.file(episode.final!.videoPath!).getSignedUrl({ action: 'read', expires: Date.now() + 3 * 60 * 60_000 });
+    return url;
+}
+
+// Each step of a run with the time since it started, so a log shows where a run is, or where it stopped.
+const runStarted = Date.now();
+const step = (what: string) => console.log(`  [${((Date.now() - runStarted) / 1000).toFixed(0)} s] ${what}`);
+
+async function render(episode: Episode, words: TimedWord[]) {
+    const shorts = episode.shorts!;
+    const finalAt = finalAtOf(episode);
+    const aspect: ShortAspect = shorts.aspect ?? DEFAULT_ASPECT;
+    const todo = shorts.items.filter(i => !i.youtube && !sameRender(i.render, renderInputs(i, aspect, finalAt)));
+    if (!todo.length) throw new Error('Every short is already made; change one first');
+    const l = shortLayout(aspect);
+    const background = await makeBackground(aspect);
+    const url = await finalCutUrl(episode);
     const warnings: string[] = [];
     const fmtTime = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
     let done = 0;
@@ -224,6 +241,7 @@ async function render(episode: Episode, words: TimedWord[]) {
             startMs: inputs.startMs, durationMs, aspect, colors: settings.colors,
         }));
         const local = path.join(workDir, `${item.id}.mp4`);
+        step(`${item.title} (${fmtTime(inputs.startMs)}–${fmtTime(inputs.endMs)}): rendering`);
         // One short that cannot be made (stuck past its time limit, or refused by ffmpeg) is reported and the
         // rest are still made: the job fails only when none could be.
         try {
@@ -239,7 +257,9 @@ async function render(episode: Episode, words: TimedWord[]) {
         }
         const renderedAt = Date.now();
         const dest = `episodes/${episodeId}/shorts/${item.id}-${renderedAt}.mp4`;
+        step(`${item.title}: uploading`);
         await withRetry('Storage upload', () => bucket.upload(local, { destination: dest, metadata: { contentType: 'video/mp4' } }));
+        step(`${item.title}: saving`);
         const previous = item.render?.path;
         await updateItem(item.id, i => ({ ...i, render: { ...inputs, path: dest, renderedAt, durationMs }, approved: null }));
         if (previous) await bucket.file(previous).delete().catch(() => {});
@@ -340,6 +360,113 @@ function when(ms: number, timeZone = 'UTC') {
     }
 }
 
+// A debug run of one short (`key`: its number as the Studio lists it, or its id). It writes nothing to the episode and
+// emails no one; each step is timed and limited, ffmpeg prints its own detail into the log as it goes, and a step that
+// fails or hangs is reported and the next one still runs. The steps take apart what making a short does: read the
+// final cut over the network, cut the short's stretch out of it as it is, look at that stretch's timestamps, make the
+// short from the local copy, make it as the job does (from Storage), and upload it (to a debug path, then deleted).
+async function debugShort(episode: Episode, key: string) {
+    const items = episode.shorts?.items ?? [];
+    const item = /^\d+$/.test(key) ? items[Number(key) - 1] : items.find(i => i.id === key);
+    if (!item) throw new Error(`No short ${key}: there are ${items.length}`);
+    const limit = <T>(what: string, ms: number, p: Promise<T>) => Promise.race([p,
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${what}: still not done after ${ms / 1000} s`)), ms))]);
+    const attempt = async (what: string, fn: () => Promise<string | void>) => {
+        step(`${what}…`);
+        try { const said = await fn(); step(`${what}: done${said ? ` (${said})` : ''}`); return true; } catch (error) { step(`${what}: FAILED: ${redactUrls((error as Error).message)}`); return false; }
+    };
+    const aspect: ShortAspect = episode.shorts!.aspect ?? DEFAULT_ASPECT;
+    const inputs = renderInputs(item, aspect, finalAtOf(episode));
+    const durationMs = inputs.endMs - inputs.startMs;
+    step(`DEBUG short ${key}: ${JSON.stringify({ id: item.id, title: item.title, startMs: inputs.startMs, endMs: inputs.endMs, durationMs, aspect, made: !!item.render, onYoutube: !!item.youtube })}`);
+    step(`final cut ${episode.final!.videoPath}, finished ${new Date(finalAtOf(episode)).toISOString()}`);
+    fs.mkdirSync(workDir, { recursive: true });
+    let words: TimedWord[] = [];
+    await attempt('the final cut\'s words', async () => { words = await limit('words', 120_000, loadWords(episode)); return `${words.length} words`; });
+    let background = '';
+    await attempt('the backdrop', async () => { background = await limit('backdrop', 120_000, makeBackground(aspect)); });
+    let url = '';
+    await attempt('a link to the final cut', async () => { url = await limit('link', 60_000, finalCutUrl(episode)); });
+    await attempt('ffprobe the final cut over the network', async () =>
+        (await runWithLog('ffprobe', ['-v', 'error', ...urlInputOptions(url, 30), '-show_entries',
+            'format=duration,size,bit_rate:stream=index,codec_type,codec_name,profile,width,height,r_frame_rate,avg_frame_rate,start_time,duration,nb_frames,sample_rate',
+            '-of', 'compact', url], 90_000)).stdout.trim().replace(/\n/g, ' | '));
+    const seg = path.join(workDir, `${item.id}-stretch.mkv`);
+    const start = (inputs.startMs / 1000).toFixed(3), seconds = (durationMs / 1000).toFixed(3);
+    await attempt('cut the stretch out of the final cut, as it is (no re-encoding)', async () => {
+        await runWithLog('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'verbose', '-stats_period', '5', ...urlInputOptions(url, 30),
+            '-ss', start, '-t', seconds, '-i', url, '-map', '0', '-c', 'copy', seg], 240_000, true);
+        return `${fs.statSync(seg).size} bytes`;
+    });
+    await attempt('the stretch\'s timestamps', async () => {
+        const { stdout } = await runWithLog('ffprobe', ['-v', 'error', '-show_entries', 'packet=stream_index,pts_time,dts_time,duration_time,flags', '-of', 'csv=p=0', seg], 120_000);
+        const streams = new Map<string, { n: number; first: number; last: number; back: number; gap: number; keys: number; noPts: number }>();
+        for (const line of stdout.trim().split('\n')) {
+            const [s, pts, dts, , flags] = line.split(',');
+            const t = Number(dts !== 'N/A' ? dts : pts);
+            const x = streams.get(s) ?? { n: 0, first: t, last: t, back: 0, gap: 0, keys: 0, noPts: 0 };
+            if (x.n && t < x.last) x.back++;
+            if (x.n) x.gap = Math.max(x.gap, t - x.last);
+            if (pts === 'N/A') x.noPts++;
+            if (flags?.includes('K')) x.keys++;
+            x.n++; x.last = t;
+            streams.set(s, x);
+        }
+        return [...streams].map(([s, x]) => `stream ${s}: ${x.n} packets ${x.first}–${x.last} s, ${x.keys} key, ${x.back} going back, ${x.noPts} without a time, largest gap ${x.gap.toFixed(3)} s`).join(' | ');
+    });
+    const ass = path.join(workDir, `${item.id}.ass`);
+    fs.writeFileSync(ass, shortAss({
+        headline: inputs.headline, speaker: inputs.speaker, words: wordsBetween(words, inputs.startMs, inputs.endMs),
+        startMs: inputs.startMs, durationMs, aspect, colors: settings.colors,
+    }));
+    step(`captions file: ${fs.readFileSync(ass, 'utf8').split('\n').filter(l => l.startsWith('Dialogue')).length} lines; headline ${JSON.stringify(inputs.headline)}`);
+    const l = shortLayout(aspect);
+    const options = { startSeconds: inputs.startMs / 1000, durationSeconds: durationMs / 1000, aspect: aspectRatio(aspect), background, ass,
+        fontsDir: FONTS_DIR, width: SHORT_WIDTH, videoTop: l.video.top, verbose: true };
+    if (fs.existsSync(seg)) {
+        await attempt('make the short from the local stretch', async () => {
+            const out = path.join(workDir, `${item.id}-local.mp4`);
+            // The stretch starts at the keyframe before the short, so it is read from its own start for the whole length.
+            await renderShort(seg, out, { ...options, startSeconds: 0, timeLimitMs: 300_000 });
+            return `${fs.statSync(out).size} bytes`;
+        });
+    }
+    // The burned-in text taken apart: no text, the headline and name alone, the captions alone (each from the local
+    // stretch, 2 minutes at most), so a short that hangs on its text says which part.
+    if (fs.existsSync(seg)) {
+        const lines = fs.readFileSync(ass, 'utf8').split('\n');
+        const head = lines.filter(x => !x.startsWith('Dialogue'));
+        const parts: [string, (x: string) => boolean][] = [
+            ['no text', () => false],
+            ['the headline and name only', x => /,(Headline|Speaker),/.test(x)],
+            ['the captions only', x => /,Caption,/.test(x)],
+        ];
+        for (const [what, keep] of parts) {
+            const partAss = path.join(workDir, `${item.id}-${what.replace(/\W+/g, '-')}.ass`);
+            fs.writeFileSync(partAss, [...head, ...lines.filter(x => x.startsWith('Dialogue') && keep(x))].join('\n'));
+            await attempt(`make it with ${what}`, async () => {
+                const part = path.join(workDir, `${item.id}-part.mp4`);
+                await renderShort(seg, part, { ...options, ass: partAss, startSeconds: 0, verbose: false, timeLimitMs: 120_000 });
+                return `${fs.statSync(part).size} bytes`;
+            });
+        }
+        step(`the captions file:\n${lines.filter(x => x.startsWith('Dialogue')).join('\n')}`);
+    }
+    const out = path.join(workDir, `${item.id}.mp4`);
+    const made = await attempt('make the short as the job does (from Storage)', async () => {
+        await renderShort(url, out, { ...options, timeLimitMs: 300_000 });
+        return `${fs.statSync(out).size} bytes`;
+    });
+    if (made) {
+        await attempt('upload it to Storage (a debug copy, deleted after)', async () => {
+            const dest = `episodes/${episodeId}/shorts-debug/${item.id}-${Date.now()}.mp4`;
+            await limit('upload', 180_000, bucket.upload(out, { destination: dest, metadata: { contentType: 'video/mp4' } }));
+            await bucket.file(dest).delete().catch(() => {});
+        });
+    }
+    step('DEBUG done: nothing was written to the episode');
+}
+
 async function main() {
     settings = await loadSettings(db);
     notesPage = `${settings.studioUrl}/admin/podcast/${episodeId}/notes#shorts`;
@@ -349,6 +476,10 @@ async function main() {
     const final = episode.final;
     if (final?.status !== 'ready' || !final.videoPath) throw new Error('Get the final cut first (from Descript or the Editor Light render)');
     if (!episode.shorts?.items.length && mode !== 'pick') throw new Error('Pick some key quotes for shorts first');
+    if (debugKey) {
+        if (mode !== 'render') throw new Error('A debug run makes a short: mode render');
+        return debugShort(episode, debugKey);
+    }
     fs.mkdirSync(workDir, { recursive: true });
     await ref.update({
         'shorts.status': 'working', 'shorts.startedAt': FieldValue.serverTimestamp(), 'shorts.error': null,
@@ -422,6 +553,7 @@ async function main() {
 main().catch(async error => {
     const message = (error as Error).message;
     console.error(`❌ ${message}`);
+    if (debugKey) process.exit(1);     // a debug run writes nothing and emails no one
     await ref.update({
         'shorts.status': 'failed', 'shorts.error': message, 'shorts.finishedAt': FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
