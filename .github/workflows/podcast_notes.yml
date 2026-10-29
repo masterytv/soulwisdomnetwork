@@ -64,3 +64,16 @@ jobs:
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: npx tsx agent/src/podcast/notes.ts
+
+    # Only when the step above was cancelled or killed before it could record how it ended: marks the job
+    # stopped, so the Studio offers to try again at once (agent/src/podcast/jobStopped.ts).
+    - name: Mark an unfinished job as stopped
+      if: ${{ failure() || cancelled() }}
+      env:
+        EPISODE_ID: ${{ inputs.episode_id }}
+        JOB_FIELD: ${{ inputs.mode || 'notes' }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/podcast/jobStopped.ts
