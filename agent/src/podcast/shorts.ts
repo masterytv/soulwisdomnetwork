@@ -431,6 +431,27 @@ async function debugShort(episode: Episode, key: string) {
             return `${fs.statSync(out).size} bytes`;
         });
     }
+    // The burned-in text taken apart: no text, the headline and name alone, the captions alone (each from the local
+    // stretch, 2 minutes at most), so a short that hangs on its text says which part.
+    if (fs.existsSync(seg)) {
+        const lines = fs.readFileSync(ass, 'utf8').split('\n');
+        const head = lines.filter(x => !x.startsWith('Dialogue'));
+        const parts: [string, (x: string) => boolean][] = [
+            ['no text', () => false],
+            ['the headline and name only', x => /,(Headline|Speaker),/.test(x)],
+            ['the captions only', x => /,Caption,/.test(x)],
+        ];
+        for (const [what, keep] of parts) {
+            const partAss = path.join(workDir, `${item.id}-${what.replace(/\W+/g, '-')}.ass`);
+            fs.writeFileSync(partAss, [...head, ...lines.filter(x => x.startsWith('Dialogue') && keep(x))].join('\n'));
+            await attempt(`make it with ${what}`, async () => {
+                const part = path.join(workDir, `${item.id}-part.mp4`);
+                await renderShort(seg, part, { ...options, ass: partAss, startSeconds: 0, verbose: false, timeLimitMs: 120_000 });
+                return `${fs.statSync(part).size} bytes`;
+            });
+        }
+        step(`the captions file:\n${lines.filter(x => x.startsWith('Dialogue')).join('\n')}`);
+    }
     const out = path.join(workDir, `${item.id}.mp4`);
     const made = await attempt('make the short as the job does (from Storage)', async () => {
         await renderShort(url, out, { ...options, timeLimitMs: 300_000 });
