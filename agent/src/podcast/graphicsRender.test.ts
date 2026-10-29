@@ -98,10 +98,14 @@ test('a moved, smaller key idea: the same clip overlays at the box\'s corner and
     fs.rmSync(dir, { recursive: true, force: true });
 });
 
+const STRAY_VALUES = 100;   // about 25 pixels of 2 million
 test('every template seeks: the same ms draws the same frame, in any order', { timeout: 180_000 }, async () => {
     // Pixels, not PNG bytes: the GPU rasteriser wobbles mid-transform antialiasing by ±1 between
     // otherwise identical paints, which is noise, not state. The contract is that seeking back gives
-    // the same frame within that wobble, while different moments move real pixels.
+    // the same frame within that wobble, while different moments move real pixels. On a loaded runner
+    // a blurred, scaling layer can also come back a few pixels off at its edges (the logo sting once:
+    // 24 of 8.3 million channel values, 28 October 2026), so a handful of stray values is allowed too;
+    // a seek that loses state moves thousands, as the 340/900 check below requires of real motion.
     const sharp = (await import('sharp')).default;
     const raw = (png: Buffer) => sharp(png).ensureAlpha().raw().toBuffer();
     for (const template of GRAPHIC_TEMPLATE_IDS) {
@@ -121,7 +125,7 @@ test('every template seeks: the same ms draws the same frame, in any order', { t
             const b = await shot(340);
             let off = 0;
             for (let i = 0; i < a.length; i++) if (Math.abs(a[i] - b[i]) > 2) off++;
-            assert.equal(off, 0, `${template}: seeking back to 340 ms must draw the same frame (${off} channel values differ by more than 2)`);
+            assert.ok(off <= STRAY_VALUES, `${template}: seeking back to 340 ms must draw the same frame (${off} channel values differ by more than 2)`);
         } finally {
             await browser.close();
         }
