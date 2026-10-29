@@ -430,7 +430,21 @@ async function debugShort(episode: Episode, debug: string) {
         startMs: inputs.startMs, durationMs, aspect, colors: settings.colors,
     }));
     step(`captions file: ${fs.readFileSync(ass, 'utf8').split('\n').filter(l => l.startsWith('Dialogue')).length} lines; headline ${JSON.stringify(inputs.headline)}`);
-    if (only === 'files') { step('DEBUG done (files only): nothing was written to the episode'); return; }
+    if (only === 'files') {
+        // Into the episode's Storage too, with links good for an hour, for a machine that cannot reach GitHub's downloads.
+        for (const name of [`${item.id}-stretch.mkv`, `${item.id}-wide.mkv`, `${item.id}.ass`, 'background.png']) {
+            const local = path.join(workDir, name);
+            if (!fs.existsSync(local)) continue;
+            const dest = `episodes/${episodeId}/shorts-debug/${name}`;
+            await attempt(`keep ${name} in Storage`, async () => {
+                await limit('upload', 180_000, bucket.upload(local, { destination: dest }));
+                const [link] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 });
+                console.log(`DEBUG FILE ${name} ${link}`);
+            });
+        }
+        step('DEBUG done (files only): nothing was written to the episode');
+        return;
+    }
     const l = shortLayout(aspect);
     const options = { startSeconds: inputs.startMs / 1000, durationSeconds: durationMs / 1000, aspect: aspectRatio(aspect), background, ass,
         fontsDir: FONTS_DIR, width: SHORT_WIDTH, videoTop: l.video.top, verbose: true };
