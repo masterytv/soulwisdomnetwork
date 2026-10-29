@@ -6,6 +6,11 @@ function run(cmd: string, args: string[]): Promise<string> {
     return runWithLog(cmd, args).then(r => r.stdout);
 }
 
+// ffmpeg's own AAC encoder with its two-loop search, which every ffmpeg release has used. The pinned build's new
+// default ('nmr') never finishes on some speech (29 October 2026: three shorts of "on ufos and spirtuality" hung
+// on a few hundred milliseconds of voice between exact silences), so every AAC encode names the coder.
+export const AAC = ['-c:a', 'aac', '-aac_coder', 'twoloop'];
+
 // Signed links (the final cut read straight from Storage) grant access through their query
 // string; ffmpeg repeats the input URL in its errors, which end up in logs, emails and the Studio.
 export const redactUrls = (text: string) => text.replace(/(https?:\/\/[^\s?]+)\?\S+/g, '$1?…');
@@ -69,7 +74,7 @@ export function makeProxy(input: string, output: string) {
         '-y', '-hide_banner', '-loglevel', 'error', '-i', input,
         '-vf', "scale=-2:'min(720,ih)'",
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '26',
-        '-c:a', 'aac', '-b:a', '128k',
+        ...AAC, '-b:a', '128k',
         '-movflags', '+faststart',
         output,
     ]);
@@ -79,7 +84,7 @@ export function makeProxy(input: string, output: string) {
 export function makeAudio(input: string, output: string) {
     return run('ffmpeg', [
         '-y', '-hide_banner', '-loglevel', 'error', '-i', input,
-        '-vn', '-ac', '1', '-ar', '44100', '-c:a', 'aac', '-b:a', '96k',
+        '-vn', '-ac', '1', '-ar', '44100', ...AAC, '-b:a', '96k',
         '-movflags', '+faststart',
         output,
     ]);
@@ -195,7 +200,7 @@ export function cutClip(input: string, output: string, startSeconds: number, dur
         '-ss', startSeconds.toFixed(3), '-i', input, '-t', durationSeconds.toFixed(3),
         ...(filters.length ? ['-vf', filters.join(',')] : []),
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '17', '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac', '-b:a', '192k',
+        ...AAC, '-b:a', '192k',
         '-movflags', '+faststart',
         output,
     ]);
@@ -242,7 +247,7 @@ export async function normalizeLoudness(input: string, output: string, to: { int
         '-af', `loudnorm=${target}:measured_I=${measured.input_i}:measured_TP=${measured.input_tp}` +
             `:measured_LRA=${measured.input_lra}:measured_thresh=${measured.input_thresh}` +
             `:offset=${measured.target_offset}:linear=true:print_format=json`,
-        '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+        '-c:v', 'copy', ...AAC, '-b:a', '192k', '-ar', '48000',
         '-movflags', '+faststart',
         output,
     ])).stderr);
@@ -311,7 +316,7 @@ export function renderShort(input: string, output: string, o: {
         `[1:a]asetpts=PTS-STARTPTS,afade=t=in:d=0.05,afade=t=out:st=${fadeOut}:d=0.25[a]`,
         '-map', '[out]', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-profile:v', 'high',
-        '-c:a', 'aac', '-b:a', '192k', '-ar', '48000',
+        ...AAC, '-b:a', '192k', '-ar', '48000',
         '-t', o.durationSeconds.toFixed(3),
         '-movflags', '+faststart',
         output,
