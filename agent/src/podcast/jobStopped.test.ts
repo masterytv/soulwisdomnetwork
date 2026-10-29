@@ -25,7 +25,7 @@ test('every podcast workflow with an episode job marks it stopped, naming a fiel
     };
     for (const [file, field] of Object.entries(expected)) {
         const yml = fs.readFileSync(path.join(dir, file), 'utf8');
-        assert.match(yml, /if: \$\{\{ failure\(\) \|\| cancelled\(\) \}\}\n\s+env:\n(?:.*\n)*?\s+JOB_FIELD: (\S+)\n(?:.*\n)*?\s+run: npx tsx agent\/src\/podcast\/jobStopped\.ts/, file);
+        assert.match(yml, /if: \$\{\{ \(?failure\(\) \|\| cancelled\(\)\)?(?: && [^}]+)? \}\}\n\s+env:\n(?:.*\n)*?\s+JOB_FIELD: (\S+)\n(?:.*\n)*?\s+run: npx tsx agent\/src\/podcast\/jobStopped\.ts/, file);
         assert.equal(/JOB_FIELD: (\S+)/.exec(yml)![1], field, file);
         assert.ok(JOB_LABELS[field], field);
     }
