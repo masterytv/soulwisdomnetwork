@@ -320,6 +320,8 @@ Merging to `main` deploys to production. Keep PRs to one concern.
   pull request; lint errors fail it, warnings don't.
 - Specs live in `docs/specs/NNN-name.md` and are numbered sequentially.
 - `.env.local` and `serviceAccountKey.json` are gitignored. Keep it that way.
+- Tom is in Eastern Time: give him times in ET (EDT, UTC−4, until the first Sunday of November; EST, UTC−5,
+  after), not UTC. GitHub, Firestore and the logs show UTC, so convert.
 
 ## Known state
 
