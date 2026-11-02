@@ -492,8 +492,18 @@ async function debugShort(episode: Episode, debug: string) {
     step('DEBUG done: nothing was written to the episode');
 }
 
+// What debug runs left in Storage ("N files" keeps the stretch with hour-long links): cleared by the episode's
+// next shorts run, debug or not, once those links have run out. Never stops the run.
+async function clearDebugFiles() {
+    const [files] = await bucket.getFiles({ prefix: `episodes/${episodeId}/shorts-debug/` });
+    const stale = files.filter(f => Date.now() - new Date(f.metadata.timeCreated ?? 0).getTime() > 60 * 60_000);
+    await Promise.all(stale.map(f => f.delete({ ignoreNotFound: true })));
+    if (stale.length) step(`cleared ${stale.length} debug file${stale.length === 1 ? '' : 's'} from an earlier debug run`);
+}
+
 async function main() {
     settings = await loadSettings(db);
+    await clearDebugFiles().catch(error => console.warn(`⚠️ Old debug files not cleared: ${(error as Error).message}`));
     notesPage = `${settings.studioUrl}/admin/podcast/${episodeId}/notes#shorts`;
     const episode = (await ref.get()).data() as Episode | undefined;
     if (!episode) throw new Error(`Episode ${episodeId} not found`);

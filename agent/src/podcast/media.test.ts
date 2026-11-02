@@ -11,7 +11,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawnSync } from 'child_process';
 import type { AddressInfo } from 'net';
-import { AAC, renderShort, runWithLog, shortTimeLimitMs, TimedOutError, urlInputOptions } from './media';
+import { AAC, libassFonts, renderShort, runWithLog, shortTimeLimitMs, TimedOutError, urlInputOptions } from './media';
 
 const FONTS = path.resolve(__dirname, '../../assets/fonts');
 
@@ -154,4 +154,11 @@ test('the AAC encode finishes on the voice that hung the shorts', { timeout: 60_
     } finally {
         fs.rmSync(dir, { recursive: true, force: true });
     }
+});
+
+test('libass is given the fonts alone, not the licences and readme beside them', () => {
+    const files = fs.readdirSync(libassFonts(FONTS));
+    assert.ok(files.includes('Outfit-Black.ttf'));
+    assert.deepEqual(files.filter(f => !/\.(ttf|otf)$/i.test(f)), []);
+    assert.deepEqual(fs.readdirSync(libassFonts(FONTS)), files, 'the same folder each time');
 });

@@ -1,4 +1,7 @@
 import { spawn } from 'child_process';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { DEFAULT_SETTINGS, gradientExpr, type StudioSettings } from '../../../lib/studioSettings';
 import { PermanentError } from './errors';
 
@@ -120,10 +123,24 @@ export function fillFrame(input: string, output: string) {
     ]);
 }
 
+// libass loads every file in its fonts folder and complains of each one that is not a font it reads (the
+// licences, the readme, the graphics' web fonts), a dozen lines that buried what a stuck short was waiting on.
+// So it gets a folder of its own holding copies of the TrueType and OpenType files alone.
+export function libassFonts(fontsDir: string): string {
+    const dir = path.join(os.tmpdir(), `libass-fonts-${path.resolve(fontsDir).replace(/\W+/g, '-').slice(-60)}`);
+    fs.mkdirSync(dir, { recursive: true });
+    for (const name of fs.readdirSync(fontsDir)) {
+        if (!/\.(ttf|otf)$/i.test(name)) continue;
+        const from = path.join(fontsDir, name), to = path.join(dir, name);
+        if (!fs.existsSync(to) || fs.statSync(to).size !== fs.statSync(from).size) fs.copyFileSync(from, to);
+    }
+    return dir;
+}
+
 // libass over the picture, with the fonts in `fontsDir`. Paths are quoted for the filter graph.
 function assFilter(ass: string, fontsDir: string) {
     const escape = (p: string) => p.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-    return `ass=filename='${escape(ass)}':fontsdir='${escape(fontsDir)}'`;
+    return `ass=filename='${escape(ass)}':fontsdir='${escape(libassFonts(fontsDir))}'`;
 }
 
 // A still PNG with a transparent background (the generic "In this episode" banner). libass
