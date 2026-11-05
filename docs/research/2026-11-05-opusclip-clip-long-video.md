@@ -20,6 +20,11 @@ How this was researched:
 
 Everything was read on 5 November 2026. Sources are listed at the end.
 
+Tom then sent OpusClip's results: 36 clips. He asked for the way it edits a vertical clip with several shots to be
+added: it starts wide and pushes in, then cuts to another face for a second or two. Section 2 has what the results
+show, and item 2.2 is that auto camera. The published episode was also watched with an AI video tool (Gemini) to
+see how it was recorded. That description is model output and may contain small errors.
+
 ## Summary
 
 - **OpusClip's setup screen has about 25 controls in six groups:** source and layout, clipping, captions and graphics,
@@ -38,31 +43,49 @@ Everything was read on 5 November 2026. Sources are listed at the end.
   projects expire after 30 days, and it may train on our videos).
 - **The large gaps:**
   - layouts that follow the speaker;
+  - an automatic camera: several shots in one clip, opening wide, pushing in, cutting between faces;
+  - more clips, and more long ones;
   - a choice of caption styles;
   - hook cards;
   - effects: zoom, sound effects, emojis, motion graphics, transitions and colour;
   - b-roll inside clips;
   - a real clip editor;
   - other platforms, a calendar and analytics.
-- **What all of it would take.** About 30 build items, roughly **25–35 working days** of building with Claude Code
+- **What OpusClip made from Egoless** (section 2):
+  - 36 clips, from 23 seconds to 2:57, eight of them over 90 seconds; several overlap.
+  - Most are a full-face crop of whoever is speaking. Some open wide and push in, or move to a second face for a
+    second or two.
+  - The weak one tried to fill the frame with a small thumbnail in the corner of a shared screen.
+  - Two are mostly someone else's YouTube video that had been shared on screen.
+- **What all of it would take.** About 30 build items, roughly **27–37 working days** of building with Claude Code
   as we do now. That is **6–8 calendar weeks**, because every job change has to reach `main` and be tested on a
   real episode. Tom's part is about **20–30 hours** of decisions and testing.
-- **A recommended core of about 18 items** would take **12–18 working days, 3–4 weeks**, and cost about
+- **A recommended core of about 19 items** would take **14–20 working days, 3–4 weeks**, and cost about
   **$1–2 an episode** to run: Claude's text only, since the repository is public and its GitHub runners cost
   nothing.
 - **OpusClip's cost for comparison.** Pro is $29 a month for 300 credits. Tom's run used 47 credits. With every
   premium feature on for the top 10 clips, the same episode would cost **about 400–580 credits**, more than a month
   of Pro.
-- **The finding that changes the plan.** Our recordings are Zoom gallery view, so each person sits in a tile of
-  about 960×540. OpusClip's **Fill** layout crops one speaker to full-screen vertical, which would blow
-  that tile up about **3.5×** and look soft. A **Split** layout, one person above the other, needs only about
-  1.8× and shows both faces, which suits a two-host conversation.
+- **How each episode is recorded decides the look.**
+  - *Speaker view.* Egoless was recorded this way: one person full frame at a time. A full-face vertical crop
+    enlarges it about **1.8×**, which is why OpusClip's full-face clips look fine.
+  - *Gallery view.* The recording checklist asks for this: both people side by side. There a full-face crop
+    enlarges about **3.5×** and looks soft, but both faces are always on screen, so a clip can cut to the listener
+    or stack the two.
+  - The picture analysis has to tell the two apart, shot by shot.
 - **Recommendation: don't chase parity.**
   1. First, compare OpusClip's top 10 clips from the Egoless episode with ours, blind.
-  2. Then build the core: a clean picture, Split and Fill layouts, caption styles, a hook card, gentle zooms, quiet
-     sound effects, the 9:16 motion overlay already designed in spec 021, the episode's own b-roll stills, a clip
-     editor, analytics and the cover frame.
-  3. Skip or defer dubbing, AI-video b-roll, emoji-heavy styles and YouTube-link import.
+  2. Straight away, as a small change: more picks, more long ones, and a long and a short version of a strong
+     moment (item 2.5).
+  3. Then build the core:
+     - a clean picture;
+     - Fill, Split and Fit layouts, and the auto camera that moves between shots;
+     - caption styles and a hook card;
+     - gentle zooms and quiet sound effects;
+     - the 9:16 motion overlay already designed in spec 021;
+     - the episode's own b-roll stills;
+     - a clip editor, analytics and the cover frame.
+  4. Skip or defer dubbing, AI-video b-roll, emoji-heavy styles and YouTube-link import.
 
 The rest of this page has the detail behind each point.
 
@@ -94,7 +117,7 @@ clips" premium features cost extra, counting each clip as one minute.
 | **AI picks** (app code) | The clip model | **Auto**; **ClipAnything** (multimodal: picture, objects, actions, on-screen text, laughter, cheering, emotion; 20–40 min to run); **ClipBasic** (transcript only) | — |
 | **Clip length** (app code) | Ranges to aim for, more than one allowed | Auto (0–3 min), under 30 s, 30–59 s, 60–89 s, 90 s–3 min, 3–5 min, 5–10 min, 10–15 min | All |
 | **Moments to include** | A prompt | ClipAnything: a scene, action, emotion, person, compilation or sound ("all the laughing scenes"). ClipBasic: keywords that are spoken. English only. Not editing instructions | Pro and Business |
-| **How many clips** | Not a control; it follows the length | 23–32 clips for a 30–60 min source | — |
+| **How many clips** | Not a control; it follows the length | 23–32 clips for a 30–60 min source (Egoless gave 36) | — |
 
 ### Essentials
 
@@ -176,6 +199,69 @@ clips" premium features cost extra, counting each clip as one minute.
   Auto-edit talking videos, Captions, Reframe, Social edits, AI B-roll and Translate & dub. **Upscale** costs credits
   per 10 seconds, for videos up to 5 minutes.
 
+### What it made from the Egoless episode
+
+Tom ran the episode's YouTube link through the trial: 47 credits, "Clip long video (4 features)". What follows is
+from his screenshots of the results, and from the published episode as Gemini described it.
+
+**The source:**
+
+- **Speaker view throughout.** One person full frame, cutting between Daniel Endy and Tom Wood as each speaks.
+  Faces fill about a quarter to a third of the frame's height.
+- **Shared screens** (33:40–36:59, and a teaser) put the sharer's camera in a small thumbnail at the top right.
+- **What our final cut adds:** the teasers with their "In this episode" banners, the intro and outro bumpers, and
+  four full-screen b-roll images. The source OpusClip clipped is the published final cut, so these are in it.
+
+**The clips:**
+
+- **How many.** 36 clips; its own guide says 23–32 for a 30–60 minute video.
+- **How long:**
+
+  | Length | Clips |
+  |---|---|
+  | Under 30 s | 5 |
+  | 30–59 s | 19 |
+  | 60–89 s | 4 |
+  | 90 s to 3 min | 8, the longest 2:57 |
+
+- **Overlap.** Together the clips run about 40 minutes, from a 48-minute episode, because several overlap. Two
+  pairs open on the same words, a long and a short version of one moment: "Forgiveness and Self-Compassion"
+  (2:55) and "The Hardest Forgiveness Starts Within" (1:34); "The Tapestry of Life" (1:38) and "Why We Shouldn't
+  Judge Others" (0:24).
+- **Scores.** All 36 score between 80 and 99. They rank the clips more than they judge them.
+- **Text on the clips:**
+  - every clip has a title;
+  - the headline box (black capitals on white, at the top) is on the top 10 only, as the summary panel said;
+  - captions come two or three words at a time in white capitals, with one keyword in green, low in the frame;
+  - some lines have an emoji under them;
+  - the trial puts its watermark at the top left.
+
+**How it framed them.** This is the auto camera Tom asked to add (item 2.2).
+
+- **Fill, mostly.** Nearly every clip is a full-face crop of whoever is speaking. It looks sharp because the source
+  is speaker view.
+- **Wide, then in.** Some clips open on the whole picture (Fit, over a blurred copy) and then push in to the face.
+- **Between faces.** Where a shared screen holds two faces, the crop moves between them, a second or two at a time.
+
+**What went wrong:**
+
+- **"Buddha's Path to Untangling the Mind" (87).** It is cut from a shared YouTube video. At 0:22 the crop tries
+  to fill the frame with Daniel Endy's small thumbnail at the top right, and shows mostly empty background. A face
+  that small should never be the target of a full-frame crop.
+- **Someone else's footage.** That clip and "A Painful Accident Led to a Tapestry of…" (81) are mostly YouTube videos
+  from other channels (the string-art tapestry) that were shared on screen. Posted as our Shorts they invite a
+  copyright claim (section 8, item 3).
+- **A cover with no face.** "Your Truth, Your Path" (80) shows the show's winged emblem as its cover, not a face.
+
+**Against ours:**
+
+- **How many.** Ours suggest at most 15: 10 quick and 5 long, plus the key quotes, which are usually about 20.
+- **No overlap.** Two of our picks never overlap by more than half (`rankPicks`).
+- **Length.** A short can run to 3 minutes, but Claude's picks rarely get there: the prompt asks for 20–90
+  seconds, and the long ones are capped at five.
+
+Item 2.5 changes all three, and it can go first.
+
 ## 3. Our Shorts today
 
 Spec 013 describes them. The code:
@@ -248,17 +334,18 @@ The **#** column is the build item in section 6.
 | YouTube link import | — | Possible, but unreliable from cloud runners, and against YouTube's terms for videos that aren't ours (section 8) | S, risky | 7.2 |
 | Speech language (25) | English | AssemblyAI language detection; the prompts in that language | S | 7.3 |
 | Genre | The Studio settings' kind of recording (podcast, meeting, talk) | Nothing: we have one show | — | — |
-| Adjust range | Picks read the whole final cut | A range on the filmstrip | S | 2.4 |
+| Adjust range | Picks read the whole final cut | A range on the filmstrip | S | 2.5 |
 | **Layouts** Fill, Fit, Split, Three, Four, ScreenShare, Auto; 1:1, 4:5, 16:9 | Stacked (like Fit) at 14:9 or 13:9; 9:16 only | Faces and tiles found at ingest; speakers mapped from the transcript and speaker tracks; a renderer whose crop changes over time | L | 1.2, 1.3, 2.1 |
+| **Auto camera**: several shots in one clip (open wide and push in, cut to the speaker, a second face for a second or two) | — (one fixed crop for the whole short) | A "director" that picks shots from the picture analysis by rules: follow the speaker and the source's cuts, hold each shot, never fill the frame with a small face | M–L | 1.2, 1.3, 2.2 |
 | Upload SRT | Our transcript, corrected in the Studio | Not needed | — | — |
 | Recipes | One set of Studio settings | Saved clip settings (one show, so a single default is enough) | S | 1.4 |
 | Brand Kit | Studio settings: colours, logo, Outfit and Cinzel, intro and outro | Caption and headline style, positions, clip music | S | 1.4 |
-| **AI picks** (ClipAnything, ClipBasic) | Claude reads the transcript: 10 quick and 5 long picks, score, hook, reason | Length presets, count, range, a score breakdown. Picture cues (laughter, gestures) only if the bake-off shows they matter | S | 2.4 |
-| Clip length | Fixed: 20–90 s quick, 90 s–3 min long | Presets | S | 2.4 |
+| **AI picks** (ClipAnything, ClipBasic) | Claude reads the transcript: 10 quick and 5 long picks, score, hook, reason | Length presets, count, range, a score breakdown. More clips, more long ones, a long and a short version of a strong moment. Picture cues (laughter, gestures) only if the bake-off shows they matter | S | 2.5 |
+| Clip length | Fixed: 20–90 s quick, 90 s–3 min long | Presets | S | 2.5 |
 | Moments to include | **Direction** box, up to 1,000 characters | Nothing | — | — |
-| Virality score 0–99 | Score 1–10 with a reason | Hook, flow, value and trend; then measured against real views | S, then M | 2.4, 6.5 |
-| **Caption styles** (44) | One | 6–8 presets in our brand, Claude-marked keywords, position, lines | M | 2.2 |
-| **Headline hook** | A headline over the whole short | Three styles, big for the first seconds, then settled or gone | S | 2.3 |
+| Virality score 0–99 | Score 1–10 with a reason | Hook, flow, value and trend; then measured against real views | S, then M | 2.5, 6.5 |
+| **Caption styles** (44) | One | 6–8 presets in our brand, Claude-marked keywords, position, lines | M | 2.3 |
+| **Headline hook** | A headline over the whole short | Three styles, big for the first seconds, then settled or gone | S | 2.4 |
 | Viral hook | — | An animated hook template with a sound | M (inside 3.4) | 3.4 |
 | **Motion graphics** | Spec 021 templates at 16:9; the 9:16 Short overlay designed (`Short.dc.html`), not built | 9:16 templates (overlay, name, key idea, end card), placed by Claude | M | 3.4 |
 | AI Emojis | — | Claude picks a few; Noto Emoji pictures pop in | S | 3.3 |
@@ -289,18 +376,18 @@ The **#** column is the build item in section 6.
 |---|---|---|---|
 | 0. Bake-off | Compare OpusClip's top 10 with ours | — | 1–2 h |
 | 1. Foundations | Clean picture, picture analysis, segment renderer, clip settings | 5–7 days | 3–4 h |
-| 2. Core look | Layouts, caption styles, hook, better picks | 3 days | 3 h |
+| 2. Core look | Better picks (can go first), layouts, auto camera, caption styles, hook | 4–6 days | 4 h |
 | 3. Polish | Zoom, sound effects, emojis, 9:16 graphics, transitions, colour | 3–4 days | 3 h |
 | 4. B-roll | Episode stills, stock video (AI video: not recommended) | 1–2 days | 1–2 h |
 | 5. Studio UI | Clips page, clip editor, exports | 4–5 days | 3–4 h |
 | 6. Distribution and learning | Instagram and Facebook, TikTok, others, calendar, analytics, cover frame | 4–6 days | 4–6 h, including the Meta developer app and a posting service |
 | 7. Beyond our episodes | Any video, link import, languages, caption translation, dubbing, upscale | 4–5 days | 2–3 h |
-| **Everything** | about 30 items | **25–35 working days, 6–8 weeks** | **20–30 h** |
-| **Recommended core** | 0, 1, 2, most of 3, 4.1, 5.1, 5.2, 6.5, 6.6 | **12–18 working days, 3–4 weeks** | **12–18 h** |
+| **Everything** | about 30 items | **27–37 working days, 6–8 weeks** | **20–30 h** |
+| **Recommended core** | 0, 1, 2, most of 3, 4.1, 5.1, 5.2, 6.5, 6.6 | **14–20 working days, 3–4 weeks** | **13–19 h** |
 
 **Cost of building.** This is Claude Code usage under the existing subscription, plus Tom's time. For scale only:
 a contractor without AI help, at the $50 an hour used in the September research, would need roughly three times as
-long. That is **about $30,000–$42,000 for everything, or $15,000–$22,000 for the core**. This is an assumption,
+long. That is **about $32,000–$44,000 for everything, or $17,000–$24,000 for the core**. This is an assumption,
 not a quote.
 
 **Upkeep.** OpusClip ships changes weekly; we would own our bugs. Budget a few hours a month. The October Shorts
@@ -384,13 +471,23 @@ This decides which phases are worth building, for an hour or two of Tom's time.
   - Not YOLO face models: AGPL or GPL.
   - Not InsightFace's models: non-commercial only.
   - Not TalkNet's pretrained weights: trained partly on non-commercial data.
-- Group the faces into Zoom tiles, and notice a shared screen.
-- Map each tile to a speaker: the transcript's speaker turns, and the per-person audio files when they exist (spec
-  019 item 3.3), say who is talking, and the tile whose face moves with that voice is theirs.
-- Save the result as `analysis/faces.json`, beside the silences and peaks, and fill it in for older episodes the
-  way ingest already does for thumbnails.
-- *Why not ML active-speaker detection?* Our tiles do not move, and the transcript already knows who is speaking.
-  That is the cheap, reliable route.
+- Find the source's own cuts with ffmpeg's scene detection: Zoom's switches between speakers, b-roll, bumpers and
+  shared screens. A crop must never straddle one.
+- For every face, keep its size and place. Tell a person's own camera apart from a thumbnail in the corner of a
+  shared screen.
+- Tell the kind of picture apart, shot by shot:
+  - speaker view (one face, full frame);
+  - gallery view (faces in fixed tiles);
+  - a shared screen, and whether it is someone else's video;
+  - no face at all.
+- Map each face to a speaker. The transcript's speaker turns, and the per-person audio files when they exist (spec
+  019 item 3.3), say who is talking. In gallery view, the tile whose face moves with that voice is theirs; in
+  speaker view, Zoom has already put the speaker on screen.
+- Save the result as `analysis/faces.json`, beside the silences and peaks. Fill it in for older episodes the way
+  ingest already does for thumbnails.
+- *Why not machine-learning active-speaker detection?* Zoom tiles do not move, speaker view has already chosen the
+  speaker, and the transcript knows who is talking. Only a shared screen with two faces needs more, and there the
+  transcript's speaker and the thumbnail's place are enough. That is the cheap, reliable route.
 
 **1.3 The segment renderer (L, Extra).** This grows out of `renderShort`.
 
@@ -411,19 +508,57 @@ This decides which phases are worth building, for an hour or two of Tom's time.
 
 ### Phase 2: the core look
 
+Item 2.5 (better picks) touches only the pick prompt and `lib/shortPicks.ts`, so it can ship before Phase 1, as soon
+as Tom wants more and longer clips.
+
 **2.1 Layouts (M, High).**
 
 | Layout | What it shows | Notes |
 |---|---|---|
-| **Split** | Both tiles stacked, each cropped to 9:8 | About 1.8× enlargement: sharp enough |
-| **Fill** | The speaker's tile, switching at speaker turns, with a minimum hold so it doesn't flicker | About 3.5× from a 960×540 tile; a warning in the Studio until the recording changes (section 8) |
-| **Fit** | Today's stacked layout, plus a blurred-background variant | — |
-| **Screen share** | Screen above, speaker below | — |
-| **Auto** | Split during back-and-forth, Fill or Fit on a long answer | — |
+| **Fill** | One face, full frame | About 1.8× enlargement from speaker view (as Egoless), so sharp. About 3.5× from a gallery tile, with a warning in the Studio (section 8, item 1) |
+| **Split** | Two faces stacked, each cropped to 9:8 | Gallery view, or a shared screen with a thumbnail large enough. About 1.8× from gallery tiles |
+| **Fit** | Today's stacked layout, plus a variant over a blurred copy (OpusClip's "wide" opening) | Always sharp |
+| **Screen share** | The screen above, the sharer's face below | Only when the thumbnail is large enough to look sharp; otherwise the screen alone |
 
-1:1, 4:5 and 16:9 come from the same renderer.
+1:1, 4:5 and 16:9 come from the same renderer. "Auto" is no longer a layout: it is the auto camera, below.
 
-**2.2 Caption styles (M, High).**
+**2.2 The auto camera: several shots in one clip (M–L, Extra).**
+
+This is what OpusClip did in the Egoless clips: open on the whole picture and push in to the speaker, then move to
+another face for a second or two. It is built as a "director": a pure function in `lib/` with tests, like
+`lib/highlights.ts`'s pacing. It reads the picture analysis (1.2) and the transcript, and returns the clip's list
+of segments, which the renderer (1.3) draws and the preview (5.2) shows.
+
+- **The shots it can use:**
+  - *wide*: the whole 16:9 picture over a blurred copy (Fit);
+  - *medium*: one person's head and shoulders (Fill);
+  - *close*: a slow push from medium to a tighter face (the zoom of 3.1);
+  - *two-shot*: two faces stacked (Split), when both are in the picture;
+  - *reaction*: the listener's face for 1.5–3 seconds;
+  - *screen*: a shared screen, with the sharer's face below it only if their thumbnail is large enough.
+- **When it changes shot:**
+  - at each speaker turn in the transcript, a fraction of a second before the first word;
+  - at the source's own cuts (Zoom's speaker switches, b-roll, screen shares), so a crop never straddles one;
+  - a reaction at most every 15–25 seconds in a long answer, and only when the listener is in the picture;
+  - opening wide for a second or two only where the opening picture is wide (a shared screen, gallery view), then
+    pushing in.
+- **What it never does:**
+  - hold a shot for less than about 2 seconds;
+  - follow every small movement of a face, so the frame never wobbles;
+  - **fill the frame with a small face.** A face under a minimum size, about 15% of the picture's height, is never
+    a target; the shot stays wide or on the screen. This is the Buddha clip at 0:22, where OpusClip's crop chased
+    Daniel's thumbnail and framed empty background;
+  - aim at a frame with no face at all (b-roll, a bumper, a logo): it stays wide. That is the emblem cover of
+    "Your Truth, Your Path".
+- **What it can do with each kind of recording:**
+  - *speaker view* (Egoless): one face at a time, sharp. Shots change where Zoom switched speakers; reactions and
+    two-shots are possible only during shared screens;
+  - *gallery view*: both faces are always there, so real reactions and two-shots, but softer close-ups (section 8,
+    item 1).
+- **Every choice can be overridden.** The clip editor (5.2) shows the shot list under the preview, and each shot's
+  kind or target can be changed.
+
+**2.3 Caption styles (M, High).**
 
 - About 6–8 presets, drawn in ASS so they stay within libass:
   - today's gold word;
@@ -438,7 +573,7 @@ This decides which phases are worth building, for an hour or two of Tom's time.
 - Position (top, middle, bottom, or auto above the faces), size, and per-clip override.
 - The animated Short overlay (spec 021's `short`) arrives in 3.4.
 
-**2.3 Hook headline (S, High).** Three styles in our brand:
+**2.4 Hook headline (S, High).** Three styles in our brand:
 
 - **Classic**: today's headline;
 - **Editorial**: Cinzel, small capitals;
@@ -446,13 +581,28 @@ This decides which phases are worth building, for an hour or two of Tom's time.
 
 Each is shown big for the first 2–3 seconds, then settles at the top or fades. Claude already writes the words.
 
-**2.4 Better picks (S, Medium).**
+**2.5 Better picks (S, Medium; can go first).**
 
-- Clip-length presets, the number of clips, and a range on the filmstrip (the thumbnails already exist,
-  `analysis/thumbs_N.jpg`).
-- The score split into hook, flow, value and trend, with the reason.
-- Titles and headlines written in the same run, saving a step.
-- The prompt and schema are in `lib/shortPicks.ts`; the $0.40 reserve stays.
+- **More clips.** Ask for up to about 30, not 15 (`PICK_COUNT`, `LONG_PICK_COUNT`).
+- **A spread of lengths,** each with its own seats, so the long ones are not squeezed out:
+  - under 30 s;
+  - 30–60 s;
+  - 60–90 s;
+  - 90 s to 3 min.
+
+  Egoless gave OpusClip 5, 19, 4 and 8. Our prompt asks for 20–90 seconds, with at most five long ones, which is
+  why ours never reach 2:57.
+- **Versions.** A strong moment may come back as a long and a short version, shown together as versions of one
+  pick, not as two separate shorts. Today `rankPicks` drops any pick that overlaps another by more than half.
+- **What not to pick:**
+  - the teasers, bumpers and b-roll;
+  - a stretch that is mostly a shared screen of someone else's video, which is flagged instead (section 8, item 3).
+- **Controls:** clip-length presets, the number of clips, and a range on the filmstrip (the thumbnails already
+  exist, `analysis/thumbs_N.jpg`).
+- **The score** split into hook, flow, value and trend, with the reason.
+- **One run.** Titles and headlines are written in the same run, saving a step.
+- **Cost.** The prompt and schema are in `lib/shortPicks.ts`. Twice the picks means a longer answer from Claude, so
+  the $0.40 reserve is measured again.
 
 ### Phase 3: polish
 
@@ -527,7 +677,8 @@ Journey. The page has a setup card like OpusClip's, a summary card, and a grid o
 - A vertical preview drawn live in the browser, by cropping and moving the `<video>` element with CSS as
   `components/studio/highlightPreview.tsx` does. No render is needed to see a change.
 - The transcript with word trims, as today.
-- A strip of the clip's segments, with the layout of each.
+- A strip of the clip's shots from the auto camera (2.2), each with its kind and its target. Change one, or split
+  or join shots.
 - The headline and caption text, which are editable.
 - Every effect (zoom, sound, emoji, graphic, b-roll) as an item to remove or change.
 - **Approve** stays Checkpoint E.
@@ -594,8 +745,8 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
   - **Top card:**
     - the source (this episode, or an uploaded video);
     - the filmstrip with a range to clip;
-    - the layout chooser, showing the episode's own frame cropped each way so the 3.5× softness of Fill is visible
-      before choosing;
+    - the layout chooser, showing the episode's own frame cropped each way, so any softness is visible before
+      choosing;
     - the ratio.
   - **Settings, grouped like OpusClip's:**
     - Clipping: length, number, the direction box;
@@ -609,6 +760,8 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
     estimated time, and **Find clips**.
   - **Results:**
     - a grid of 9:16 cards with the score, hook, reason, length and layout;
+    - long and short versions of one moment grouped on one card;
+    - a flag on any clip that is mostly someone else's video;
     - sort by score or by time, hide the ones you don't want;
     - tick several to make, approve or schedule at once;
     - each card opens the clip editor (5.2).
@@ -622,57 +775,73 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
 
 ## 8. Things you might not be thinking about
 
-1. **Picture quality decides the layouts.** Gallery view at 1080p gives each of two people a tile of about
-   960×540; at 720p about 640×360.
-   - Fill crops a 304×540 strip and enlarges it about 3.5× (5× at 720p). Split enlarges about 1.8×. Today's
-     stacked layout shrinks the picture, which is why it looks sharp.
-   - Fill would look sharp only with a better source:
-     - Zoom's "Record active speaker, gallery view and shared screen separately" setting gives a full-frame speaker
-       file. Zoom's forum reports it often comes out at 640×360 or 720p unless conditions are right, and the ingest
+1. **How each episode was recorded decides how sharp a vertical crop can be.**
+   - **Speaker view** (one person full frame, as Egoless was recorded):
+     - a full-face crop is 608×1080, enlarged about 1.8×, which is sharp enough;
+     - that is what OpusClip did, and why its clips look fine;
+     - but only one face is in the picture at a time, so reactions and two-shots happen only during shared
+       screens.
+   - **Gallery view** (both side by side, which the recording checklist asks for):
+     - each person is a tile of about 960×540 at 1080p, or 640×360 at 720p;
+     - a full-face crop of one tile is 304×540, enlarged about 3.5× (5× at 720p), and looks soft;
+     - a two-shot enlarges about 1.8×, and the listener is always there for a reaction.
+   - **Both at once.** Three ways to get the sharp face and the second person:
+     - Zoom's "Record active speaker, gallery view and shared screen separately" gives both files. Zoom's forum
+       reports the speaker file often comes out at 640×360 or 720p unless conditions are right, and the ingest
        today skips a folder with more than one video, so that would change too.
-     - Or each host records their own camera locally, as Riverside-style tools do.
-     - Or AI upscaling (7.6).
-   - This is the biggest single question, and it is about recording, not code.
-2. **The final cut has 16:9 graphics burned in.** Lower thirds, the logo bug, highlight reframes and b-roll are
-   in the picture shorts are cut from today. A vertical crop needs the clean picture (1.1).
-3. **Brand and tone.** OpusClip's defaults are tuned for high-energy content: emojis, "negative keyword" red
+     - Each host records their own camera locally, as Riverside-style tools do.
+     - AI upscaling (7.6).
+   - Today's stacked layout shrinks the picture either way, which is why our Shorts look sharp.
+   - This is a recording decision, not a code one. The recording checklist (`lib/recordingChecklist.ts`) should say
+     which, and the picture analysis (1.2) handles whatever arrives.
+2. **The final cut has things burned in.** The teasers' "In this episode" banners, lower thirds, the logo bug,
+   highlight reframes, b-roll and the bumpers are all in the picture that shorts are cut from today. A vertical crop
+   needs the clean picture (1.1). OpusClip cut from the published episode, so its clips carry them too: one of its
+   36 has the show's emblem as its cover.
+3. **Other people's videos inside ours.** Two of OpusClip's 36 clips are mostly a YouTube video from another
+   channel that was shared on screen during the conversation.
+   - Inside a 48-minute discussion that may be fair comment. As a 25-second Short it is mostly their footage, and
+     Content ID can claim it or the channel can have it taken down.
+   - The picture analysis (1.2) marks shared screens. The picks (2.5) leave out, or flag, any clip that is mostly
+     one.
+4. **Brand and tone.** OpusClip's defaults are tuned for high-energy content: emojis, "negative keyword" red
    highlights, whooshes, punch-in zooms. For conversations about near-death experiences and forgiveness, restraint
    is the brand. Every effect should be off or gentle by default, and the bake-off should check how OpusClip's
    versions land with this audience.
-4. **Guests and context.**
+5. **Guests and context.**
    - A 40-second clip of someone's near-death experience can misrepresent it. Keep a person's approval before
      anything is posted (Checkpoint E): OpusClip's auto-posting and auto-import skip that step.
    - Consider a line in the guest release covering short clips on every platform.
    - Consider sending guests their clips, which the follow-up email could carry.
-5. **Voices are personal data.**
+6. **Voices are personal data.**
    - OpusClip's dubbing clones the main speaker's voice and uses it for **everyone** in the clip, so a guest would
      speak in the host's voice.
    - Any dubbing needs each speaker's consent and a "translated, AI voice" label.
-6. **AI labels on every platform.** YouTube's synthetic-media flag is already set from AI b-roll. AI video b-roll,
+7. **AI labels on every platform.** YouTube's synthetic-media flag is already set from AI b-roll. AI video b-roll,
    AI images and dubbing need the equivalent label on Instagram and TikTok too.
-7. **Music and Content ID.** A music bed under shorts can draw copyright claims. The show library's licence checks
+8. **Music and Content ID.** A music bed under shorts can draw copyright claims. The show library's licence checks
    (spec 020 E7) apply; the Studio's own wind sounds are safe.
-8. **Each platform covers a different part of the screen,** and their length limits keep changing. Today's layout
+9. **Each platform covers a different part of the screen,** and their length limits keep changing. Today's layout
    keeps everything above y = 1500 for YouTube. TikTok and Reels cover more of the bottom and the right side, so
    one safe area for all three is needed before posting to them. Check each platform's upload limits when that
    phase starts; third-party summaries disagree.
-9. **Quotas and limits:**
+10. **Quotas and limits:**
    - YouTube's default API quota fits about six uploads a day (spec 013). More shorts a day, or more channels,
      means asking Google for more.
    - The Studio's **$10 a day spending limit** (`lib/server/spending.ts`) would refuse AI video or dubbing runs
      unless their costs are reserved and the limit raised.
    - TikTok allows about 15 posts a day per creator. Its audit, without which posts stay private, refuses tools
      that only post to their own team's accounts, so TikTok needs a posting service or posting by hand (6.2).
-10. **Jobs only run from `main`.** Every job change is tested on a real episode only after promotion, so the plan
+11. **Jobs only run from `main`.** Every job change is tested on a real episode only after promotion, so the plan
     is many small, promotable PRs, as the October Shorts fixes showed.
-11. **Rendering is free while the repository is public.**
+12. **Rendering is free while the repository is public.**
     - GitHub's standard runners cost nothing for public repositories, and a job may run 6 hours.
     - The flip side: everything we build is public for anyone to copy.
     - If the repository ever goes private, minutes count: $0.006 a minute on a 2-CPU runner, after $12–18 a month
       included. GPU runners (a T4 at $0.052 a minute) are billed even for public repositories.
-12. **Measure before believing a score.** OpusClip's virality score and ours are both a model's guess. Analytics
+13. **Measure before believing a score.** OpusClip's virality score and ours are both a model's guess. Analytics
     (6.5) is the only way to know which clips work for Soul Wisdom's audience, so it belongs early, not last.
-13. **YouTube links.**
+14. **YouTube links.**
     - YouTube's terms forbid downloading except where YouTube expressly allows it, or with written permission.
     - The Data API has no download method at all. YouTube Studio's own download is manual and 720p at most.
     - yt-dlp now needs a JavaScript runtime and a "PO token" plugin, and reports say data-centre machines such as
@@ -680,14 +849,14 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
     - For our own episodes we never need a link: the recording is already in Storage.
     - For back-catalogue episodes outside the Studio, upload the original file.
     - For other people's videos, the rights question comes before the technical one.
-14. **OpusClip's own terms:**
+15. **OpusClip's own terms:**
     - projects expire (download everything);
     - non-enterprise videos may train its models;
     - credits on annual plans are reported differently on two of its own pages;
     - the Pro annual price may have risen in October (a third-party tracker says $19.43 a month; its page still
       says $14.50);
     - "Free" on Motion graphics and the AI-image b-roll is marked as a limited-time offer in its code.
-15. **Licences for the pieces:**
+16. **Licences for the pieces:**
     - **Caption looks.** A caption look itself is not protected (US copyright excludes lettering and colouring as
       such), but each font file has its own licence. Ours, Outfit and Cinzel, are OFL. Don't name a preset after a
       real person.
@@ -696,7 +865,7 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
     - **Sound effects.** Freesound's API needs a negotiated agreement for commercial use, and Pixabay's sounds have
       no API. Stay with the Studio's wind sounds and hand-checked library sounds.
     - **Stock video.** Pexels asks for a prominent link to it inside our app.
-16. **Upkeep is the hidden cost of building.** OpusClip changes weekly; every feature we build is ours to keep
+17. **Upkeep is the hidden cost of building.** OpusClip changes weekly; every feature we build is ours to keep
     working. The case for building is control, approval, brand and no per-clip bill, not that it will be finished
     once.
 
@@ -709,8 +878,12 @@ Neither OpusClip nor any other tool can know what works for this audience; this 
 | **C. Build the core** (recommended) | Phases 0–3, 4.1, 5.1–5.2, 6.5–6.6 | About $3–6 (Claude) | 10–15 min in the Studio | 3–4 weeks; we own the upkeep |
 | **D. Build everything** | Phases 0–7 | About $3–6, up to about $60–240 with every paid extra on (section 5) | 10–15 min | 6–8 weeks; most of the extra weeks go on features this show may not use |
 
-**Recommendation: C, after the bake-off.** Phase 0 costs an hour and may shrink the plan. Phases 1 and 2 are where
-nearly all the visible difference is: layouts, captions and the hook. Distribution beyond YouTube (6.1–6.4) is
+**Recommendation: C, after the bake-off.**
+
+- Phase 0 costs an hour and may shrink the plan.
+- Better picks (2.5) can ship at once.
+- Phases 1 and 2 are where nearly all the visible difference is: layouts, the auto camera, captions and the
+  hook. Distribution beyond YouTube (6.1–6.4) is
 worth doing next, in the order the audience is found. Dubbing, AI video, emojis and link import wait until there
 is a reason.
 
@@ -718,19 +891,23 @@ is a reason.
 
 1. **Run the bake-off first?** It takes an hour or two, using OpusClip's Egoless clips before the trial's 7 days
    are up.
-2. **What do clips come from:** only our episodes, or any video (7.1)? YouTube links for other people's videos
+2. **More and longer picks now?** Item 2.5 is a small change that can ship before anything else: up to about 30
+   picks, a spread of lengths up to 3 minutes, and long and short versions of a strong moment. How many, and what
+   spread?
+3. **What do clips come from:** only our episodes, or any video (7.1)? YouTube links for other people's videos
    (7.2)?
-3. **Recording.**
-   - Stay with gallery view, so Split is the main layout and Fill looks soft?
-   - Or change the recording for sharper single-speaker crops (item 1 in section 8)?
-4. **Effects by default:** off and gentle (recommended), or OpusClip's livelier style?
-5. **B-roll in clips:** the episode's stills only, plus stock video with a review step? AI video stays dropped
+4. **Recording.** Which should the recording checklist ask for (section 8, item 1)?
+   - Speaker view: sharp full-face clips, one face at a time, as Egoless was recorded.
+   - Gallery view: both faces for reactions and two-shots, but softer close-ups.
+   - Both files at once.
+5. **Effects by default:** off and gentle (recommended), or OpusClip's livelier style?
+6. **B-roll in clips:** the episode's stills only, plus stock video with a review step? AI video stays dropped
    (N2)?
-6. **Platforms, and in what order:** Instagram and Facebook first (free, and no Meta review for our own
+7. **Platforms, and in what order:** Instagram and Facebook first (free, and no Meta review for our own
    accounts), then LinkedIn and X? TikTok can only go public through a paid service (Ayrshare, $149 a month), as
    drafts to publish from the phone (upload-post, $16–24 a month), or by hand. Which?
-7. **Dubbing:** no, as spec 005 decided, unless there is an audience in another language?
-8. **Keep OpusClip after the trial?** For the bake-off only, or as option A or B in the meantime?
+8. **Dubbing:** no, as spec 005 decided, unless there is an audience in another language?
+9. **Keep OpusClip after the trial?** For the bake-off only, or as option A or B in the meantime?
 
 ## Sources
 
@@ -889,6 +1066,12 @@ the app does today, are not documentation, and can change without notice.
 
 - https://docs.github.com/en/billing/reference/actions-runner-pricing
 - https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+
+**The Egoless episode**
+
+- https://www.youtube.com/watch?v=pgL8pjg_5nU (published 3 Nov 2026; its layout described by Gemini through the
+  YouTube video tool, model output)
+- Tom's screenshots of OpusClip's 36 results, 5 Nov 2026
 
 **Zoom recording resolution** (forum answers, not Zoom's documentation)
 
