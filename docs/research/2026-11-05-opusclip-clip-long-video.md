@@ -25,6 +25,9 @@ added: it starts wide and pushes in, then cuts to another face for a second or t
 show, and item 2.2 is that auto camera. The published episode was also watched with an AI video tool (Gemini) to
 see how it was recorded. That description is model output and may contain small errors.
 
+Shorts Tom picked as examples of storytelling that works are analysed in
+`docs/research/2026-11-07-shorts-styles.md`, with what each adds to the items below.
+
 ## Summary
 
 - **OpusClip's setup screen has about 25 controls in six groups:** source and layout, clipping, captions and graphics,
@@ -594,6 +597,9 @@ Each is shown big for the first 2–3 seconds, then settles at the top or fades.
   why ours never reach 2:57.
 - **Versions.** A strong moment may come back as a long and a short version, shown together as versions of one
   pick, not as two separate shorts. Today `rankPicks` drops any pick that overlaps another by more than half.
+- **Whole stories as well as quotes.** A first sentence that sets up a question, a reveal, and an end right after
+  it, starting on the story's first words rather than the host's question
+  (`docs/research/2026-11-07-shorts-styles.md`, style 2).
 - **What not to pick:**
   - the teasers, bumpers and b-roll;
   - a stretch that is mostly a shared screen of someone else's video, which is flagged instead (section 8, item 3).
