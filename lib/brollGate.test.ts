@@ -17,14 +17,17 @@ const ep = (ideas: ReturnType<typeof idea>[], more: Partial<Episode> = {}): Epis
 });
 
 test('held until every approved idea has its image', () => {
-    assert.match(brollBlock(ep([idea('a'), idea('b')]), NOW)!, /^2 of 2 b-roll ideas have no image yet/);
-    assert.match(brollBlock(ep([idea('a')]), NOW)!, /^The b-roll idea has no image yet/);
+    assert.match(brollBlock(ep([idea('a'), idea('b')]), NOW)!, /^2 of 2 b-roll ideas have no b-roll yet/);
+    assert.match(brollBlock(ep([idea('a')]), NOW)!, /^The b-roll idea has no b-roll yet/);
     const one = { status: 'ready', only: null, images: { 0: image(0, 'a') } } as unknown as Episode['broll'];
     assert.match(brollBlock(ep([idea('a'), idea('b')], { broll: one }), NOW)!, /^1 of 2 b-roll ideas has/);
     // An image made for an older idea or style does not count.
     assert.ok(brollBlock(ep([idea('a', 'digital')], { broll: one }), NOW));
     const both = { status: 'ready', only: null, images: { 0: image(0, 'a'), 1: image(1, 'b') } } as unknown as Episode['broll'];
     assert.equal(brollBlock(ep([idea('a'), idea(' b ')], { broll: both }), NOW), null);
+    // Stock b-roll (docs/specs/023-stock-broll.md) has no style: changing the idea's style does not hold it back.
+    const stock = { status: 'ready', only: null, images: { 0: { ...image(0, 'a'), source: 'pexels', kind: 'video' } } } as unknown as Episode['broll'];
+    assert.equal(brollBlock(ep([idea('a', 'digital')], { broll: stock }), NOW), null);
 });
 
 test('no ideas, skipped, or work already started: not held', () => {
@@ -39,5 +42,5 @@ test('notes not approved, or images still being made: held', () => {
     const making = { status: 'generating', only: null, requestedAt: NOW - 60_000 } as unknown as Episode['broll'];
     assert.match(brollBlock(ep([idea('a')], { broll: making }), NOW)!, /still being made/);
     // A run that died long ago reads as images missing.
-    assert.match(brollBlock(ep([idea('a')], { broll: { ...making!, requestedAt: NOW - 3600_000 } }), NOW)!, /no image yet/);
+    assert.match(brollBlock(ep([idea('a')], { broll: { ...making!, requestedAt: NOW - 3600_000 } }), NOW)!, /no b-roll yet/);
 });

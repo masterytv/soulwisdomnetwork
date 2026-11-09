@@ -77,7 +77,7 @@ the "altered or synthetic content" flag.
 ## Later
 
 - Send the images to the Descript project with the episode (step 8).
-- Stock footage or AI video (options B and C) as other sources for the same records.
+- Stock footage and photos as other sources for the same records: built, `docs/specs/023-stock-broll.md` (stock first, AI images for the rest).
 
 ## Editing waits for the b-roll (October 2026)
 

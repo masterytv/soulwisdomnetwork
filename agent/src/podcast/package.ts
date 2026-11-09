@@ -15,7 +15,7 @@ import * as path from 'path';
 import { cert, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { BROLL_STYLES } from '../../../lib/broll';
+import { brollStale, BROLL_STYLES, isAiBroll, isVideoBroll } from '../../../lib/broll';
 import { chapterList, mmss, type ShowNotes } from '../../../lib/showNotes';
 import type { Episode } from '../../../types/episode';
 import { loadAlert } from './config';
@@ -79,9 +79,9 @@ function notesText(episode: Episode, notes: ShowNotes, clips: string[], broll: s
         'CHAPTERS',
         ...chapterList(notes).split('\n').map(l => `  ${l}`),
         '',
-        'B-ROLL (place the .mp4 over the moment: the slow pan and zoom is built in; the .png is the still)',
+        'B-ROLL (place the .mp4 over the moment: stock footage as it is, or a still with the slow pan and zoom built in; the .png is the still)',
         ...(notes.broll.length ? notes.broll.map((b, i) =>
-            `  ${i + 1}. At ${mmss(b.startMs)} for ${b.durationSeconds}s (${BROLL_STYLES[b.style ?? 'photo'].label}): ${b.idea}\n` +
+            `  ${i + 1}. At ${mmss(b.startMs)} for ${b.durationSeconds}s (${brollLabel(episode, i, b.style)}): ${b.idea}\n` +
             `     Why: ${b.why}\n     File: ${brollClips[i] ?? broll[i] ?? '(no image yet)'}`) : ['  (none)']),
         '',
         'KEY QUOTES (for shorts)',
@@ -89,6 +89,14 @@ function notesText(episode: Episode, notes: ShowNotes, clips: string[], broll: s
         '',
     ];
     return lines.join('\n');
+}
+
+// What made an idea's b-roll: the AI style, or the stock site, kind and credit.
+function brollLabel(episode: Episode, i: number, style: ShowNotes['broll'][number]['style'] | undefined) {
+    const made = episode.broll?.images?.[i];
+    if (!made || isAiBroll(made)) return `AI, ${BROLL_STYLES[style ?? 'photo'].label}`;
+    const site = made.source === 'pexels' ? 'Pexels' : 'Pixabay';
+    return `${site} ${isVideoBroll(made) ? 'footage' : 'photo'}${made.credit?.name ? ` by ${made.credit.name}` : ''}`;
 }
 
 async function main() {
@@ -217,11 +225,14 @@ async function main() {
             warnings.push(`B-roll ${i + 1} has no image yet.`);
             continue;
         }
-        if (image.idea !== b.idea.trim() || (image.style ?? 'photo') !== (b.style ?? 'photo')) {
-            warnings.push(`B-roll ${i + 1}'s image was made for an older idea or style; regenerate it and rebuild.`);
+        if (brollStale(image, b)) {
+            warnings.push(`B-roll ${i + 1} was made for an older idea or style; make it again and rebuild.`);
         }
+        // Stock footage (docs/specs/023-stock-broll.md) goes in as itself, trimmed to its moment and filled to 1920x1080,
+        // with its first frame as the still; a photo or AI image gets the slow zoom or pan.
+        const video = isVideoBroll(image);
         const name = `02 B-roll ${i + 1} at ${at(b.startMs)} for ${b.durationSeconds}s.png`;
-        const local = path.join(workDir, `broll-${i + 1}-original.png`);
+        const local = path.join(workDir, `broll-${i + 1}-original${path.extname(image.path) || '.png'}`);
         await withRetry('Storage download', () => bucket.file(image.path).download({ destination: local }));
         const localStill = path.join(workDir, `broll-${i + 1}.png`);
         await stillForVideo(local, localStill);
@@ -233,16 +244,17 @@ async function main() {
         keep.push(name);
 
         const motion = BROLL_MOTIONS[i % BROLL_MOTIONS.length];
-        const clipName = `02 B-roll ${i + 1} at ${at(b.startMs)} for ${b.durationSeconds}s - moving.mp4`;
+        const clipName = `02 B-roll ${i + 1} at ${at(b.startMs)} for ${b.durationSeconds}s - ${video ? 'footage' : 'moving'}.mp4`;
         const localClip = path.join(workDir, `broll-${i + 1}.mp4`);
-        await kenBurns(local, localClip, b.durationSeconds, motion);
+        if (video) await cutClip(local, localClip, 0, Math.min(b.durationSeconds, image.seconds || b.durationSeconds), true);
+        else await kenBurns(local, localClip, b.durationSeconds, motion);
         await putFile(drive, folderId, clipName, 'video/mp4', localClip);
         const clipPath = `episodes/${episodeId}/package/broll-${i + 1}.mp4`;
         await withRetry('Storage upload', () => bucket.upload(localClip, { destination: clipPath, resumable: false, metadata: { contentType: 'video/mp4' } }));
         brollClipPaths[i] = clipPath;
         brollClips[i] = clipName;
         keep.push(clipName);
-        console.log(`  ✅ ${clipName} (${{ in: 'zoom in', out: 'zoom out', left: 'pan left', right: 'pan right' }[motion]}) and the still`);
+        console.log(`  ✅ ${clipName} (${video ? 'stock footage' : { in: 'zoom in', out: 'zoom out', left: 'pan left', right: 'pan right' }[motion]}) and the still`);
     }
 
     const notesName = `Notes - ${safe(episode.title)}.txt`;

@@ -47,3 +47,20 @@ export function brollPrompt(idea: string, style: BrollStyle, customStyle = '') {
     const look = customStyle.trim() || `${BROLL_STYLES[style].prompt} ${PALETTE}`;
     return `${look}\n\nSubject: ${idea.trim()}.\n\n${RULES}`;
 }
+
+// ─── stock or AI (docs/specs/023-stock-broll.md) ────────────────────────────
+
+type Made = { idea: string; style?: BrollStyle; source?: string; kind?: string };
+
+// An AI image: made by the image model (every b-roll before stock existed). It makes the episode "altered or
+// synthetic content" on YouTube; stock footage and photos do not.
+export const isAiBroll = (b: Pick<Made, 'source'>) => !b.source || b.source === 'ai';
+export const isVideoBroll = (b: Pick<Made, 'kind'>) => b.kind === 'video';
+
+// Whether an idea still needs b-roll: none yet, or made for other words. An AI image is also out of date when the
+// idea's style changed; stock has no style.
+export function brollStale(made: Made | undefined, idea: { idea: string; style?: BrollStyle }): boolean {
+    if (!made) return true;
+    if (made.idea !== idea.idea.trim()) return true;
+    return isAiBroll(made) && (made.style ?? 'photo') !== (idea.style ?? 'photo');
+}
