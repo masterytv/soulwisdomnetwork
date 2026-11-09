@@ -1,8 +1,8 @@
 "use client";
 
 // The show library's page body (spec 020 item E7; app/admin/podcast/library/page.tsx): adding a file with its
-// licence record and snapshot, checking it, changing it and removing it (admins), and every file with its
-// licence, credit and uses (everyone in the Studio).
+// licence record and snapshot, or bringing one in from Free To Use (components/studio/freeToUse.tsx), checking
+// it, changing it and removing it (admins), and every file with its licence, credit and uses (everyone in the Studio).
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -10,6 +10,7 @@ import { ErrorNote } from "@/components/studio/ErrorNote";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
 import { typeOf, uploadFile } from "@/components/studio/upload";
 import { measure } from "@/components/studio/mediaBin";
+import { FreeToUseSearch } from "@/components/studio/freeToUse";
 import { studioFetch } from "@/lib/studioClient";
 import {
     EMPTY_LICENCE, LIBRARY_KIND_LABELS, LIBRARY_KINDS, licenceMissing, licenceProblem,
@@ -239,6 +240,7 @@ export function LibraryView({ isAdmin }: { isAdmin: boolean }) {
     return (
         <>
             <ErrorNote message={error} />
+            {isAdmin && <FreeToUseSearch onAdded={e => setEntries(prev => [e, ...(prev ?? [])])} />}
             {isAdmin && <AddFile onAdded={e => setEntries(prev => [e, ...(prev ?? [])])} />}
             <div className="flex items-center gap-2 text-sm">
                 {(["all", ...LIBRARY_KINDS] as const).map(k => (

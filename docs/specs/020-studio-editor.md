@@ -719,6 +719,17 @@ sync (spec 015's check), and its length must equal the parts minus the transitio
 
 ### E7 — Built (#160)
 
+- **Free To Use music** (added after E7, Tom, 9 November 2026). The library page searches the Free To Use music API
+  (https://freetouse.com/api: no key, no account; `lib/freeToUse.ts`, `lib/server/freeToUse.ts`,
+  `/api/studio/library/freetouse`, `components/studio/freeToUse.tsx`). Admins search by words, sort by newest, most
+  downloaded, most played or staff picks, play a track from Free To Use's server, and add it as music or an effect.
+  The server downloads the MP3 (only from `*.freetouse.com`, up to 200 MB) into `library/` and lists it with
+  `addEntry`, with the licence record filled in: the track's page, the artists, "Free To Use License" and its page,
+  the date, the track id, and the credit the FAQ asks for. It is **not checked**: an admin still saves a snapshot of
+  the licence page and checks it. The free licence covers an individual's content on social platforms, with credit;
+  a company's channel or the podcast feed may need a paid plan, which is the checker's call. Premium tracks are
+  refused. The entry's `freeToUseId` keeps a track from being added twice. Tested in `lib/freeToUse.test.ts`.
+
 - **The teasers' music and whoosh** (added after E7, Tom, 28 October 2026; **replaced by spec 022 stage 3a**, where sounds
   sit on any clip of the whole video and these settings are converted into such sounds). A sound on the edit sits on the edited
   episode's clock, so none can reach the "In this episode" teasers, which play before it. Two Studio settings

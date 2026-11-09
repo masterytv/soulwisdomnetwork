@@ -73,7 +73,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use), the bin,
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use; tracks
+              can be searched and brought in from the Free To Use music API, lib/freeToUse.ts and lib/server/freeToUse.ts), the bin,
               or the Studio's own wind sounds (public/studio/sounds, made by scripts/windSounds.py, no licence: lib/audio.ts STUDIO_SOUNDS);
               spec 022 stage 3a puts sounds on any clip of the whole video too (edit.programme.audio, anchored to a clip, mixed over
               the whole video by the render, played by components/studio/sounds.tsx ClipSoundsPreview), and the old teaserMusic and

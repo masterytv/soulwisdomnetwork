@@ -38,7 +38,7 @@ export default function LibraryPage() {
                             <h1 className="text-3xl font-bold text-amber-400">Music and effects</h1>
                             <p className={`${hint} mt-1 max-w-xl`}>
                                 The show library: music beds, effects and stingers for every episode, from free and royalty-free sites
-                                (Pixabay, Mixkit, Incompetech, Freesound CC0, Sonniss, Zapsplat). Each keeps its licence record. A file can be placed in the
+                                (Pixabay, Mixkit, Incompetech, Freesound CC0, Sonniss, Zapsplat), or searched and brought in from Free To Use. Each keeps its licence record. A file can be placed in the
                                 Studio editor only once an admin has checked its licence. Non-commercial (NC) and no-derivatives (ND) licences, and YouTube
                                 Audio Library tracks, are refused.
                                 {!isAdmin && " Only an admin can add or check files."}
