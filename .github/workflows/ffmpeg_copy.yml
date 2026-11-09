@@ -1,0 +1,55 @@
+# Keeps this repo's own copy of the pinned ffmpeg build (.github/actions/ffmpeg/pin.env) as a release
+# asset, so the install step never depends on BtbN keeping its dated autobuilds (it deletes them after a
+# couple of weeks). Runs when the pin changes on staging or main, or by hand from the Actions tab. It does
+# nothing when the copy already exists, and refuses a file whose sha256 differs from the pin.
+#
+# The build is GPL: the release notes name BtbN's build and its FFmpeg source, which is what the licence
+# asks of anyone passing the binary on.
+name: ffmpeg copy
+
+on:
+  push:
+    branches: [staging, main]
+    paths: ['.github/actions/ffmpeg/pin.env']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ffmpeg-copy
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/actions/ffmpeg
+      - name: Copy the pinned build into a release here
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source .github/actions/ffmpeg/pin.env
+          build=$FFMPEG_BUILD
+          tag="$build"
+          if gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx "$build.tar.xz"; then
+            echo "The release $tag already has $build.tar.xz; nothing to do."
+            exit 0
+          fi
+          curl -fsSL --retry 4 --retry-delay 5 --retry-all-errors --max-time 300 -o "$build.tar.xz" \
+            "https://github.com/BtbN/FFmpeg-Builds/releases/download/$FFMPEG_BTBN_TAG/$build.tar.xz"
+          echo "$FFMPEG_SHA256  $build.tar.xz" | sha256sum -c
+          # The FFmpeg commit is the part after "-g" in the build's name.
+          commit=$(sed -E 's/^ffmpeg-N-[0-9]+-g([0-9a-f]+)-.*/\1/' <<<"$build")
+          notes="ffmpeg and ffprobe for this repo's workflows (.github/actions/ffmpeg), copied unchanged from BtbN's FFmpeg-Builds release $FFMPEG_BTBN_TAG (https://github.com/BtbN/FFmpeg-Builds/releases/tag/$FFMPEG_BTBN_TAG), sha256 $FFMPEG_SHA256.
+
+          GPL build. Source: FFmpeg commit $commit (https://github.com/FFmpeg/FFmpeg/commit/$commit) and the build scripts at https://github.com/BtbN/FFmpeg-Builds."
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$build.tar.xz" --clobber
+          else
+            gh release create "$tag" "$build.tar.xz" --title "ffmpeg $build" --notes "$notes" --latest=false --target "$GITHUB_SHA"
+          fi
+          echo "Copied: https://github.com/$GITHUB_REPOSITORY/releases/download/$tag/$build.tar.xz"
