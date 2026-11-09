@@ -5,6 +5,7 @@
 // Studio's progress and the pages.
 
 import type { Episode } from '../types/episode';
+import { brollStale } from './broll';
 import { toMs } from './episodeReset';
 
 // A b-roll run that has not finished by now is taken as lost (as lib/server/broll.ts does).
@@ -20,11 +21,8 @@ export function brollBlock(e: Episode, now = Date.now()): string | null {
     if ((b?.status === 'queued' || b?.status === 'generating') && now - Math.max(toMs(b.requestedAt), toMs(b.startedAt)) < BROLL_STALE_MS) {
         return 'The b-roll images are still being made. Editing opens when they are done.';
     }
-    const missing = ideas.filter((idea, i) => {
-        const image = b?.images?.[i];
-        return !image || image.idea !== idea.idea.trim() || (image.style ?? 'photo') !== (idea.style ?? 'photo');
-    }).length;
+    const missing = ideas.filter((idea, i) => brollStale(b?.images?.[i], idea)).length;
     if (!missing) return null;
     const which = ideas.length === 1 ? 'The b-roll idea has' : `${missing} of ${ideas.length} b-roll ideas ${missing === 1 ? 'has' : 'have'}`;
-    return `${which} no image yet. Make the images, or skip b-roll, first.`;
+    return `${which} no b-roll yet. Find stock or make AI images, or skip b-roll, first.`;
 }

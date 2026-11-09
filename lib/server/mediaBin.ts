@@ -33,7 +33,12 @@ interface UploadDoc {
 export async function binItems(id: string, episode: Episode, settings: StudioSettings): Promise<BinItem[]> {
     const items: BinItem[] = [];
     for (const b of Object.values(episode.broll?.images ?? {}).sort((a, c) => a.index - c.index)) {
-        items.push({ id: `broll-${b.index}`, kind: 'image', source: 'broll', path: b.path, name: b.idea || `B-roll ${b.index + 1}`, startMs: b.startMs, seconds: b.durationSeconds, index: b.index });
+        // Stock footage is video (docs/specs/023-stock-broll.md), with its own length; the rest are stills.
+        const video = b.kind === 'video';
+        items.push({
+            id: `broll-${b.index}`, kind: video ? 'video' : 'image', source: 'broll', path: b.path, name: b.idea || `B-roll ${b.index + 1}`,
+            startMs: b.startMs, seconds: b.durationSeconds, index: b.index, ...(video && b.seconds ? { durationMs: Math.round(b.seconds * 1000) } : {}),
+        });
     }
     const pkg = episode.package?.status === 'ready' ? episode.package : undefined;
     (pkg?.clipPaths ?? []).forEach((p, i) => items.push({ id: `teaser-${i}`, kind: 'video', source: 'teaser', path: p, name: `Teaser clip ${i + 1}` }));

@@ -2,7 +2,9 @@
 // with the chapter times of the final cut, tags and settings. Shared by the upload job and the
 // show notes page, which previews exactly this.
 
+import { isAiBroll } from './broll';
 import { youtubeDescription, type ShowNotes } from './showNotes';
+import { stockCredits } from './stockBroll';
 import type { DescriptionLinks } from './studioSettings';
 import type { Episode } from '../types/episode';
 
@@ -55,14 +57,16 @@ export function youtubeMetadata(episode: Episode, links?: DescriptionLinks): You
     const final = episode.final?.status === 'ready' ? episode.final : undefined;
     if (!notes || !final) return null;
     const chapters = (final.chapters ?? []).map(c => ({ title: c.title, startMs: c.startMs })) as ShowNotes['chapters'];
+    const brollMade = Object.values(episode.broll?.images ?? {});
     return {
         title: clean(notes.titles[notes.chosenTitle] ?? episode.title).trim().slice(0, TITLE_MAX),
         // The credits the Editor Light render's library sounds ask for (spec 020 item E7), when it is the final cut.
-        description: fitBytes(clean(youtubeDescription({ ...notes, chapters }, links, final.credits ?? [])), DESCRIPTION_MAX_BYTES),
+        // And the stock b-roll's photographers and videographers (docs/specs/023-stock-broll.md).
+        description: fitBytes(clean(youtubeDescription({ ...notes, chapters }, links, final.credits ?? [], stockCredits(brollMade))), DESCRIPTION_MAX_BYTES),
         tags: fitTags(notes.tags),
         categoryId: YOUTUBE_CATEGORY,
         privacyStatus: YOUTUBE_PRIVACY,
-        // AI b-roll in the edit is "altered or synthetic content" under YouTube's rules.
-        containsSyntheticMedia: Object.keys(episode.broll?.images ?? {}).length > 0,
+        // AI b-roll in the edit is "altered or synthetic content" under YouTube's rules; real stock footage and photos are not.
+        containsSyntheticMedia: brollMade.some(isAiBroll),
     };
 }

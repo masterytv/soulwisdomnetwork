@@ -105,13 +105,22 @@ export interface BrollImage {
     model: string;
     quality: string;
     size: string;
-    path: string;                         // Cloud Storage object path, PNG
+    path: string;                         // Cloud Storage object path: PNG (AI), JPEG or MP4 (stock)
     usd: number;
     createdAt: unknown;                   // Firestore Timestamp
+    // Stock b-roll (docs/specs/023-stock-broll.md); absent on AI images, which came first. A stock one keeps the
+    // search words as its `prompt`, the site as its `model`, and its size; it costs nothing.
+    source?: 'ai' | 'pexels' | 'pixabay';
+    kind?: 'image' | 'video';             // absent: image
+    seconds?: number | null;              // footage's length
+    credit?: { name: string; url: string | null } | null;
+    pageUrl?: string | null;              // the photo's or video's page on the site
+    stockId?: string | null;              // "pexels-video-123", so "Find other stock" never picks it again
 }
 
 export interface EpisodeBroll {
     status: 'queued' | 'generating' | 'ready' | 'failed';
+    mode?: 'stock' | 'ai';                // what the run does: find stock, or make AI images (absent: AI)
     only: number | null;                  // one image being regenerated, or null for the set
     requestedAt?: unknown;
     startedAt?: unknown;

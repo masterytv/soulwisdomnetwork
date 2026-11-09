@@ -158,6 +158,7 @@ export interface EpisodeNotesView {
 export interface BrollView {
     status: EpisodeBroll['status'] | null;
     only: number | null;
+    mode: 'stock' | 'ai';          // what the run does or did (docs/specs/023-stock-broll.md)
     error: string | null;
     notesApproved: boolean;
     skipped: { by: string; at: number } | null;   // b-roll skipped (lib/brollGate.ts)
@@ -165,6 +166,11 @@ export interface BrollView {
         index: number;
         idea: string;
         style: 'photo' | 'digital';
+        source: 'ai' | 'pexels' | 'pixabay';
+        kind: 'image' | 'video';
+        credit: { name: string; url: string | null } | null;
+        pageUrl: string | null;
+        seconds: number | null;
         url: string;               // signed, a few hours
         model: string;
         prompt: string;
