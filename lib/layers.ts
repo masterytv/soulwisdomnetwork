@@ -254,14 +254,19 @@ export function toLayer(o: Overlay): Layer {
 }
 
 // A b-roll still from the notes plan (spec 008) as a layer, as the render drew it: the whole frame,
-// a slow zoom in, half a second's fade in and out.
-export function brollLayer(b: { index: number; startMs: number; durationSeconds: number; path: string; idea?: string }): ImageLayer {
-    return {
-        id: `broll-${b.index}`, kind: 'image', track: TRACK.pictures, anchor: { srcMs: Math.max(0, Math.round(b.startMs)) },
-        durationMs: Math.max(LAYER_MIN_MS, Math.round(b.durationSeconds * 1000)), place: { x: 0, y: 0, align: 7 },
-        opacity: 1, in: FADE(500), out: FADE(500), media: { path: b.path, name: (b.idea ?? `B-roll ${b.index + 1}`).slice(0, 150) },
-        w: 1, motion: 'kenBurnsIn',
+// a slow zoom in, half a second's fade in and out. Stock footage (docs/specs/023-stock-broll.md) is a silent video
+// layer across the whole frame instead, no longer than the footage, since a clip is never looped.
+export function brollLayer(b: { index: number; startMs: number; durationSeconds: number; path: string; idea?: string; kind?: 'image' | 'video'; footageSeconds?: number | null }): PictureLayer {
+    const common = {
+        id: `broll-${b.index}`, track: TRACK.pictures, anchor: { srcMs: Math.max(0, Math.round(b.startMs)) },
+        durationMs: Math.max(LAYER_MIN_MS, Math.round(b.durationSeconds * 1000)), place: { x: 0, y: 0, align: 7 as const },
+        opacity: 1, in: FADE(500), out: FADE(500), media: { path: b.path, name: (b.idea ?? `B-roll ${b.index + 1}`).slice(0, 150) }, w: 1,
     };
+    if (b.kind === 'video') {
+        const footageMs = b.footageSeconds ? Math.round(b.footageSeconds * 1000) : common.durationMs;
+        return { ...common, kind: 'video', durationMs: Math.max(LAYER_MIN_MS, Math.min(common.durationMs, footageMs)), trimInMs: 0, volumeDb: null };
+    }
+    return { ...common, kind: 'image', motion: 'kenBurnsIn' };
 }
 
 // The edit's layers: its own once it has them; before that, its overlays converted. The notes plan's
@@ -494,6 +499,12 @@ export interface BinItem {
     rights?: { name: string; on: string } | null;
 }
 
+// A b-roll bin item as brollLayer takes it: footage keeps its length (`durationMs`), a still or AI image its plan's.
+const brollOf = (b: BinItem, startMs: number) => ({
+    index: b.index ?? 0, startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name,
+    kind: b.kind === 'video' ? 'video' as const : 'image' as const, footageSeconds: b.durationMs ? b.durationMs / 1000 : null,
+});
+
 const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1e4)}`;
 
 // A copy of a layer or a sound, pasted at the playhead (item E8): a new id, and the original's kind of anchor,
@@ -515,7 +526,7 @@ export function layerFromBin(item: BinItem, srcMs: number): PictureLayer | null 
     if (item.kind === 'audio') return null;   // music and effects come with E7
     const anchor = { srcMs: Math.max(0, Math.round(srcMs)) };
     if (item.source === 'broll') {
-        return { ...brollLayer({ index: item.index ?? 0, startMs: srcMs, durationSeconds: item.seconds ?? 6, path: item.path, idea: item.name }), id: newId('b') };
+        return { ...brollLayer(brollOf(item, srcMs)), id: newId('b') };
     }
     if (item.kind === 'video') {
         const durationMs = Math.max(LAYER_MIN_MS, Math.min(item.durationMs ?? 10_000, 60_000));
@@ -704,7 +715,7 @@ export function withLayers<E extends { layers?: Layer[]; overlays?: Overlay[] }>
     const have = new Set(layers.flatMap(l => (isPicture(l) ? [l.media.path] : [])));
     for (const b of bin) {
         if (b.source !== 'broll' || have.has(b.path) || b.startMs === undefined) continue;
-        layers.push(brollLayer({ index: b.index ?? 0, startMs: b.startMs, durationSeconds: b.seconds ?? 6, path: b.path, idea: b.name }));
+        layers.push(brollLayer(brollOf(b, b.startMs)));
     }
     return { ...edit, layers, overlays: [] };
 }

@@ -102,7 +102,7 @@ async function main() {
             // The 1920x1080 still, so it fills the frame; the 3:2 original from older packages.
             addMedia[`B-roll stills/${name}.png`] = { url: await signed(pkg.brollStillPaths?.[i] ?? image.path), language: 'en' };
         } else {
-            addMedia[`B-roll/${name}.png`] = { url: await signed(image.path), language: 'en' };
+            addMedia[`B-roll/${name}${image.path.match(/\.\w+$/)?.[0] ?? '.png'}`] = { url: await signed(image.path), language: 'en' };
         }
     }
 

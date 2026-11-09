@@ -1,5 +1,6 @@
-# Spec 005 step 7: generate b-roll stills for one episode from its approved show notes
-# (agent/src/podcast/broll.ts, docs/specs/008-broll-images.md). Started from the show notes
+# Spec 005 step 7: b-roll for one episode from its approved show notes (agent/src/podcast/broll.ts):
+# stock footage and photos from Pexels and Pixabay (mode "stock", docs/specs/023-stock-broll.md) or AI stills
+# (mode "ai", docs/specs/008-broll-images.md). Started from the show notes
 # page in the Podcast Studio, or by hand from the Actions tab with the episode ID.
 
 name: Podcast B-roll
@@ -13,9 +14,13 @@ on:
         description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
         required: true
       index:
-        description: 'Regenerate only this image (0 = the first idea); leave empty for all missing or changed'
+        description: 'Only this idea (0 = the first idea); leave empty for all missing or changed'
         required: false
         default: ''
+      mode:
+        description: 'stock (real footage and photos) or ai (AI images)'
+        required: false
+        default: 'ai'
 
 # One run per episode at a time; a second request for the same episode waits.
 concurrency:
@@ -50,8 +55,12 @@ jobs:
       env:
         EPISODE_ID: ${{ inputs.episode_id }}
         BROLL_INDEX: ${{ inputs.index }}
+        BROLL_MODE: ${{ inputs.mode }}
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

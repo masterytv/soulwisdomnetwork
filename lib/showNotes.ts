@@ -53,12 +53,18 @@ export const ShowNotesSchema = z.object({
     broll: z.array(z.object({
         startMs: ms,
         durationSeconds: z.number().int().describe('3 to 15'),
-        idea: z.string().describe('What the image shows, concretely enough to generate it'),
-        why: z.string().describe('What is being said at that moment that the image supports'),
+        idea: z.string().describe('What the b-roll shows, concretely enough to find real footage of it or to generate an image'),
+        why: z.string().describe('What is being said at that moment that the b-roll supports'),
+        search: z.string().describe('Two to five plain words to search stock footage sites for it, e.g. "hospital corridor night" or ' +
+            '"sunrise over ocean": things a camera can film, no names or abstractions'),
         style: z.enum(BROLL_STYLE_IDS).describe(
             '"photo" (photorealistic) for everyday objects, people and places; "digital" (luminous digital painting) for ' +
             'spiritual, cosmic or otherworldly moments such as angels, heaven or light beyond death'),
-    })).describe('Six still-image b-roll ideas (spec 005 section 3, option A). Angels, heaven and the afterlife may be shown in traditional ways where they fit; God is always a bright light, never a person such as an old man.'),
+    })).describe('B-roll for every moment where a picture would help while someone is speaking: a place, object, activity, ' +
+        'event or mood the speaker describes. Be generous, since real stock footage is found first and costs nothing: usually ' +
+        'one every 30 to 90 seconds of conversation, up to 30 in all, in order, never overlapping. Skip greetings, ' +
+        'introductions and moments where the speaker\'s face matters most. Angels, heaven and the afterlife may be shown in ' +
+        'traditional ways where they fit; God is always a bright light, never a person such as an old man.'),
 });
 
 // What is stored and edited. Notes drafted before teaser clips and hashtags existed still load.
@@ -98,7 +104,8 @@ export function notesSchemaFor(s: StudioSettings) {
             themes: z.array(z.string()).describe('Three to five broad themes'),
             broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).describe(
                 '"photo" (photorealistic) for most ideas; "digital" (luminous digital painting) for abstract ideas') })
-            ).describe('Six still-image b-roll ideas that illustrate what is being said.'),
+            ).describe('B-roll for every moment where a picture would help while someone is speaking, one every 30 to 90 ' +
+                'seconds, up to 30 in all, in order, never overlapping. Real stock footage is found first, so be generous.'),
         });
     }
     if (s.descriptionChoices > 1) {
@@ -128,7 +135,8 @@ export const StoredShowNotesSchema = ShowNotesSchema.extend({
     hashtags: z.array(z.string()).default([]),
     teaserClips: z.array(clip).default([]),
     // B-roll ideas drafted before styles existed are photoreal until someone picks.
-    broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).default('photo') })),
+    // B-roll ideas drafted before stock b-roll (docs/specs/023-stock-broll.md) have no search words: the idea is searched.
+    broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).default('photo'), search: z.string().default('') })),
 });
 
 export type ShowNotes = z.infer<typeof StoredShowNotesSchema>;
@@ -188,7 +196,7 @@ export function parseShowNotes(input: unknown): ShowNotes {
     for (const t of [...notes.chapters, ...notes.quotes, ...notes.broll, ...notes.teaserClips]) t.startMs = Math.max(0, t.startMs);
     for (const c of [...notes.teaserClips, ...notes.quotes]) c.endMs = Math.max(c.startMs, c.endMs);
     notes.hashtags = clean(notes.hashtags).map(h => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, ''));
-    for (const b of notes.broll) b.durationSeconds = Math.min(15, Math.max(3, b.durationSeconds));
+    for (const b of notes.broll) { b.durationSeconds = Math.min(15, Math.max(3, b.durationSeconds)); b.search = b.search.trim().slice(0, 100); }
     return notes;
 }
 
@@ -289,8 +297,9 @@ export function chapterList(notes: ShowNotes) {
 // The whole description as pasted into YouTube. The site link sits straight after the text,
 // as high as it can go, and is always there whatever the text says. `links` comes from the
 // Studio settings (lib/studioSettings.ts); without it, the Soul Wisdom Collective lines.
-// `credits`: what the show library's music and effects ask to be credited (spec 020 item E7), before the hashtags.
-export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks, credits: string[] = []) {
+// `credits`: what the show library's music and effects ask to be credited (spec 020 item E7), before the hashtags;
+// `brollCredits`: the people whose stock footage and photos the b-roll uses (docs/specs/023-stock-broll.md).
+export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks, credits: string[] = [], brollCredits: string[] = []) {
     const siteLine = links ? (links.siteUrl ? `${links.siteLinkText} ${links.siteUrl}`.trim() : '')
         : `🌐 Full episodes, transcripts and the Soul Wisdom community: ${SITE_URL}`;
     return [
@@ -299,6 +308,7 @@ export function youtubeDescription(notes: ShowNotes, links?: DescriptionLinks, c
         notes.chapters.length ? `Chapters\n${chapterList(notes)}` : '',
         links ? links.subscribeLine : DESCRIPTION_FOOTER,
         credits.length ? `Music and sound\n${credits.join('\n')}` : '',
+        brollCredits.length ? `B-roll footage and photos\n${brollCredits.join('\n')}` : '',
         notes.hashtags.join(' '),
     ].filter(Boolean).join('\n\n');
 }

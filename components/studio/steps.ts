@@ -10,7 +10,7 @@ import { explainError } from "@/lib/serviceErrors";
 
 export const STEPS = [
     ["notes", "Approve the show notes"],
-    ["broll", "Generate b-roll images"],
+    ["broll", "Find b-roll"],
     ["package", "Build the edit package"],
     ["descript", "Send to Descript"],
     ["final", "Get the final cut from Descript"],
@@ -95,7 +95,7 @@ export interface Flow { steps: readonly FlowStep[]; stages: readonly FlowStage[]
 // Studio editor flow: the edit package is built for the Studio editor, or exported; its render is the final cut.
 const EDITOR_LIGHT_STEPS: readonly FlowStep[] = [
     ["notes", "Approve the show notes"],
-    ["broll", "Generate b-roll images"],
+    ["broll", "Find b-roll"],
     ["final", "Build the edit package"],
     ["thumbnail", "Pick a thumbnail and approve the episode"],
     ["youtube", "Upload to YouTube"],

@@ -305,7 +305,7 @@ export default function ShowNotesPage() {
                 ...draft,
                 teaserClips: draft.teaserClips ?? [],
                 hashtags: draft.hashtags ?? [],
-                broll: (draft.broll ?? []).map(b => ({ ...b, style: b.style ?? "photo" })),
+                broll: (draft.broll ?? []).map(b => ({ ...b, style: b.style ?? "photo", search: b.search ?? "" })),
             } : null);
             reset(data.notes?.version ?? 0);
             setLoadedAt(Date.now());
@@ -503,19 +503,21 @@ export default function ShowNotesPage() {
             summary: notesSummary, link: null, key: notesKey,
         });
     }, [notesKey, notesSummary, notesChanged, view, report]);
+    // Ideas with no b-roll, or b-roll found or made for other words (an AI image also for another style): lib/broll.ts brollStale.
     const brollPending = notes ? notes.broll.filter((b, i) => {
         const image = broll.image(i);
-        return image?.idea !== b.idea.trim() || image.style !== b.style;
+        return !image || image.idea !== b.idea.trim() || (image.source === "ai" && image.style !== b.style);
     }).length : null;
-    const brollImages = broll.view?.images.length ?? 0;
-    const brollSpent = broll.view?.images.reduce((t, i) => t + i.usd, 0) ?? 0;
+    const brollMade = broll.view?.images ?? [];
+    const brollStock = brollMade.filter(i => i.source !== "ai").length;
+    const brollSpent = brollMade.reduce((t, i) => t + i.usd, 0);
     const brollSkipped = broll.view?.skipped ?? null;
-    const brollSummary = broll.working ? "Generating images…"
+    const brollSummary = broll.working ? (broll.view?.mode === "stock" ? "Searching stock footage and photos…" : "Generating AI images…")
         : brollSkipped && brollPending ? `Skipped by ${brollSkipped.by}`
-        : broll.view?.status === "failed" ? failure("Some images", broll.view.error)
+        : broll.view?.status === "failed" ? failure("Some b-roll", broll.view.error)
         : !notes?.broll.length ? "No b-roll ideas"
-            : brollPending ? `${brollPending} of ${notes.broll.length} ideas need an image`
-                : `${brollImages} image${brollImages === 1 ? "" : "s"} ready · $${brollSpent.toFixed(2)}`;
+            : brollPending ? `${brollPending} of ${notes.broll.length} ideas need b-roll`
+                : `${brollStock} from stock, ${brollMade.length - brollStock} AI${brollSpent ? ` · $${brollSpent.toFixed(2)}` : ""}`;
     // Keyed on the images, not the ideas, so typing an idea does not refresh every section.
     const brollKey = broll.view ? `${broll.view.status}:${broll.view.images.map(i => i.createdAt).join(",")}:${brollSkipped?.at ?? ""}` : null;
     useEffect(() => {
@@ -1008,9 +1010,9 @@ export default function ShowNotesPage() {
                                     </div>
                                 </Stage>
 
-                                <Stage {...stageProps("broll")} intro={lightFlow
-                                    ? "Images made by AI from the approved ideas. The edit package places each on the episode with a slow zoom or pan, in the Studio editor and the export."
-                                    : "Images made by AI from the approved ideas. The edit package turns each into a clip with a slow zoom or pan, and they go to Descript with the episode, in its media bin."}>
+                                <Stage {...stageProps("broll")} intro={`Real stock footage first, then real photos, from Pexels and Pixabay (free), for each approved idea; an idea nothing fits gets an AI image, which you make here. ${lightFlow
+                                    ? "The edit places each on the episode: footage as it is, a still with a slow zoom or pan, in the Studio editor and the export."
+                                    : "The edit package turns each into a clip (footage as it is, a still with a slow zoom or pan), and they go to Descript with the episode, in its media bin."}`}>
                                     {notes.broll.map((b, i) => (
                                         <div key={`${i}-${b.startMs}`} className="flex flex-col gap-1.5 border-l-2 border-sky-500/30 pl-3">
                                             <div className="flex items-center gap-2 text-xs">
@@ -1044,62 +1046,69 @@ export default function ShowNotesPage() {
                                                 className={field}
                                             />
                                             <p className={small}>{b.why}</p>
-                                            <BrollImageView broll={broll} index={i} idea={b.idea} style={b.style} />
-                                            {broll.image(i) && (
-                                                <button
-                                                    onClick={() => broll.generate(i)}
-                                                    disabled={brollBlocked}
-                                                    className={`${secondary} self-start`}
-                                                    title={upToDate ? "Make a new image for this idea" : "Approve your recent changes first"}
-                                                >
-                                                    Regenerate this image
-                                                </button>
-                                            )}
+                                            <label className="flex items-center gap-2 text-xs text-gray-400">
+                                                <span className="shrink-0">Stock search</span>
+                                                <input
+                                                    value={b.search}
+                                                    onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, search: e.target.value } : x)) }))}
+                                                    placeholder="A few words a camera can film (the idea is searched when empty)"
+                                                    maxLength={100}
+                                                    className="grow bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                />
+                                            </label>
+                                            <BrollImageView broll={broll} index={i} idea={b.idea} style={b.style}
+                                                disabled={brollBlocked} disabledWhy={upToDate ? "Wait for the b-roll run to finish" : "Approve your recent changes first"} />
                                         </div>
                                     ))}
                                     <button
-                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand", style: "photo" }] }))}
+                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand", style: "photo", search: "" }] }))}
                                         className={`${secondary} self-start`}
                                     >
                                         + Add at video time
                                     </button>
+                                    {/* Stock first (free), then AI images for what stock left (docs/specs/023-stock-broll.md). */}
                                     <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-3">
                                         <button
-                                            onClick={() => broll.generate(null)}
+                                            onClick={() => broll.generate(null, "stock")}
                                             disabled={brollBlocked || brollChanged === 0}
                                             className={primary}
                                         >
-                                            {broll.working ? "Generating images…" : brollChanged === 0 && notes.broll.length
-                                                ? "✓ All images generated"
-                                                : `Generate ${brollChanged === notes.broll.length ? "b-roll images" : `${brollChanged} new image${brollChanged === 1 ? "" : "s"}`}`}
+                                            {broll.working ? (broll.view?.mode === "stock" ? "Searching stock…" : "Generating AI images…")
+                                                : brollChanged === 0 && notes.broll.length ? "✓ Every idea has b-roll"
+                                                    : `Find stock footage for ${brollChanged === notes.broll.length ? "every idea" : `${brollChanged} idea${brollChanged === 1 ? "" : "s"}`}`}
                                         </button>
+                                        {brollChanged > 0 && !broll.working && (
+                                            <button onClick={() => broll.generate(null, "ai")} disabled={brollBlocked} className={secondary}>
+                                                Make AI images for {brollChanged === notes.broll.length ? "all" : `the ${brollChanged}`} left
+                                            </button>
+                                        )}
                                         <span className={small}>
                                             {broll.working
-                                                ? "About a minute per image; this page updates by itself."
+                                                ? (broll.view?.mode === "stock" ? "A few minutes; footage appears as it is copied. This page updates by itself." : "About a minute per image; this page updates by itself.")
                                                 : !upToDate
                                                     ? ""
                                                     : brollChanged
-                                                        ? `About $${(brollChanged * BROLL_USD_PER_IMAGE).toFixed(2)} with OpenAI's image model. Ideas that already have an image are left alone.`
+                                                        ? `Stock is free (Pexels and Pixabay, credited in the description). AI images cost about $${(brollChanged * BROLL_USD_PER_IMAGE).toFixed(2)} for these ${brollChanged}. Ideas that already have b-roll are left alone.`
                                                         : ""}
                                         </span>
                                     </div>
                                     {/* Or go without: editing and the edit package wait for the images unless b-roll is skipped (lib/brollGate.ts). */}
                                     {upToDate && brollChanged > 0 && !broll.working && (brollSkipped ? (
                                         <p className={small}>
-                                            B-roll skipped by {brollSkipped.by} {ago(brollSkipped.at)}: editing and the edit package go ahead without these images.{" "}
+                                            B-roll skipped by {brollSkipped.by} {ago(brollSkipped.at)}: editing and the edit package go ahead without it.{" "}
                                             <button onClick={() => void broll.setSkipped(false)} disabled={broll.starting} className="text-amber-300 hover:underline disabled:opacity-40">Undo</button>
                                         </p>
                                     ) : (
                                         <div className="flex flex-wrap items-center gap-3">
                                             <button onClick={() => void broll.setSkipped(true)} disabled={broll.starting} className={secondary}>Skip b-roll</button>
-                                            <span className={small}>Editing and the edit package wait for the images. Skip to go ahead without them; you can still make them later.</span>
+                                            <span className={small}>Editing and the edit package wait for the b-roll. Skip to go ahead without it; you can still add it later.</span>
                                         </div>
                                     ))}
                                     {!upToDate && !broll.working && (
-                                        <NeedsApproval what="generate images" approved={!!approved} busy={busy || drafting} onApprove={approve} onDiscard={discard} />
+                                        <NeedsApproval what="find or make b-roll" approved={!!approved} busy={busy || drafting} onApprove={approve} onDiscard={discard} />
                                     )}
                                     {(broll.error || broll.view?.error) && (
-                                        <ErrorNote title={broll.error ? undefined : "Some b-roll images failed"} message={broll.error || broll.view?.error} />
+                                        <ErrorNote title={broll.error ? undefined : "Some b-roll failed"} message={broll.error || broll.view?.error} />
                                     )}
                                 </Stage>
 
