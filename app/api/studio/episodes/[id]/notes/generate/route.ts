@@ -5,16 +5,16 @@ export const dynamic = 'force-dynamic';
 
 type Context = { params: Promise<{ id: string }> };
 
-// Body: { force?: boolean, instruction?: string, only?: 'all' | 'description' | 'titles' }.
+// Body: { force?: boolean, instruction?: string, only?: 'all' | 'description' | 'titles' | 'broll' }.
 // `force` replaces approved notes' draft; `instruction` and `only` ask for a redraft of one part.
 export const POST = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const { force, instruction, only } = await request.json().catch(() => ({})) as {
         force?: unknown; instruction?: unknown; only?: unknown;
     };
-    let onlyValue: 'all' | 'description' | 'titles' = 'all';
+    let onlyValue: 'all' | 'description' | 'titles' | 'broll' = 'all';
     if (only !== undefined) {
-        if (only !== 'all' && only !== 'description' && only !== 'titles') throw new HttpError(400, 'Unknown part to draft');
+        if (only !== 'all' && only !== 'description' && only !== 'titles' && only !== 'broll') throw new HttpError(400, 'Unknown part to draft');
         onlyValue = only;
     }
     let instructionText = '';

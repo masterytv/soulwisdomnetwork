@@ -64,3 +64,12 @@ export function brollStale(made: Made | undefined, idea: { idea: string; style?:
     if (made.idea !== idea.idea.trim()) return true;
     return isAiBroll(made) && (made.style ?? 'photo') !== (idea.style ?? 'photo');
 }
+
+// Where an idea's b-roll goes: the approved idea's time and length (the producer may have moved it since the b-roll
+// was found or made), or the record's when the idea has changed or is gone.
+export function brollTiming(made: Made & { index: number; startMs: number; durationSeconds: number },
+    ideas: { idea: string; startMs: number; durationSeconds: number }[] | undefined): { startMs: number; durationSeconds: number } {
+    const idea = ideas?.[made.index];
+    return idea && idea.idea.trim() === made.idea ? { startMs: idea.startMs, durationSeconds: idea.durationSeconds }
+        : { startMs: made.startMs, durationSeconds: made.durationSeconds };
+}
