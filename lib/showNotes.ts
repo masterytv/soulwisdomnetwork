@@ -51,7 +51,11 @@ export const ShowNotesSchema = z.object({
     themes: z.array(z.string()).describe('Three to five broad themes, e.g. "purpose", "life review"'),
     topics: z.array(z.string()).describe('Specific people, books, studies, places and ideas discussed'),
     broll: z.array(z.object({
-        startMs: ms,
+        startMs: ms.describe('The time of the paragraph where the cue words are said; the exact time is taken from the cue'),
+        cue: z.string().describe('The exact words from the transcript, copied verbatim, at which this b-roll should appear: two to ' +
+            'six words where its subject is first named ("our dog came back", "pets in the afterlife", "the tunnel of light"). For an ' +
+            'abstract moment, the words of the action or idea the picture illustrates ("analyzed each of the experiences"). The b-roll ' +
+            'starts one second after these words begin, so pick the words, not the sentence before them.'),
         durationSeconds: z.number().int().describe('3 to 15'),
         idea: z.string().describe('What the b-roll shows, concretely enough to find real footage of it or to generate an image'),
         why: z.string().describe('What is being said at that moment that the b-roll supports'),
@@ -136,7 +140,10 @@ export const StoredShowNotesSchema = ShowNotesSchema.extend({
     teaserClips: z.array(clip).default([]),
     // B-roll ideas drafted before styles existed are photoreal until someone picks.
     // B-roll ideas drafted before stock b-roll (docs/specs/023-stock-broll.md) have no search words: the idea is searched.
-    broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).default('photo'), search: z.string().default('') })),
+    broll: z.array(ShowNotesSchema.shape.broll.element.extend({
+        style: z.enum(BROLL_STYLE_IDS).default('photo'), search: z.string().default(''),
+        cue: z.string().default(''),   // ideas drafted before cue words (docs/specs/023-stock-broll.md, "Timing") have none
+    })),
 });
 
 export type ShowNotes = z.infer<typeof StoredShowNotesSchema>;
@@ -153,24 +160,26 @@ export function chooseDescription(notes: ShowNotes, index: number): ShowNotes {
 }
 
 // What a redraft replaces: everything, only the description, or only the titles.
-export type RedraftScope = 'all' | 'description' | 'titles';
+export type RedraftScope = 'all' | 'description' | 'titles' | 'broll';
 
 // Merges a fresh draft into the current notes, replacing only the chosen part. 'description'
-// takes the description and its options; 'titles' takes the titles and resets chosenTitle; 'all'
-// takes everything.
+// takes the description and its options; 'titles' takes the titles and resets chosenTitle; 'broll' the b-roll ideas;
+// 'all' takes everything.
 export function mergeRedraft(current: ShowNotes, fresh: ShowNotes, only: RedraftScope): ShowNotes {
     if (only === 'all') return fresh;
     if (only === 'description') return { ...current, description: fresh.description, descriptionOptions: fresh.descriptionOptions ?? [] };
+    if (only === 'broll') return { ...current, broll: fresh.broll };
     return { ...current, titles: fresh.titles, chosenTitle: 0 };
 }
 
 // Turns a redraft request into the direction line appended to the prompt. Empty when there
 // is no request or the instruction is blank; otherwise names the part to focus on.
 export function redraftDirection(r: { instruction: string; only: RedraftScope } | null | undefined): string {
-    if (!r || !r.instruction.trim()) return '';
-    const lines = [`The producer asked for a new draft with this direction:\n${r.instruction.trim()}`];
+    if (!r || (!r.instruction.trim() && r.only !== 'broll')) return '';
+    const lines = r.instruction.trim() ? [`The producer asked for a new draft with this direction:\n${r.instruction.trim()}`] : [];
     if (r.only === 'description') lines.push('This draft is for the YouTube description: put the most care there.');
     if (r.only === 'titles') lines.push('This draft is for the titles: put the most care there.');
+    if (r.only === 'broll') lines.push('This draft is for the b-roll ideas and their cue words: put the most care there.');
     return lines.join('\n');
 }
 
@@ -196,7 +205,11 @@ export function parseShowNotes(input: unknown): ShowNotes {
     for (const t of [...notes.chapters, ...notes.quotes, ...notes.broll, ...notes.teaserClips]) t.startMs = Math.max(0, t.startMs);
     for (const c of [...notes.teaserClips, ...notes.quotes]) c.endMs = Math.max(c.startMs, c.endMs);
     notes.hashtags = clean(notes.hashtags).map(h => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, ''));
-    for (const b of notes.broll) { b.durationSeconds = Math.min(15, Math.max(3, b.durationSeconds)); b.search = b.search.trim().slice(0, 100); }
+    for (const b of notes.broll) {
+        b.durationSeconds = Math.min(15, Math.max(3, b.durationSeconds));
+        b.search = b.search.trim().slice(0, 100);
+        b.cue = b.cue.trim().slice(0, 150);
+    }
     return notes;
 }
 
@@ -269,6 +282,34 @@ export function anchorToTranscript(notes: ShowNotes, words: SpokenWord[]) {
         if (found.text) item.text = found.text;
     }
     return unverified;
+}
+
+// B-roll starts this long after its cue words begin (docs/specs/023-stock-broll.md, "Timing"): the listener has heard
+// the subject named before the picture shows it. Tom set it by hand on the first stock episode.
+export const BROLL_CUE_DELAY_MS = 1000;
+
+// When a b-roll idea starts: one second after its cue words begin, the occurrence nearest the time Claude gave.
+// Null when the cue is empty or not said word for word.
+export function cueTime(cue: string, words: SpokenWord[], nearMs = 0): number | null {
+    const found = cue.trim() ? locate(cue, words, nearMs) : null;
+    return found ? found.startMs + BROLL_CUE_DELAY_MS : null;
+}
+
+// Puts each b-roll idea on its cue words, then shortens one that would run into the next (to 3 seconds at least).
+// Returns the cues not found word for word, whose ideas keep Claude's time.
+export function timeBroll(notes: ShowNotes, words: SpokenWord[]): string[] {
+    const missing: string[] = [];
+    for (const b of notes.broll) {
+        const at = cueTime(b.cue, words, b.startMs);
+        if (at === null) { if (b.cue) missing.push(b.cue); continue; }
+        b.startMs = at;
+    }
+    notes.broll.sort((a, b) => a.startMs - b.startMs);
+    for (let i = 0; i + 1 < notes.broll.length; i++) {
+        const room = Math.floor((notes.broll[i + 1].startMs - notes.broll[i].startMs) / 1000);
+        if (room < notes.broll[i].durationSeconds) notes.broll[i].durationSeconds = Math.max(3, room);
+    }
+    return missing;
 }
 
 // Quotes saved before they had end times get one from the transcript.

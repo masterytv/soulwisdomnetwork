@@ -29,7 +29,7 @@ import { useAuth } from "@/context/AuthContext";
 import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
 import { pickTeaserWord, wordsAround } from "@/lib/programme";
 import { preciseTime } from "@/lib/timeline";
-import { chooseDescription, locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
+import { chooseDescription, cueTime, locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { meetingDocx } from "@/lib/meetingDoc";
 import { TranscriptDownloads, WritingExtras } from "@/components/studio/extras";
 import { Translations } from "@/components/studio/translations";
@@ -193,7 +193,7 @@ export default function ShowNotesPage() {
     const [notice, setNotice] = useState("");
     const [busy, setBusy] = useState(false);
     const [redraftDirection, setRedraftDirection] = useState("");
-    const [redraftOnly, setRedraftOnly] = useState<"all" | "description" | "titles">("all");
+    const [redraftOnly, setRedraftOnly] = useState<"all" | "description" | "titles" | "broll">("all");
     const video = useRef<HTMLVideoElement>(null);
 
     const save = useCallback(async (value: ShowNotes, version: number) => {
@@ -305,7 +305,7 @@ export default function ShowNotesPage() {
                 ...draft,
                 teaserClips: draft.teaserClips ?? [],
                 hashtags: draft.hashtags ?? [],
-                broll: (draft.broll ?? []).map(b => ({ ...b, style: b.style ?? "photo", search: b.search ?? "" })),
+                broll: (draft.broll ?? []).map(b => ({ ...b, style: b.style ?? "photo", search: b.search ?? "", cue: b.cue ?? "" })),
             } : null);
             reset(data.notes?.version ?? 0);
             setLoadedAt(Date.now());
@@ -970,12 +970,13 @@ export default function ShowNotesPage() {
                                             <select
                                                 aria-label="What to draft again"
                                                 value={redraftOnly}
-                                                onChange={e => setRedraftOnly(e.target.value as "all" | "description" | "titles")}
+                                                onChange={e => setRedraftOnly(e.target.value as "all" | "description" | "titles" | "broll")}
                                                 className={`${field} w-48`}
                                             >
                                                 <option value="all">Everything</option>
                                                 <option value="description">Only the description</option>
                                                 <option value="titles">Only the titles</option>
+                                                <option value="broll">Only the b-roll ideas</option>
                                             </select>
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <button
@@ -1046,6 +1047,33 @@ export default function ShowNotesPage() {
                                                 className={field}
                                             />
                                             <p className={small}>{b.why}</p>
+                                            {(() => {
+                                                // One second after the cue words begin (docs/specs/023-stock-broll.md, "Timing").
+                                                const at = b.cue.trim() && view.words.length ? cueTime(b.cue, view.words, b.startMs) : null;
+                                                const off = at !== null && Math.abs(at - b.startMs) >= 500;
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
+                                                        <span className="shrink-0">Starts on the words</span>
+                                                        <input
+                                                            value={b.cue}
+                                                            onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, cue: e.target.value } : x)) }))}
+                                                            placeholder="Words from the transcript where its subject comes up, e.g. “pets in the afterlife”"
+                                                            maxLength={150}
+                                                            className="grow bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                        />
+                                                        {b.cue.trim() && view.words.length > 0 && at === null && <span className="text-amber-300">Not found in the transcript</span>}
+                                                        {off && (
+                                                            <button
+                                                                onClick={() => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, startMs: at! } : x)) }))}
+                                                                className="text-amber-300 hover:underline"
+                                                                title="Start one second after these words begin"
+                                                            >
+                                                                Time to these words ({mmss(at!)})
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
                                             <label className="flex items-center gap-2 text-xs text-gray-400">
                                                 <span className="shrink-0">Stock search</span>
                                                 <input
@@ -1061,7 +1089,7 @@ export default function ShowNotesPage() {
                                         </div>
                                     ))}
                                     <button
-                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand", style: "photo", search: "" }] }))}
+                                        onClick={() => edit(n => ({ ...n, broll: [...n.broll, { startMs: now(), durationSeconds: 6, idea: "", why: "Added by hand", style: "photo", search: "", cue: "" }] }))}
                                         className={`${secondary} self-start`}
                                     >
                                         + Add at video time

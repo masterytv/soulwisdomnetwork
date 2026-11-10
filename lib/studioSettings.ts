@@ -255,7 +255,8 @@ export function notesSystemPrompt(s: StudioSettings): string {
         'Write in plain, warm, specific language. Avoid hype, clickbait and clichés ("delve", "journey", "unlock"). ' +
             `Never claim as fact what a speaker offered as belief or experience; attribute it ("${someone} describes…").`,
         'Timestamps: every paragraph of the transcript starts with its time in milliseconds, e.g. [65000ms 1:05]. ' +
-            'Use those numbers for startMs. Chapters and b-roll must start at a paragraph\'s time; quotes at the paragraph they come from.',
+            'Use those numbers for startMs. Chapters must start at a paragraph\'s time; quotes at the paragraph they come from. B-roll ' +
+            'is timed by its cue words, copied exactly from the transcript: its startMs is the time of the paragraph they are in.',
         'Quotes and teaser clips must be copied exactly from the transcript, leaving out only filler words such as ' +
             `"um" and "uh", with the speaker name exactly as the transcript gives it. ${people}`,
         'Quotes are raw material for shorts: give up to twenty, from a single striking sentence to a passage of up to two ' +
