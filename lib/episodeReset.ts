@@ -20,6 +20,7 @@ const JOBS: { key: keyof Episode; label: string; working: string[] }[] = [
     { key: 'extras', label: 'Social posts', working: ['queued', 'working'] },
     { key: 'translations', label: 'Translations', working: ['queued', 'working'] },
     { key: 'retakes', label: 'Retakes', working: ['queued', 'working'] },
+    { key: 'highlights', label: 'Highlights', working: ['queued', 'working'] },
 ];
 
 // A job that says it is working but has not moved for this long has died (the longest job's time limit
