@@ -1060,6 +1060,11 @@ Descript to be hidden but kept until the Studio editor is shown to be as good.
   cut, each a cut that can be brought back; the teasers from the approved notes, with their "In this episode" graphic; the
   Studio's intro and outro; and the notes plan's b-roll as layers with their slow zoom or pan (`lib/layers.ts` `withLayers`,
   now shared with the editor). Then it opens the Studio editor; afterwards the button is **Open in Studio editor**.
+- **Rebuild the edit package** (Tom, 10 November 2026), beside Open in Studio editor once there is an edit: after an
+  "Are you sure?", the saved edit is thrown away and set up again as above, from the notes and b-roll as they are now, then
+  the editor opens. It is saved as the next version, so an editor still open on the old edit cannot save over it, and a
+  save made while it rebuilds stops it. Refused while a render, highlights, retakes or translations run works on the edit.
+  The transcript, notes, b-roll, thumbnails and shorts stay; an exported final cut stays, shown as out of date.
 - **Build and export** sets up the same edit and starts the render (`requestEditRender`); with the Studio editor making
   the final cut, the render is the final cut (`editRenderJob.ts` `asFinalCut`), which Thumbnails, YouTube and Shorts use.
   An episode with a saved edit keeps it: nothing is rebuilt and the button renders it as saved ("Export the edit", then
