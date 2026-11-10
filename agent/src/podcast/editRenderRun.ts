@@ -5,6 +5,7 @@
 // as its voice clean-up (spec 019 item 3.2) that fails before sending anything gives its hold on the month's
 // free hours back (lib/server/spending.ts holdAuphonic).
 
+import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 import { cert, initializeApp } from 'firebase-admin/app';
@@ -32,6 +33,11 @@ function required(name: string) {
     if (!value) throw new Error(`Missing required environment variable ${name}`);
     return value;
 }
+
+// Cloud Storage's transfers add a listener per retry to one stream: dozens of downloads put several hundred lines of
+// "MaxListenersExceededWarning" in the log (10 November 2026), hiding what the render was doing. The listeners go with
+// their stream, so this only quiets the warning.
+EventEmitter.defaultMaxListeners = 50;
 
 const episodeId = required('EPISODE_ID');
 if (!/^[\w-]{10,}$/.test(episodeId)) throw new Error(`Not a valid episode ID: ${episodeId}`);

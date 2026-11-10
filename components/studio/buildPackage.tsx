@@ -21,6 +21,13 @@ import type { FinalView } from "@/types/studio";
 import type { BuildResult, BuildView } from "@/lib/server/buildEdit";
 import type { EditRenderView } from "@/lib/server/editRender";
 
+// Where a working render has got to, when the job says (agent/src/podcast/renderStages.ts): "Encoding the video: 3 of 8".
+function stageLine(r: EditRenderView): string | null {
+    const s = r.stage;
+    if (!s) return null;
+    return s.total ? `${s.label}: ${s.done ?? 0} of ${s.total}` : `${s.label}…`;
+}
+
 const RENDERING: Record<string, string> = {
     queued: "Starting the render…",
     downloading: "Getting the recording…",
@@ -104,7 +111,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
     const renderFailed = render?.status === "failed";
     useStep({
         step: "final", done: current, failed: renderFailed && !rendering, working: rendering,
-        summary: rendering ? RENDERING[render!.status!]
+        summary: rendering ? stageLine(render!) ?? RENDERING[render!.status!]
             : renderFailed ? failure("The export", render.error)
                 : ready ? [final.stale ? "Out of date: export again" : `Exported ${ago(final.finishedAt)}`, final.durationSeconds ? mmss(final.durationSeconds * 1000) : ""].filter(Boolean).join(" · ")
                     : build?.brollBlock ? "Waiting for the b-roll images"
@@ -153,7 +160,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
                     <div className="mt-auto flex flex-wrap items-center gap-3 pt-1">
                         <button onClick={() => void start("export")} disabled={!build || blocked || !!starting || rendering || (render?.canStart === false && build.edited)}
                             className={current || build?.edited ? secondary : primary}>
-                            {rendering ? RENDERING[render!.status!]
+                            {rendering ? stageLine(render!) ?? RENDERING[render!.status!]
                                 : starting === "export" ? "Starting…"
                                     : ready ? "Export again" : build?.edited ? "Export the edit" : "Build and export"}
                         </button>

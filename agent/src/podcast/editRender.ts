@@ -237,6 +237,8 @@ export async function renderEdit(opts: {
     store?: { get: (name: string, local: string) => Promise<boolean>; put: (local: string, name: string) => Promise<void> };
     // One audio file per speaker (spec 019 item 3.3), local: the voice is made from them instead of the recording's sound.
     tracks?: string[];
+    // Told as each stage starts, with a count where it has one, for the Studio and the log (renderStages.ts).
+    onStage?: (label: string, done?: number, total?: number) => void;
 }): Promise<RenderReport> {
     const start = Date.now();
     const clean = opts.clean ?? 'light';
@@ -286,6 +288,7 @@ export async function renderEdit(opts: {
             if (clean === 'off') cleanedAudio = voiceSource;
         }
         if (clean !== 'off' && ranges.length > 0) {
+            opts.onStage?.('Cleaning the voice');
             fs.mkdirSync(cleanDir, { recursive: true });
             cleanedAudio = path.join(cleanDir, 'cleaned.wav');
             // DeepFilterNet's minutes and Auphonic's hours are not spent twice: a retried run finds the cleaned
@@ -509,6 +512,7 @@ export async function renderEdit(opts: {
             asm.close();
             fs.closeSync(fd);
         }
+        opts.onStage?.('Mixing the sound');
         let mixedRaw = episodeRaw;
         const layerSounds = pictures.filter(p => p.sound && p.layer.kind === 'video');
         if (sounds.length || layerSounds.length) {
@@ -704,9 +708,14 @@ export async function renderEdit(opts: {
             await opts.store?.put(file, name).catch(error => console.warn(`⚠️ Window ${i + 1} not kept for a retry: ${(error as Error).message}`));
         };
         // Two at a time: ffmpeg's decoding, scaling and subtitles use one core each, the encoder the rest.
-        let next = 0;
+        let next = 0, encoded = 0;
+        opts.onStage?.('Encoding the video', 0, windows.length);
         await Promise.all(Array.from({ length: Math.min(PARALLEL_WINDOWS, windows.length) }, async () => {
-            while (next < windows.length) { const i = next++; await renderWindow(windows[i], i); }
+            while (next < windows.length) {
+                const i = next++;
+                await renderWindow(windows[i], i);
+                opts.onStage?.('Encoding the video', ++encoded, windows.length);
+            }
         }));
 
         // The windows joined without encoding again, with the programme's sound.
@@ -719,6 +728,7 @@ export async function renderEdit(opts: {
         // Everything before the episode (teasers, then the intro, less the transitions that overlap
         // them) pushes its times later.
         const offsetMs = Math.round(programme.starts[episodePiece] * 1000 / FPS);
+        opts.onStage?.('Checking the finished video');
         const qc = await measureRender(opts.out, {
             lengthSeconds: programme.frames / FPS,
             episode: { startSec: offsetMs / 1000, endSec: offsetMs / 1000 + episodeFrames / FPS },

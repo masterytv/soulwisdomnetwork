@@ -184,6 +184,13 @@ function HighlightsTool({ episodeId, edit, unsaved, onClear, onReload }: {
     );
 }
 
+// Where a working render has got to (agent/src/podcast/renderStages.ts): "Encoding the video, 3 of 8".
+function renderStage(r: EditRenderView | null | undefined): string | null {
+    const s = r?.stage;
+    if (!s) return null;
+    return s.total ? `${s.label}, ${s.done ?? 0} of ${s.total}.` : `${s.label}…`;
+}
+
 export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspace = false, heading }: {
     episodeId: string; words: SpokenWord[]; videoUrl: string; workspace?: boolean; heading?: React.ReactNode;
 }) {
@@ -438,7 +445,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                     {watching ? 'Hide the render' : '▶ Watch the render'}
                 </button>
             )}
-            {rendering && <span className={small}>Rendering ({render?.status})… this can take a few hours for a long episode.</span>}
+            {rendering && <span className={small}>Rendering: {renderStage(render) ?? `${render?.status}…`} This can take a few hours for a long episode.</span>}
             {render?.status === 'ready' && (render.driveUrl || render.videoUrl) && (
                 <span className={small}>
                     Rendered{render.durationSeconds !== null && ` (${mmss(render.durationSeconds * 1000)}, ${render.cuts ?? 0} cuts)`}:{' '}
@@ -470,7 +477,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
     // rest is in the Render panel.
     const renderBar = (
         <>
-            {rendering && <span className={small}>Rendering…</span>}
+            {rendering && <span className={small}>Rendering: {renderStage(render) ?? "starting…"}</span>}
             {render?.status === 'ready' && <span className={small}>{render.stale ? 'Rendered, before the latest changes' : 'Rendered'}</span>}
             {render?.status === 'failed' && <span className="text-sm text-red-300">Render failed (see the Render panel)</span>}
             {renderError && <span className="text-sm text-red-300">{renderError}</span>}

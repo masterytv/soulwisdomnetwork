@@ -242,6 +242,7 @@ export interface EpisodeEditRender {
     timeSavedSeconds?: number;
     renderSeconds?: number;
     graphicsSeconds?: number;             // of the render, drawing the motion graphics' clips (spec 021 M5); cached clips cost nothing
+    stage?: { label: string; done: number | null; total: number | null } | null;   // where a working render has got to (agent/src/podcast/renderStages.ts)
     warnings?: string[];
     qc?: RenderQc;                        // the quality report on the rendered file
     credits?: string[];                   // the show library's credit lines for the sounds it plays (spec 020 item E7)
