@@ -994,7 +994,7 @@ export default function ShowNotesPage() {
                                                             await load();
                                                             return redraftOnly === "all"
                                                                 ? "Claude is drafting the show notes again. This usually takes two to five minutes."
-                                                                : `Claude is rewriting the ${redraftOnly === "description" ? "description" : "titles"}. Everything else stays as it is. This usually takes two to five minutes.`;
+                                                                : `Claude is rewriting the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]}. Everything else stays as it is. This usually takes two to five minutes.`;
                                                         });
                                                     }}
                                                     disabled={busy || drafting}
@@ -1003,7 +1003,7 @@ export default function ShowNotesPage() {
                                                 <span className={small}>
                                                     {redraftOnly === "all"
                                                         ? "Everything is replaced: Claude's new draft replaces everything in this stage, including your edits."
-                                                        : `Only the ${redraftOnly === "description" ? "description" : "titles"} is replaced; everything else stays as you left it.`}
+                                                        : `Only the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]} ${redraftOnly === "broll" ? "are" : "is"} replaced; everything else stays as you left it.`}
                                                     {" "}Either way it is a full Claude draft, about $0.50.
                                                 </span>
                                             </div>
@@ -1094,6 +1094,27 @@ export default function ShowNotesPage() {
                                     >
                                         + Add at video time
                                     </button>
+                                    {/* New ideas from Claude, each timed one second after its cue words (docs/specs/023-stock-broll.md, "Timing"). */}
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <button
+                                            onClick={() => {
+                                                if (!confirm("Draft new b-roll ideas with Claude? They replace the b-roll ideas below (about $0.50). The description, titles, chapters, quotes and \u201CIn this episode\u201D clips stay as they are.")) return;
+                                                void run(async () => {
+                                                    if (!(await flush())) throw new Error("Your latest edits could not be saved, so nothing was redrafted. Try again.");
+                                                    await studioFetch(`/api/studio/episodes/${episodeId}/notes/generate`, {
+                                                        method: "POST", body: JSON.stringify({ force: true, instruction: "", only: "broll" }),
+                                                    });
+                                                    await load();
+                                                    return "Claude is drafting new b-roll ideas, each timed to its cue words. Everything else stays as it is. This usually takes two to five minutes.";
+                                                });
+                                            }}
+                                            disabled={busy || drafting}
+                                            className={`${secondary} self-start`}
+                                        >
+                                            Draft new b-roll ideas with Claude
+                                        </button>
+                                        <span className={small}>Replaces only the b-roll ideas, each timed one second after the words where its subject comes up; about $0.50. Approve them, then find stock.</span>
+                                    </div>
                                     {/* Stock first (free), then AI images for what stock left (docs/specs/023-stock-broll.md). */}
                                     <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-3">
                                         <button

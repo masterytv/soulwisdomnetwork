@@ -114,7 +114,7 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-023 (023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later;
+docs/specs/   numbered specs, 001-023 (023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
@@ -145,7 +145,9 @@ in CI — App Hosting connects to the repo directly. Do not add one. The `checks
 (`.github/workflows/checks.yml`) only checks pull requests into `staging` and `main`: typecheck,
 lint, tests and a build with placeholder config. It deploys nothing and uses no secrets.
 Every workflow installs ffmpeg through `.github/actions/ffmpeg` — a static build pinned by
-sha256, never apt, whose mirror kept stalling runs — and the render's text fonts ship in
+sha256 in `pin.env`, never apt, whose mirror kept stalling runs. It downloads this repo's own copy, a
+release named after the build that `ffmpeg_copy.yml` makes when the pin changes on `staging` or `main`, since
+BtbN deletes its dated builds after a few weeks (only a pin not yet copied comes from BtbN) — and the render's text fonts ship in
 `agent/assets/fonts`, so no job installs fonts either.
 
 ### Secrets
