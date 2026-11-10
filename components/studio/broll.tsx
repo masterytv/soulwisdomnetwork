@@ -77,7 +77,11 @@ const BUTTON = "text-xs px-2 py-1 rounded border border-white/10 text-gray-300 h
 export function BrollImageView({ broll, index, idea, style, disabled, disabledWhy }: {
     broll: Broll; index: number; idea: string; style: BrollStyle; disabled: boolean; disabledWhy: string;
 }) {
-    const image = broll.image(index);
+    const found = broll.image(index);
+    // B-roll found or made for other words (the idea was redrafted or edited; for an AI image, another style) is hidden:
+    // the slot reads as empty until new b-roll replaces it (lib/broll.ts brollStale).
+    const stale = !!found && (found.idea !== idea.trim() || (found.source === "ai" && found.style !== style));
+    const image = stale ? undefined : found;
     const pending = broll.working && (broll.view?.only === null || broll.view?.only === index);
     const doing = broll.view?.mode === "stock" ? "Searching stock…" : "Generating…";
     const stock = !!image && image.source !== "ai";
@@ -95,7 +99,14 @@ export function BrollImageView({ broll, index, idea, style, disabled, disabledWh
     );
     if (!image) {
         if (pending) return <p className="text-xs text-sky-300">{doing}</p>;
-        return <div className="flex flex-col gap-1"><p className="text-xs text-gray-500">No b-roll yet.</p>{buttons}</div>;
+        return (
+            <div className="flex flex-col gap-1">
+                <p className="text-xs text-gray-500">
+                    No b-roll yet.{stale && " The b-roll found for this idea's earlier words is replaced when you find stock or make an AI image."}
+                </p>
+                {buttons}
+            </div>
+        );
     }
     const video = image.kind === "video";
     const preview = `w-48 aspect-video object-cover rounded-lg bg-black ${pending ? "opacity-40" : ""}`;
@@ -111,12 +122,6 @@ export function BrollImageView({ broll, index, idea, style, disabled, disabledWh
             )}
             <div className="flex flex-col gap-1 text-xs text-gray-400 min-w-0">
                 {pending && <span className="text-sky-300">{doing}</span>}
-                {image.idea !== idea.trim() && (
-                    <span className="text-amber-300">The idea has changed since this b-roll was {stock ? "found" : "made"}.</span>
-                )}
-                {!stock && image.style !== style && (
-                    <span className="text-amber-300">Made in the {BROLL_STYLES[image.style].label} style; this idea is now {BROLL_STYLES[style].label}.</span>
-                )}
                 {image.source !== "ai" ? (
                     <>
                         <span>
