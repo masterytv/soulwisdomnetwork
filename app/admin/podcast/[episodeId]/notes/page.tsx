@@ -505,7 +505,7 @@ export default function ShowNotesPage() {
     }, [notesKey, notesSummary, notesChanged, view, report]);
     // Ideas with no b-roll, or b-roll found or made for other words (an AI image also for another style): lib/broll.ts brollStale.
     const brollPending = notes ? notes.broll.filter((b, i) => {
-        const image = broll.image(i);
+        const image = broll.image(i, b.idea);
         return !image || image.idea !== b.idea.trim() || (image.source === "ai" && image.style !== b.style);
     }).length : null;
     const brollMade = broll.view?.images ?? [];

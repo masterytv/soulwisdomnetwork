@@ -37,6 +37,8 @@ On the show notes page, under B-roll:
    without b-roll.
 3. Beside each idea: **Find other stock** (never the same file again) and **AI image instead** / **New AI image**.
 
+4. **Remove** beside an idea's b-roll takes it off (the file stays in Storage, since an edit already made may show it). The idea then has no b-roll, so **Find stock footage** fills it with something else; stock taken off is kept in `broll.rejected` and never picked again. Removing several and running once redoes them together.
+
 Ideas that already have b-roll are left alone by both buttons. Editing still waits until every idea has b-roll or b-roll is
 skipped (`lib/brollGate.ts`); a stock file counts the same as an AI image.
 

@@ -93,6 +93,24 @@ export async function getBroll(id: string): Promise<BrollView> {
     };
 }
 
+// Takes one idea's b-roll off, so the next "Find stock footage" run (or "Make AI images") fills it again. Stock taken
+// off is remembered and never picked again. The file stays in Storage: an edit already made may still show it.
+export async function removeBroll(id: string, index: number) {
+    const ref = episodeRef(id);
+    await adminDb().runTransaction(async tx => {
+        const episode = (await tx.get(ref)).data() as Episode | undefined;
+        if (!episode) throw new HttpError(404, 'Episode not found');
+        if (busy(episode.broll)) throw new HttpError(409, 'B-roll is being made; wait for it to finish');
+        const image = episode.broll?.images?.[index];
+        if (!image) throw new HttpError(404, 'That idea has no b-roll to remove');
+        tx.update(ref, {
+            [`broll.images.${index}`]: FieldValue.delete(),
+            ...(image.stockId ? { 'broll.rejected': FieldValue.arrayUnion(image.stockId) } : {}),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+    });
+}
+
 // Skips b-roll (or takes the skip back), so editing and the edit package need not wait for images
 // (lib/brollGate.ts). Making images later takes the skip back too.
 export async function skipBroll(id: string, skip: boolean, user: { uid: string }) {
