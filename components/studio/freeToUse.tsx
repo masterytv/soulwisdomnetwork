@@ -63,6 +63,11 @@ export function FreeToUsePanel({ onImported }: { onImported: (e: LibraryEntry) =
                     An import comes in with its licence record and credit filled in. Read the <a className="text-amber-300 hover:underline" href={FREE_TO_USE_LICENCE.url} target="_blank" rel="noreferrer">licence</a>,
                     save a snapshot of it on the file, then check it. The free licence needs the credit in every description. The render adds it. Premium tracks need a paid licence and cannot be imported.
                 </p>
+                <p className={`${hint} mt-1 text-amber-200/80`}>
+                    Before checking a track: the free licence covers an individual&apos;s own videos on social platforms, credited.
+                    A company or brand channel, sponsored content, or the audio podcast feed may need one of Free To Use&apos;s paid plans.
+                    Whoever checks the licence decides that.
+                </p>
             </header>
             <form className="flex flex-wrap items-center gap-3" onSubmit={e => { e.preventDefault(); void search(0); }}>
                 <input aria-label="Search words" className={`${field} !w-auto grow`} value={query} onChange={e => setQuery(e.target.value)}
