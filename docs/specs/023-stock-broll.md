@@ -40,6 +40,27 @@ On the show notes page, under B-roll:
 Ideas that already have b-roll are left alone by both buttons. Editing still waits until every idea has b-roll or b-roll is
 skipped (`lib/brollGate.ts`); a stock file counts the same as an AI image.
 
+## Timing (added 10 November 2026)
+
+The first stock run found the right footage for the right part of the conversation, but too early: Claude sees the
+transcript as paragraphs stamped with their start, and the prompt told it to start b-roll at a paragraph's time, so a
+picture of pets came up several seconds before Mikias said "pets". Tom moved them by hand to one second after the subject
+is named.
+
+- Each idea now has **cue words**: the exact words, copied from the transcript, where its subject is first named ("pets in
+  the afterlife", "the tunnel of light"). For an abstract moment, which has no named subject, the cue is the words of the
+  action or idea the picture illustrates: the laptop with a network map goes on "analyzed each of the experiences".
+- After drafting, `timeBroll` (`lib/showNotes.ts`) finds each cue word for word in the accepted transcript (the occurrence
+  nearest Claude's time, filler words and punctuation ignored, as quotes are found) and starts the b-roll **one second
+  after the cue begins** (`BROLL_CUE_DELAY_MS`). An idea that would run into the next is shortened (3 seconds at least).
+  A cue that is not in the transcript keeps Claude's time and is listed with the unverified quotes.
+- On the notes page each idea shows **Starts on the words**, editable; when its time is half a second or more from the cue,
+  **Time to these words** moves it there, and a cue not in the transcript says so.
+- The edit takes each b-roll's time and length from the **approved notes** (`brollTiming` in `lib/broll.ts`), so moving an
+  idea on the notes page moves it in the Studio editor's first layers and the render, without finding the b-roll again.
+- Episodes drafted before cue words exist keep their times. **Draft again with Claude → Only the b-roll ideas** gives them
+  new, timed ideas (and the larger set) without touching the description, titles or anything else.
+
 ## Data
 
 Each `broll.images[i]` (`types/episode.ts`, `BrollImage`) keeps its record, now with `source` (`pexels`, `pixabay`, or `ai`;

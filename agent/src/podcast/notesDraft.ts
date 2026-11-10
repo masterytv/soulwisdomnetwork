@@ -4,7 +4,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
-import { anchorToTranscript, mmss, notesSchemaFor, parseShowNotes, type ShowNotes, type SpokenWord } from '../../../lib/showNotes';
+import { anchorToTranscript, mmss, notesSchemaFor, parseShowNotes, timeBroll, type ShowNotes, type SpokenWord } from '../../../lib/showNotes';
 import { DEFAULT_SETTINGS, notesSystemPrompt, type StudioSettings } from '../../../lib/studioSettings';
 import type { Episode } from '../../../types/episode';
 
@@ -84,7 +84,8 @@ export async function draftNotes(client: Anthropic, episode: Episode, lines: Rev
     const notes = parseShowNotes(response.parsed_output);
     // Quotes and teaser clips get their exact times and speaker from the transcript words.
     const words: SpokenWord[] = lines.flatMap(l => l.words.map(w => ({ ...w, speaker: l.name, clip: l.clip })));
-    const unverified = anchorToTranscript(notes, words);
+    // B-roll starts one second after its cue words (docs/specs/023-stock-broll.md, "Timing"); a cue not found is listed with the quotes.
+    const unverified = [...anchorToTranscript(notes, words), ...timeBroll(notes, words).map(c => `B-roll cue: ${c}`)];
     const { input_tokens, output_tokens } = response.usage;
     const price = USD_PER_MTOK[response.model] ?? USD_PER_MTOK[model] ?? USD_PER_MTOK[NOTES_MODEL];
     const usd = Math.round((input_tokens * price.input + output_tokens * price.output) / 1e4) / 100;
