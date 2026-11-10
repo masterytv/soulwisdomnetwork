@@ -2,7 +2,7 @@
 
 Features and fixes agreed but not built yet. Add to it when something is decided for later;
 move an item into a numbered spec (`docs/specs/NNN-name.md`) when work on it starts, and delete
-it here when it ships.
+it here when it ships. Ideas not yet agreed are in `docs/ENHANCEMENTS.md`.
 
 ## Distribution
 
