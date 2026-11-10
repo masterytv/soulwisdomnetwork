@@ -41,6 +41,7 @@ import type { HighlightsView, RetakesView, WordFixResult } from '@/types/studio'
 import { spliceWords, type FixOp } from '@/lib/wordFixes';
 import { draftToOffer, localDrafts, type LocalDraft } from '@/lib/localDraft';
 import { layersOf, motionGraphics, withLayers, type BinItem, type Brand } from '@/lib/layers';
+import { spaceFirstEdit } from '@/lib/textLane';
 import { firstEdit, withBuiltOpening, type Teaser } from '@/lib/programme';
 import { openingMusicDefault } from '@/lib/audio';
 import type { ProgrammeSetup } from '@/components/studio/programme';
@@ -285,10 +286,12 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
                 // The motion graphics (spec 021 M2, Tom's D2: on), placed once with the b-roll on a fresh
                 // edit; one that already has any ("Build for Studio editor" placed them) gets none again.
                 if (setUp && workspace && items && data.graphics && !(shown.layers ?? []).some(l => l.kind === 'graphic')) {
-                    shown = { ...shown, layers: [...(shown.layers ?? []), ...motionGraphics({
+                    const placed = [...(shown.layers ?? []), ...motionGraphics({
                         ...data.graphics, words: accepted,
                         hosts: data.graphics.hosts ?? (brandRef.current ?? DEFAULT_BRAND).hosts,
-                    })] };
+                    })];
+                    // None overlaps another on V3 once the first cuts close the gaps (lib/textLane.ts).
+                    shown = { ...shown, layers: spaceFirstEdit(shown, placed, accepted) };
                 }
                 setEdit(shown);
                 setOverlayUrls(data.overlayUrls ?? {});

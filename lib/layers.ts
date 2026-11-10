@@ -342,6 +342,13 @@ const sec = (msVal: number) => (msVal / 1000).toFixed(3);
 // A picture's width in pixels on the 1080p frame, even for the encoder.
 export const pictureWidth = (w: number) => Math.max(2, Math.round(FRAME.width * w / 2) * 2);
 
+// A picture across the whole frame (b-roll, footage from the bin) fills it as the episode's own picture does: scaled
+// up to cover 1920 × 1080 and cropped at its centre, never letterboxed. Stock footage is not always 16:9, and a wider
+// clip scaled to the frame's width left the speaker showing above and below it (Tom, 10 November 2026).
+export const fillsFrame = (l: Pick<PictureLayer, 'w' | 'place'>) =>
+    l.w >= 0.999 && l.place.x === 0 && l.place.y === 0 && l.place.align === 7;
+const FILL_FRAME = `scale=iw*sar:ih,setsar=1,scale=${FRAME.width}:${FRAME.height}:force_original_aspect_ratio=increase:flags=lanczos,crop=${FRAME.width}:${FRAME.height},setsar=1`;
+
 // The overlay filter's x and y for a picture: its pinned point at the place, with a slide in and out.
 // W, H are the frame and w, h the picture; t is the episode's time.
 export function overlayXY(layer: PictureLayer, span: Span): { x: string; y: string } {
@@ -379,7 +386,7 @@ export function pictureFilter(inputIdx: number, inLabel: string, outLabel: strin
     const trimIn = layer.kind === 'video' ? layer.trimInMs / 1000 : 0;
     const steps = [
         `trim=start=${trimIn.toFixed(3)}:duration=${dur.toFixed(3)}`,
-        'setpts=PTS-STARTPTS', 'fps=30', `scale=${pictureWidth(layer.w)}:-2`, 'format=rgba',
+        'setpts=PTS-STARTPTS', 'fps=30', fillsFrame(layer) ? FILL_FRAME : `scale=${pictureWidth(layer.w)}:-2`, 'format=rgba',
     ];
     if (layer.in.transition === 'fade' && layer.in.durationMs > 0) steps.push(`fade=t=in:st=0:d=${sec(layer.in.durationMs)}:alpha=1`);
     if (layer.out.transition === 'fade' && layer.out.durationMs > 0) {
@@ -659,12 +666,46 @@ export function highlight(srcMs: number, layout: HighlightLayer['layout'], words
     };
 }
 
+// ─── the text lane (V3): one at a time ───────────────────────────────────────
+
+// Text and motion graphics on V3 never overlap (Tom, 10 November 2026: three at once crowded the screen), with
+// this much space between them. lib/textLane.ts keeps the editor's changes to the rule.
+export const TEXT_GAP_MS = 500;
+
+// Whether a layer takes V3's one place at a time: text, and the motion graphics placed on the episode (not the end
+// screen, which is placed from the programme's end, nor the logo bug on V4 or highlights on their own lane).
+export function onTextLane(l: Layer): boolean {
+    if (l.kind === 'text') return l.track === TRACK.text;
+    return l.kind === 'graphic' && l.track === TRACK.text && !('fromEnd' in l.anchor);
+}
+
+// Where a stretch of `lengthMs` can start so that it overlaps none of `taken`, `gap` clear of each, within 0 to `endMs`:
+// the start nearest `want`, or with `later` the first at or after it. Null when no free stretch is long enough.
+export function freeStart(taken: Span[], want: number, lengthMs: number, endMs = Infinity, later = false, gap = TEXT_GAP_MS): number | null {
+    const sorted = [...taken].sort((a, b) => a.startMs - b.startMs);
+    const gaps: Span[] = [];
+    let from = 0;
+    for (const t of sorted) {
+        if (t.startMs - gap > from) gaps.push({ startMs: from, endMs: t.startMs - gap });
+        from = Math.max(from, t.endMs + gap);
+    }
+    if (endMs > from) gaps.push({ startMs: from, endMs });
+    let best: number | null = null;
+    for (const g of gaps) {
+        if (g.endMs - g.startMs < lengthMs) continue;
+        const s = Math.min(Math.max(want, g.startMs), g.endMs - lengthMs);
+        if (later && s < want) continue;
+        if (best === null || Math.abs(s - want) < Math.abs(best - want)) best = s;
+    }
+    return best === null ? null : Math.round(best);
+}
+
 // The motion graphics an edit is first set up with (spec 021 M2; Tom's D2: on for every new episode):
 // the title banner from the approved notes' chosen title and the first speaker who is not a host, a motion
 // lower third where each speaker first talks (hosts compact), a chapter banner at each approved chapter
 // after the first, and the logo bug only when the Studio settings ask for it (`logoBug`, off by default). The
-// end screen is never placed (Tom, 28 October 2026); Elements still adds it by hand. The title banner and the lower thirds share the bottom
-// third, so a lower third due while the banner is up waits until just after it. Only for an episode with
+// end screen is never placed (Tom, 28 October 2026); Elements still adds it by hand. None overlaps another (the text
+// lane, above): a lower third due while the banner, a chapter or another lower third is up waits until just after it. Only for an episode with
 // no saved edit, like the teasers and b-roll (lib/programme.ts firstEdit, lib/layers.ts withLayers).
 export function motionGraphics(o: {
     title: string;
@@ -680,22 +721,28 @@ export function motionGraphics(o: {
     const guest = [...first.keys()].find(s => !hosts.has(s.trim().toLowerCase())) ?? '';
     const card = motionTitleCard(o.title, guest, o.show);
     // Lower thirds anchor on the recording's clock and the banner on the edit's, so the gap is kept on
-    // the recording's: cuts in the first seconds can only bring a third earlier by what they remove.
-    // Lower thirds sit in one place too, so one that would cover the one before waits for it to go.
-    let free = card.durationMs + TITLE_GAP_MS;
+    // the recording's: cuts in the first seconds can only bring a third earlier by what they remove (and the
+    // editor moves one that would then overlap, lib/textLane.ts). Chapters keep their moment; lower thirds wait.
+    const chapters = o.chapters.slice(1).map((c, i) => motionChapter(c.startMs, i + 2, c.title));
+    const taken: Span[] = [
+        { startMs: 0, endMs: card.durationMs + TITLE_GAP_MS - TEXT_GAP_MS },
+        ...chapters.map(c => ({ startMs: (c.anchor as { srcMs: number }).srcMs, endMs: (c.anchor as { srcMs: number }).srcMs + c.durationMs })),
+    ];
     const thirds = [...first].map(([speaker, start]) => {
-        const third = motionLowerThird(Math.max(start, free), speaker, hosts.has(speaker.trim().toLowerCase()));
-        free = (third.anchor as { srcMs: number }).srcMs + third.durationMs + THIRD_GAP_MS;
+        const length = GRAPHIC_TEMPLATES.lowerThird.durationMs;
+        const third = motionLowerThird(freeStart(taken, start, length, Infinity, true) ?? start, speaker, hosts.has(speaker.trim().toLowerCase()));
+        const at = (third.anchor as { srcMs: number }).srcMs;
+        taken.push({ startMs: at, endMs: at + third.durationMs });
         return third;
     });
     return [
         card,
         ...thirds,
-        ...o.chapters.slice(1).map((c, i) => motionChapter(c.startMs, i + 2, c.title)),
+        ...chapters,
         ...(o.logoBug ? [motionLogoBug()] : []),
     ];
 }
-const TITLE_GAP_MS = 1500, THIRD_GAP_MS = 500;
+const TITLE_GAP_MS = 1500;
 
 // The logo bug: the Studio's logo small in the top right, a little see-through, for the whole episode
 // (pinned at its start, so it never moves with cuts).

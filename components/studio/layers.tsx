@@ -10,7 +10,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { timelineTime, type Clip } from '@/lib/sequence';
-import { alignFractions, layerSpan, lookAt, SUBTEXT_SCALE, type Layer, type PictureLayer, type Span, type TextLayer } from '@/lib/layers';
+import { alignFractions, fillsFrame, layerSpan, lookAt, SUBTEXT_SCALE, type Layer, type PictureLayer, type Span, type TextLayer } from '@/lib/layers';
 import { textStyle } from '@/components/studio/onScreen';
 
 // The video's time, every frame while it plays and at each seek otherwise, and whether it is playing;
@@ -64,7 +64,7 @@ function motionTransform(motion: string, p: number): string {
 }
 
 // A video layer: its own <video>, kept to the edited episode's time and to the main video's play and pause.
-function LayerVideo({ layer, url, span, nowMs, playing }: { layer: Extract<Layer, { kind: 'video' }>; url: string; span: Span; nowMs: number; playing: boolean }) {
+function LayerVideo({ layer, url, span, nowMs, playing, fill }: { layer: Extract<Layer, { kind: 'video' }>; url: string; span: Span; nowMs: number; playing: boolean; fill: boolean }) {
     const ref = useRef<HTMLVideoElement>(null);
     useEffect(() => {
         const el = ref.current;
@@ -76,7 +76,8 @@ function LayerVideo({ layer, url, span, nowMs, playing }: { layer: Extract<Layer
         if (playing && el.paused) void el.play().catch(() => {});
         if (!playing && !el.paused) el.pause();
     }, [layer, span.startMs, nowMs, playing]);
-    return <video ref={ref} src={url} playsInline preload="auto" className="block w-full h-auto" />;
+    // Across the whole frame it fills it, cropped at its centre, as the render draws it (lib/layers.ts fillsFrame).
+    return <video ref={ref} src={url} playsInline preload="auto" className={fill ? "block w-full aspect-video object-cover" : "block w-full h-auto"} />;
 }
 
 // Every layer this preview draws itself: graphics (spec 021) play in their own iframes (graphics.tsx).
@@ -179,7 +180,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
                         {!url ? (
                             <div className="w-full aspect-video bg-white/10 text-[10px] text-gray-300 flex items-center justify-center">{l.media.name}</div>
                         ) : l.kind === 'video' ? (
-                            <LayerVideo layer={l} url={url} span={span} nowMs={nowMs} playing={playing} />
+                            <LayerVideo layer={l} url={url} span={span} nowMs={nowMs} playing={playing} fill={fillsFrame(l)} />
                         ) : l.motion !== 'none' ? (
                             <div className="w-full aspect-video overflow-hidden">
                                 {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL */}
@@ -187,7 +188,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
                             </div>
                         ) : (
                             // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL
-                            <img src={url} alt="" draggable={false} className="block w-full h-auto" />
+                            <img src={url} alt="" draggable={false} className={fillsFrame(l) ? "block w-full aspect-video object-cover" : "block w-full h-auto"} />
                         )}
                         {isSelected && (
                             <span role="presentation" title="Drag to resize (Alt: no snapping)"

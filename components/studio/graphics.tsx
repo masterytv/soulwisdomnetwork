@@ -45,18 +45,25 @@ export function useGraphicTemplates(wanted: GraphicTemplate[]): Partial<Record<G
     return html;
 }
 
-// The iframe is the render's 1920 × 1080, scaled to however wide the stage is drawn.
+// The iframe is the render's 1920 × 1080, scaled to however wide the stage is drawn. The stage is measured whenever it
+// is put on the page, not only on the first render: a preview that draws nothing until a graphic is due (the programme's,
+// before a teaser with its "In this episode" label plays) mounts its stage later, and was left at scale 0, drawing nothing.
 export function useStageScale(stage: React.RefObject<HTMLDivElement | null>): number {
     const [scale, setScale] = useState(0);
+    const watched = useRef<{ el: HTMLDivElement; ro: ResizeObserver } | null>(null);
     useEffect(() => {
         const el = stage.current;
+        if (watched.current?.el === el) return;
+        watched.current?.ro.disconnect();
+        watched.current = null;
         if (!el) return;
         const measure = () => setScale(el.getBoundingClientRect().width / FRAME.width);
         measure();
         const ro = new ResizeObserver(measure);
         ro.observe(el);
-        return () => ro.disconnect();
-    }, [stage]);
+        watched.current = { el, ro };
+    });
+    useEffect(() => () => watched.current?.ro.disconnect(), []);
     return scale;
 }
 
