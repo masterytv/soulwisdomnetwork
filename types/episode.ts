@@ -127,6 +127,7 @@ export interface EpisodeBroll {
     finishedAt?: unknown;
     error?: string | null;
     images?: Record<string, BrollImage>;
+    rejected?: string[];                  // stock the producer removed ("pexels-video-123"), never picked again
 }
 
 // The edit package (spec 005 step 8, part 1; docs/specs/009-edit-package.md): everything for

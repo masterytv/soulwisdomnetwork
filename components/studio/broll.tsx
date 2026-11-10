@@ -65,8 +65,21 @@ export function useBroll(episodeId: string, enabled: boolean) {
 
     // The b-roll for an idea's own words, wherever it is stored (ideas removed or moved since are re-keyed when the notes
     // are approved, lib/server/notes.ts), or else whatever is in its slot.
+    // Takes one idea's b-roll off; "Find stock footage" then fills it with something else.
+    const remove = useCallback(async (index: number) => {
+        setStarting(true);
+        try {
+            await studioFetch(`/api/studio/episodes/${episodeId}/broll`, { method: "POST", body: JSON.stringify({ remove: index }) });
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setStarting(false);
+        }
+    }, [episodeId, load]);
+
     const image = (index: number, idea?: string) => brollFor(view?.images ?? [], index, idea);
-    return { view, error, working, starting, generate, setSkipped, image };
+    return { view, error, working, starting, generate, setSkipped, remove, image };
 }
 
 export type Broll = ReturnType<typeof useBroll>;
@@ -97,6 +110,12 @@ export function BrollImageView({ broll, index, idea, style, disabled, disabledWh
                 title={disabled ? disabledWhy : `About $${BROLL_USD_PER_IMAGE.toFixed(2)} with OpenAI's image model`}>
                 {image?.source === "ai" ? "New AI image" : "AI image instead"}
             </button>
+            {image && (
+                <button onClick={() => void broll.remove(image.index)} disabled={disabled} className={BUTTON}
+                    title={disabled ? disabledWhy : "Take this b-roll off. \u201CFind stock footage\u201D then looks for something else, and never picks this one again."}>
+                    Remove
+                </button>
+            )}
         </div>
     );
     if (!image) {
