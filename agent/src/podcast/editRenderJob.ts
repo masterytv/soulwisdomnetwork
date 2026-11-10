@@ -45,6 +45,7 @@ import type { ExportResult } from './editExport';
 import { sequenceOf, type Clip } from '../../../lib/sequence';
 import { clipJoins, INTRO_CLIP, OUTRO_CLIP, oldTeaserSounds, programmeEdit, studioIntro, teasersFromNotes, type ProgrammeEdit, type ProgrammeSound } from '../../../lib/programme';
 import { probeDuration } from './media';
+import { stageClock } from './renderStages';
 import { brollTiming, isVideoBroll } from '../../../lib/broll';
 
 export interface EditRenderDeps {
@@ -194,8 +195,10 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     const plan = planEditRender(episode, settings);
     fs.mkdirSync(workDir, { recursive: true });
 
+    // Where the render has got to, for the Studio and the log (renderStages.ts).
+    const clock = stageClock(stage => deps.update({ 'editRender.stage': stage }));
     await deps.update({
-        'editRender.status': 'downloading', 'editRender.startedAt': deps.now(), 'editRender.error': null,
+        'editRender.status': 'downloading', 'editRender.startedAt': deps.now(), 'editRender.error': null, 'editRender.stage': null,
         'editRender.editVersion': plan.edit.version, 'editRender.transcriptVersion': episode.review?.acceptedVersion ?? 0,
         updatedAt: deps.now(),
     });
@@ -211,6 +214,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         fetched.set(storagePath, local);
         return local;
     };
+    clock.stage('Getting the recording and files');
     const video = await get(plan.video, 'source');
     // The whole video (spec 022): each recording clip cut from the recording exactly, with its "In this episode" label
     // as the motion tag (spec 021: teaserTag.html, overlaid below once the graphics are drawn) or, without a graphics
@@ -297,7 +301,17 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         const logoKey = logoFile ? createHash('sha256').update(fs.readFileSync(logoFile)).digest('hex').slice(0, 16) : undefined;
         // One clip per spec, drawn once and kept in Storage. The time spent actually drawing goes to
         // the Usage page (spec 021 M5, editRender.graphicsSeconds); a cached clip costs nothing.
+        // How many clips this render needs, for the Studio's count; each one found or drawn counts once.
+        const clipsWanted = plan.graphics.length + starlight.length + tagLater.length
+            + plan.highlights.reduce((n, h) => n + 1 + (HIGHLIGHT_PLANES[h.layout].matte ? 1 : 0) + (HIGHLIGHT_PLANES[h.layout].background ? 1 : 0), 0);
+        let clipsDone = 0;
+        if (clipsWanted) clock.stage('Motion graphics', 0, clipsWanted);
         const drawClip = async (spec: GraphicSpec): Promise<{ local: string; storagePath: string }> => {
+            const result = await findOrDraw(spec);
+            clock.stage('Motion graphics', Math.min(++clipsDone, clipsWanted), clipsWanted);
+            return result;
+        };
+        const findOrDraw = async (spec: GraphicSpec): Promise<{ local: string; storagePath: string }> => {
             const clipName = graphics.name(spec);
             const storagePath = `episodes/${episodeId}/graphics/${clipName}`;
             const local = path.join(workDir, clipName);
@@ -412,6 +426,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
     }
 
     await deps.update({ 'editRender.status': 'rendering' });
+    clock.stage('Preparing the edit');
     // This run's finished windows; GitHub's "Re-run" keeps the run's ID, so it finds them here.
     const work = `episodes/${episodeId}/editRender/work/${runId.replace(/[^\w-]/g, '')}`;
     const out = path.join(workDir, 'episode.mp4');
@@ -436,6 +451,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
             put: (local: string, name: string) => deps.upload(local, `${work}/${name}`, name.endsWith('.flac') ? 'audio/flac' : 'video/x-matroska'),
         } } : {}),
         ...(tracks.length ? { tracks } : {}),
+        onStage: clock.stage,
         clean: CLEAN_FOR[plan.voice],
         voice: {
             deepFilter: deps.voice?.deepFilter,
@@ -460,6 +476,7 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
 
     // renderEdit writes episode.words.json, .srt and .chapters.json beside the video when
     // it was given words, chapters or quotes; each one found is kept with the video.
+    clock.stage('Saving the final cut');
     await deps.update({ 'editRender.status': 'saving' });
     const base = `episodes/${episodeId}/editRender`;
     const prefix = `${base}/v${plan.edit.version}-${runId.replace(/[^\w-]/g, '')}`;
@@ -522,9 +539,12 @@ export async function runEditRender(episodeId: string, deps: EditRenderDeps, wor
         credits,
         exports,
     };
+    // How long each stage took, for the log; the last stage write lands before the render is marked ready.
+    console.log(`⏱️ ${clock.summary()}`);
+    await clock.flushed();
     await deps.update({
         ...Object.fromEntries(Object.entries(result).map(([k, v]) => [`editRender.${k}`, v])),
-        'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null,
+        'editRender.status': 'ready', 'editRender.finishedAt': deps.now(), 'editRender.error': null, 'editRender.stage': null,
         'editRender.voice': plan.voice,
         'editRender.tracks': tracks.length,
         updatedAt: deps.now(),

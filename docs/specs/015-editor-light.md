@@ -290,3 +290,13 @@ default): the winner becomes the Studio settings' "Voice clean-up in the render"
 Everything else is planned in `docs/specs/019-editor-light-v2.md`, whose status table is the
 record: the faster render is its item 4.2, fewer suggestions 1.6, the tighter edit 1.3. Start at
 `docs/PLANNING.md`.
+
+## Where a render has got to (10 November 2026)
+
+A 12-minute episode's first render took 34 minutes, and the Studio said only "Rendering the edit…". The render job now names
+each stage as it starts (`agent/src/podcast/renderStages.ts`): getting the recording and files, the motion graphics (a count
+of clips found or drawn), preparing the edit, cleaning the voice, mixing the sound, encoding the video (a count of windows),
+checking the finished video and saving the final cut. It is written to the episode as `editRender.stage` at most every
+5 seconds and shown in Build edit package and the editor's Render panel ("Encoding the video: 3 of 8"). The log has a line
+with the time each stage started and, at the end, how long each took. Cloud Storage's repeated "MaxListenersExceededWarning"
+is quieted (`editRenderRun.ts`), since it buried those lines.

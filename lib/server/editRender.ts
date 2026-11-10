@@ -19,6 +19,7 @@ const WORKING: EpisodeEditRender['status'][] = ['queued', 'downloading', 'render
 
 export interface EditRenderView {
     status: EpisodeEditRender['status'] | null;
+    stage: { label: string; done: number | null; total: number | null } | null;   // while it works: where it has got to
     error: string | null;
     canStart: boolean;
     stale: boolean;                   // the edit, or the accepted transcript's words (spec 019 item 2.3), changed after this render was made
@@ -108,6 +109,7 @@ export async function getEditRender(id: string): Promise<EditRenderView> {
     return {
         // A request whose run died reads as failed, so the panel offers a retry.
         status: lost ? 'failed' : r?.status ?? null,
+        stage: r && WORKING.includes(r.status) && !lost ? r.stage ?? null : null,
         error: r?.error ?? (lost ? 'The render did not finish. Check the Podcast Edit Render run in GitHub Actions, then try again.' : null),
         canStart: !!episode.edit && !!episode.media?.sourcePath && !busy(r),
         stale: ready && (r.editVersion !== episode.edit?.version
