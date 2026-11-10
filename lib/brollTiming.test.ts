@@ -79,3 +79,37 @@ test('the edit places b-roll where the approved notes have it now', () => {
     assert.deepEqual(brollTiming(made, [ideas[0], { ...ideas[1], idea: 'other' }]), { startMs: 190_000, durationSeconds: 6 });
     assert.deepEqual(brollTiming(made, undefined), { startMs: 190_000, durationSeconds: 6 });
 });
+
+// B-roll follows its idea when ideas are removed, added or moved (lib/broll.ts rekeyBroll, brollFor).
+import { brollFor, rekeyBroll } from './broll';
+
+const made = (index: number, idea: string) => ({ index, idea, path: `episodes/abcdefghij/broll/${index}.mp4` });
+
+test('removing an idea: the ideas after it keep their own b-roll, in their new places', () => {
+    // Tom removed the 1:11 idea (slot 1): before, slot 2's footage showed under the data idea, and so on down.
+    const images = { 0: made(0, 'programmer'), 1: made(1, 'person lying still'), 2: made(2, 'data scrolling'), 3: made(3, 'network map') };
+    const next = rekeyBroll(images, [{ idea: 'programmer' }, { idea: 'data scrolling' }, { idea: 'network map' }])!;
+    assert.deepEqual(Object.entries(next).map(([k, b]) => [k, b.idea, b.index]),
+        [['0', 'programmer', 0], ['1', 'data scrolling', 1], ['2', 'network map', 2]]);
+    assert.equal(next[1].path, images[2].path);
+});
+
+test('adding and moving ideas; an edited idea keeps its slot\'s old b-roll until it is replaced; nothing moves, nothing changes', () => {
+    const images = { 0: made(0, 'a'), 1: made(1, 'b') };
+    const added = rekeyBroll(images, [{ idea: 'new' }, { idea: 'a' }, { idea: 'b' }])!;
+    assert.deepEqual(Object.entries(added).map(([k, b]) => [k, b.idea]), [['1', 'a'], ['2', 'b']]);
+    const swapped = rekeyBroll(images, [{ idea: 'b' }, { idea: 'a' }])!;
+    assert.deepEqual(Object.entries(swapped).map(([k, b]) => [k, b.idea]), [['0', 'b'], ['1', 'a']]);
+    // Idea 0 reworded: its old b-roll stays in its slot (out of date, so the next run replaces it).
+    assert.equal(rekeyBroll(images, [{ idea: 'a, reworded' }, { idea: 'b' }]), null);
+    assert.equal(rekeyBroll(images, [{ idea: ' a ' }, { idea: 'b' }]), null);
+    // B-roll for words no idea has any more, beyond the list, is dropped.
+    assert.deepEqual(Object.keys(rekeyBroll(images, [{ idea: 'a' }])!), ['0']);
+});
+
+test('the notes page shows each idea the b-roll for its own words before the change is approved', () => {
+    const list = [made(0, 'programmer'), made(1, 'person lying still'), made(2, 'data scrolling')];
+    assert.equal(brollFor(list, 1, 'data scrolling')?.index, 2);
+    assert.equal(brollFor(list, 1, 'something new')?.index, 1);   // no match: the slot's own (shown as out of date)
+    assert.equal(brollFor(list, 5, 'nothing'), undefined);
+});

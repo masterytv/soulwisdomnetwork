@@ -73,3 +73,36 @@ export function brollTiming(made: Made & { index: number; startMs: number; durat
     return idea && idea.idea.trim() === made.idea ? { startMs: idea.startMs, durationSeconds: idea.durationSeconds }
         : { startMs: made.startMs, durationSeconds: made.durationSeconds };
 }
+
+// ─── following the ideas ────────────────────────────────────────────────────
+
+// B-roll is stored by the idea's place in the approved list (`broll.images[i]`). When ideas are removed, added or
+// reordered, each idea keeps the b-roll found or made for its own words: a slot takes the b-roll whose idea matches its
+// words, wherever it was, and only then whatever was in that slot before (out of date, so it is replaced on the next
+// run). B-roll for words no idea has any more is dropped. Returns null when nothing moves.
+export function rekeyBroll<B extends { index: number; idea: string }>(images: Record<string, B>,
+    ideas: { idea: string }[]): Record<string, B> | null {
+    const all = Object.entries(images);
+    const used = new Set<string>();
+    const next: Record<string, B> = {};
+    ideas.forEach((idea, i) => {
+        const words = idea.idea.trim();
+        const own = images[i]?.idea === words ? String(i) : all.find(([k, b]) => !used.has(k) && b.idea === words && ideas[Number(k)]?.idea.trim() !== words)?.[0];
+        if (own !== undefined && !used.has(own)) { used.add(own); next[i] = own === String(i) ? images[own] : { ...images[own], index: i }; }
+    });
+    // A slot left empty keeps what it had, if that b-roll was not taken by another idea and its words are not wanted elsewhere.
+    ideas.forEach((_, i) => {
+        if (next[i] || !images[i] || used.has(String(i))) return;
+        used.add(String(i));
+        next[i] = images[i];
+    });
+    const same = Object.keys(next).length === all.length && Object.entries(next).every(([k, b]) => images[k] === b);
+    return same ? null : next;
+}
+
+// Which idea's b-roll an idea shows on the notes page while its changes are not yet approved: the b-roll for its own
+// words, wherever it is stored, or else whatever is in its slot.
+export function brollFor<B extends { index: number; idea: string }>(images: B[], index: number, idea?: string): B | undefined {
+    const words = idea?.trim();
+    return (words ? images.find(b => b.idea === words) : undefined) ?? images.find(b => b.index === index);
+}

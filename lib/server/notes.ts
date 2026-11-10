@@ -2,6 +2,7 @@
 // them, load and save a producer's edits, and approve them (Checkpoint B).
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { rekeyBroll } from '@/lib/broll';
 import { fillMissingEnds, parseShowNotes, sameNotes, StoredShowNotesSchema, type ShowNotes, type SpokenWord, type RedraftScope } from '@/lib/showNotes';
 import type { Episode, EpisodeNotes, NotesApproval } from '@/types/episode';
 import type { EpisodeNotesView } from '@/types/studio';
@@ -177,6 +178,16 @@ export async function saveNotes(id: string, input: unknown, version: unknown) {
     });
 }
 
+// When approved notes change the b-roll ideas (one removed, added or moved), each idea keeps the b-roll found for its
+// own words (lib/broll.ts rekeyBroll), so the editor, the render and the package, which read b-roll by the idea's place,
+// line up. Left alone while a b-roll run is working on the episode, which writes by place too.
+function brollFollows(episode: Episode, ideas: { idea: string }[]): Record<string, unknown> {
+    const b = episode.broll;
+    if (!b?.images || b.status === 'queued' || b.status === 'generating') return {};
+    const next = rekeyBroll(b.images, ideas);
+    return next ? { 'broll.images': next } : {};
+}
+
 async function producer(user: { uid: string }) {
     const profile = (await adminDb().collection('users').doc(user.uid).get()).data() ?? {};
     return { uid: user.uid, name: (profile.displayName as string) || (profile.email as string) || 'a producer' };
@@ -196,8 +207,9 @@ export async function approveNotes(id: string, version: unknown, user: { uid: st
     const ref = episodeRef(id);
     const approvedBy = await producer(user);
     await adminDb().runTransaction(async tx => {
-        const notes = ((await tx.get(ref)).data() as Episode | undefined)?.notes;
-        if (!notes?.draft) throw new HttpError(409, 'There are no show notes to approve yet');
+        const episode = (await tx.get(ref)).data() as Episode | undefined;
+        const notes = episode?.notes;
+        if (!episode || !notes?.draft) throw new HttpError(409, 'There are no show notes to approve yet');
         if (busy(notes)) throw new HttpError(409, 'New notes are being drafted');
         if (version !== (notes.version ?? 0)) throw new HttpError(409, 'Someone else changed these notes. Reload to see their changes.');
         if (notes.approved && notes.approvedBy && sameNotes(notes.draft, notes.approved)) {
@@ -211,6 +223,7 @@ export async function approveNotes(id: string, version: unknown, user: { uid: st
             'notes.approvedBy': approvedBy,
             'notes.approvedAt': FieldValue.serverTimestamp(),
             'notes.approvedVersion': notes.version ?? 0,
+            ...brollFollows(episode, notes.draft.broll ?? []),
             updatedAt: FieldValue.serverTimestamp(),
         });
     });
@@ -261,6 +274,7 @@ export async function restoreApproval(id: string, version: unknown, to: unknown,
             'notes.approvedBy': kept?.by ?? approvedBy,
             'notes.approvedAt': kept?.at ?? FieldValue.serverTimestamp(),
             'notes.error': null,
+            ...brollFollows(episode, restored.broll ?? []),
             updatedAt: FieldValue.serverTimestamp(),
         });
         return current + 1;
