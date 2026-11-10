@@ -28,6 +28,8 @@ test('a job working on the episode holds it; a finished, failed or long-dead one
     const render = { status: 'rendering', requestedAt: NOW - 3600_000 } as Episode['editRender'];
     assert.deepEqual(runningJobs(base({ editRender: render, notes: { status: 'ready' } as Episode['notes'] }), NOW), ['Render']);
     assert.deepEqual(runningJobs(base({ editRender: { ...render!, status: 'failed' } }), NOW), []);
+    // Suggesting highlights writes into the saved edit: it holds the episode too (and a rebuild of the edit).
+    assert.deepEqual(runningJobs(base({ highlights: { status: 'working', requestedAt: NOW - 60_000 } as Episode['highlights'] }), NOW), ['Highlights']);
     // Nothing moved for longer than any job may run: it died.
     const old = new Date(NOW - STALE_MS - 1);
     assert.deepEqual(runningJobs(base({ updatedAt: old, status: 'ingesting', editRender: { ...render!, requestedAt: old } }), NOW), []);

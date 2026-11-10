@@ -9,7 +9,7 @@
 
 import { z } from 'zod';
 import { editedDuration, editedTime, keepRanges, type Cut } from './edit';
-import { highlight, motionKeyIdea, type GraphicLayer, type HighlightLayer, type Layer } from './layers';
+import { freeStart, highlight, motionKeyIdea, onTextLane, type GraphicLayer, type HighlightLayer, type Layer } from './layers';
 import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS, type HighlightLayout } from './reframe';
 import { locate, type SpokenWord } from './showNotes';
 
@@ -227,11 +227,28 @@ export function fillDescriptors(layers: Layer[], descriptors: { speaker: string;
 }
 
 // Key ideas become keyIdea graphics at their moment (the editor marks their definitions as Claude's
-// words to check), at most three, never doubling a term already placed.
+// words to check), at most three, never doubling a term already placed. None overlaps the text and graphics already
+// on V3, nor another (lib/layers.ts onTextLane): one whose moment is taken waits until just after, by
+// KEY_IDEA_WAIT_MS at most, or is left out. Placed on the recording's clock, a second apart, so the few cuts
+// between them cannot bring two together.
+export const KEY_IDEA_WAIT_MS = 20_000;
 export function keyIdeaAdditions(layers: Layer[], ideas: MomentsPayload['keyIdeas']): GraphicLayer[] {
     const placed = new Set(layers.flatMap(l => (l.kind === 'graphic' && l.template === 'keyIdea' ? [l.fields.term.trim().toLowerCase()] : [])));
-    return ideas.filter(i => !placed.has(i.term.trim().toLowerCase())).slice(0, 3)
-        .map(i => motionKeyIdea(i.startMs, i.term, i.definition));
+    const taken = layers.filter(onTextLane).map(l => {
+        const at = 'srcMs' in l.anchor ? l.anchor.srcMs : 'atMs' in l.anchor ? l.anchor.atMs : 0;
+        return { startMs: at, endMs: at + l.durationMs };
+    });
+    const out: GraphicLayer[] = [];
+    for (const i of ideas.filter(i => !placed.has(i.term.trim().toLowerCase()))) {
+        if (out.length === 3) break;
+        const idea = motionKeyIdea(i.startMs, i.term, i.definition);
+        const want = (idea.anchor as { srcMs: number }).srcMs;
+        const at = freeStart(taken, want, idea.durationMs, Infinity, true, 1000);
+        if (at === null || at - want > KEY_IDEA_WAIT_MS) continue;
+        taken.push({ startMs: at, endMs: at + idea.durationMs });
+        out.push({ ...idea, anchor: { srcMs: at } });
+    }
+    return out;
 }
 
 // How many of the edit's highlights are still suggestions — the editor's count and Clear button.

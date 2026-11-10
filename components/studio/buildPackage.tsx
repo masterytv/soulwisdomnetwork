@@ -5,7 +5,8 @@
 // the teasers with their "In this episode" graphic, the intro and outro, the b-roll) and opens it in the Studio
 // editor to finish by hand; "Build and export" sets up the same edit and renders it straight away, and the render is
 // the final cut that the thumbnails, YouTube and Shorts use. An episode with a saved edit keeps it: exporting renders
-// it as it is. The finished video, its chapters and quality report show below (FinalCut).
+// it as it is, until "Rebuild the edit package" throws it away and sets it up again from the notes and b-roll as they are
+// now (after an "Are you sure?"). The finished video, its chapters and quality report show below (FinalCut).
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -45,7 +46,8 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
     const [final, setFinal] = useState<FinalView | null>(null);
     const [done, setDone] = useState<BuildResult | null>(null);
     const [error, setError] = useState("");
-    const [starting, setStarting] = useState<"editor" | "export" | null>(null);
+    const [starting, setStarting] = useState<"editor" | "export" | "rebuild" | null>(null);
+    const [asking, setAsking] = useState(false);
 
     const load = useCallback(async () => {
         try {
@@ -74,14 +76,14 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
         return () => clearInterval(timer);
     }, [rendering, load]);
 
-    async function start(mode: "editor" | "export") {
+    async function start(mode: "editor" | "export" | "rebuild") {
         setStarting(mode);
         setError("");
         try {
             const r = await studioFetch<BuildResult>(`/api/studio/episodes/${episodeId}/build`, {
-                method: "POST", body: JSON.stringify({ export: mode === "export" }),
+                method: "POST", body: JSON.stringify({ export: mode === "export", rebuild: mode === "rebuild" }),
             });
-            if (mode === "editor") {
+            if (mode === "editor" || mode === "rebuild") {
                 router.push(`/admin/podcast/${episodeId}/studio-editor`);
                 return;
             }
@@ -91,6 +93,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
             setError((e as Error).message);
         } finally {
             setStarting(null);
+            setAsking(false);
         }
     }
 
@@ -125,7 +128,13 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
                     </p>
                     <div className="mt-auto pt-1">
                         {build?.edited ? (
-                            <Link href={editorHref} className={`${current ? secondary : primary} inline-block`}>Open in Studio editor →</Link>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Link href={editorHref} className={`${current ? secondary : primary} inline-block`}>Open in Studio editor →</Link>
+                                <button onClick={() => setAsking(true)} disabled={!build || blocked || !!starting || rendering} className={secondary}
+                                    title="Throw the saved edit away and set it up again from the show notes and b-roll as they are now">
+                                    Rebuild the edit package
+                                </button>
+                            </div>
                         ) : (
                             <button onClick={() => void start("editor")} disabled={!build || blocked || !!starting} className={primary}>
                                 {starting === "editor" ? "Building…" : "Build for Studio editor"}
@@ -154,6 +163,29 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
                     </div>
                 </div>
             </div>
+            {asking && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { if (!starting) setAsking(false); }}>
+                    <div role="alertdialog" aria-modal="true" aria-labelledby="rebuild-title"
+                        className="w-full max-w-md rounded-2xl border border-red-500/40 bg-[#1E1035] p-5 flex flex-col gap-3 text-sm text-gray-200"
+                        onClick={e => e.stopPropagation()}>
+                        <h2 id="rebuild-title" className="text-lg font-semibold text-red-300">Are you sure?</h2>
+                        <p className="font-medium">Rebuild the edit package</p>
+                        <ul className="list-disc pl-5 flex flex-col gap-1 text-gray-300">
+                            <li>The saved edit is thrown away: every change made in the Studio editor (cuts, teasers, layers, sounds, highlights, transitions, the parts&apos; order) is lost.</li>
+                            <li>It is set up again as a new episode&apos;s is: filler words, stammers and long pauses cut, the teasers, the intro and outro, the b-roll and the motion graphics, from the show notes and b-roll as they are now.</li>
+                            <li>The transcript, show notes, b-roll, thumbnails and shorts stay. A final cut already exported stays until you export again; it shows as out of date.</li>
+                            <li className="text-red-300">The changes thrown away cannot be brought back.</li>
+                        </ul>
+                        <div className="flex justify-end gap-2 mt-1">
+                            <button onClick={() => setAsking(false)} disabled={!!starting} className={secondary} autoFocus>Cancel</button>
+                            <button onClick={() => void start("rebuild")} disabled={!!starting}
+                                className="rounded-lg border border-red-500/50 px-3 py-1.5 text-red-300 hover:bg-red-500/10 disabled:opacity-40">
+                                {starting === "rebuild" ? "Rebuilding…" : "Yes, rebuild it"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
             {done && <p className={hint}>{builtNote(done)}</p>}
             {fromDescript && <p className={hint}>This episode&apos;s final cut came from Descript. Exporting replaces it with the Studio editor&apos;s render.</p>}
             {renderFailed && !rendering && <ErrorNote title="The export failed" message={render.error} />}

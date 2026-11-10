@@ -14,6 +14,7 @@ export const GET = handle<Context>(async (request, { params }) => {
 
 export const POST = handle<Context>(async (request, { params }) => {
     const { uid } = await requireRole(request, STUDIO_ROLES);
-    const body = await request.json().catch(() => ({})) as { export?: unknown };
-    return Response.json(await buildEdit((await params).id, uid, { render: body.export === true }));
+    // { rebuild: true } throws the saved edit away and sets it up again ("Rebuild the edit package").
+    const body = await request.json().catch(() => ({})) as { export?: unknown; rebuild?: unknown };
+    return Response.json(await buildEdit((await params).id, uid, { render: body.export === true, rebuild: body.rebuild === true }));
 });

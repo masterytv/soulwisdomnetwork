@@ -75,7 +75,8 @@ says what the last run did. Claude's picks are added to the episode's costs as `
 ## In the edit and the render
 
 - **Footage** is a silent, full-frame **video layer** (`brollLayer` in `lib/layers.ts`), half a second's fade in and out, no
-  longer than the footage (a clip is never looped). The media bin lists it as video. A stock photo is a still with the slow
+  longer than the footage (a clip is never looped). Footage that is not 16:9 **fills the frame**, scaled up and cropped at its
+  centre, in the preview and the render (`fillsFrame`, 10 November 2026): it never shows the speaker above and below it. The media bin lists it as video. A stock photo is a still with the slow
   zoom, like an AI image.
 - The edit package (Descript) trims footage to its moment and fills it to 1920x1080; its still is the first frame.
 - Edits saved before layers existed draw only stills from the notes plan; footage goes in through layers.

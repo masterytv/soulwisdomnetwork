@@ -35,6 +35,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, use
 import { Captions, CaptionsOff, Eye, EyeOff, Lock, LockOpen, Volume2, VolumeX } from 'lucide-react';
 import type { SpokenWord } from '@/lib/showNotes';
 import { keepRanges, keptBounds, MIN_PART_MS, moveSection, sectionAt, sectionsOf, trimSection, type Cut, type KeptRange, type Section } from '@/lib/edit';
+import { fitOnLane } from '@/lib/textLane';
 import { LAYER_MIN_MS, layerKind, layerName, layerSpan, TRACK, type Anchor, type GraphicAnchor, type Layer } from '@/lib/layers';
 import { HIGHLIGHT_MAX_MS, HIGHLIGHT_MIN_MS } from '@/lib/reframe';
 import { SOUND_TRACK, SOUND_TRACK_LABELS, startTrimMs, type Sound } from '@/lib/audio';
@@ -1117,6 +1118,9 @@ export function Timeline({
                 draft = { ...b, anchor: anchorAt(sourceTime(clips, start) ?? ms, start), durationMs: Math.max(LAYER_MIN_MS, Math.round(bounds.span.endMs - start)) };
             }
         }
+        // Text and motion graphics on V3 never overlap (lib/textLane.ts): the one dragged stops short of, or moves past,
+        // the one it runs into, as it is dragged.
+        if (!isSound(draft) && draft.kind !== 'highlight') draft = fitOnLane(draft as Layer, layers, clips, editedMs, d.mode);
         return { ...d, draft, guide: s.to !== null && ms === s.ms ? s.to : null };
     };
     const isSound = (l: Placed): l is Sound => 'gainDb' in l;

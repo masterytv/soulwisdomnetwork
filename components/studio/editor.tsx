@@ -44,6 +44,7 @@ import { GraphicsPreview, ProgrammeGraphics } from '@/components/studio/graphics
 import { HighlightReframe } from '@/components/studio/highlightPreview';
 import { highlightProblems } from '@/lib/reframe';
 import { touchSuggested } from '@/lib/highlights';
+import { keepTextLane } from '@/lib/textLane';
 import { MediaPanel } from '@/components/studio/mediaBin';
 import { ElementsPanel } from '@/components/studio/elements';
 import { ClipLabelProperties, PropertiesPanel } from '@/components/studio/properties';
@@ -320,9 +321,13 @@ export function Editor({
     const layers = useMemo(() => layersOf(edit), [edit]);
     const setLayers = useCallback((next: Layer[]) => {
         // A suggested highlight the producer changes stops being a suggestion (spec 021 M4): every
-        // layers update — Properties, timeline drags, the keys — passes through here.
-        if (layersEditable) updateEdit(prev => ({ ...prev, layers: touchSuggested(layersOf(prev), next), overlays: [] }));
-    }, [layersEditable, updateEdit]);
+        // layers update — Properties, timeline drags, the keys — passes through here. So does the text lane's rule:
+        // text and motion graphics added or moved on V3 never overlap the others (lib/textLane.ts).
+        if (layersEditable) updateEdit(prev => {
+            const before = layersOf(prev);
+            return { ...prev, layers: keepTextLane(before, touchSuggested(before, next), kept, editedMs), overlays: [] };
+        });
+    }, [layersEditable, updateEdit, kept, editedMs]);
     const mediaUrls = useMemo(() => {
         const urls: Record<string, string> = { ...overlayUrls };
         for (const it of media?.items ?? []) if (it.url && !urls[it.path]) urls[it.path] = it.url;
