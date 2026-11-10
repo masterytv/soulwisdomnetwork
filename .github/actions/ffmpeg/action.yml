@@ -1,10 +1,16 @@
-# Installs ffmpeg and ffprobe from a pinned static build on GitHub releases, instead of apt:
-# the runners' apt mirror repeatedly stalled the old install step past its 15-minute limit, and
-# a download from GitHub's own release storage takes seconds and cannot drift — the sha256 pins
-# the exact file. To update ffmpeg, change the tag, the asset name and the hash together
-# (https://github.com/BtbN/FFmpeg-Builds; the build is GPL, with libass, fontconfig and libx264).
-# BtbN deletes dated autobuild releases after a couple of weeks, and a deleted one fails every
-# workflow with a 404 here: move to the newest autobuild-YYYY-MM-DD-HH-MM release when that happens.
+# Installs ffmpeg and ffprobe from a pinned static build, instead of apt: the runners' apt mirror
+# repeatedly stalled the old install step past its 15-minute limit, and a download from GitHub's
+# own release storage takes seconds and cannot drift — the sha256 pins the exact file. The build
+# is BtbN's (https://github.com/BtbN/FFmpeg-Builds; GPL, with libass, fontconfig and libx264), and
+# the pin is in pin.env beside this file.
+#
+# It is downloaded from this repo's own release named after the build, made by
+# .github/workflows/ffmpeg_copy.yml, because BtbN deletes its dated autobuild releases after a
+# couple of weeks, which once failed every workflow here with a 404. Only while that copy does not
+# exist yet (a new pin not yet pushed to staging or main) is the build fetched from BtbN instead.
+# Either way the sha256 must match. To move to a newer ffmpeg: change the three values in pin.env
+# together, and once the change reaches staging the copy is made.
+#
 # The on-screen text fonts need no install either: they ship in agent/assets/fonts, which the
 # render hands to libass as its fontsdir (lib/onScreen.ts).
 name: Install ffmpeg
@@ -16,10 +22,20 @@ runs:
     - name: Install ffmpeg
       shell: bash
       run: |
-        build=ffmpeg-N-128718-gb2b543c079-linux64-gpl
-        curl -fsSL --retry 4 --retry-delay 5 --retry-all-errors --max-time 120 -o /tmp/ffmpeg.tar.xz \
-          "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-11-09-12-42/$build.tar.xz"
-        echo "143adb601603057053bf52f157daf36728e716b86fae764952271cdb4b3d56bc  /tmp/ffmpeg.tar.xz" | sha256sum -c
+        source "$GITHUB_ACTION_PATH/pin.env"
+        build=$FFMPEG_BUILD
+        ours="https://github.com/$GITHUB_REPOSITORY/releases/download/$build/$build.tar.xz"
+        btbn="https://github.com/BtbN/FFmpeg-Builds/releases/download/$FFMPEG_BTBN_TAG/$build.tar.xz"
+        fetch() { curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors --max-time 120 -o /tmp/ffmpeg.tar.xz "$1"; }
+        if fetch "$ours"; then
+          echo "ffmpeg from this repo's release $build"
+        elif fetch "$btbn"; then
+          echo "::warning::ffmpeg came from BtbN: this repo has no release $build yet. Run the ffmpeg copy workflow (ffmpeg_copy.yml) to make it."
+        else
+          echo "::error::ffmpeg $build is in neither this repo's releases nor BtbN's $FFMPEG_BTBN_TAG. Pin a newer BtbN autobuild in .github/actions/ffmpeg/pin.env (tag, build and sha256 together)."
+          exit 1
+        fi
+        echo "$FFMPEG_SHA256  /tmp/ffmpeg.tar.xz" | sha256sum -c
         mkdir -p "$HOME/ffmpeg-static"
         tar -xJf /tmp/ffmpeg.tar.xz -C "$HOME/ffmpeg-static" --strip-components=2 "$build/bin/ffmpeg" "$build/bin/ffprobe"
         rm /tmp/ffmpeg.tar.xz
