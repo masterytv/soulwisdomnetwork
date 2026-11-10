@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ago } from "@/components/studio/format";
-import { BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
+import { brollFor, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
 import { STOCK_LABELS } from "@/lib/stockBroll";
 import { studioFetch } from "@/lib/studioClient";
 import type { BrollView } from "@/types/studio";
@@ -63,7 +63,9 @@ export function useBroll(episodeId: string, enabled: boolean) {
         }
     }, [episodeId, load]);
 
-    const image = (index: number) => view?.images.find(i => i.index === index);
+    // The b-roll for an idea's own words, wherever it is stored (ideas removed or moved since are re-keyed when the notes
+    // are approved, lib/server/notes.ts), or else whatever is in its slot.
+    const image = (index: number, idea?: string) => brollFor(view?.images ?? [], index, idea);
     return { view, error, working, starting, generate, setSkipped, image };
 }
 
@@ -77,7 +79,7 @@ const BUTTON = "text-xs px-2 py-1 rounded border border-white/10 text-gray-300 h
 export function BrollImageView({ broll, index, idea, style, disabled, disabledWhy }: {
     broll: Broll; index: number; idea: string; style: BrollStyle; disabled: boolean; disabledWhy: string;
 }) {
-    const found = broll.image(index);
+    const found = broll.image(index, idea);
     // B-roll found or made for other words (the idea was redrafted or edited; for an AI image, another style) is hidden:
     // the slot reads as empty until new b-roll replaces it (lib/broll.ts brollStale).
     const stale = !!found && (found.idea !== idea.trim() || (found.source === "ai" && found.style !== style));
