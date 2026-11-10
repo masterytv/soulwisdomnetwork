@@ -1,7 +1,8 @@
-// B-roll stills for one episode (docs/specs/008-broll-images.md): ask GitHub Actions to
-// generate them from the approved show notes, and show them on the notes page.
+// B-roll for one episode: ask GitHub Actions to find stock footage and photos (docs/specs/023-stock-broll.md) or make
+// AI stills (docs/specs/008-broll-images.md) from the approved show notes, and show them on the notes page.
 
 import { FieldValue } from 'firebase-admin/firestore';
+import { brollStale, isAiBroll } from '@/lib/broll';
 import type { Episode, EpisodeBroll } from '@/types/episode';
 import type { BrollView } from '@/types/studio';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -28,29 +29,32 @@ function busy(broll: EpisodeBroll | undefined) {
     return Date.now() - since < STALE_MS;
 }
 
-// Starts the Podcast B-roll workflow for the approved ideas; `index` regenerates one image.
-export async function requestBroll(id: string, index: number | null) {
+// Starts the Podcast B-roll workflow for the approved ideas: `mode` "stock" finds real footage and photos (free), "ai"
+// makes AI images; `index` does one idea.
+export async function requestBroll(id: string, index: number | null, mode: 'stock' | 'ai' = 'ai') {
     const ref = episodeRef(id);
-    let images = 0;   // to make, as agent/src/podcast/broll.ts decides: new ideas, or changed ones
+    let images = 0;   // to fill, as agent/src/podcast/broll.ts decides: new ideas, or changed ones
     await adminDb().runTransaction(async tx => {
         const episode = (await tx.get(ref)).data() as Episode | undefined;
         if (!episode) throw new HttpError(404, 'Episode not found');
         const ideas = episode.notes?.status === 'approved' ? episode.notes.approved?.broll ?? [] : [];
         const made = episode.broll?.images ?? {};
-        images = index !== null ? 1 : ideas.filter((b, i) => made[i]?.idea !== b.idea.trim() || (made[i]?.style ?? 'photo') !== (b.style ?? 'photo')).length;
+        images = index !== null ? 1 : ideas.filter((b, i) => brollStale(made[i], b)).length;
         if (!ideas.length) throw new HttpError(409, 'Approve the show notes with at least one b-roll idea first');
         if (index !== null && index >= ideas.length) throw new HttpError(400, 'There is no such b-roll idea');
-        if (busy(episode.broll)) throw new HttpError(409, 'B-roll images are already being generated');
+        if (index === null && !images) throw new HttpError(409, 'Every b-roll idea already has its b-roll');
+        if (busy(episode.broll)) throw new HttpError(409, 'B-roll is already being made');
         tx.set(ref, {
-            broll: { status: 'queued', only: index, requestedAt: FieldValue.serverTimestamp(), error: null },
+            broll: { status: 'queued', mode, only: index, requestedAt: FieldValue.serverTimestamp(), error: null },
             brollSkipped: null,
             updatedAt: FieldValue.serverTimestamp(),
         }, { merge: true });
     });
     try {
-        await withinDailyLimit('b-roll images', images * ESTIMATE_USD.brollImage, () => startBroll(id, index));
+        await withinDailyLimit(mode === 'stock' ? 'stock b-roll' : 'b-roll images',
+            mode === 'stock' ? ESTIMATE_USD.brollStock : images * ESTIMATE_USD.brollImage, () => startBroll(id, index, mode));
     } catch (error) {
-        const message = `Could not start generating: ${(error as Error).message}`;
+        const message = `Could not start: ${(error as Error).message}`;
         await ref.update({ 'broll.status': 'failed', 'broll.error': message });
         throw new HttpError(502, message);
     }
@@ -66,6 +70,11 @@ export async function getBroll(id: string): Promise<BrollView> {
         index: image.index,
         idea: image.idea,
         style: image.style ?? 'photo',
+        source: isAiBroll(image) ? 'ai' as const : image.source as 'pexels' | 'pixabay',
+        kind: image.kind ?? 'image',
+        credit: image.credit ?? null,
+        pageUrl: image.pageUrl ?? null,
+        seconds: image.seconds ?? null,
         url: (await adminBucket().file(image.path).getSignedUrl({ action: 'read', expires: Date.now() + IMAGE_LINK_MS }))[0],
         model: image.model,
         prompt: image.prompt,
@@ -76,7 +85,8 @@ export async function getBroll(id: string): Promise<BrollView> {
         // A request whose run died reads as failed, so the page offers a retry.
         status: lost ? 'failed' : b?.status ?? null,
         only: b?.only ?? null,
-        error: b?.error ?? (lost ? 'Generating did not finish. Check the Podcast B-roll run in GitHub Actions, then try again.' : null),
+        mode: b?.mode ?? 'ai',
+        error: b?.error ?? (lost ? 'The b-roll run did not finish. Check the Podcast B-roll run in GitHub Actions, then try again.' : null),
         notesApproved: episode.notes?.status === 'approved',
         skipped: episode.brollSkipped ?? null,
         images: images.sort((x, y) => x.index - y.index),
@@ -89,7 +99,7 @@ export async function skipBroll(id: string, skip: boolean, user: { uid: string }
     const ref = episodeRef(id);
     const episode = (await ref.get()).data() as Episode | undefined;
     if (!episode) throw new HttpError(404, 'Episode not found');
-    if (skip && busy(episode.broll)) throw new HttpError(409, 'B-roll images are being made; wait for them to finish');
+    if (skip && busy(episode.broll)) throw new HttpError(409, 'B-roll is being made; wait for it to finish');
     let by = 'a producer';
     if (skip) {
         const profile = (await adminDb().collection('users').doc(user.uid).get()).data() ?? {};

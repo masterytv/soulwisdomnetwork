@@ -19,6 +19,7 @@ const DAY_MS = 24 * 60 * 60_000;
 export const ESTIMATE_USD = {
     notes: 0.5,           // Claude drafts the show notes from the transcript
     brollImage: 0.165,    // one OpenAI image (BROLL_USD_PER_IMAGE)
+    brollStock: 0.25,     // Claude choosing stock b-roll for every idea (the footage and photos are free)
     thumbnails: 0.25,     // Claude's texts and an AI background
     shortsTitles: 0.05,   // Claude's headlines and titles
     shortsPick: 0.4,      // Claude reads the whole final cut and picks moments for Shorts (same model as the notes)

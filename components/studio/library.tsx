@@ -10,6 +10,7 @@ import { ErrorNote } from "@/components/studio/ErrorNote";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
 import { typeOf, uploadFile } from "@/components/studio/upload";
 import { measure } from "@/components/studio/mediaBin";
+import { FreeToUsePanel } from "@/components/studio/freeToUse";
 import { studioFetch } from "@/lib/studioClient";
 import {
     EMPTY_LICENCE, LIBRARY_KIND_LABELS, LIBRARY_KINDS, licenceMissing, licenceProblem,
@@ -240,6 +241,7 @@ export function LibraryView({ isAdmin }: { isAdmin: boolean }) {
         <>
             <ErrorNote message={error} />
             {isAdmin && <AddFile onAdded={e => setEntries(prev => [e, ...(prev ?? [])])} />}
+            {isAdmin && <FreeToUsePanel onImported={e => setEntries(prev => [e, ...(prev ?? [])])} />}
             <div className="flex items-center gap-2 text-sm">
                 {(["all", ...LIBRARY_KINDS] as const).map(k => (
                     <button key={k} className={`${secondary} ${shown === k ? "!border-amber-400/60 !text-amber-200" : ""}`} onClick={() => setShown(k)}>

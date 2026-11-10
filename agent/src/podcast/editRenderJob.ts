@@ -45,6 +45,7 @@ import type { ExportResult } from './editExport';
 import { sequenceOf, type Clip } from '../../../lib/sequence';
 import { clipJoins, INTRO_CLIP, OUTRO_CLIP, oldTeaserSounds, programmeEdit, studioIntro, teasersFromNotes, type ProgrammeEdit, type ProgrammeSound } from '../../../lib/programme';
 import { probeDuration } from './media';
+import { brollTiming, isVideoBroll } from '../../../lib/broll';
 
 export interface EditRenderDeps {
     getEpisode: () => Promise<Episode | undefined>;
@@ -157,7 +158,11 @@ export function planEditRender(episode: Episode, settings: StudioSettings = DEFA
         ownOutro: edit.outro ? edit.outro.path : null,
         // An edit with layers has its b-roll among them (the Studio editor added the notes plan's when it
         // first opened the edit), so the notes plan's is drawn only for an edit without.
-        broll: edit.layers ? [] : images.map(i => ({ atMs: i.startMs, seconds: i.durationSeconds, image: i.path })),
+        // Stock footage (docs/specs/023-stock-broll.md) only goes in as a layer: an edit without layers predates it.
+        broll: edit.layers ? [] : images.filter(i => !isVideoBroll(i)).map(i => {
+            const at = brollTiming(i, notes?.broll);
+            return { atMs: at.startMs, seconds: at.durationSeconds, image: i.path };
+        }),
         onScreen: {
             captions: wordsPath ? captions : null,
             texts: layersOf(edit).filter((l): l is TextLayer => l.kind === 'text'),

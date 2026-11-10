@@ -5,6 +5,7 @@
 // route takes a layer's file only from here (or an overlay upload of Part I), so a saved edit can never
 // point the render at a file the Studio did not give it.
 
+import { brollTiming } from '@/lib/broll';
 import { FieldValue } from 'firebase-admin/firestore';
 import { SITE_LOGO, SITE_LOGO_URL, type BinItem, type BinKind } from '@/lib/layers';
 import type { StudioSettings } from '@/lib/studioSettings';
@@ -33,7 +34,14 @@ interface UploadDoc {
 export async function binItems(id: string, episode: Episode, settings: StudioSettings): Promise<BinItem[]> {
     const items: BinItem[] = [];
     for (const b of Object.values(episode.broll?.images ?? {}).sort((a, c) => a.index - c.index)) {
-        items.push({ id: `broll-${b.index}`, kind: 'image', source: 'broll', path: b.path, name: b.idea || `B-roll ${b.index + 1}`, startMs: b.startMs, seconds: b.durationSeconds, index: b.index });
+        // Stock footage is video (docs/specs/023-stock-broll.md), with its own length; the rest are stills.
+        // Placed where the approved notes have it now, which the producer may have moved since it was found.
+        const video = b.kind === 'video';
+        const at = brollTiming(b, episode.notes?.approved?.broll);
+        items.push({
+            id: `broll-${b.index}`, kind: video ? 'video' : 'image', source: 'broll', path: b.path, name: b.idea || `B-roll ${b.index + 1}`,
+            startMs: at.startMs, seconds: at.durationSeconds, index: b.index, ...(video && b.seconds ? { durationMs: Math.round(b.seconds * 1000) } : {}),
+        });
     }
     const pkg = episode.package?.status === 'ready' ? episode.package : undefined;
     (pkg?.clipPaths ?? []).forEach((p, i) => items.push({ id: `teaser-${i}`, kind: 'video', source: 'teaser', path: p, name: `Teaser clip ${i + 1}` }));

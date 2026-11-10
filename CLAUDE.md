@@ -28,7 +28,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               (podcast_notes_compare.yml: side-by-side models/efforts, read-only, run by hand)
               podcast/cleanupCompare.ts — the voice clean-up bake-off (spec 019 item 3.1; podcast_cleanup_compare.yml,
               run by hand, read-only): one stretch as recorded, today's chain, DeepFilterNet, Studio sound (no, gentle and rich warmth), Auphonic and Descript, heard blind
-              podcast/broll.ts — spec 005 step 7 (b-roll images), GitHub Actions only
+              podcast/broll.ts — spec 005 step 7 (b-roll): stock footage and photos from Pexels and Pixabay first, picked by Claude
+              (mode stock, lib/stockBroll.ts, docs/specs/023-stock-broll.md), AI images for the rest (mode ai, spec 008), GitHub Actions only
               podcast/package.ts — spec 005 step 8 part 1 (edit package for Descript), GitHub Actions only
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
               podcast/final.ts — spec 005 steps 10-11 (final cut from Descript, loudness, re-timed chapters), GitHub Actions only
@@ -73,7 +74,9 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               spec 020 item E5), from the episode's media bin (lib/server/mediaBin.ts, /api/studio/episodes/[id]/media); title cards,
               lower thirds and the logo bug are layers in the Studio's colours (item E6: the Elements and Properties panels); music
               and effects are sounds on A2 and A3 (lib/audio.ts, item E7), ducked under the voice in the render, from the show
-              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use), the bin,
+              library (lib/server/library.ts, /admin/podcast/library: each file's licence is checked by an admin before use; admins can
+              also search and import tracks from Free To Use's public music API there, lib/freeToUse.ts and lib/server/freeToUse.ts,
+              which fills in the licence record and credit but leaves the snapshot and the check to the admin), the bin,
               or the Studio's own wind sounds (public/studio/sounds, made by scripts/windSounds.py, no licence: lib/audio.ts STUDIO_SOUNDS);
               spec 022 stage 3a puts sounds on any clip of the whole video too (edit.programme.audio, anchored to a clip, mixed over
               the whole video by the render, played by components/studio/sounds.tsx ClipSoundsPreview), and the old teaserMusic and
@@ -111,7 +114,7 @@ lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-022 (022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
+docs/specs/   numbered specs, 001-023 (023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
@@ -187,9 +190,10 @@ to `ALERT_EMAIL`. Accepting the transcript in the Studio starts `podcast_notes.y
 (`agent/src/podcast/notes.ts`), which drafts show notes with Claude for Checkpoint B
 (`docs/specs/007-show-notes.md`); it needs the `ANTHROPIC_API_KEY` repo secret. The same workflow with
 `mode: extras` writes the social posts and follow-up email from the approved notes; `mode: translations`
-and `mode: retakes` serve the editor (spec 015). Once notes are approved, "Generate b-roll
-images" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`,
-`docs/specs/008-broll-images.md`), which uses `OPENAI_API_KEY`. Editing and "Build edit package" wait until every approved b-roll idea has its image, or b-roll is skipped
+and `mode: retakes` serve the editor (spec 015). Once notes are approved, "Find stock
+footage" on that page starts `podcast_broll.yml` (`agent/src/podcast/broll.ts`) in stock mode (`docs/specs/023-stock-broll.md`:
+Pexels and Pixabay, picked by Claude; the `PEXELS_API_KEY`, `PIXABAY_API_KEY` and `ANTHROPIC_API_KEY` repo secrets), and
+"Make AI images" runs it in AI mode for the ideas stock left (`docs/specs/008-broll-images.md`, `OPENAI_API_KEY`). Editing and "Build edit package" wait until every approved b-roll idea has its b-roll, or b-roll is skipped
 (`lib/brollGate.ts`; an episode whose edit or package already exists is not held). "Build edit package" starts
 `podcast_package.yml` (`agent/src/podcast/package.ts`, `docs/specs/009-edit-package.md`), which puts
 the episode, teaser clips (with the "In this episode" tag burned in by `podcast/teaserBanner.ts`), b-roll and notes in `03 For Descript/<episode>`; "Send to Descript" then

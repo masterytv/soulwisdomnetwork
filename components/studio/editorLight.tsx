@@ -550,7 +550,7 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
             <div className="rounded-xl border border-amber-400/40 bg-amber-500/5 p-4 flex flex-col gap-2 text-sm text-gray-200 max-w-2xl">
                 <p className="font-semibold text-amber-300">Finish or skip the b-roll first</p>
                 <p>{brollHeld}</p>
-                <Link href={`/admin/podcast/${episodeId}/notes#broll`} className="text-amber-300 hover:underline self-start">Go to the b-roll images →</Link>
+                <Link href={`/admin/podcast/${episodeId}/notes#broll`} className="text-amber-300 hover:underline self-start">Go to the b-roll →</Link>
             </div>
         );
         if (!workspace) return note;

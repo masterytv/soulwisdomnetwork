@@ -2,6 +2,7 @@
 // titles for, draw or schedule the shorts the producer picked from the key quotes, keep the producer's edits, record which drawn short was approved, and show
 // it all on the show notes page.
 
+import { isAiBroll } from '@/lib/broll';
 import { finalIsCurrent } from '@/lib/finalCut';
 import { DIRECTION_MAX } from '@/lib/shortPicks';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -160,7 +161,7 @@ export async function saveShorts(id: string, body: unknown) {
             if (edit.quoteIndex !== null && edit.quoteIndex >= quoteCount) throw new HttpError(400, 'There is no such quote');
             if (/[<>]/.test(edit.title)) throw new HttpError(400, 'YouTube does not allow < or > in titles');
             // A new short is flagged when AI b-roll may show in it; the producer can untick it.
-            const synthetic = edit.synthetic || (!old && showsBroll(Object.values(episode.broll?.images ?? {}),
+            const synthetic = edit.synthetic || (!old && showsBroll(Object.values(episode.broll?.images ?? {}).filter(isAiBroll),
                 edit.quoteIndex !== null ? episode.final.quotes?.[edit.quoteIndex] : undefined, edit.startMs, edit.endMs));
             next.push({ ...old, ...edit, synthetic, headline: edit.headline.replace(/\s+/g, ' '), title: edit.title.replace(/\s+/g, ' ') });
         }

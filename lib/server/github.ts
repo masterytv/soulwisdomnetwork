@@ -63,11 +63,12 @@ export async function startNotes(episodeId: string, mode: 'notes' | 'extras' | '
     });
 }
 
-// Generates b-roll stills for one episode (spec 005 step 7); `index` regenerates just one.
-export async function startBroll(episodeId: string, index: number | null) {
+// B-roll for one episode (spec 005 step 7): stock footage and photos, or AI stills (docs/specs/023-stock-broll.md);
+// `index` does just one idea.
+export async function startBroll(episodeId: string, index: number | null, mode: 'stock' | 'ai' = 'ai') {
     await github('/actions/workflows/podcast_broll.yml/dispatches', {
         method: 'POST',
-        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId, index: index === null ? '' : String(index) } }),
+        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId, index: index === null ? '' : String(index), mode } }),
     });
 }
 
