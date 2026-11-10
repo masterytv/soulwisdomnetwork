@@ -10,6 +10,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import type { Episode } from '@/types/episode';
 import { SilencesFileSchema, type EpisodeEdit, type Silence } from '@/lib/edit';
 import { motionGraphics, withLayers } from '@/lib/layers';
+import { spaceFirstEdit } from '@/lib/textLane';
 import { firstEdit, teasersFromNotes, withBuiltOpening } from '@/lib/programme';
 import { openingMusicDefault } from '@/lib/audio';
 import { brollBlock } from '@/lib/brollGate';
@@ -94,6 +95,8 @@ export async function buildEdit(id: string, uid: string, { render }: { render: b
                 hosts: settings.hosts,
                 logoBug: settings.placeLogoBug,
             })];
+            // None overlaps another on V3 once the first cuts close the gaps (lib/textLane.ts).
+            edit.layers = spaceFirstEdit(edit, edit.layers, words);
         }
         await adminDb().runTransaction(async tx => {
             const now = (await tx.get(ref)).data() as Episode | undefined;

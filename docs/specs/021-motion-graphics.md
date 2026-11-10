@@ -373,3 +373,16 @@ Each item is one PR, promotable on its own (jobs only run from `main`).
 
 AI-generated video, music, 3D, face tracking (the windows are fixed positions; Zoom frames put the face near the
 middle), and graphics in the audio podcast.
+
+## One at a time on V3 (10 November 2026)
+
+Tom found three graphics on V3 at once (two key ideas over a chapter banner), which crowded the screen. Text and motion
+graphics on V3 now never overlap, with half a second between them (`onTextLane`, `freeStart` in `lib/layers.ts`;
+`lib/textLane.ts`). The end screen, the logo bug (V4) and highlights (their own lane) are not counted.
+
+- **First set-up:** lower thirds wait for the title banner, the chapters and each other, and the set-up's first cuts are
+  counted (`spaceFirstEdit`).
+- **Suggested key ideas** wait until just after whatever is on V3 at their moment, by 20 seconds at most, or are left out.
+- **In the editor:** a graphic or text dragged onto another moves past it as it is dragged, and a trimmed edge stops short
+  of its neighbour. One added from Elements, pasted or changed in Properties is moved to the nearest free stretch. Layers
+  that were not changed stay where they are, so an edit saved before this keeps any overlap it has until one is moved.
