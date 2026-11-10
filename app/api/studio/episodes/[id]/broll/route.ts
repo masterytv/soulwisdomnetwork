@@ -1,4 +1,4 @@
-import { getBroll, requestBroll, skipBroll } from '@/lib/server/broll';
+import { getBroll, removeBroll, requestBroll, skipBroll } from '@/lib/server/broll';
 import { handle, requireRole, STUDIO_ROLES } from '@/lib/server/staff';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +15,13 @@ export const GET = handle<Context>(async (request, { params }) => {
 // Body: { skip: boolean } instead skips b-roll, or takes the skip back (lib/brollGate.ts).
 export const POST = handle<Context>(async (request, { params }) => {
     const user = await requireRole(request, STUDIO_ROLES);
-    const { index, skip, mode } = await request.json().catch(() => ({})) as { index?: unknown; skip?: unknown; mode?: unknown };
+    const { index, skip, mode, remove } = await request.json().catch(() => ({})) as { index?: unknown; skip?: unknown; mode?: unknown; remove?: unknown };
+    // Body: { remove: number } takes that idea's b-roll off (docs/specs/023-stock-broll.md).
+    if (remove !== undefined) {
+        if (!(Number.isInteger(remove) && (remove as number) >= 0)) return Response.json({ error: 'remove must be a whole number' }, { status: 400 });
+        await removeBroll((await params).id, remove as number);
+        return Response.json({ removed: remove });
+    }
     if (typeof skip === 'boolean') {
         await skipBroll((await params).id, skip, user);
         return Response.json({ skipped: skip });

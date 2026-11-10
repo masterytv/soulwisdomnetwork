@@ -77,7 +77,7 @@ async function main() {
     });
     console.log(`🖼️  ${episode.title}: ${todo.length} of ${ideas.length} idea(s) to fill (${mode})`);
 
-    const failures = mode === 'stock' ? await stock(ideas, todo, existing) : await aiImages(ideas, todo);
+    const failures = mode === 'stock' ? await stock(ideas, todo, existing, episode.broll?.rejected ?? []) : await aiImages(ideas, todo);
 
     await ref.update({
         'broll.status': failures.length === todo.length && todo.length ? 'failed' : 'ready',
@@ -190,12 +190,14 @@ async function copyToStorage(i: number, c: StockCandidate): Promise<string> {
     return dest;
 }
 
-async function stock(ideas: Idea[], todo: number[], existing: Record<string, BrollImage>): Promise<string[]> {
+async function stock(ideas: Idea[], todo: number[], existing: Record<string, BrollImage>, rejected: string[]): Promise<string[]> {
     const keys = { pexels: process.env.PEXELS_API_KEY || undefined, pixabay: process.env.PIXABAY_API_KEY || undefined };
     if (!keys.pexels && !keys.pixabay) throw new Error('Stock b-roll needs the PEXELS_API_KEY or PIXABAY_API_KEY repo secret');
     const client = new Anthropic({ apiKey: required('ANTHROPIC_API_KEY') });
     // Stock already used by other ideas, and the stock an idea has now (so "Find other stock" finds something else).
     const inUse = new Set(Object.entries(existing).filter(([k]) => !todo.includes(Number(k)) || only !== null).flatMap(([, b]) => (b.stockId ? [b.stockId] : [])));
+    // Nor stock the producer removed from an idea.
+    for (const id of rejected) inUse.add(id);
 
     // 1. Search, a few ideas at a time.
     const moments: PickMoment[] = [];
