@@ -6,10 +6,8 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { ExtrasSchema, extrasSystemPrompt, extrasUserMessage, cleanExtras, type Extras } from '../../../lib/extras';
 import type { StudioSettings } from '../../../lib/studioSettings';
 import type { Episode } from '../../../types/episode';
+import { claudeUsd, priceOf } from './claudeCost';
 import { NOTES_EFFORT, NOTES_MODEL } from './notesDraft';
-
-// US dollars per million tokens, for the episode's cost record.
-const USD_PER_MTOK = { input: 4, output: 20 };
 
 // Writes the social posts and follow-up email from the approved show notes.
 export async function writeExtras(client: Anthropic, episode: Episode, settings: StudioSettings): Promise<{ extras: Extras; usd: number }> {
@@ -31,7 +29,6 @@ export async function writeExtras(client: Anthropic, episode: Episode, settings:
     if (!response.parsed_output) throw new Error('Claude returned the posts in an unexpected shape');
 
     const parsed = response.parsed_output as Extras;
-    const { input_tokens, output_tokens } = response.usage;
-    const usd = Math.round((input_tokens * USD_PER_MTOK.input + output_tokens * USD_PER_MTOK.output) / 1e4) / 100;
+    const usd = Math.round(claudeUsd(response.usage, priceOf(response.model, NOTES_MODEL)) * 100) / 100;
     return { extras: cleanExtras(parsed), usd };
 }
