@@ -31,6 +31,7 @@ import type { Episode, ShortItem } from '../../../types/episode';
 import { loadAlert } from './config';
 import { withRetry } from './errors';
 import { redactUrls, renderShort, runWithLog, shortBackground, urlInputOptions } from './media';
+import { cachedText, claudeUsd, priceOf } from './claudeCost';
 import { NOTES_EFFORT, NOTES_MODEL } from './notesDraft';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { loadSettings, storageBucket } from './settings';
@@ -41,8 +42,6 @@ import {
 } from '../../../lib/shortPicks';
 import { randomUUID } from 'node:crypto';
 
-// US dollars per million tokens, for the cost record.
-const TEXTS_USD_PER_MTOK = { input: 4, output: 20 };
 // YouTube needs a scheduled time comfortably in the future.
 const MIN_LEAD_MS = 10 * 60_000;
 
@@ -115,8 +114,7 @@ async function pickMoments(episode: Episode, words: TimedWord[]) {
     }).finalMessage();
     if (response.stop_reason === 'refusal') throw new Error('Claude declined to pick moments for Shorts');
     if (!response.parsed_output) throw new Error('Claude returned its picks in an unexpected shape');
-    const { input_tokens, output_tokens } = response.usage;
-    const usd = Math.round((input_tokens * TEXTS_USD_PER_MTOK.input + output_tokens * TEXTS_USD_PER_MTOK.output) / 1e4) / 100;
+    const usd = Math.round(claudeUsd(response.usage, priceOf(response.model, NOTES_MODEL)) * 100) / 100;
     // For each pick: snap to clean word ends, drop nulls, and take the speaker from the key quotes.
     const snapped = response.parsed_output.picks
         .map(p => {
@@ -161,7 +159,8 @@ async function writeTexts(episode: Episode, words: TimedWord[]) {
             fallbacks: 'default',
             thinking: { type: 'adaptive' },
             output_config: { effort: NOTES_EFFORT, format: betaZodOutputFormat(ShortTextsSchema) },
-            system: shortsSystemPrompt(settings),
+            // Cached: a second round, for the Shorts the first one missed, sends it again.
+            system: [cachedText(shortsSystemPrompt(settings))],
             messages: [{
                 role: 'user',
                 content: `Episode: ${notes.titles[notes.chosenTitle] ?? episode.title}\n\nSummary:\n${notes.summary}\n\n` +
@@ -172,8 +171,7 @@ async function writeTexts(episode: Episode, words: TimedWord[]) {
         }).finalMessage();
         if (response.stop_reason === 'refusal') throw new Error('Claude declined to write the headlines and titles');
         if (!response.parsed_output) throw new Error('Claude returned headlines and titles in an unexpected shape');
-        const { input_tokens, output_tokens } = response.usage;
-        usd += (input_tokens * TEXTS_USD_PER_MTOK.input + output_tokens * TEXTS_USD_PER_MTOK.output) / 1e6;
+        usd += claudeUsd(response.usage, priceOf(response.model, NOTES_MODEL));
         for (const t of response.parsed_output.shorts) {
             const item = batch[t.short - 1];
             const headline = t.headline.replace(/\s+/g, ' ').trim().slice(0, HEADLINE_MAX_CHARS);

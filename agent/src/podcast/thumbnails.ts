@@ -24,12 +24,11 @@ import type { Episode, EpisodeThumbnails, ThumbnailFrame } from '../../../types/
 import { loadAlert } from './config';
 import { withRetry } from './errors';
 import { grabFrame } from './media';
+import { claudeUsd, priceOf } from './claudeCost';
 import { NOTES_EFFORT, NOTES_MODEL } from './notesDraft';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { loadSettings, storageBucket } from './settings';
 
-// US dollars per million tokens, for the cost record.
-const HOOKS_USD_PER_MTOK = { input: 4, output: 20 };
 // Frames closer together than this show the same moment.
 const MIN_FRAME_GAP_MS = 20_000;
 
@@ -75,8 +74,7 @@ async function draftHooks(episode: Episode) {
     if (response.stop_reason === 'refusal') throw new Error('Claude declined to write thumbnail texts');
     if (!response.parsed_output) throw new Error('Claude returned thumbnail texts in an unexpected shape');
     const { hooks, image } = response.parsed_output;
-    const { input_tokens, output_tokens } = response.usage;
-    const usd = Math.round((input_tokens * HOOKS_USD_PER_MTOK.input + output_tokens * HOOKS_USD_PER_MTOK.output) / 1e4) / 100;
+    const usd = Math.round(claudeUsd(response.usage, priceOf(response.model, NOTES_MODEL)) * 100) / 100;
     const clean = hooks.map(h => h.replace(/\s+/g, ' ').trim()).filter(h => h && h.replace(/\*/g, '').length <= HOOK_MAX_CHARS);
     if (!clean.length) throw new Error('Claude wrote no usable thumbnail texts');
     return { hooks: clean.slice(0, 5), image, usd };

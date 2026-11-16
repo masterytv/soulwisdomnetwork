@@ -18,10 +18,9 @@ import {
 } from '../../../lib/translate';
 import { youtubeMetadata } from '../../../lib/youtube';
 import type { Episode, EpisodeTranslations } from '../../../types/episode';
+import { cachedText, claudeUsd, priceOf } from './claudeCost';
 import { NOTES_MODEL, type Effort } from './notesDraft';
 
-// US dollars per million tokens, for the episode's cost record.
-const USD_PER_MTOK = { input: 4, output: 20 };
 // Requests sent at once while translating, so a long episode finishes well inside the job's time.
 const PARALLEL = 4;
 
@@ -35,14 +34,14 @@ export async function ask<S extends z.ZodType>(client: Anthropic, schema: S, sys
         fallbacks: 'default',
         thinking: { type: 'adaptive' },
         output_config: { effort, format: betaZodOutputFormat(schema) },
-        system,
+        // Cached: a language's caption batches all share this system prompt.
+        system: [cachedText(system)],
         messages: [{ role: 'user', content }],
     }).finalMessage();
     if (response.stop_reason === 'refusal') throw new Error('Claude declined the request');
     if (response.stop_reason === 'max_tokens') throw new Error('Claude\'s answer was cut off (max_tokens); try again');
     if (!response.parsed_output) throw new Error('Claude answered in an unexpected shape');
-    const { input_tokens, output_tokens } = response.usage;
-    const usd = (input_tokens * USD_PER_MTOK.input + output_tokens * USD_PER_MTOK.output) / 1e6;
+    const usd = claudeUsd(response.usage, priceOf(response.model, NOTES_MODEL));
     return { parsed: response.parsed_output as z.infer<S>, usd };
 }
 
@@ -77,8 +76,13 @@ export async function translateCaptions(client: Anthropic, episodeId: string, ep
     for (const code of languages) {
         const language = languageName(code);
         console.log(`🌍 ${language}: ${cues.length} captions`);
-        const answers = await inParallel(cueBatches(cues), batch =>
-            ask(client, TranslatedCuesSchema, captionsSystemPrompt(language, settings.showName), captionsUserMessage(batch), 'low', 32000));
+        const system = captionsSystemPrompt(language, settings.showName);
+        const translate = (batch: ReturnType<typeof cueBatches>[number]) =>
+            ask(client, TranslatedCuesSchema, system, captionsUserMessage(batch), 'low', 32000);
+        // The first batch goes alone so its cached system prompt is ready before the others start
+        // (a cache entry can only be read once the request writing it has begun to answer).
+        const [first, ...rest] = cueBatches(cues);
+        const answers = [await translate(first), ...await inParallel(rest, translate)];
         usd += answers.reduce((sum, a) => sum + a.usd, 0);
         const { cues: translated, missing } = applyTranslations(cues, answers.flatMap(a => a.parsed.cues));
         const path = `episodes/${episodeId}/captions/${code}.srt`;
