@@ -7,6 +7,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { anchorToTranscript, mmss, notesSchemaFor, parseShowNotes, timeBroll, type ShowNotes, type SpokenWord } from '../../../lib/showNotes';
 import { DEFAULT_SETTINGS, notesSystemPrompt, type StudioSettings } from '../../../lib/studioSettings';
 import type { Episode } from '../../../types/episode';
+import { cachedText, claudeUsd, priceOf } from './claudeCost';
 
 // Chosen by a side-by-side run (compareNotes.ts; docs/specs/007-show-notes.md). Effort is set
 // explicitly because Opus 5.5 defaults to 'medium'.
@@ -14,12 +15,6 @@ export const NOTES_MODEL = 'claude-opus-5-5';
 export const NOTES_EFFORT: Effort = 'high';
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-
-// US dollars per million tokens, for the episode's cost record.
-const USD_PER_MTOK: Record<string, { input: number; output: number }> = {
-    'claude-opus-5': { input: 5, output: 25 },
-    'claude-opus-5-5': { input: 4, output: 20 },
-};
 
 export interface ReviewedLine { name: string; clip: boolean; start: number; text: string; words: { text: string; start: number; end: number }[] }
 
@@ -68,12 +63,17 @@ export async function draftNotes(client: Anthropic, episode: Episode, lines: Rev
         fallbacks: 'default',
         thinking: { type: 'adaptive' },
         output_config: { effort, format: betaZodOutputFormat(notesSchemaFor(settings)) },  // schema follows the format and choices
-        system: notesSystemPrompt(settings),
+        // The system prompt and the transcript are cached for an hour: a redraft (or compareNotes) sends
+        // them again unchanged and reads them back at a fraction of the price; only the direction differs.
+        system: [cachedText(notesSystemPrompt(settings), '1h')],
         messages: [{
             role: 'user',
-            content: `Episode: "${episode.title}"${episode.recordedAt ? `, recorded ${episode.recordedAt.slice(0, 10)}` : ''}.\n` +
-                `Speakers: ${speakerList(lines)}.\n\n` +
-                `<transcript>\n${transcript}\n</transcript>\n\nWrite the show notes.` + (direction ? `\n\n${direction}` : ''),
+            content: [
+                cachedText(`Episode: "${episode.title}"${episode.recordedAt ? `, recorded ${episode.recordedAt.slice(0, 10)}` : ''}.\n` +
+                    `Speakers: ${speakerList(lines)}.\n\n` +
+                    `<transcript>\n${transcript}\n</transcript>`, '1h'),
+                { type: 'text', text: 'Write the show notes.' + (direction ? `\n\n${direction}` : '') },
+            ],
         }],
     }).finalMessage();
 
@@ -87,8 +87,7 @@ export async function draftNotes(client: Anthropic, episode: Episode, lines: Rev
     // B-roll starts one second after its cue words (docs/specs/023-stock-broll.md, "Timing"); a cue not found is listed with the quotes.
     const unverified = [...anchorToTranscript(notes, words), ...timeBroll(notes, words).map(c => `B-roll cue: ${c}`)];
     const { input_tokens, output_tokens } = response.usage;
-    const price = USD_PER_MTOK[response.model] ?? USD_PER_MTOK[model] ?? USD_PER_MTOK[NOTES_MODEL];
-    const usd = Math.round((input_tokens * price.input + output_tokens * price.output) / 1e4) / 100;
+    const usd = Math.round(claudeUsd(response.usage, priceOf(response.model, model, NOTES_MODEL)) * 100) / 100;
     return {
         notes, unverified, model: response.model, inputTokens: input_tokens, outputTokens: output_tokens, usd,
         seconds: Math.round((Date.now() - started) / 1000),
