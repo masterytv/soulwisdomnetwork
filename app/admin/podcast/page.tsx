@@ -19,10 +19,10 @@ import { JOURNEY } from "@/components/studio/steps";
 import { Journey } from "@/components/studio/Journey";
 import { continueTarget, episodeGroups } from "@/lib/studioUi";
 
-const card = "bg-[#1E1035]/60 border border-white/5 rounded-xl p-3";
+const card = "bg-studio-card/60 border border-studio-hairline rounded-xl p-3";
 const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 const primary = `${button} border-amber-500/40 text-amber-300 hover:bg-amber-500/10`;
-const secondary = `${button} border-white/10 text-gray-300 hover:bg-white/10`;
+const secondary = `${button} border-studio-line text-gray-300 hover:bg-white/10`;
 
 const NOTES_LABEL: Record<NonNullable<EpisodeSummary["notesStatus"]>, { text: string; tone: string }> = {
     queued: { text: "waiting to start…", tone: "text-gray-400" },
@@ -34,7 +34,7 @@ const NOTES_LABEL: Record<NonNullable<EpisodeSummary["notesStatus"]>, { text: st
 
 function Column({ title, count, hint, children }: { title: string; count?: number; hint?: string; children: React.ReactNode }) {
     return (
-        <section className="bg-[#1E1035]/30 border border-white/5 rounded-2xl p-4 flex flex-col gap-3 min-w-0">
+        <section className="bg-studio-card/30 border border-studio-hairline rounded-2xl p-4 flex flex-col gap-3 min-w-0">
             <header>
                 <h2 className="font-semibold text-gray-100">
                     {title} {count !== undefined && <span className="text-gray-500 font-normal">{count}</span>}
@@ -173,7 +173,7 @@ export default function PodcastStudioPage() {
 
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -190,7 +190,7 @@ export default function PodcastStudioPage() {
 
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 sm:p-8">
                 <div className="max-w-5xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                         <div>
@@ -381,7 +381,7 @@ export default function PodcastStudioPage() {
                     )}
 
                     {/* Finished: folded at the bottom, opened to see what is done. */}
-                    <details className="bg-[#1E1035]/30 border border-white/5 rounded-2xl p-4">
+                    <details className="bg-studio-card/30 border border-studio-hairline rounded-2xl p-4">
                         <summary className="font-semibold text-gray-100 cursor-pointer">
                             Finished {finished.length > 0 && <span className="text-gray-500 font-normal">{finished.length}</span>}
                         </summary>

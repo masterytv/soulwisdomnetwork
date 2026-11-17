@@ -10,6 +10,7 @@ import AuthGuard from '@/components/auth/AuthGuard';
 import { ErrorNote } from '@/components/studio/ErrorNote';
 import { EditorLightStage } from '@/components/studio/editorLight';
 import { minutes } from '@/components/studio/format';
+import { ReadabilityControls } from '@/components/studio/readability';
 import { useAuth } from '@/context/AuthContext';
 import { studioFetch } from '@/lib/studioClient';
 import type { EpisodeNotesView } from '@/types/studio';
@@ -34,7 +35,7 @@ export default function StudioEditorPage() {
 
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -51,6 +52,8 @@ export default function StudioEditorPage() {
             {view?.durationSeconds !== null && view?.durationSeconds !== undefined && (
                 <span className="text-sm text-gray-400">{minutes(view.durationSeconds)}</span>
             )}
+            {/* Text size and high contrast (spec 024), at the bar's right end. */}
+            <span className="ml-auto order-last"><ReadabilityControls /></span>
         </>
     );
 
@@ -66,8 +69,8 @@ export default function StudioEditorPage() {
             {ready
                 ? <EditorLightStage episodeId={episodeId} words={view.words} videoUrl={view.videoUrl!} workspace heading={heading} />
                 : (
-                    <div className="min-h-screen bg-[#0d0720] text-gray-100 p-4 sm:p-6">
-                        <div className="border-b border-white/10 pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
+                    <div className="min-h-screen bg-studio-deep text-gray-100 p-4 sm:p-6">
+                        <div className="border-b border-studio-line pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
                         <ErrorNote message={error} />
                         {!view && !error && <p className="text-gray-400">Loading…</p>}
                         {view && !view.transcriptAccepted && (

@@ -45,7 +45,7 @@ export function LookFields({ look, onChange, positions = "caption" }: {
                 {SIZE_NAMES.map(s => <option key={s} value={s}>{SIZE_LABELS[s]}</option>)}
             </select>
             <input type="color" aria-label="Colour" value={look.color} onChange={e => onChange({ color: e.target.value })}
-                className="h-7 w-10 rounded border border-white/10 bg-transparent" />
+                className="h-7 w-10 rounded border border-studio-line bg-transparent" />
             <select aria-label="Background" value={look.background} onChange={e => onChange({ background: e.target.value as Background })} className={small}>
                 {/* A text layer's band can take a colour of its own (Properties), so it is not always dark. */}
                 {BACKGROUNDS.map(b => <option key={b} value={b}>{b === "box" && positions === "none" ? "Band" : BACKGROUND_LABELS[b]}</option>)}
@@ -132,7 +132,7 @@ export function OnScreenPanel({ layers, clips, editedMs, selected, canEdit, onOp
     }, [selected]);
 
     return (
-        <section aria-label="On screen" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
+        <section aria-label="On screen" className="rounded-lg bg-studio-page border border-studio-hairline p-3 flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-semibold text-gray-200">On screen</span>
                 <span className={hint}>Burned into the render. Add titles, lower thirds, text and the logo from Elements, pictures and video from Media; choose one to change it in Properties. Captions are in the Captions panel.</span>
@@ -144,7 +144,7 @@ export function OnScreenPanel({ layers, clips, editedMs, selected, canEdit, onOp
                 {sorted.map(({ l, span }) => (
                     <li key={l.id} data-layer={l.id} aria-label={`${layerKind(l)}: ${layerName(l)}`} aria-current={selected === l.id || undefined}
                         onClick={() => onOpen(l.id)}
-                        className={`rounded-lg border px-2 py-1.5 flex items-center gap-2 text-xs text-gray-300 cursor-pointer ${selected === l.id ? "border-amber-400/70 bg-amber-500/5" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"}`}>
+                        className={`rounded-lg border px-2 py-1.5 flex items-center gap-2 text-xs text-gray-300 cursor-pointer ${selected === l.id ? "border-amber-400/70 bg-amber-500/5" : "border-studio-line bg-white/[0.02] hover:bg-white/[0.05]"}`}>
                         <span className={`px-1.5 py-0.5 rounded shrink-0 ${kindClass(l)}`}>{layerKind(l)}</span>
                         <span className="truncate grow" title={layerName(l)}>{layerName(l)}</span>
                         {anchorCut(l, clips) && <span className="text-amber-300 shrink-0" title="Its moment is cut, so it shows at the next kept moment">cut</span>}

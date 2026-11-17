@@ -59,7 +59,7 @@ export function ElementsPanel({ words, layers, brand, logo, video, canEdit, onAd
     const forEverySpeaker = lowerThirds(words, layers, brand);
     const card = titleCard(0, brand), third = lowerThird(0, speakers[0] ?? "Name", "Role", brand);
     const at = mmss(currentMs);
-    const row = "flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.02] p-2";
+    const row = "flex items-center gap-3 rounded-lg border border-studio-line bg-white/[0.02] p-2";
     const accent = brand.colors.accent;
 
     // One motion template's row: its star sample, what it is, and the add (or change) button.

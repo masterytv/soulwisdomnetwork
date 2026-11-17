@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { findWords, replaceAllOps, type FixOp } from "@/lib/wordFixes";
 
-const box = "min-w-0 w-36 bg-[#130b29] border border-white/10 rounded px-2 py-1 text-xs text-gray-100 placeholder-gray-500";
+const box = "min-w-0 w-36 bg-studio-page border border-studio-line rounded px-2 py-1 text-xs text-gray-100 placeholder-gray-500";
 const button = "text-xs px-2 py-1 rounded border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function FindReplace({ words, onReplace, busy = false }: {

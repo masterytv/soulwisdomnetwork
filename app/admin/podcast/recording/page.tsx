@@ -18,7 +18,7 @@ export default function RecordingChecklistPage() {
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -28,7 +28,7 @@ export default function RecordingChecklistPage() {
     }
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 sm:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                         <div>

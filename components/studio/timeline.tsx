@@ -545,12 +545,12 @@ function TagEditor({ name, on, disabled, onName, onRemove, onClose }: {
     const [value, setValue] = useState(name);
     const save = () => { if (value.trim() !== name) onName(value); };
     return (
-        <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+        <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
             <span className="text-amber-200 shrink-0">“In this episode” on {on}</span>
             <input value={value} onChange={e => setValue(e.target.value)} onBlur={save} disabled={disabled} maxLength={200}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); (e.target as HTMLInputElement).blur(); } }}
                 aria-label="The name on the graphic" placeholder="The speaker's name"
-                className="w-40 min-w-0 rounded border border-white/10 bg-[#1a1036] px-1.5 py-0.5 text-xs text-gray-100" />
+                className="w-40 min-w-0 rounded border border-studio-line bg-studio-panel px-1.5 py-0.5 text-xs text-gray-100" />
             <button onClick={onRemove} disabled={disabled} title="Take the label off this clip (Delete)" className={`${secondary} px-2 py-0.5 shrink-0`}>Remove</button>
             <button onClick={onClose} aria-label="Clear the selection" title="Clear the selection (Esc)" className={`${secondary} px-2 py-0.5 shrink-0`}>×</button>
         </span>
@@ -1518,7 +1518,7 @@ export function Timeline({
     const rippleBy = drag?.kind === 'ripple' && drag.moved ? (drag.edge === 'end' ? drag.ms - drag.from : drag.from - drag.ms) : null;
 
     return (
-        <section aria-label="Timeline" className="h-full min-h-[210px] flex flex-col gap-1.5 rounded-lg bg-[#130b29] border border-white/5 p-2 select-none">
+        <section aria-label="Timeline" className="h-full min-h-[210px] flex flex-col gap-1.5 rounded-lg bg-studio-page border border-studio-hairline p-2 select-none">
             {/* Tools: the tool, zoom, snapping, what is selected, and Split, on one line so the lanes
                 never move under the pointer. */}
             <div className="flex items-center gap-2 text-xs whitespace-nowrap overflow-hidden">
@@ -1546,7 +1546,7 @@ export function Timeline({
                     <input type="checkbox" checked={showCuts} onChange={e => toggleCuts(e.target.checked)} className="accent-amber-400" /> Show cuts
                 </label>
                 {range && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-amber-200 truncate min-w-0">{preciseTime(range.startMs)}–{preciseTime(range.endMs)} ({((range.endMs - range.startMs) / 1000).toFixed(2)} s)</span>
                         <button onClick={() => { onCuts([...cuts, { startMs: range.startMs, endMs: range.endMs, reason: 'manual' }]); onSelect(null); }} className={`${secondary} px-2 py-0.5 shrink-0`} title="Cut this stretch (Delete)">✂ Cut</button>
                         <button onClick={() => onHear(range.startMs, range.endMs)} title="Play this stretch" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Play</button>
@@ -1555,7 +1555,7 @@ export function Timeline({
                     </span>
                 )}
                 {shownCut && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-amber-200 truncate min-w-0">Cut {preciseTime(shownCut.startMs)}–{preciseTime(shownCut.endMs)} ({((shownCut.endMs - shownCut.startMs) / 1000).toFixed(2)} s, {reasonLabel[shownCut.reason]})</span>
                         {selectedCut && !drag && <>
                             <button onClick={() => onHear(Math.max(0, selectedCut.startMs - 2000), selectedCut.endMs + 2000)} title="Play from 2 s before the cut to 2 s after it, the cut included" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Hear</button>
@@ -1565,7 +1565,7 @@ export function Timeline({
                     </span>
                 )}
                 {joinSel && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-amber-200 truncate min-w-0">{cutLabel(cuts, joinSel.startMs, joinSel.endMs)}</span>
                         <button onClick={() => onHear(Math.max(0, joinSel.startMs - 2000), joinSel.endMs + 2000)} title="Play from 2 s before to 2 s after, what is cut included" className={`${secondary} px-2 py-0.5 shrink-0`}>▶ Hear</button>
                         <button onClick={() => bringBackJoin(joinSel)} disabled={locked} title="Bring all of it back (or double-click the marker)" className={`${secondary} px-2 py-0.5 shrink-0`}>Bring back</button>
@@ -1575,7 +1575,7 @@ export function Timeline({
                 {selectedSection && split && (() => {
                     const share = cutShare(cuts, selectedSection);
                     return (
-                        <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                        <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                             <span className="text-amber-200 truncate min-w-0">
                                 Section {preciseTime(selectedSection.startMs)}–{preciseTime(selectedSection.endMs)} ({((selectedSection.endMs - selectedSection.startMs) / 1000).toFixed(2)} s{share >= 0.999 ? ', cut' : share > 0 ? `, ${Math.round(share * 100)}% cut` : ''})
                             </span>
@@ -1592,7 +1592,7 @@ export function Timeline({
                 })()}
                 {/* Spec 022: the chosen clip, or its label. */}
                 {programme && chosenClip && chosen?.kind === 'recording' && selection?.kind === 'clip' && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-amber-200 truncate min-w-0">
                             {clipName(chosen.id)} · {preciseTime(chosen.inMs)}–{preciseTime(chosen.outMs)} of the recording ({((chosen.outMs - chosen.inMs) / 1000).toFixed(1)} s)
                         </span>
@@ -1614,7 +1614,7 @@ export function Timeline({
                         onRemove={removeChosen} onClose={() => onSelect(null)} />
                 )}
                 {programme && chosenClip && (chosen?.kind === 'intro' || chosen?.kind === 'outro') && selection?.kind === 'clip' && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-violet-200 truncate min-w-0">
                             {clipName(chosen.id)} ({(chosenClip.lengthMs / 1000).toFixed(1)} s)
                         </span>
@@ -1629,7 +1629,7 @@ export function Timeline({
                     </span>
                 )}
                 {selectedLayerShown && selectedBounds && (
-                    <span className="flex items-center gap-2 pl-2 border-l border-white/10 min-w-0">
+                    <span className="flex items-center gap-2 pl-2 border-l border-studio-line min-w-0">
                         <span className="text-amber-200 truncate min-w-0" title={placedName(selectedLayerShown)}>
                             {isSound(selectedLayerShown) ? (selectedLayerShown.track === SOUND_TRACK.music ? 'Music' : 'Effect') : layerKind(selectedLayerShown)} “{placedName(selectedLayerShown)}”
                             {' '}{preciseTime(selectedBounds.span.startMs)}–{preciseTime(selectedBounds.span.endMs)} in the edit ({((selectedBounds.span.endMs - selectedBounds.span.startMs) / 1000).toFixed(1)} s)
@@ -1654,7 +1654,7 @@ export function Timeline({
 
             <div className="flex flex-1 min-h-0">
                 {/* Track headers. */}
-                <div style={{ width: HEADER_W }} className="shrink-0 text-[11px] text-gray-300">
+                <div style={{ width: HEADER_W }} className="shrink-0 text-2xs text-gray-300">
                     <div style={{ height: RULER_H }} />
                     <div style={{ height: LANE_H }} className="flex items-center gap-1 pr-2">
                         <span className="grow truncate" title="Text over the picture (the On screen panel)">V3 Text</span>
@@ -1770,7 +1770,7 @@ export function Timeline({
                                         onClick={() => onJoin(t.splitMs)}
                                         className={`absolute w-4 h-4 rounded-full text-[10px] leading-4 text-center ${t.label
                                             ? t.playing ? 'bg-amber-400 text-black' : 'bg-amber-900 text-amber-200 ring-1 ring-amber-400'
-                                            : 'bg-[#0b0619] text-gray-300 ring-1 ring-white/40 hover:ring-amber-300'}`}
+                                            : 'bg-studio-sunk text-gray-300 ring-1 ring-white/40 hover:ring-amber-300'}`}
                                         style={{ left: xs(t.splitMs) - 8, top: V1_TOP + 2 }}
                                     >⧓</button>
                                 ))}
@@ -1825,7 +1825,7 @@ export function Timeline({
                                             className={`absolute rounded-sm ${color} ${overlaysHidden ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onLayers ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
                                             style={{ left: xs(b.fromMs), width: Math.max(4, wide(b.fromMs, b.toMs)), top, height }}
                                         >
-                                            {!thin && l.kind !== 'highlight' && <span className="pointer-events-none px-1 text-[9px] leading-[12px] text-black/80 whitespace-nowrap">{layerName(l)}</span>}
+                                            {!thin && l.kind !== 'highlight' && <span className="pointer-events-none px-1 text-[11px] leading-[12px] text-black font-medium whitespace-nowrap">{layerName(l)}</span>}
                                             {onLayers && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, l, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
@@ -1837,7 +1837,7 @@ export function Timeline({
 
                                 {/* A2 and A3: music and effects (item E7). Click to select; drag to move; drag an end to trim. */}
                                 {SOUND_LANES.map((track, i) => (
-                                    <div key={track} aria-hidden className={`absolute left-0 right-0 pointer-events-none ${i % 2 ? 'bg-white/[0.02]' : 'bg-white/[0.04]'} border-t border-white/5`}
+                                    <div key={track} aria-hidden className={`absolute left-0 right-0 pointer-events-none ${i % 2 ? 'bg-white/[0.02]' : 'bg-white/[0.04]'} border-t border-studio-hairline`}
                                         style={{ top: soundTop(track), height: LANE_H }} />
                                 ))}
                                 {shownSounds.map(s => {
@@ -1858,7 +1858,7 @@ export function Timeline({
                                             className={`absolute rounded-sm ${s.track === SOUND_TRACK.music ? 'bg-rose-400/80' : 'bg-orange-300/80'} ${muted ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onSounds ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
                                             style={{ left: xs(b.fromMs), width: Math.max(4, wide(b.fromMs, b.toMs)), top: soundTop(s.track) + 3, height: LANE_H - 6 }}
                                         >
-                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
+                                            <span className="pointer-events-none px-1 text-[11px] leading-[14px] text-black font-medium whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
                                             {onSounds && (b.toMs - b.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onLayerDown(e, s, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
@@ -1887,7 +1887,7 @@ export function Timeline({
                                             className={`absolute rounded-sm ${s.track === SOUND_TRACK.music ? 'bg-rose-400/80' : 'bg-orange-300/80'} ${mutedTracks.includes(s.track) ? 'opacity-30' : ''} ${isSel ? 'ring-2 ring-white' : ''} ${onAllSounds ? 'cursor-grab' : 'cursor-pointer'} overflow-hidden`}
                                             style={{ left: x(v.fromMs), width: Math.max(4, (v.toMs - v.fromMs) * pxPerMs), top: soundTop(s.track) + 3, height: LANE_H - 6 }}
                                         >
-                                            <span className="pointer-events-none px-1 text-[9px] leading-[14px] text-black/80 whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
+                                            <span className="pointer-events-none px-1 text-[11px] leading-[14px] text-black font-medium whitespace-nowrap">{s.duck ? '↓ ' : ''}{s.media.name}</span>
                                             {onAllSounds && (v.toMs - v.fromMs) * pxPerMs >= 14 && (['start', 'end'] as const).map(edge => (
                                                 <span key={edge} role="presentation" onPointerDown={e => onClipSoundDown(e, s, edge)} {...handles}
                                                     className={`absolute top-0 bottom-0 w-1.5 cursor-ew-resize ${isSel ? 'bg-white' : 'hover:bg-white/70'}`}
@@ -1933,7 +1933,7 @@ export function Timeline({
                                         >
                                             <span className="shrink-0 w-[3px]" style={{ background: TEASER }} />
                                             {w > 40 && (
-                                                <span className="flex items-center gap-1 px-1 whitespace-nowrap text-[9px] leading-none">
+                                                <span className="flex items-center gap-1 px-1 whitespace-nowrap text-[11px] leading-none">
                                                     <span className="font-black tracking-wider" style={{ color: TEASER }}>{l.fields.label ?? LABEL_TEXT}</span>
                                                     {l.fields.speaker && <span className="font-semibold text-white">{l.fields.speaker}</span>}
                                                 </span>
@@ -1953,7 +1953,7 @@ export function Timeline({
                                             title={`Into ${clipName(p.id)}: ${plays ? TRANSITION_LABELS[p.transition] : 'a straight cut'}. Click to change it.`}
                                             onPointerDown={e => e.stopPropagation()}
                                             onClick={() => programme.onClipJoin?.(p.id)}
-                                            className={`absolute w-3 h-3 rotate-45 rounded-[2px] border ${plays ? 'bg-amber-300 border-amber-100' : 'bg-[#130b29] border-white/60'} hover:scale-125`}
+                                            className={`absolute w-3 h-3 rotate-45 rounded-[2px] border ${plays ? 'bg-amber-300 border-amber-100' : 'bg-studio-page border-white/60'} hover:scale-125`}
                                             style={{ left: x(at) - 6, top: V1_TOP - 6 }} />
                                     );
                                 })}
@@ -1979,7 +1979,7 @@ export function Timeline({
                                         <div aria-hidden className="absolute pointer-events-none w-0.5 bg-amber-300" style={{ left: x(lineMs) - 1, top: RULER_H, bottom: 0 }} />
                                         <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300 bg-amber-300/20"
                                             style={{ left: x(drag.viewMs - drag.grabMs), width: Math.max(6, dragged.lengthMs * pxPerMs), top: V1_TOP, height: V1_H }} />
-                                        <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
+                                        <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-2xs text-amber-200 whitespace-nowrap"
                                             style={{ left: Math.min(size.w - 200, Math.max(0, x(drag.viewMs - drag.grabMs))), top: V2_TOP + 2 }}>
                                             {clipName(drag.id)} → {before ? `before ${before === 'episode' ? 'the episode' : clipName(before)}` : 'at the end'}
                                         </span>
@@ -1992,7 +1992,7 @@ export function Timeline({
                                     const by = drag.edge === 'end' ? drag.ms - drag.from : drag.from - drag.ms;
                                     return <>
                                         <div aria-hidden className="absolute pointer-events-none w-0.5 bg-white" style={{ left: x(at) - 1, top: V1_TOP, bottom: 0 }} />
-                                        <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
+                                        <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-2xs text-amber-200 whitespace-nowrap"
                                             style={{ left: Math.min(size.w - 190, Math.max(0, x(at) + 6)), top: A1_TOP + 2 }}>
                                             {drag.edge === 'start' ? 'Starts' : 'Ends'} at {preciseTime(drag.ms)} · {(c.lengthMs / 1000).toFixed(2)} s{by ? ` (${by > 0 ? '+' : '−'}${(Math.abs(by) / 1000).toFixed(2)} s)` : ''}
                                         </span>
@@ -2002,7 +2002,7 @@ export function Timeline({
                                 {/* Where the Blade would split. */}
                                 {tool === 'blade' && bladeAt !== null && !drag && (
                                     <div aria-hidden className="absolute pointer-events-none w-px bg-amber-300" style={{ left: xs(bladeAt), top: RULER_H, bottom: 0 }}>
-                                        <span className="absolute -top-0 left-1 rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap">✂ {preciseTime(bladeAt)}{snapOn ? <span className="text-gray-400"> · between words; ⌥ or Alt for anywhere</span> : null}</span>
+                                        <span className="absolute -top-0 left-1 rounded bg-black/80 px-1 text-2xs text-amber-200 whitespace-nowrap">✂ {preciseTime(bladeAt)}{snapOn ? <span className="text-gray-400"> · between words; ⌥ or Alt for anywhere</span> : null}</span>
                                     </div>
                                 )}
 
@@ -2041,7 +2041,7 @@ export function Timeline({
                                     <div aria-hidden className="absolute top-0 bottom-0 w-px bg-amber-300 pointer-events-none" style={{ left: xs(guide) }} />
                                 )}
                                 {drag && (drag.kind === 'edge' || drag.kind === 'trim' || drag.kind === 'range' || (drag.kind === 'ripple' && drag.moved)) && (
-                                    <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
+                                    <span className="absolute pointer-events-none rounded bg-black/80 px-1 text-2xs text-amber-200 whitespace-nowrap"
                                         style={{ left: Math.min(size.w - (rippleBy === null ? 70 : 100), Math.max(0, xs(drag.ms) + 6)), top: A1_TOP + 2 }}>
                                         {rippleBy === null ? preciseTime(drag.ms)
                                             : rippleBy === 0 ? 'as it was' : `${rippleBy > 0 ? '+' : '−'}${(Math.abs(rippleBy) / 1000).toFixed(2)} s ${rippleBy > 0 ? 'back' : 'cut'}`}
@@ -2050,12 +2050,12 @@ export function Timeline({
 
                                 {/* What is not there yet. */}
                                 {!thumbs && (
-                                    <span className="absolute pointer-events-none text-[10px] text-gray-500" style={{ left: 8, top: V1_TOP + 14 }}>
+                                    <span className="absolute pointer-events-none text-2xs text-gray-500" style={{ left: 8, top: V1_TOP + 14 }}>
                                         {media ? 'Pictures appear here after the next Podcast Ingest run' : 'Loading the pictures…'}
                                     </span>
                                 )}
                                 {!levels && (
-                                    <span className="absolute pointer-events-none text-[10px] text-gray-500" style={{ left: 8, top: A1_TOP + a1H / 2 - 6 }}>
+                                    <span className="absolute pointer-events-none text-2xs text-gray-500" style={{ left: 8, top: A1_TOP + a1H / 2 - 6 }}>
                                         {media ? 'The waveform appears here after the next Podcast Ingest run' : 'Loading the waveform…'}
                                     </span>
                                 )}
@@ -2065,7 +2065,7 @@ export function Timeline({
                                     <div aria-hidden className="absolute pointer-events-none w-0.5 bg-amber-300" style={{ left: x(moving.lineMs) - 1, top: RULER_H, bottom: 0 }} />
                                     <div aria-hidden className="absolute pointer-events-none rounded-sm ring-2 ring-amber-300 bg-amber-300/20"
                                         style={{ left: x(moving.leftMs), width: Math.max(6, moving.lengthMs * pxPerMs), top: V1_TOP, height: V1_H }} />
-                                    <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-[10px] text-amber-200 whitespace-nowrap"
+                                    <span aria-hidden className="absolute pointer-events-none rounded bg-black/80 px-1 text-2xs text-amber-200 whitespace-nowrap"
                                         style={{ left: Math.min(size.w - 230, Math.max(0, x(moving.leftMs))), top: V2_TOP + 2 }}>
                                         Section {preciseTime(moving.piece.srcStart)}–{preciseTime(moving.piece.srcEnd)} → place {moving.to + 1} of {axis.sections.length}
                                     </span>

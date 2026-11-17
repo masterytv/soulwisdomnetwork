@@ -32,7 +32,7 @@ export function MeetingLink({ showChecklist = false }: { showChecklist?: boolean
     };
 
     return (
-        <section aria-label="Zoom room" className="rounded-xl border border-white/10 bg-white/[0.03] p-3 flex flex-wrap items-center gap-2">
+        <section aria-label="Zoom room" className="rounded-xl border border-studio-line bg-white/[0.03] p-3 flex flex-wrap items-center gap-2">
             <span className="text-sm font-semibold text-amber-300 mr-1">Zoom room</span>
             <input id="meeting-url" readOnly value={url} onFocus={e => e.target.select()} aria-label="Zoom meeting link"
                 className="flex-1 min-w-[12rem] bg-transparent text-xs text-gray-300 font-mono truncate focus:outline-none" />

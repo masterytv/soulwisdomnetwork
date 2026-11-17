@@ -41,7 +41,7 @@ const CueRow = memo(function CueRow({ cue, index, current, onPick }: {
     const fast = cueTooFast(cue);
     return (
         <li data-cue={index} aria-current={current || undefined}
-            className={`rounded border px-2 py-1 flex gap-2 text-xs cursor-pointer ${current ? "border-amber-400/70 bg-amber-500/5" : fast ? "border-amber-500/40 bg-amber-500/[0.04] hover:bg-amber-500/10" : "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]"}`}
+            className={`rounded border px-2 py-1 flex gap-2 text-xs cursor-pointer ${current ? "border-amber-400/70 bg-amber-500/5" : fast ? "border-amber-500/40 bg-amber-500/[0.04] hover:bg-amber-500/10" : "border-studio-line bg-white/[0.02] hover:bg-white/[0.05]"}`}
             onClick={() => onPick(index)}>
             <span className="tabular-nums text-gray-400 shrink-0 w-10">{mmss(cue.startMs)}</span>
             <span className={`grow ${fast ? "text-amber-200" : "text-gray-200"}`}>{cue.lines.map((l, i) => <span key={i} className="block">{l}</span>)}</span>
@@ -88,7 +88,7 @@ export function CaptionsPanel({ cues, clips, edit, studio, shown, onShown, onCap
     const mode = edit.captions ? (edit.captions.on ? "own" : "off") : "studio";
 
     return (
-        <section aria-label="Captions" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
+        <section aria-label="Captions" className="rounded-lg bg-studio-page border border-studio-hairline p-3 flex flex-col gap-3">
             <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold text-gray-200">Captions</span>
                 <span className={hint}>
@@ -104,7 +104,7 @@ export function CaptionsPanel({ cues, clips, edit, studio, shown, onShown, onCap
             </label>
 
             {/* Part I's burned-in captions: the Studio's choice, a look of its own, or none (N1). */}
-            <div className="flex flex-col gap-2 rounded-lg border border-white/10 p-2">
+            <div className="flex flex-col gap-2 rounded-lg border border-studio-line p-2">
                 <span className="text-sm font-medium text-gray-200">Burned in</span>
                 <span className={hint}>Drawn into the picture, so every viewer sees them, on top of the YouTube track. Off unless the Studio settings or this video turn them on.</span>
                 <div className="flex flex-wrap items-center gap-3 text-sm text-gray-200">

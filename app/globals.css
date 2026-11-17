@@ -32,6 +32,22 @@
   --color-sand-50: #ffffff;
   --color-sand-100: #fdfaf3;
   --color-sand-200: #f9f6e9;
+
+  /* The Podcast Studio's own colours and smallest text (docs/specs/024-studio-readability.md). These are the
+     everyday values; `.studio` below sets the text sizes, and high contrast redefines the colours. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.4;
+  --color-studio-page: #130b29;
+  --color-studio-card: #24153f;
+  --color-studio-panel: #1a1036;
+  --color-studio-raised: #180d2f;
+  --color-studio-deep: #0d0720;
+  --color-studio-sunk: #0b0619;
+  /* Edges of buttons, fields and pills: 4.8 : 1 on a card, so a control looks like one (WCAG 1.4.11). */
+  --color-studio-edge: #8f84ad;
+  /* Card outlines and dividers: decoration, quieter. */
+  --color-studio-line: #4a3b6e;
+  --color-studio-hairline: #30244f;
 }
 
 :root {
@@ -74,4 +90,112 @@ h4,
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(252, 211, 77, 0.2);
+}
+/* ---------- The Podcast Studio's readability (docs/specs/024-studio-readability.md) ----------
+   StudioFrame (components/studio/readability.tsx) wraps every Studio page in `.studio`, with
+   data-text="normal|large|larger" and data-contrast="normal|high". Tailwind's text-* sizes and the greys
+   read these variables, so the whole Studio changes here, without touching each page. */
+.studio {
+  --studio-scale: 1;
+  --studio-focus: #ffd24d;
+  /* Nothing under 13px; buttons and hints 15px; body 16-17px. */
+  --text-2xs: calc(13px * var(--studio-scale));
+  --text-2xs--line-height: 1.4;
+  --text-xs: calc(15px * var(--studio-scale));
+  --text-xs--line-height: 1.5;
+  --text-sm: calc(16px * var(--studio-scale));
+  --text-sm--line-height: 1.55;
+  --text-base: calc(17px * var(--studio-scale));
+  --text-base--line-height: 1.6;
+  --text-lg: calc(19px * var(--studio-scale));
+  --text-xl: calc(21px * var(--studio-scale));
+  --text-2xl: calc(25px * var(--studio-scale));
+  --text-3xl: calc(31px * var(--studio-scale));
+  /* The dimmer greys, lifted to pass AA on every Studio surface: 400 is 10 : 1, 500 and 600 are 6.7 : 1. */
+  --color-gray-400: #cdc6dc;
+  --color-gray-500: #a99fc4;
+  --color-gray-600: #a99fc4;
+}
+.studio[data-text="large"] { --studio-scale: 1.15; }
+.studio[data-text="larger"] { --studio-scale: 1.3; }
+
+/* The Studio editor fits a script, preview, panels and timeline in one window, so its text grows less, and the
+   timeline's smallest labels grow at most one step, to stay inside their tracks. */
+.studio [data-studio-dense] {
+  --text-2xs: calc(12px * min(var(--studio-scale), 1.15));
+  --text-xs: calc(13px * var(--studio-scale));
+  --text-sm: calc(15px * var(--studio-scale));
+  --text-base: calc(16px * var(--studio-scale));
+  --text-lg: calc(18px * var(--studio-scale));
+}
+
+/* High contrast: black, white and yellow. 21 : 1 for text, 14.7 : 1 for the yellow, white edges on every control. */
+.studio[data-contrast="high"] {
+  --studio-focus: #ffd400;
+  --color-studio-page: #000;
+  --color-studio-card: #000;
+  --color-studio-panel: #000;
+  --color-studio-raised: #000;
+  --color-studio-deep: #000;
+  --color-studio-sunk: #000;
+  --color-studio-edge: #fff;
+  --color-studio-line: #fff;
+  --color-studio-hairline: #8c8c8c;
+  --color-gray-50: #fff;
+  --color-gray-100: #fff;
+  --color-gray-200: #fff;
+  --color-gray-300: #fff;
+  --color-gray-400: #fff;
+  --color-gray-500: #fff;
+  --color-gray-600: #fff;
+  --color-amber-50: #ffd400;
+  --color-amber-100: #ffd400;
+  --color-amber-200: #ffd400;
+  --color-amber-300: #ffd400;
+  --color-amber-400: #ffd400;
+  --color-amber-500: #ffd400;
+  --color-orange-300: #ffb066;
+  --color-emerald-200: #5cffb0;
+  --color-emerald-300: #5cffb0;
+  --color-emerald-400: #5cffb0;
+  --color-green-300: #5cffb0;
+  --color-red-200: #ff9c9c;
+  --color-red-300: #ff8a8a;
+  --color-red-400: #ff8a8a;
+  --color-rose-200: #ff9cc0;
+  --color-sky-200: #8fe3ff;
+  --color-sky-300: #8fe3ff;
+  --color-violet-200: #d9c8ff;
+  background: #000;
+  color: #fff;
+}
+.studio[data-contrast="high"] :is(button, a, input, select, textarea)[class~="border"] { border-width: 2px; }
+
+/* Controls drawn with a card's quiet outline get the stronger edge, so every button and field shows where it is.
+   In the utilities layer and as light as a single class, so a control's own hover and focus colours still win. */
+@layer utilities {
+  :where(.studio) :where(button, a, input, select, textarea):is([class~="border-studio-line"], [class~="border-studio-hairline"]) {
+    border-color: var(--color-studio-edge);
+  }
+}
+
+/* A clear keyboard focus everywhere in the Studio, including controls that hide the browser's own. The editor's
+   whole area takes focus for its keyboard shortcuts (data-focus-container), and is not ringed. */
+.studio :focus-visible:not([data-focus-container]) {
+  outline: 3px solid var(--studio-focus);
+  outline-offset: 2px;
+}
+
+/* Links are underlined, so they are not told apart by colour alone; links drawn as buttons or pills are not. */
+.studio a:not([class~="border"]):not([class*="rounded-"]) {
+  text-decoration-line: underline;
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio *, .studio *::before, .studio *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

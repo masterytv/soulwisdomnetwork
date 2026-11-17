@@ -141,7 +141,7 @@ export function EditPackage({ episodeId, enabled, upToDate, report, revision }: 
             )}
             {built && view.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}
 
-            <div id="descript" className="flex flex-col gap-2 border-t border-white/5 pt-5 mt-3 scroll-mt-24">
+            <div id="descript" className="flex flex-col gap-2 border-t border-studio-hairline pt-5 mt-3 scroll-mt-24">
                 <h3 className="text-base font-semibold text-gray-100">Descript project</h3>
                 <div className="flex flex-wrap items-center gap-3">
                     <button onClick={send} disabled={!canSend} className={d?.projectUrl && !descriptStale ? secondary : primary}>

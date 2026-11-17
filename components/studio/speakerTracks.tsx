@@ -55,7 +55,7 @@ export function SpeakerTracks({ episodeId, use, rendered, onUse }: {
                             <li key={t.path} className="flex flex-wrap items-center gap-2">
                                 <input aria-label={`Name for ${t.fileName}`} defaultValue={t.name} maxLength={60}
                                     onBlur={e => { if (e.target.value.trim() && e.target.value.trim() !== t.name) void call("PATCH", { path: t.path, name: e.target.value }); }}
-                                    className="rounded border border-white/10 bg-[#1a1036] px-2 py-0.5 text-sm text-gray-200 w-40" />
+                                    className="rounded border border-studio-line bg-studio-panel px-2 py-0.5 text-sm text-gray-200 w-40" />
                                 <span className="text-xs text-gray-400 truncate max-w-[14rem]" title={t.fileName}>{t.fileName}</span>
                                 <button type="button" onClick={() => void call("DELETE", { path: t.path })} className="text-xs text-gray-400 hover:text-red-300">Remove</button>
                             </li>

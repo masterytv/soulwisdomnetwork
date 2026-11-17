@@ -565,8 +565,8 @@ export function EditorLightStage({ episodeId, words: accepted, videoUrl, workspa
         );
         if (!workspace) return note;
         return (
-            <div className="min-h-screen bg-[#0d0720] text-gray-100 p-4 sm:p-6">
-                <div className="border-b border-white/10 pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
+            <div className="min-h-screen bg-studio-deep text-gray-100 p-4 sm:p-6">
+                <div className="border-b border-studio-line pb-3 mb-4 flex items-center gap-3 flex-wrap">{heading}</div>
                 {note}
             </div>
         );

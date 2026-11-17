@@ -109,8 +109,8 @@ export function Workspace({ header, script, preview, panels, panelId, onPanel, t
     const active = panels.some(p => p.id === panelId) ? panelId : panels[0]?.id;
 
     return (
-        <div ref={rootRef} style={{ height: `calc(100dvh - ${room.top}px)` }} className="flex flex-col min-h-[560px] overflow-hidden bg-[#0d0720]">
-            <header aria-label="Editor bar" className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-2 border-b border-white/10">
+        <div ref={rootRef} data-studio-dense style={{ height: `calc(100dvh - ${room.top}px)` }} className="flex flex-col min-h-[560px] overflow-hidden bg-studio-deep">
+            <header aria-label="Editor bar" className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-2 border-b border-studio-line">
                 {header}
             </header>
             <div className="flex flex-1 min-h-0">
@@ -130,7 +130,7 @@ export function Workspace({ header, script, preview, panels, panelId, onPanel, t
                         <div key={p.id} hidden={p.id !== active}>{p.node}</div>
                     ))}
                 </section>
-                <nav aria-label="Panels" style={{ width: RAIL_PX }} className="shrink-0 flex flex-col gap-1 p-2 border-l border-white/10">
+                <nav aria-label="Panels" style={{ width: RAIL_PX }} className="shrink-0 flex flex-col gap-1 p-2 border-l border-studio-line">
                     {panels.map(p => (
                         <button key={p.id} type="button" aria-pressed={p.id === active} onClick={() => onPanel(p.id)}
                             className={`text-xs text-left px-2 py-1.5 rounded ${p.id === active
@@ -185,7 +185,7 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
             <div role="dialog" aria-modal="true" aria-label="Shortcuts"
-                className="w-full max-w-xl rounded-xl border border-white/10 bg-[#130b29] p-5 text-sm text-gray-200 shadow-2xl"
+                className="w-full max-w-xl rounded-xl border border-studio-line bg-studio-page p-5 text-sm text-gray-200 shadow-2xl"
                 onClick={e => e.stopPropagation()}>
                 <div className="flex items-center mb-3">
                     <h2 className="text-lg font-bold text-amber-400">Shortcuts</h2>
@@ -195,7 +195,7 @@ export function ShortcutSheet({ onClose }: { onClose: () => void }) {
                 <table className="w-full">
                     <tbody>
                         {SHORTCUTS.map(([keys, does]) => (
-                            <tr key={keys} className="border-t border-white/5">
+                            <tr key={keys} className="border-t border-studio-hairline">
                                 <td className="py-1.5 pr-4 text-amber-200 whitespace-nowrap align-top">{keys}</td>
                                 <td className="py-1.5 text-gray-300">{does}</td>
                             </tr>

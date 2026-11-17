@@ -84,8 +84,8 @@ export function useBroll(episodeId: string, enabled: boolean) {
 
 export type Broll = ReturnType<typeof useBroll>;
 
-const BUTTON = "text-xs px-2 py-1 rounded border border-white/10 text-gray-300 hover:border-amber-400/50 hover:text-amber-200 " +
-    "disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:text-gray-300";
+const BUTTON = "text-xs px-2 py-1 rounded border border-studio-line text-gray-300 hover:border-amber-400/50 hover:text-amber-200 " +
+    "disabled:opacity-40 disabled:hover:border-studio-line disabled:hover:text-gray-300";
 
 // The b-roll for one idea (stock footage, a stock photo or an AI image), or where it stands, with two buttons:
 // other stock, or an AI image instead.
