@@ -20,7 +20,7 @@ function BuildOpening({ o, disabled }: { o: OpeningBuild; disabled: boolean }) {
     const [pick, setPick] = useState<string | null>(null);
     const chosen = pick === null ? o.music : pick === NONE ? null : o.choices.find(c => c.library === pick) ?? o.music;
     return (
-        <div className="flex flex-col gap-2 border-b border-white/10 pb-3">
+        <div className="flex flex-col gap-2 border-b border-studio-line pb-3">
             <span className="text-sm font-semibold text-gray-200">The opening</span>
             <span className={hint}>
                 {o.count ? `Builds ${o.count} clip${o.count === 1 ? '' : 's'} from the approved notes' teaser clips, before the intro: a dissolve between them, an "In this episode" label on each, Wind: breath at each change and music under them. Change anything afterwards on the timeline.`
@@ -29,7 +29,7 @@ function BuildOpening({ o, disabled }: { o: OpeningBuild; disabled: boolean }) {
             <label className="flex flex-wrap items-center gap-2 text-sm text-gray-200">
                 Music under it
                 <select aria-label="Music under the opening" value={chosen?.library ?? NONE} disabled={disabled}
-                    onChange={e => setPick(e.target.value)} className="max-w-full min-w-0 rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
+                    onChange={e => setPick(e.target.value)} className="max-w-full min-w-0 rounded border border-studio-line bg-studio-panel px-2 py-1 text-sm text-gray-200">
                     <option value={NONE}>None</option>
                     {[...(o.music && !o.choices.some(c => c.library === o.music!.library) ? [o.music] : []), ...o.choices].map(c => <option key={c.library} value={c.library}>{c.name}</option>)}
                 </select>
@@ -76,7 +76,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
         onChange({ [key]: v ? { path: v.path, name: v.name } : path === NONE ? false : null });
     };
     return (
-        <section aria-label="Parts" className="rounded-lg bg-[#130b29] border border-white/5 p-3 flex flex-col gap-3">
+        <section aria-label="Parts" className="rounded-lg bg-studio-page border border-studio-hairline p-3 flex flex-col gap-3">
             {build && <BuildOpening o={build} disabled={false} />}
             <div className="flex flex-col gap-1">
                 <span className="text-sm font-semibold text-gray-200">Parts</span>
@@ -90,7 +90,7 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
                     {order.map((s, i) => {
                         const sec = sections[s];
                         return (
-                            <li key={s} data-section={s} className="flex items-center gap-2 rounded border border-white/10 bg-white/[0.02] px-2 py-1 text-xs">
+                            <li key={s} data-section={s} className="flex items-center gap-2 rounded border border-studio-line bg-white/[0.02] px-2 py-1 text-xs">
                                 <button type="button" onClick={() => onSeek(sec.startMs)} className="grow text-left text-gray-200 hover:text-white">
                                     <span className="tabular-nums text-gray-400">{mmss(sec.startMs)}–{mmss(sec.endMs)}</span>{" "}
                                     <span className="text-gray-400">({mmss(kept(sec))} kept)</span>{" "}
@@ -106,13 +106,13 @@ export const PartsPanel = memo(function PartsPanel({ edit, totalMs, clips, words
                 </ol>
             )}
             {moved && <button type="button" onClick={() => onChange({ order: null })} className={`${secondary} self-start`}>Back to the recording&apos;s order</button>}
-            <div className="flex flex-col gap-2 border-t border-white/10 pt-2">
+            <div className="flex flex-col gap-2 border-t border-studio-line pt-2">
                 <span className={hint}>This episode&apos;s own intro and outro, from its media (upload a video in the Media panel), instead of the Studio&apos;s.</span>
                 {(["intro", "outro"] as const).map(key => (
                     <label key={key} className="flex flex-wrap items-center gap-2 text-sm text-gray-200">
                         {key === "intro" ? "Intro" : "Outro"}
                         <select aria-label={key === "intro" ? "This episode's intro" : "This episode's outro"} value={edit[key] === false ? NONE : edit[key] ? edit[key].path : ""}
-                            onChange={e => pick(key, e.target.value)} className="max-w-full min-w-0 rounded border border-white/10 bg-[#1a1036] px-2 py-1 text-sm text-gray-200">
+                            onChange={e => pick(key, e.target.value)} className="max-w-full min-w-0 rounded border border-studio-line bg-studio-panel px-2 py-1 text-sm text-gray-200">
                             <option value="">The Studio&apos;s {key}</option>
                             <option value={NONE}>No {key} in this episode</option>
                             {videos.map(v => <option key={v.path} value={v.path}>{v.name}</option>)}

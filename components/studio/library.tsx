@@ -101,7 +101,7 @@ function AddFile({ onAdded }: { onAdded: (e: LibraryEntry) => void }) {
     }
 
     return (
-        <section aria-label="Add a file" className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-5 flex flex-col gap-4">
+        <section aria-label="Add a file" className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-5 flex flex-col gap-4">
             <header>
                 <h2 className="font-semibold text-gray-100">Add a file</h2>
                 <p className={`${hint} mt-1`}>An MP3, M4A or WAV up to 200 MB. Fill in what the licence says now, while the page is open; you can check it afterwards.</p>
@@ -165,7 +165,7 @@ function Entry({ entry, isAdmin, onChange, onRemoved }: { entry: LibraryEntry; i
     }
 
     return (
-        <li aria-label={entry.name} className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
+        <li aria-label={entry.name} className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-4 flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold text-gray-100">{entry.name}</span>
                 <span className="text-xs px-1.5 py-0.5 rounded bg-white/10 text-gray-300">{LIBRARY_KIND_LABELS[entry.kind]}{entry.durationMs ? `, ${clock(entry.durationMs)}` : ""}</span>

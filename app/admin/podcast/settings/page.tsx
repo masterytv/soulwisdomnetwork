@@ -26,7 +26,7 @@ import type { SettingsView } from "@/lib/server/studioSettings";
 
 function Section({ title, intro, children }: { title: string; intro?: string; children: React.ReactNode }) {
     return (
-        <section className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-5 flex flex-col gap-4">
+        <section className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-5 flex flex-col gap-4">
             <header>
                 <h2 className="font-semibold text-gray-100">{title}</h2>
                 {intro && <p className={`${hint} mt-1`}>{intro}</p>}
@@ -136,7 +136,7 @@ export default function StudioSettingsPage() {
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -148,7 +148,7 @@ export default function StudioSettingsPage() {
     const off = !isAdmin || saving;
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 sm:p-8">
                 <div className="max-w-3xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                         <div>
@@ -377,7 +377,7 @@ export default function StudioSettingsPage() {
                                     {s.podcastArtPath && (artLocal ?? artUrl) && (
                                         <div className="flex items-end gap-3">
                                             {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived Storage link or a local file, shown as it is */}
-                                            <img src={artLocal ?? artUrl ?? undefined} alt="The podcast artwork" className="w-40 h-40 object-cover rounded border border-white/10"
+                                            <img src={artLocal ?? artUrl ?? undefined} alt="The podcast artwork" className="w-40 h-40 object-cover rounded border border-studio-line"
                                                 onLoad={e => setArtSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />
                                             {artSize && (
                                                 <span className={artSize.w !== artSize.h || artSize.w < 1400 || artSize.w > 3000 ? "text-xs text-amber-300" : hint}>
@@ -421,7 +421,7 @@ export default function StudioSettingsPage() {
                             </Section>
 
                             {isAdmin && (
-                                <div className="sticky bottom-0 z-10 -mx-4 sm:mx-0 flex flex-wrap items-center gap-3 border-t border-white/10 bg-[#130b29]/95 backdrop-blur px-4 py-3 sm:rounded-xl">
+                                <div className="sticky bottom-0 z-10 -mx-4 sm:mx-0 flex flex-wrap items-center gap-3 border-t border-studio-line bg-studio-page/95 backdrop-blur px-4 py-3 sm:rounded-xl">
                                     <button onClick={() => void save()} disabled={saving} className={primary}>{saving ? "Saving…" : "Save settings"}</button>
                                     <button onClick={() => { setS({ ...DEFAULT_SETTINGS }); setHostsText(DEFAULT_SETTINGS.hosts.join("\n")); setNamesText(DEFAULT_SETTINGS.recurringNames.join("\n")); setNotice("Back to the original settings. Press Save to keep them."); setDirty(true); }}
                                         className="text-xs text-gray-400 hover:text-white">Reset to the original settings</button>

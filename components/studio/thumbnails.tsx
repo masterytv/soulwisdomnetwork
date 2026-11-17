@@ -237,7 +237,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                             ))}
                         </div>
                         <input value={text} onChange={e => editText(e.target.value)} maxLength={60}
-                            className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white max-w-xl" />
+                            className="bg-black/30 border border-studio-line rounded-lg px-3 py-2 text-sm text-white max-w-xl" />
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -250,7 +250,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                                         className={`relative rounded-lg overflow-hidden border-2 aspect-video bg-black/40 ${i === frame ? "border-amber-400" : "border-transparent hover:border-white/30"}`}>
                                         {/* eslint-disable-next-line @next/next/no-img-element -- a local blob */}
                                         {img && <img src={img.src} alt={`Frame at ${mmss(f.atMs)}`} className="w-full h-full object-cover" />}
-                                        <span className="absolute bottom-0 left-0 text-[10px] px-1.5 py-0.5 bg-black/60 text-gray-200">{mmss(f.atMs)} {f.speaker}</span>
+                                        <span className="absolute bottom-0 left-0 text-2xs px-1.5 py-0.5 bg-black/70 text-gray-200">{mmss(f.atMs)} {f.speaker}</span>
                                     </button>
                                 );
                             })}
@@ -260,7 +260,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         {kinds.map(kind => (
                             <button key={kind} onClick={() => { setChoice(kind); save({ choice: kind }); }}
-                                className={`flex flex-col gap-1.5 text-left rounded-xl p-1.5 border-2 ${choice === kind ? "border-emerald-400 bg-emerald-500/5" : "border-white/10 hover:border-white/30"}`}>
+                                className={`flex flex-col gap-1.5 text-left rounded-xl p-1.5 border-2 ${choice === kind ? "border-emerald-400 bg-emerald-500/5" : "border-studio-line hover:border-white/30"}`}>
                                 <canvas ref={el => { canvases.current[kind] = el; }} width={THUMB_WIDTH} height={THUMB_HEIGHT} className="w-full rounded-lg" />
                                 <span className="text-xs text-gray-300 px-1">{choice === kind ? "✓ " : ""}{THUMB_LABELS[kind]}</span>
                             </button>
@@ -279,10 +279,10 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                         <summary className="cursor-pointer text-gray-300">AI image: {view.image?.idea ?? "none yet"}</summary>
                         <div className="flex flex-col gap-2 mt-2">
                             <textarea value={idea} onChange={e => setIdea(e.target.value)} rows={3} maxLength={600}
-                                className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+                                className="bg-black/30 border border-studio-line rounded-lg px-3 py-2 text-sm text-white" />
                             <div className="flex flex-wrap items-center gap-3">
                                 <select value={style} onChange={e => setStyle(e.target.value as BrollStyle)}
-                                    className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200">
+                                    className="bg-black/30 border border-studio-line rounded-lg px-2 py-1 text-xs text-gray-200">
                                     {BROLL_STYLE_IDS.map(s => <option key={s} value={s}>{BROLL_STYLES[s].label}</option>)}
                                 </select>
                                 <button onClick={() => start(true)} disabled={working || starting || !idea.trim()} className={secondary}>
@@ -295,7 +295,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                 </>
             )}
 
-            <div className="border-t border-white/10 pt-4 flex flex-col gap-3">
+            <div className="border-t border-studio-line pt-4 flex flex-col gap-3">
                 <h4 className="text-sm text-gray-100 font-semibold">Checkpoint D: approve the episode for YouTube</h4>
                 <ul className="text-xs text-gray-400 flex flex-col gap-0.5">
                     <li>Title: <span className="text-gray-200">{view?.title ?? "—"}</span></li>

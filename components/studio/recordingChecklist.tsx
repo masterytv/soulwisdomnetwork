@@ -50,8 +50,8 @@ export function RecordingChecklist() {
                 const count = section.items.filter(i => ticks[itemKey(section, i)]).length;
                 const complete = count === section.items.length;
                 return (
-                    <section key={section.id} className="rounded-xl border border-white/10 bg-white/[0.03] overflow-hidden">
-                        <div className="flex items-start gap-3 px-4 py-3 border-b border-white/10">
+                    <section key={section.id} className="rounded-xl border border-studio-line bg-white/[0.03] overflow-hidden">
+                        <div className="flex items-start gap-3 px-4 py-3 border-b border-studio-line">
                             <span className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${complete ? "bg-emerald-500" : "bg-white/15"}`} aria-hidden="true" />
                             <div className="flex-1 min-w-0">
                                 <h2 className="text-lg font-semibold text-white">{section.title}</h2>
@@ -59,7 +59,7 @@ export function RecordingChecklist() {
                             </div>
                             <span className="text-sm text-gray-400 tabular-nums mt-1">{count}/{section.items.length}</span>
                         </div>
-                        <ul className="divide-y divide-white/5">
+                        <ul className="divide-y divide-studio-hairline">
                             {section.items.map(item => {
                                 const key = itemKey(section, item);
                                 const id = `rc-${section.id}-${item.id}`;

@@ -37,7 +37,7 @@ export default function SetupCheck() {
     const failing = checks ? Object.values(checks).filter(c => !c.ok).length : 0;
 
     return (
-        <details className="bg-[#1E1035]/50 border border-white/5 rounded-2xl p-5" open={failing > 0}>
+        <details className="bg-studio-card/50 border border-studio-hairline rounded-2xl p-5" open={failing > 0}>
             <summary className="cursor-pointer font-semibold flex items-center gap-2">
                 Setup check
                 {checks && (
@@ -48,7 +48,7 @@ export default function SetupCheck() {
             </summary>
             <div className="mt-4">
                 <ErrorNote message={error} className="mb-3" />
-                <ul className="divide-y divide-white/5">
+                <ul className="divide-y divide-studio-hairline">
                     {Object.entries(LABELS).map(([key, label]) => {
                         const c = checks?.[key];
                         return (
@@ -67,7 +67,7 @@ export default function SetupCheck() {
                 <button
                     onClick={run}
                     disabled={checking}
-                    className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/10 disabled:opacity-50"
+                    className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-studio-line hover:bg-white/10 disabled:opacity-50"
                 >
                     {checking ? "Checking…" : "Check again"}
                 </button>

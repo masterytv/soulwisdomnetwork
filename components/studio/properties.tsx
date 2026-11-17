@@ -253,14 +253,14 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                                         {l.band && l.band !== brand.colors.background && <option value="own">Its own colour</option>}
                                     </select>
                                     {l.band && <input type="color" aria-label="Band colour" value={l.band} onChange={e => set({ band: e.target.value })}
-                                        className="h-7 w-10 rounded border border-white/10 bg-transparent" />}
+                                        className="h-7 w-10 rounded border border-studio-line bg-transparent" />}
                                 </label>
                             )}
                             {l.subtext && (
                                 <label className="flex items-center gap-1">
                                     Second line
                                     <input type="color" aria-label="Second line colour" value={l.subColor ?? l.color} onChange={e => set({ subColor: e.target.value })}
-                                        className="h-7 w-10 rounded border border-white/10 bg-transparent" />
+                                        className="h-7 w-10 rounded border border-studio-line bg-transparent" />
                                     <button type="button" className={`${secondary} px-2 py-0.5`} title="The brand's accent colour" onClick={() => set({ subColor: brand.colors.accent })}>Accent</button>
                                 </label>
                             )}
@@ -321,7 +321,7 @@ export function PropertiesPanel({ layer, clips, editedMs, video, brand, canEdit,
                 {l.kind !== "graphic" && (
                 <Section title="Position and size">
                     <div className="flex items-start gap-3">
-                        <div role="group" aria-label="Position" className="grid grid-cols-3 gap-0.5 rounded border border-white/10 p-0.5 shrink-0" style={{ width: 72, aspectRatio: "16 / 9" }}>
+                        <div role="group" aria-label="Position" className="grid grid-cols-3 gap-0.5 rounded border border-studio-line p-0.5 shrink-0" style={{ width: 72, aspectRatio: "16 / 9" }}>
                             {GRID.map(p => (
                                 <button key={p} type="button" aria-label={POSITION_LABELS[p]} aria-pressed={pos === p} title={POSITION_LABELS[p]}
                                     onClick={() => set({ place: placeOf(p, mh, mv) })}

@@ -8,7 +8,7 @@ import { journey, journeyHref, type FinalSource, type JourneyState, type Journey
 
 const DONE = "border-emerald-400/60 text-emerald-300";
 const CURRENT = "bg-amber-500 text-black font-bold";
-const WAITING = "border-white/10 text-gray-400";
+const WAITING = "border-dashed border-studio-edge text-gray-300";
 
 const cls = (status: JourneyStatus) =>
     status === "done" ? DONE : status === "current" ? CURRENT : WAITING;
@@ -26,9 +26,10 @@ export function Journey({ episodeId, state, source }: { episodeId: string; state
                             className={`rounded-full border px-2.5 py-0.5 ${cls(e.status)}`}
                         >
                             {e.status === "done" && <span aria-hidden>✓ </span>}
+                            {e.status === "current" && <span aria-hidden>▶ </span>}
                             {e.label}
                         </Link>
-                        {i < entries.length - 1 && <span aria-hidden className="text-gray-600">→</span>}
+                        {i < entries.length - 1 && <span aria-hidden className="text-gray-400">→</span>}
                     </li>
                 ))}
             </ol>

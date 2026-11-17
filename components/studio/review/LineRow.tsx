@@ -64,7 +64,7 @@ function LineRow({ line, active, splitting, correcting, flag, flagTo, voices, co
                 <select
                     value={line.label}
                     onChange={e => actions.reassign(line, e.target.value)}
-                    className="bg-[#130b29] border border-white/10 rounded px-1.5 py-0.5 font-semibold max-w-48"
+                    className="bg-studio-page border border-studio-line rounded px-1.5 py-0.5 font-semibold max-w-48"
                     style={{ color }}
                     title="Who said this line"
                 >
@@ -124,7 +124,7 @@ function LineRow({ line, active, splitting, correcting, flag, flagTo, voices, co
                     <button onClick={() => actions.reassign(line, flag.toLabel)} className="px-2 py-0.5 rounded border border-orange-400/40 hover:bg-orange-500/20">
                         Give to {flagTo}
                     </button>
-                    <button onClick={() => actions.dismiss(line)} className="px-2 py-0.5 rounded border border-white/10 hover:bg-white/10">
+                    <button onClick={() => actions.dismiss(line)} className="px-2 py-0.5 rounded border border-studio-line hover:bg-white/10">
                         It&apos;s right
                     </button>
                 </div>
@@ -163,9 +163,9 @@ function WordFixer({ line, actions }: { line: Line; actions: LineActions }) {
                     <input aria-label="Corrected words" autoFocus value={sel.text} maxLength={200}
                         onChange={e => setSel({ ...sel, text: e.target.value })}
                         onKeyDown={e => { if (e.key === "Escape") setSel(null); }}
-                        className="min-w-0 grow max-w-md bg-[#130b29] border border-white/10 rounded px-2 py-1 text-sm text-gray-100" />
+                        className="min-w-0 grow max-w-md bg-studio-page border border-studio-line rounded px-2 py-1 text-sm text-gray-100" />
                     <button type="submit" disabled={!sel.text.trim()} className="px-2 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 disabled:opacity-40">Save</button>
-                    <button type="button" onClick={() => setSel(null)} className="px-2 py-1 rounded border border-white/10 text-gray-300 hover:bg-white/10">Cancel</button>
+                    <button type="button" onClick={() => setSel(null)} className="px-2 py-1 rounded border border-studio-line text-gray-300 hover:bg-white/10">Cancel</button>
                     {heard !== undefined && (
                         <span className="text-gray-400">
                             Heard as &ldquo;{heard}&rdquo;{" "}

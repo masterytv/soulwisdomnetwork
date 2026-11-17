@@ -14,8 +14,8 @@ import { studioFetch } from "@/lib/studioClient";
 import type { UsageView } from "@/lib/server/usage";
 import type { EpisodeUsage } from "@/lib/usage";
 
-const card = "bg-[#1E1035]/40 border border-white/5 rounded-2xl p-5";
-const button = "text-xs px-3 py-1.5 rounded-lg border border-white/10 text-gray-300 hover:bg-white/10 transition-colors disabled:opacity-40";
+const card = "bg-studio-card/40 border border-studio-hairline rounded-2xl p-5";
+const button = "text-xs px-3 py-1.5 rounded-lg border border-studio-line text-gray-300 hover:bg-white/10 transition-colors disabled:opacity-40";
 const th = "px-3 py-2 text-xs font-medium text-gray-400 text-left whitespace-nowrap";
 const td = "px-3 py-2 text-sm whitespace-nowrap";
 
@@ -37,7 +37,7 @@ function Detail({ u }: { u: EpisodeUsage }) {
                 {u.money.byService.map(s => (
                     <p key={s.service} className="text-xs text-gray-300 flex justify-between"><span>{s.service}</span><span>{usd(s.usd)}</span></p>
                 ))}
-                <div className="border-t border-white/5 mt-2 pt-2">
+                <div className="border-t border-studio-hairline mt-2 pt-2">
                     {u.money.items.map(i => (
                         <p key={i.label} className="text-xs text-gray-400 flex justify-between gap-3">
                             <span>{i.label}{i.count > 1 ? ` ×${i.count}` : ""}</span><span>{usd(i.usd)}</span>
@@ -115,7 +115,7 @@ export default function UsagePage() {
     if (loading) return <div className="p-8 text-center text-white">Loading...</div>;
     if (profile?.role !== "admin") {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">Usage is for admins.</p>
@@ -127,7 +127,7 @@ export default function UsagePage() {
     const episodes = view?.episodes ?? [];
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 sm:p-8">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 sm:p-8">
                 <div className="max-w-6xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-3">
                         <div>
@@ -155,7 +155,7 @@ export default function UsagePage() {
                             </p>
                             <div className="overflow-x-auto">
                                 <table className="w-full border-collapse">
-                                    <thead className="border-b border-white/10">
+                                    <thead className="border-b border-studio-line">
                                         <tr>
                                             <th className={th}>Episode</th><th className={th}>Length</th><th className={th}>Start → on YouTube</th>
                                             <th className={th}>Machine time</th><th className={th}>Money</th><th className={th}>Per episode minute</th>
@@ -164,7 +164,7 @@ export default function UsagePage() {
                                     </thead>
                                     <tbody>
                                         {episodes.map(u => (
-                                            <tr key={u.episodeId} className="border-b border-white/5">
+                                            <tr key={u.episodeId} className="border-b border-studio-hairline">
                                                 <td className={`${td} max-w-[16rem] truncate`} title={u.title}>
                                                     <Link href={`/admin/podcast/${u.episodeId}/notes`} className="hover:text-amber-300">{u.title}</Link>
                                                 </td>
@@ -189,7 +189,7 @@ export default function UsagePage() {
                             )}
                             {!episodes.length && <p className="text-sm text-gray-500 italic">No episodes past speaker review yet.</p>}
                             {episodes.map(u => (
-                                <details key={u.episodeId} className="border-t border-white/5 mt-3 pt-3">
+                                <details key={u.episodeId} className="border-t border-studio-hairline mt-3 pt-3">
                                     <summary className="cursor-pointer text-sm text-gray-200">{u.title}: breakdown</summary>
                                     <Detail u={u} />
                                 </details>
@@ -207,7 +207,7 @@ export default function UsagePage() {
                             {!view.reports.length && <p className="text-sm text-gray-500 italic">No reports yet.</p>}
                             <ol className="flex flex-col gap-3">
                                 {view.reports.map(r => (
-                                    <li key={r.id} className="border border-white/5 rounded-xl p-3">
+                                    <li key={r.id} className="border border-studio-hairline rounded-xl p-3">
                                         <p className="text-sm">
                                             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mr-2 ${r.kind === "finished" ? "bg-emerald-900/50 text-emerald-300" : "bg-sky-900/50 text-sky-300"}`}>
                                                 {r.kind === "finished" ? "Finished" : "Started"}

@@ -55,7 +55,7 @@ export function FreeToUsePanel({ onImported }: { onImported: (e: LibraryEntry) =
     }
 
     return (
-        <section aria-label="Find music on Free To Use" className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-5 flex flex-col gap-4">
+        <section aria-label="Find music on Free To Use" className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-5 flex flex-col gap-4">
             <header>
                 <h2 className="font-semibold text-gray-100">Find music on Free To Use</h2>
                 <p className={`${hint} mt-1`}>
