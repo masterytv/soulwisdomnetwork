@@ -1,8 +1,8 @@
-// Draws the three thumbnail options (docs/specs/011-thumbnails.md) on a 1280x720 canvas, in the
+// Draws the four thumbnail options (docs/specs/011-thumbnails.md) on a 1280x720 canvas, in the
 // browser, so a text edit or another frame shows at once. What is drawn here is exactly what is
 // approved and uploaded. Type: Outfit Black, the site's heading font; gold for *marked* words.
 
-import { hookWords, THUMB_HEIGHT as H, THUMB_WIDTH as W, type ThumbKind } from "@/lib/thumbnail";
+import { cutoutBox, hookWords, THUMB_HEIGHT as H, THUMB_WIDTH as W, type ThumbKind } from "@/lib/thumbnail";
 import { DEFAULT_SETTINGS, lighten, type StudioSettings } from "@/lib/studioSettings";
 
 // The brand colours: the Studio settings' (lib/studioSettings.ts), set by drawThumbnail before
@@ -27,6 +27,7 @@ function applyPalette(colors: StudioSettings["colors"]) {
 
 export interface ThumbImages {
     frame: ImageBitmap | null;
+    cutout: ImageBitmap | null;       // the frame's people over transparency, cropped to them
     ai: ImageBitmap | null;
     logo: ImageBitmap | null;
 }
@@ -132,6 +133,35 @@ export function drawThumbnail(ctx: CanvasRenderingContext2D, kind: ThumbKind, te
         accent(ctx, 64, top - 26);
         drawText(ctx, lines, size, family, 64, top);
         logo(ctx, images.logo, W - 184, 18, 166);
+    } else if (kind === "cutout") {
+        // The host stands over the AI background on the right, lit from behind; the text on the left.
+        if (images.ai) cover(ctx, images.ai, 0, 0, W, H, 0.5);
+        const shade = ctx.createLinearGradient(0, 0, W * 0.66, 0);
+        shade.addColorStop(0, `rgba(${INK_RGB}, 0.9)`);
+        shade.addColorStop(1, `rgba(${INK_RGB}, 0.15)`);
+        ctx.fillStyle = shade;
+        ctx.fillRect(0, 0, W, H);
+        let textWidth = 560;
+        if (images.cutout) {
+            const box = cutoutBox(images.cutout.width, images.cutout.height);
+            textWidth = box.textWidth;
+            const halo = ctx.createRadialGradient(box.x + box.w / 2, box.y + box.h * 0.4, 10, box.x + box.w / 2, box.y + box.h * 0.4, box.h * 0.75);
+            halo.addColorStop(0, `rgba(${GOLD_RGB}, 0.4)`);
+            halo.addColorStop(1, `rgba(${GOLD_RGB}, 0)`);
+            ctx.fillStyle = halo;
+            ctx.fillRect(0, 0, W, H);
+            ctx.save();
+            ctx.shadowColor = "rgba(0, 0, 0, 0.6)";
+            ctx.shadowBlur = 28;
+            ctx.drawImage(images.cutout, box.x, box.y, box.w, box.h);
+            ctx.restore();
+        }
+        logo(ctx, images.logo, 48, 30, 130);
+        const { size, lines } = fit(ctx, words, family, textWidth, 3, 120, 48);
+        const height = lines.length * size * 1.02;
+        const top = Math.max(210, (H - height) / 2 + 40);
+        accent(ctx, 64, top - 30);
+        drawText(ctx, lines, size, family, 64, top);
     } else if (kind === "ai") {
         // The picture's subject is on the right; the text in the calm left third.
         if (images.ai) cover(ctx, images.ai, 0, 0, W, H, 0.55);

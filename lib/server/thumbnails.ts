@@ -134,7 +134,9 @@ export async function getThumbnails(id: string): Promise<ThumbnailsView> {
         stale: !!t?.frames?.length && episode.final?.status === 'ready' && t.finalAt !== finalAt(episode),
         hooks: t?.hooks ?? [],
         text: t?.text ?? '',
-        frames: (t?.frames ?? []).map(f => ({ atMs: f.atMs, speaker: f.speaker, text: f.text, key: key(f.path) })),
+        frames: (t?.frames ?? []).map(f => ({
+            atMs: f.atMs, speaker: f.speaker, text: f.text, key: key(f.path), cutoutKey: f.cutoutPath ? key(f.cutoutPath) : null,
+        })),
         frame: t?.frame ?? 0,
         image: t?.image ? { idea: t.image.idea, style: t.image.style, prompt: t.image.prompt, key: key(t.image.path) } : null,
         choice: t?.choice ?? null,
@@ -156,7 +158,9 @@ export async function getThumbnailImage(id: string, name: string) {
     if (!episode) throw new HttpError(404, 'Episode not found');
     const t = episode.thumbnails;
     const frame = /^frame-(\d+)$/.exec(name);
+    const cutout = /^cutout-(\d+)$/.exec(name);
     const path = frame ? t?.frames?.[Number(frame[1])]?.path
+        : cutout ? t?.frames?.[Number(cutout[1])]?.cutoutPath
         : name === 'ai' ? t?.image?.path
             : name === 'approved' ? episode.approval?.thumbnailPath : undefined;
     if (!path) throw new HttpError(404, 'No such image');

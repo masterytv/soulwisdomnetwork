@@ -1,7 +1,7 @@
 # Spec 005 step 12: thumbnail options for one episode (agent/src/podcast/thumbnails.ts,
-# docs/specs/011-thumbnails.md): texts from Claude, frames from the final cut and an AI background,
-# which the Studio draws into three options for Checkpoint D. Started from the show notes page, or
-# by hand from the Actions tab with the episode ID.
+# docs/specs/011-thumbnails.md): texts from Claude, frames from the final cut with the hosts cut out of
+# them, and an AI background, which the Studio draws into four options for Checkpoint D. Started from the
+# show notes page, or by hand from the Actions tab with the episode ID.
 
 name: Podcast Thumbnails
 # The episode ID in the run name ties each run to its episode on the Usage page (lib/server/usage.ts).
@@ -50,10 +50,21 @@ jobs:
     - name: Install ffmpeg
       uses: ./.github/actions/ffmpeg
 
+    # The hosts cut out of the frames for "Host over AI image" (agent/src/podcast/cutout.py: rembg, pinned in
+    # agent/requirements-cutout.txt; its model, about 180 MB, downloads on first use). About 30 s. Not needed for
+    # a new AI image alone, and never fatal: without it the run makes the other options.
+    - name: Install rembg
+      if: ${{ inputs.only != 'image' }}
+      continue-on-error: true
+      run: |
+        python3 -m venv "$RUNNER_TEMP/rembg"
+        "$RUNNER_TEMP/rembg/bin/pip" install --quiet --disable-pip-version-check -r agent/requirements-cutout.txt
+
     - name: Make Thumbnail Options
       env:
         EPISODE_ID: ${{ inputs.episode_id }}
         THUMB_ONLY: ${{ inputs.only }}
+        CUTOUT_PYTHON: ${{ runner.temp }}/rembg/bin/python
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

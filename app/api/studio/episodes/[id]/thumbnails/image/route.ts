@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 type Context = { params: Promise<{ id: string }> };
 
-// One thumbnail image by name (frame-0…, ai, approved), for the Studio to draw with.
+// One thumbnail image by name (frame-0…, cutout-0…, ai, approved), for the Studio to draw with.
 export const GET = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const name = new URL(request.url).searchParams.get('name') ?? '';
