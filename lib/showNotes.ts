@@ -28,7 +28,9 @@ export const TEASER_BEATS = ['hook', 'question', 'intrigue', 'cliffhanger'] as c
 export type TeaserBeat = (typeof TEASER_BEATS)[number];
 export function teaserGuide(cliffhanger: string) {
     return 'The "In this episode" cold open, the first thing a viewer sees: three or four clips, 25-40 seconds in all, each ' +
-        '4-15 seconds, listed in the order they should play (not necessarily the order they were said). Build one short ' +
+        '4-15 seconds, listed in the order they should play (not necessarily the order they were said). Speech runs at about ' +
+        'two and a half words a second, so count words: about 65-90 words in all, and no clip over about 35; trim a long clip ' +
+        'to its strongest sentence. Build one short ' +
         'sequence that makes someone need to watch the whole episode, not a list of good lines. Its beats: ' +
         '"hook", the most human or surprising moment (personal stakes, a confession, a vivid story or a bold claim), so the ' +
         'first five seconds grab; "question", the tension or big question the episode wrestles with, in a speaker\'s own words; ' +

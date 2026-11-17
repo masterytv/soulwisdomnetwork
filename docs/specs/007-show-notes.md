@@ -140,7 +140,9 @@ kind of recording, with its own example of a cut-off line):
 3. **intrigue**: a striking idea, piece of evidence or strange detail, shown only in part (left out with three clips);
 4. **cliffhanger**: last, cut off just before its payoff, mid-sentence if need be.
 
-Three or four clips, 25-40 s in all, each 4-15 s, in the order they play. No answers or conclusions;
+Three or four clips, 25-40 s in all, each 4-15 s, in the order they play. Claude cannot hear how long a line
+takes, so the prompt also gives the length in words (about 65-90 in all, no clip over about 35): the first
+comparison, asked for seconds alone, ran 42-57 s; the hosts speak at 2.1-2.8 words a second. No answers or conclusions;
 feeling and ideas mixed; more than one voice; every clip understandable cold, not starting on "So",
 "And", "Yeah" or "Well"; the opening promises what the first title promises. Each clip carries its
 `beat` and a one-line `why`, shown under it on the page (clips from before, or added by hand, have
