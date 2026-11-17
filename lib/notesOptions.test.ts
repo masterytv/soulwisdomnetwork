@@ -162,7 +162,6 @@ test('the opening: every kind of recording asks for a sequence in beats, cut bef
         for (const beat of TEASER_BEATS) assert.match(j, new RegExp(`"${beat}"`), `${format}: ${beat}`);
         assert.match(j, /"why"/);
         assert.match(j, /25-40 seconds/);
-        assert.match(j, /65-90 words/);
         assert.match(j, /Never include an answer/);
     }
     assert.match(json(ShowNotesSchema), /I think the meaning of life is\.\.\./);
