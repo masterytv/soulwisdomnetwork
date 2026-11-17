@@ -228,7 +228,7 @@ export interface FinalView {
 }
 
 // Thumbnail options and Checkpoint D on the show notes page (docs/specs/011-thumbnails.md).
-// Images are fetched by name (frame-0…, ai, approved); `key` changes when the image does.
+// Images are fetched by name (frame-0…, cutout-0…, ai, approved); `key` changes when the image does.
 export interface ThumbnailsView {
     status: EpisodeThumbnails['status'] | null;
     only: 'image' | null;
@@ -237,7 +237,7 @@ export interface ThumbnailsView {
     stale: boolean;                     // made from an earlier final cut
     hooks: string[];
     text: string;
-    frames: { atMs: number; speaker: string; text: string; key: string }[];
+    frames: { atMs: number; speaker: string; text: string; key: string; cutoutKey: string | null }[];   // cutoutKey: its people cut out, if found
     frame: number;
     image: { idea: string; style: BrollStyle; prompt: string; key: string } | null;
     choice: ThumbKind | null;

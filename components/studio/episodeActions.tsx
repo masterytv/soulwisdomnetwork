@@ -7,8 +7,8 @@ import { useState } from "react";
 import { studioFetch } from "@/lib/studioClient";
 
 const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
-const quiet = `${button} border-white/10 text-gray-400 hover:bg-white/10 hover:text-gray-200`;
-const danger = `${button} border-red-500/50 text-red-300 hover:bg-red-500/10`;
+const quiet = `${button} border-studio-edge text-gray-300 hover:bg-white/10 hover:text-white`;
+const danger = `${button} border-red-400/80 text-red-300 hover:bg-red-500/15`;
 
 type Action = "startOver" | "delete";
 
@@ -50,12 +50,12 @@ export function EpisodeActions({ episode, disabled, onDone }: {
         <>
             <button onClick={() => open("startOver")} disabled={disabled} className={quiet}
                 title="Clear everything done on this episode and transcribe its recording again">Start over</button>
-            <button onClick={() => open("delete")} disabled={disabled} className={quiet}
+            <button onClick={() => open("delete")} disabled={disabled} className={danger /* cannot be undone, so it looks different */}
                 title="Remove this episode from the Studio">Delete</button>
             {asking && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={close}>
                     <div role="alertdialog" aria-modal="true" aria-labelledby="episode-action-title"
-                        className="w-full max-w-md rounded-2xl border border-red-500/40 bg-[#1E1035] p-5 flex flex-col gap-3 text-sm text-gray-200"
+                        className="w-full max-w-md rounded-2xl border border-red-500/40 bg-studio-card p-5 flex flex-col gap-3 text-sm text-gray-200"
                         onClick={e => e.stopPropagation()}>
                         <h2 id="episode-action-title" className="text-lg font-semibold text-red-300">Are you sure?</h2>
                         <p className="font-medium break-words">
@@ -81,7 +81,7 @@ export function EpisodeActions({ episode, disabled, onDone }: {
                             <label className="flex flex-col gap-1">
                                 <span className="text-xs text-gray-400">Type the episode’s title to confirm</span>
                                 <input value={typed} onChange={e => setTyped(e.target.value)} autoFocus
-                                    className="rounded-lg bg-black/30 border border-white/10 px-3 py-2 text-gray-100" placeholder={episode.title} />
+                                    className="rounded-lg bg-black/30 border border-studio-line px-3 py-2 text-gray-100" placeholder={episode.title} />
                             </label>
                         )}
                         {error && <p className="text-red-300">⚠️ {error}</p>}

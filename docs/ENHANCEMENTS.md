@@ -10,15 +10,10 @@ stands. None is needed now.
 
 ### Worth trying later
 
-- **rembg: hosts cut out for thumbnails** (https://github.com/danielgatis/rembg, MIT).
-  `agent/src/podcast/thumbnails.ts` offers a frame from the episode, brand options and an AI
-  background, but the frame keeps its own room behind it. rembg could take the room out so the
-  host stands over the AI background, the usual YouTube thumbnail look. It only works on a few
-  stills, so it runs on an ordinary GitHub Actions runner in seconds, with no GPU. It fits the
-  existing frame → background → texts flow.
-  - Possibly paired with **Real-ESRGAN** (https://github.com/xinntao/Real-ESRGAN, BSD-3) to
-    sharpen that one still frame before it is cut out: Zoom often records at 720p. Not for
-    video (see below).
+- **Real-ESRGAN: sharpen the thumbnail frame** (https://github.com/xinntao/Real-ESRGAN, BSD-3)
+  before rembg cuts the host out of it (built 17 November 2026: the "Host over AI image" option,
+  `docs/specs/011-thumbnails.md`), if 720p recordings look soft at thumbnail size. A few stills
+  only; not for video (see below).
 - **librosa: the opening's cuts on the music's beat** (https://github.com/librosa/librosa, ISC).
   Build the opening (`buildOpening` in `lib/programme.ts`) puts teaser clips over music with
   dissolves timed without knowing the music's beat. librosa could find each library track's

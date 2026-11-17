@@ -34,6 +34,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
               podcast/final.ts — spec 005 steps 10-11 (final cut from Descript, loudness, re-timed chapters), GitHub Actions only
               podcast/thumbnails.ts — spec 005 step 12 (thumbnail texts, frames and AI background), GitHub Actions only;
+              the hosts are cut out of the frames by podcast/cutout.py (rembg, pinned in agent/requirements-cutout.txt,
+              a venv the workflow makes) for the "Host over AI image" option;
               the Studio draws the options (components/studio/thumbnailCanvas.ts) and approves them (Checkpoint D)
               podcast/youtube.ts — spec 005 step 13 (YouTube upload via podcast/youtubeApi.ts), GitHub Actions only
               podcast/podcastAudio.ts — spec 019 item 5.1 (the audio podcast feed's MP3 at −16 LUFS with chapters and artwork;
@@ -111,10 +113,15 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
 lib/studioSettings.ts  Studio settings (docs/specs/018-studio-settings.md): show, hosts, writing, branding, intro,
               transitions, final cut, motion graphics and highlights (spec 021), Drive on/off, the hosts' Zoom room (shown to staff only, with Copy). Every job reads them through withDefaults; the defaults are what the
               Studio always did. Recordings can also be uploaded in the Studio (lib/server/uploads.ts)
+components/studio/readability.tsx  the Studio's readability (docs/specs/024-studio-readability.md): StudioFrame wraps every
+              Studio page (app/admin/podcast/layout.tsx) in `.studio`, whose CSS in app/globals.css sets larger text and AA
+              greys; Text size and High contrast in the Studio bar (the editor's own bar) are kept per browser (lib/readability.ts).
+              Use the named Studio colours (bg-studio-card, border-studio-edge for a control, -line for a card, -hairline),
+              not `bg-[#…]` or `border-white/10`, which high contrast cannot change; text-2xs, not `text-[10px]`
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-023 (023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
+docs/specs/   numbered specs, 001-024 (024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)

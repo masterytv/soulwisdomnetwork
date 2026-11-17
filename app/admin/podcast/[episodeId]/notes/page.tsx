@@ -29,7 +29,7 @@ import { useAuth } from "@/context/AuthContext";
 import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
 import { pickTeaserWord, wordsAround } from "@/lib/programme";
 import { preciseTime } from "@/lib/timeline";
-import { chooseDescription, cueTime, locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
+import { chooseDescription, cueTime, locate, mmss, notesChanges, sameNotes, youtubeDescription, type RedraftScope, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { meetingDocx } from "@/lib/meetingDoc";
 import { TranscriptDownloads, WritingExtras } from "@/components/studio/extras";
 import { Translations } from "@/components/studio/translations";
@@ -62,7 +62,7 @@ function TimeInput({ ms, onChange, precise = false }: { ms: number; onChange: (m
                 if (parsed === null) setText(show(ms));
                 else onChange(parsed);
             }}
-            className={`${precise ? 'w-24' : 'w-20'} bg-[#130b29] border border-white/10 rounded px-2 py-1 text-xs font-mono`}
+            className={`${precise ? 'w-24' : 'w-20'} bg-studio-page border border-studio-line rounded px-2 py-1 text-xs font-mono`}
             aria-label="Time (m:ss)"
         />
     );
@@ -76,11 +76,13 @@ function ClipWords({ words, clip, onPick }: {
 }) {
     const middle = (clip.startMs + clip.endMs) / 2;
     return (
-        <p className="text-xs leading-6 text-gray-400" aria-label="The words around this clip: click one to start or end the clip there">
+        <p className="text-sm leading-8 text-gray-300" aria-label="The words around this clip: click one to start or end the clip there">
             {wordsAround(words, clip).map(({ word, inside }) => (
                 <button key={word.start} type="button" onClick={() => onPick(word)}
                     title={`${preciseTime(word.start)}: ${word.start < middle ? 'start' : 'end'} the clip ${word.start < middle ? 'at' : 'with'} this word`}
-                    className={`rounded px-0.5 mr-0.5 ${inside ? 'bg-amber-500/25 text-amber-100 hover:bg-amber-500/40' : 'hover:bg-white/10 hover:text-white'}`}>
+                    className={`rounded-sm px-[0.1em] mr-[0.2em] ${inside
+                        ? 'bg-amber-500/20 text-white underline decoration-amber-400 decoration-2 underline-offset-[5px] hover:bg-amber-500/35'
+                        : 'hover:bg-white/10 hover:text-white'}`}>
                     {word.text}
                 </button>
             ))}
@@ -176,6 +178,11 @@ const stageFor = (anchor: string): StageId | undefined =>
 const sameStep = (a: StepState | undefined, b: StepState) => !!a && a.done === b.done && a.failed === b.failed && a.working === b.working
     && a.summary === b.summary && a.key === b.key && a.link?.href === b.link?.href && a.link?.label === b.link?.label;
 
+// What "Draft again" names when it rewrites only one part.
+const REDRAFT_PART: Record<Exclude<RedraftScope, "all">, string> = {
+    description: "description", titles: "titles", broll: "b-roll ideas", teasers: "“In this episode” clips",
+};
+
 export default function ShowNotesPage() {
     const { episodeId } = useParams<{ episodeId: string }>();
     const { profile, loading } = useAuth();
@@ -193,7 +200,7 @@ export default function ShowNotesPage() {
     const [notice, setNotice] = useState("");
     const [busy, setBusy] = useState(false);
     const [redraftDirection, setRedraftDirection] = useState("");
-    const [redraftOnly, setRedraftOnly] = useState<"all" | "description" | "titles" | "broll">("all");
+    const [redraftOnly, setRedraftOnly] = useState<RedraftScope>("all");
     const video = useRef<HTMLVideoElement>(null);
 
     const save = useCallback(async (value: ShowNotes, version: number) => {
@@ -539,7 +546,7 @@ export default function ShowNotesPage() {
 
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -590,7 +597,7 @@ export default function ShowNotesPage() {
 
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 pb-32 sm:p-8 sm:pb-32">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 pb-32 sm:p-8 sm:pb-32">
                 <div className="max-w-7xl mx-auto flex flex-col gap-6">
                     <div>
                         <Link href="/admin/podcast" className="text-sm text-gray-400 hover:text-white">← Podcast Studio</Link>
@@ -620,7 +627,7 @@ export default function ShowNotesPage() {
                     )}
 
                     {view?.transcriptAccepted && !notes && (
-                        <div className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-6 flex flex-col gap-3 items-start">
+                        <div className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-6 flex flex-col gap-3 items-start">
                             {drafting ? (
                                 <p className="text-gray-300">Claude is drafting the show notes. This usually takes two to five minutes; this page updates by itself.</p>
                             ) : (
@@ -643,7 +650,7 @@ export default function ShowNotesPage() {
                                     Click ▶ beside a clip, chapter, quote or b-roll idea to check it against the video.
                                     &ldquo;Add at video time&rdquo; uses where the video is paused.
                                 </p>
-                                <div className="hidden lg:block border-t border-white/5 pt-4">
+                                <div className="hidden lg:block border-t border-studio-hairline pt-4">
                                     <StepTracker stages={tracked} onGo={go} />
                                 </div>
                             </div>
@@ -677,10 +684,10 @@ export default function ShowNotesPage() {
                                         </div>
                                     )}
                                     <nav aria-label="Parts of the show notes"
-                                        className="sticky top-[65px] z-20 -mx-4 sm:-mx-5 -mt-2 px-4 sm:px-5 py-2 bg-[#180d2f]/95 backdrop-blur border-b border-white/5 flex gap-1.5 overflow-x-auto">
+                                        className="sticky top-[65px] z-20 -mx-4 sm:-mx-5 -mt-2 px-4 sm:px-5 py-2 bg-studio-raised/95 backdrop-blur border-b border-studio-hairline flex gap-1.5 overflow-x-auto">
                                         {noteParts.map(([anchor, label, count]) => (
                                             <a key={anchor} href={`#${anchor}`} onClick={e => { e.preventDefault(); go(anchor); }}
-                                                className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-white/10 text-gray-300 hover:border-amber-400/50 hover:text-amber-200 whitespace-nowrap">
+                                                className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-studio-line text-gray-300 hover:border-amber-400/50 hover:text-amber-200 whitespace-nowrap">
                                                 {label}{count && <span className="text-gray-500"> · {count}</span>}
                                             </a>
                                         ))}
@@ -708,7 +715,7 @@ export default function ShowNotesPage() {
                                         </Part>
 
                                         <Part id="notes-teaser" title="“In this episode” clips"
-                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Leave them wanting more: end on a question or cut before the answer. Click a word under a clip to start or end it there; fine-tune it on the Studio editor’s timeline."
+                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Build a short arc: a hook, the big question, something intriguing, and a last line cut before its payoff. Never the answer. Click a word under a clip to start or end it there; fine-tune it on the Studio editor’s timeline."
                                             aside={notes.teaserClips.length > 0 && (
                                                 <span className="flex items-center gap-3">
                                                     <span className={`text-xs ${teaserSeconds < 20 || teaserSeconds > 40 ? "text-orange-300" : "text-gray-400"}`}>{teaserSeconds}s in total; aim for 20–40</span>
@@ -734,6 +741,12 @@ export default function ShowNotesPage() {
                                                             <button onClick={() => edit(n => ({ ...n, teaserClips: n.teaserClips.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-300">Remove</button>
                                                         </span>
                                                     </div>
+                                                    {(c.beat || c.why) && (
+                                                        <p className="text-xs text-gray-400">
+                                                            {c.beat && <span className="uppercase tracking-wide text-amber-300/80 mr-2">{c.beat}</span>}
+                                                            {c.why}
+                                                        </p>
+                                                    )}
                                                     {view.words.length > 0 && <ClipWords words={view.words} clip={c} onPick={w => editClip(i, pickTeaserWord(view.words, c, w))} />}
                                                     <textarea value={c.text} onChange={e => editClip(i, anchored(e.target.value, c.startMs, true))} rows={2} className={field} />
                                                     {!findInTranscript(c.text) && (
@@ -753,7 +766,7 @@ export default function ShowNotesPage() {
                                                     <summary className="cursor-pointer text-gray-300">Other descriptions to choose from ({notes.descriptionOptions.length})</summary>
                                                     <div className="mt-2 flex flex-col gap-2">
                                                         {notes.descriptionOptions.map((opt, i) => (
-                                                            <div key={i} className="flex flex-col gap-1 border border-white/5 rounded p-2">
+                                                            <div key={i} className="flex flex-col gap-1 border border-studio-hairline rounded p-2">
                                                                 <p className="text-gray-300 whitespace-pre-wrap">{opt}</p>
                                                                 <button onClick={() => edit(n => chooseDescription(n, i))} className={`${secondary} self-start`}>Use this one</button>
                                                             </div>
@@ -775,7 +788,7 @@ export default function ShowNotesPage() {
                                             </label>
                                             <details className="text-sm">
                                                 <summary className="cursor-pointer text-gray-300">Preview the full description as it goes on YouTube</summary>
-                                                <pre className="mt-2 whitespace-pre-wrap font-sans text-gray-300 bg-[#130b29] border border-white/5 rounded-lg p-3">{youtubeDescription(notes, settings ?? undefined)}</pre>
+                                                <pre className="mt-2 whitespace-pre-wrap font-sans text-gray-300 bg-studio-page border border-studio-hairline rounded-lg p-3">{youtubeDescription(notes, settings ?? undefined)}</pre>
                                             </details>
                                             <div className="flex items-center gap-3">
                                                 <p className={small}>{words(notes.description)} words, plus the site link, chapters, subscribe line and hashtags</p>
@@ -951,8 +964,8 @@ export default function ShowNotesPage() {
                                             <TranscriptDownloads title={view.title} words={view.words} />
                                         </Part>
                                     </div>
-                                    <div className="flex flex-col gap-3 border-t border-white/5 pt-4">
-                                        <p className="text-xs text-gray-400 leading-relaxed rounded-lg bg-white/[0.03] border border-white/5 px-3 py-2">
+                                    <div className="flex flex-col gap-3 border-t border-studio-hairline pt-4">
+                                        <p className="text-xs text-gray-400 leading-relaxed rounded-lg bg-white/[0.03] border border-studio-hairline px-3 py-2">
                                             <span className="font-semibold text-gray-200">Changing the notes after sending to Descript?</span> Say, more &ldquo;In this episode&rdquo; clips:
                                             edit them here, approve the changes, rebuild the edit package, then send to Descript again.
                                         </p>
@@ -970,13 +983,14 @@ export default function ShowNotesPage() {
                                             <select
                                                 aria-label="What to draft again"
                                                 value={redraftOnly}
-                                                onChange={e => setRedraftOnly(e.target.value as "all" | "description" | "titles" | "broll")}
+                                                onChange={e => setRedraftOnly(e.target.value as RedraftScope)}
                                                 className={`${field} w-48`}
                                             >
                                                 <option value="all">Everything</option>
                                                 <option value="description">Only the description</option>
                                                 <option value="titles">Only the titles</option>
                                                 <option value="broll">Only the b-roll ideas</option>
+                                                <option value="teasers">Only the “In this episode” clips</option>
                                             </select>
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <button
@@ -994,7 +1008,7 @@ export default function ShowNotesPage() {
                                                             await load();
                                                             return redraftOnly === "all"
                                                                 ? "Claude is drafting the show notes again. This usually takes two to five minutes."
-                                                                : `Claude is rewriting the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]}. Everything else stays as it is. This usually takes two to five minutes.`;
+                                                                : `Claude is rewriting the ${REDRAFT_PART[redraftOnly as Exclude<RedraftScope, "all">]}. Everything else stays as it is. This usually takes two to five minutes.`;
                                                         });
                                                     }}
                                                     disabled={busy || drafting}
@@ -1003,7 +1017,7 @@ export default function ShowNotesPage() {
                                                 <span className={small}>
                                                     {redraftOnly === "all"
                                                         ? "Everything is replaced: Claude's new draft replaces everything in this stage, including your edits."
-                                                        : `Only the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]} ${redraftOnly === "broll" ? "are" : "is"} replaced; everything else stays as you left it.`}
+                                                        : `Only the ${REDRAFT_PART[redraftOnly as Exclude<RedraftScope, "all">]} ${redraftOnly === "description" ? "is" : "are"} replaced; everything else stays as you left it.`}
                                                     {" "}Either way it is a full Claude draft, about $0.50.
                                                 </span>
                                             </div>
@@ -1026,13 +1040,13 @@ export default function ShowNotesPage() {
                                                     max={15}
                                                     value={b.durationSeconds}
                                                     onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, durationSeconds: Number(e.target.value) || 3 } : x)) }))}
-                                                    className="w-16 bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                    className="w-16 bg-studio-page border border-studio-line rounded px-2 py-1"
                                                 />
                                                 <span className="text-gray-400">seconds</span>
                                                 <select
                                                     value={b.style}
                                                     onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, style: e.target.value as BrollStyle } : x)) }))}
-                                                    className="bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                    className="bg-studio-page border border-studio-line rounded px-2 py-1"
                                                     aria-label="Image style"
                                                     title="Photoreal for everyday things and places; Digital for spiritual and otherworldly moments"
                                                 >
@@ -1059,7 +1073,7 @@ export default function ShowNotesPage() {
                                                             onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, cue: e.target.value } : x)) }))}
                                                             placeholder="Words from the transcript where its subject comes up, e.g. “pets in the afterlife”"
                                                             maxLength={150}
-                                                            className="grow bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                            className="grow bg-studio-page border border-studio-line rounded px-2 py-1"
                                                         />
                                                         {b.cue.trim() && view.words.length > 0 && at === null && <span className="text-amber-300">Not found in the transcript</span>}
                                                         {off && (
@@ -1081,7 +1095,7 @@ export default function ShowNotesPage() {
                                                     onChange={e => edit(n => ({ ...n, broll: n.broll.map((x, j) => (j === i ? { ...x, search: e.target.value } : x)) }))}
                                                     placeholder="A few words a camera can film (the idea is searched when empty)"
                                                     maxLength={100}
-                                                    className="grow bg-[#130b29] border border-white/10 rounded px-2 py-1"
+                                                    className="grow bg-studio-page border border-studio-line rounded px-2 py-1"
                                                 />
                                             </label>
                                             <BrollImageView broll={broll} index={i} idea={b.idea} style={b.style}
@@ -1116,7 +1130,7 @@ export default function ShowNotesPage() {
                                         <span className={small}>Replaces only the b-roll ideas, each timed one second after the words where its subject comes up; about $0.50. Approve them, then find stock.</span>
                                     </div>
                                     {/* Stock first (free), then AI images for what stock left (docs/specs/023-stock-broll.md). */}
-                                    <div className="flex flex-wrap items-center gap-3 border-t border-white/5 pt-3">
+                                    <div className="flex flex-wrap items-center gap-3 border-t border-studio-hairline pt-3">
                                         <button
                                             onClick={() => broll.generate(null, "stock")}
                                             disabled={brollBlocked || brollChanged === 0}
@@ -1225,7 +1239,7 @@ export default function ShowNotesPage() {
                 </div>
 
                 {view && notes && (
-                    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-[#130b29]/95 backdrop-blur">
+                    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-studio-line bg-studio-page/95 backdrop-blur">
                         <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                             <div className="flex flex-col min-w-[10rem] flex-1">
                                 <span className="text-sm whitespace-nowrap">

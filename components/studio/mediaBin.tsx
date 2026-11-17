@@ -137,18 +137,18 @@ export function MediaPanel({ episodeId, items, error, canEdit, onItems, onAdd }:
                                 <li key={item.id} draggable={canEdit && !blocked}
                                     onDragStart={e => { e.dataTransfer.setData(BIN_DRAG_TYPE, item.id); e.dataTransfer.setData('text/plain', item.name); e.dataTransfer.effectAllowed = 'copy'; }}
                                     aria-label={`${item.name} (${item.kind})`}
-                                    className={`flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] p-1.5 ${canEdit && !blocked ? 'cursor-grab' : ''}`}>
+                                    className={`flex items-center gap-2 rounded-lg border border-studio-line bg-white/[0.02] p-1.5 ${canEdit && !blocked ? 'cursor-grab' : ''}`}>
                                     <Thumb item={item} />
                                     <span className="flex flex-col min-w-0 grow">
                                         <span className="text-xs text-gray-200 truncate" title={item.name}>{item.name}</span>
-                                        <span className="text-[11px] text-gray-500">
+                                        <span className="text-2xs text-gray-500">
                                             {item.kind === 'image' ? 'Picture' : item.kind === 'video' ? 'Video' : item.sound ? (item.sound.kind === 'music' ? 'Music' : 'Effect') : 'Sound'}
                                             {item.durationMs ? `, ${clock(item.durationMs)}` : ''}
                                             {item.source === 'broll' && item.startMs !== undefined ? `, planned at ${clock(item.startMs)}` : ''}
                                         </span>
                                     </span>
                                     {blocked ? (
-                                        <span className="text-[11px] text-amber-300 shrink-0"
+                                        <span className="text-2xs text-amber-300 shrink-0"
                                             title={blocked === 'Licence not checked' ? 'An admin checks it on the Music and effects page' : 'Upload it again and say it is yours to use'}>{blocked}</span>
                                     ) : (
                                         <span className="flex flex-col gap-1 shrink-0">

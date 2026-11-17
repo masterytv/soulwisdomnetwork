@@ -21,7 +21,7 @@ import { failure, useStep, type ReportStep } from "@/components/studio/steps";
 import { approveButton, chosen, primary, secondary } from "@/components/studio/ui";
 import type { ShortItemView, ShortsView } from "@/types/studio";
 
-const input = "bg-black/30 border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white w-full";
+const input = "bg-black/30 border border-studio-line rounded-lg px-3 py-1.5 text-sm text-white w-full";
 
 const WORKING: Record<string, string> = { pick: "Finding the best moments…", titles: "Writing headlines and titles…", render: "Making the shorts…", upload: "Scheduling on YouTube…" };
 
@@ -334,7 +334,7 @@ export function Shorts({ episodeId, enabled, report, revision }: { episodeId: st
                                                     disabled={working}
                                                     value=""
                                                     onChange={e => { const v = e.target.value; if (v) swapPick(v, s); }}
-                                                    className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200">
+                                                    className="bg-black/30 border border-studio-line rounded-lg px-2 py-1 text-xs text-gray-200">
                                                     <option value="">Swap for…</option>
                                                     {/* The place in the schedule, and the name as edited on the page; no byId lookups here. */}
                                                     {swapOptions.map(i => (
@@ -390,7 +390,7 @@ export function Shorts({ episodeId, enabled, report, revision }: { episodeId: st
             ))}
 
             {!!edits.items.length && (
-                <div className="border-t border-white/10 pt-4 flex flex-col gap-3">
+                <div className="border-t border-studio-line pt-4 flex flex-col gap-3">
                     <h4 className="text-sm text-gray-100 font-semibold">Checkpoint E: approve each short, then schedule them</h4>
                     <ul className="text-xs text-gray-400 list-disc pl-5 flex flex-col gap-0.5">
                         <li>Watch it through with sound: it starts on a hook and ends on a complete thought, not mid-word.</li>
@@ -401,7 +401,7 @@ export function Shorts({ episodeId, enabled, report, revision }: { episodeId: st
                         <label className="text-xs text-gray-400 flex items-center gap-2">
                             First one goes out
                             <input type="datetime-local" value={firstAt} onChange={e => setFirstAt(e.target.value)}
-                                className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200" />
+                                className="bg-black/30 border border-studio-line rounded-lg px-2 py-1 text-xs text-gray-200" />
                         </label>
                         <button onClick={() => start("upload")} disabled={working || starting || !waiting.length || !Number.isFinite(firstMs)} className={primary}>
                             {working && view?.job === "upload" ? WORKING.upload : `Schedule ${waiting.length || ""} on YouTube`.replace("  ", " ")}
@@ -445,17 +445,17 @@ function ShortCard({ n, item, view, url, drawnAsIs, saved, working, count, onCha
     }
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 bg-black/20 border border-white/5 rounded-xl p-3">
+        <div className="grid grid-cols-1 sm:grid-cols-[180px_1fr] gap-4 bg-black/20 border border-studio-hairline rounded-xl p-3">
             <div className="flex flex-col gap-1.5">
                 {view?.render && url ? (
                     <video key={view.render.key} src={url} controls preload="metadata" playsInline
                         className={`w-full aspect-[9/16] rounded-lg bg-black ${drawnAsIs ? "" : "opacity-50"}`} />
                 ) : (
-                    <div className="w-full aspect-[9/16] rounded-lg bg-black/40 border border-dashed border-white/10 flex items-center justify-center text-xs text-gray-400 text-center p-3">
+                    <div className="w-full aspect-[9/16] rounded-lg bg-black/40 border border-dashed border-studio-line flex items-center justify-center text-xs text-gray-400 text-center p-3">
                         Not made yet
                     </div>
                 )}
-                {view?.render && !drawnAsIs && !locked && <p className="text-[11px] text-amber-300">Changed since it was made; make it again.</p>}
+                {view?.render && !drawnAsIs && !locked && <p className="text-xs text-amber-300">Changed since it was made; make it again.</p>}
             </div>
             <div className="flex flex-col gap-2 min-w-0">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400">
@@ -495,7 +495,7 @@ function ShortCard({ n, item, view, url, drawnAsIs, saved, working, count, onCha
                     Shows AI imagery (YouTube&rsquo;s &ldquo;altered or synthetic content&rdquo;)
                 </label>
                 {!locked && !!words.length && (
-                    <div className="text-sm leading-relaxed max-h-44 overflow-y-auto bg-black/30 border border-white/5 rounded-lg p-2">
+                    <div className="text-sm leading-relaxed max-h-44 overflow-y-auto bg-black/30 border border-studio-hairline rounded-lg p-2">
                         {words.map((w, k) => {
                             const inside = w.start >= item.startMs - 50 && w.start < item.endMs;
                             return (

@@ -21,7 +21,7 @@ checking edits on the server, and by the page):
 | Field | What |
 |---|---|
 | `titles`, `chosenTitle` | Five title options; the producer picks one |
-| `teaserClips` | The "In this episode" cold open: 3-4 suggested clips from the episode (20-40 s); at least one cuts off before the answer. They go to Descript as separate files, where the producer has the final say |
+| `teaserClips` | The "In this episode" cold open: 3-4 clips (25-40 s) built as a sequence in beats, each with its beat and why (see "The opening" below). They go to the Studio editor's opening, or to Descript as separate files; the producer has the final say |
 | `description`, `hashtags` | YouTube description, 150-300 words, hook and keywords in the first two lines; three hashtags |
 | `summary` | Two or three paragraphs for the website episode page |
 | `chapters` | Start time and title; first at 0:00 |
@@ -126,12 +126,33 @@ An approval that a newer one replaces is kept in `episodes/{id}/approvals/{appro
 `POST …/notes/discard` `{ version }` and `POST …/notes/restore` `{ version, to }`
 (`lib/server/notes.ts`: `discardChanges`, `restoreApproval`).
 
+## The opening
+
+Rewritten 17 November 2026: the first drafts picked good lines one by one, so the cold open ran long
+(six clips, about 62 s, on "Why Do We Suffer?"), gave the answers away ("nothing kills you", "it won't
+last") and leaned on context the viewer did not have yet ("you touch on it in your book").
+
+Claude now builds the opening as one sequence (`teaserGuide` in `lib/showNotes.ts`, the same for every
+kind of recording, with its own example of a cut-off line):
+
+1. **hook**: the most human or surprising moment, so the first five seconds grab;
+2. **question**: the tension or big question the episode wrestles with;
+3. **intrigue**: a striking idea, piece of evidence or strange detail, shown only in part (left out with three clips);
+4. **cliffhanger**: last, cut off just before its payoff, mid-sentence if need be.
+
+Three or four clips, 25-40 s in all, each 4-15 s, in the order they play. No answers or conclusions;
+feeling and ideas mixed; more than one voice; every clip understandable cold, not starting on "So",
+"And", "Yeah" or "Well"; the opening promises what the first title promises. Each clip carries its
+`beat` and a one-line `why`, shown under it on the page (clips from before, or added by hand, have
+neither). **Draft again → Only the "In this episode" clips** rewrites just the opening, so older
+episodes can get one without losing the rest of their notes.
+
 ## Drafting again with direction
 
 Added from Jo Ann H's fork (Part A), 5 October 2026.
 
 - **Draft again with Claude** takes an optional direction (up to 1,000 characters) and what to
-  replace: everything, only the description, or only the titles. The direction is added to the
+  replace: everything, or only the description, the titles, the b-roll ideas or the "In this episode" clips. The direction is added to the
   prompt (`redraftDirection` in `lib/showNotes.ts`), and `mergeRedraft` keeps everything else
   as the producer left it. Pending edits are saved first; if that fails, nothing is redrafted.
 - Either way it is a full Claude run, about $0.50, within the daily spending limit.

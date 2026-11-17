@@ -126,7 +126,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
         <div className="flex flex-col gap-4">
             {build?.brollBlock && <p className="text-sm text-amber-300">{build.brollBlock}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
-                <div className="flex flex-col gap-2 rounded-lg border border-white/10 p-4">
+                <div className="flex flex-col gap-2 rounded-lg border border-studio-line p-4">
                     <h4 className="text-sm font-semibold text-white">1. Build for Studio editor</h4>
                     <p className={hint}>
                         Sets up the whole episode in the Studio editor: filler words, stammers and long pauses cut, the
@@ -149,7 +149,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
                         )}
                     </div>
                 </div>
-                <div className="flex flex-col gap-2 rounded-lg border border-white/10 p-4">
+                <div className="flex flex-col gap-2 rounded-lg border border-studio-line p-4">
                     <h4 className="text-sm font-semibold text-white">2. Build and export</h4>
                     <p className={hint}>
                         {build?.edited
@@ -173,7 +173,7 @@ export function BuildPackage({ episodeId, enabled, upToDate, report, revision }:
             {asking && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => { if (!starting) setAsking(false); }}>
                     <div role="alertdialog" aria-modal="true" aria-labelledby="rebuild-title"
-                        className="w-full max-w-md rounded-2xl border border-red-500/40 bg-[#1E1035] p-5 flex flex-col gap-3 text-sm text-gray-200"
+                        className="w-full max-w-md rounded-2xl border border-red-500/40 bg-studio-card p-5 flex flex-col gap-3 text-sm text-gray-200"
                         onClick={e => e.stopPropagation()}>
                         <h2 id="rebuild-title" className="text-lg font-semibold text-red-300">Are you sure?</h2>
                         <p className="font-medium">Rebuild the edit package</p>

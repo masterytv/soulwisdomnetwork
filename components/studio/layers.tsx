@@ -178,7 +178,7 @@ export function LayersPreview({ layers, clips, editedMs, video, urls, selected, 
                         className={`${clickable ? 'pointer-events-auto cursor-move' : ''} ${ring}`}
                         style={{ ...style, width: `${(l.w * 100).toFixed(3)}%` }}>
                         {!url ? (
-                            <div className="w-full aspect-video bg-white/10 text-[10px] text-gray-300 flex items-center justify-center">{l.media.name}</div>
+                            <div className="w-full aspect-video bg-white/10 text-2xs text-gray-300 flex items-center justify-center">{l.media.name}</div>
                         ) : l.kind === 'video' ? (
                             <LayerVideo layer={l} url={url} span={span} nowMs={nowMs} playing={playing} fill={fillsFrame(l)} />
                         ) : l.motion !== 'none' ? (

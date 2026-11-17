@@ -30,7 +30,7 @@ interface Props {
 
 export default function SpeakersPanel({ rows, knownNames, onRename, onClip, onMerge, onUnmerge, onAdd, onSeek }: Props) {
     return (
-        <section className="bg-[#1E1035]/40 border border-white/5 rounded-2xl p-4 flex flex-col gap-3">
+        <section className="bg-studio-card/40 border border-studio-hairline rounded-2xl p-4 flex flex-col gap-3">
             <header>
                 <h2 className="font-semibold">Voices</h2>
                 <p className="text-xs text-gray-500">
@@ -41,7 +41,7 @@ export default function SpeakersPanel({ rows, knownNames, onRename, onClip, onMe
                 {knownNames.map(n => <option key={n} value={n} />)}
             </datalist>
             {rows.map(row => (
-                <div key={row.label} className="rounded-xl border border-white/5 bg-[#130b29]/60 p-3 flex flex-col gap-2">
+                <div key={row.label} className="rounded-xl border border-studio-hairline bg-studio-page/60 p-3 flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                         <span className="w-3 h-3 rounded-full shrink-0" style={{ background: row.color }} />
                         <input
@@ -49,7 +49,7 @@ export default function SpeakersPanel({ rows, knownNames, onRename, onClip, onMe
                             onChange={e => onRename(row.label, e.target.value)}
                             placeholder={row.placeholder}
                             list="known-names"
-                            className={`flex-1 min-w-0 bg-transparent border rounded px-2 py-1 text-sm font-semibold ${row.named ? "border-white/10" : "border-orange-400/60"}`}
+                            className={`flex-1 min-w-0 bg-transparent border rounded px-2 py-1 text-sm font-semibold ${row.named ? "border-studio-line" : "border-orange-400/60"}`}
                             aria-label={`Name for voice ${row.label}`}
                         />
                         {row.sampleMs !== null && (
@@ -80,7 +80,7 @@ export default function SpeakersPanel({ rows, knownNames, onRename, onClip, onMe
                             <select
                                 value=""
                                 onChange={e => e.target.value && onMerge(row.label, e.target.value)}
-                                className="bg-[#130b29] border border-white/10 rounded px-1.5 py-0.5 text-gray-300"
+                                className="bg-studio-page border border-studio-line rounded px-1.5 py-0.5 text-gray-300"
                             >
                                 <option value="">Same person as…</option>
                                 {rows.filter(r => r.label !== row.label).map(r => (

@@ -1,7 +1,7 @@
 "use client";
 
 // Thumbnails and Checkpoint D on the show notes page (docs/specs/011-thumbnails.md). The job
-// makes the raw material (texts, frames, an AI background); this panel draws the three options
+// makes the raw material (texts, frames and their cut-outs, an AI background); this panel draws the four options
 // from it as the producer edits, and approving uploads the chosen one exactly as drawn.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -114,6 +114,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
         if (!view) return;
         const wanted = [
             ...view.frames.map((f, i) => ({ name: `frame-${i}`, key: f.key })),
+            ...view.frames.flatMap((f, i) => (f.cutoutKey ? [{ name: `cutout-${i}`, key: f.cutoutKey }] : [])),
             ...(view.image ? [{ name: "ai", key: view.image.key }] : []),
             ...(view.approval ? [{ name: "approved", key: view.approval.key }] : []),
         ].filter(w => !images[`${w.name}:${w.key}`]);
@@ -127,17 +128,21 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
 
     const imageFor = (name: string, key: string | undefined) => (key ? images[`${name}:${key}`] : undefined);
     const frameImage = imageFor(`frame-${frame}`, view?.frames[frame]?.key);
+    const cutoutImage = imageFor(`cutout-${frame}`, view?.frames[frame]?.cutoutKey ?? undefined);
     const aiImage = imageFor("ai", view?.image?.key);
+    // "Host over AI image" needs the picked frame's cut-out and the AI background.
+    const canCutout = !!view?.frames[frame]?.cutoutKey && !!view?.image;
+    const kinds = THUMB_KINDS.filter(k => k !== "cutout" || canCutout);
 
-    // Redraw the three options whenever anything they show changes.
+    // Redraw the options whenever anything they show changes.
     useEffect(() => {
         if (!family) return;
-        const set: ThumbImages = { frame: frameImage?.bitmap ?? null, ai: aiImage?.bitmap ?? null, logo };
+        const set: ThumbImages = { frame: frameImage?.bitmap ?? null, cutout: cutoutImage?.bitmap ?? null, ai: aiImage?.bitmap ?? null, logo };
         for (const kind of THUMB_KINDS) {
             const ctx = canvases.current[kind]?.getContext("2d");
             if (ctx) drawThumbnail(ctx, kind, text, set, family, colors);
         }
-    }, [family, text, frameImage, aiImage, logo, colors, view?.frames.length]);
+    }, [family, text, frameImage, cutoutImage, aiImage, logo, colors, canCutout, view?.frames.length]);
 
     const save = useCallback(async (picks: { text?: string; frame?: number; choice?: ThumbKind | null }) => {
         try {
@@ -213,7 +218,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                         ? "Get the final cut first (from Descript or the Editor Light render): the frames come from it."
                         : ready
                             ? "Pick a text and a frame, then the option you like. “Make new options” replaces the texts, frames and AI image (about $0.20)."
-                            : "Makes three options: a frame from the episode, an AI image and the brand template, all with a short text. About $0.20."}
+                            : "Makes four options: a frame from the episode, the host cut out over an AI image, the AI image alone and the brand template, all with a short text. About $0.20."}
             </p>
             {view?.stale && <p className="text-sm text-amber-300">These options came from an earlier final cut. Make new options to match.</p>}
             {view?.status === "failed" && <ErrorNote title="Making thumbnails failed" message={view.error} />}
@@ -232,11 +237,11 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                             ))}
                         </div>
                         <input value={text} onChange={e => editText(e.target.value)} maxLength={60}
-                            className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white max-w-xl" />
+                            className="bg-black/30 border border-studio-line rounded-lg px-3 py-2 text-sm text-white max-w-xl" />
                     </div>
 
                     <div className="flex flex-col gap-2">
-                        <p className="text-sm text-gray-300">Frame <span className="text-xs text-gray-400">(used by the frame option and the brand template)</span></p>
+                        <p className="text-sm text-gray-300">Frame <span className="text-xs text-gray-400">(used by the frame option, the host over the AI image and the brand template)</span></p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {view.frames.map((f, i) => {
                                 const img = imageFor(`frame-${i}`, f.key);
@@ -245,32 +250,39 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                                         className={`relative rounded-lg overflow-hidden border-2 aspect-video bg-black/40 ${i === frame ? "border-amber-400" : "border-transparent hover:border-white/30"}`}>
                                         {/* eslint-disable-next-line @next/next/no-img-element -- a local blob */}
                                         {img && <img src={img.src} alt={`Frame at ${mmss(f.atMs)}`} className="w-full h-full object-cover" />}
-                                        <span className="absolute bottom-0 left-0 text-[10px] px-1.5 py-0.5 bg-black/60 text-gray-200">{mmss(f.atMs)} {f.speaker}</span>
+                                        <span className="absolute bottom-0 left-0 text-2xs px-1.5 py-0.5 bg-black/70 text-gray-200">{mmss(f.atMs)} {f.speaker}</span>
                                     </button>
                                 );
                             })}
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        {THUMB_KINDS.map(kind => (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {kinds.map(kind => (
                             <button key={kind} onClick={() => { setChoice(kind); save({ choice: kind }); }}
-                                className={`flex flex-col gap-1.5 text-left rounded-xl p-1.5 border-2 ${choice === kind ? "border-emerald-400 bg-emerald-500/5" : "border-white/10 hover:border-white/30"}`}>
+                                className={`flex flex-col gap-1.5 text-left rounded-xl p-1.5 border-2 ${choice === kind ? "border-emerald-400 bg-emerald-500/5" : "border-studio-line hover:border-white/30"}`}>
                                 <canvas ref={el => { canvases.current[kind] = el; }} width={THUMB_WIDTH} height={THUMB_HEIGHT} className="w-full rounded-lg" />
                                 <span className="text-xs text-gray-300 px-1">{choice === kind ? "✓ " : ""}{THUMB_LABELS[kind]}</span>
                             </button>
                         ))}
                     </div>
+                    {!canCutout && (
+                        <p className="text-xs text-gray-400">
+                            {!view.frames.some(f => f.cutoutKey)
+                                ? "“Host over AI image” needs the hosts cut out of the frames: make new options to get it."
+                                : !view.image ? "“Host over AI image” needs the AI image." : "No one was found to cut out of this frame: pick another for “Host over AI image”."}
+                        </p>
+                    )}
                     <p className="text-xs text-gray-400">Check each one small too: most people see thumbnails at about a fifth of this size.</p>
 
                     <details className="text-xs text-gray-400">
                         <summary className="cursor-pointer text-gray-300">AI image: {view.image?.idea ?? "none yet"}</summary>
                         <div className="flex flex-col gap-2 mt-2">
                             <textarea value={idea} onChange={e => setIdea(e.target.value)} rows={3} maxLength={600}
-                                className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-sm text-white" />
+                                className="bg-black/30 border border-studio-line rounded-lg px-3 py-2 text-sm text-white" />
                             <div className="flex flex-wrap items-center gap-3">
                                 <select value={style} onChange={e => setStyle(e.target.value as BrollStyle)}
-                                    className="bg-black/30 border border-white/10 rounded-lg px-2 py-1 text-xs text-gray-200">
+                                    className="bg-black/30 border border-studio-line rounded-lg px-2 py-1 text-xs text-gray-200">
                                     {BROLL_STYLE_IDS.map(s => <option key={s} value={s}>{BROLL_STYLES[s].label}</option>)}
                                 </select>
                                 <button onClick={() => start(true)} disabled={working || starting || !idea.trim()} className={secondary}>
@@ -283,7 +295,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                 </>
             )}
 
-            <div className="border-t border-white/10 pt-4 flex flex-col gap-3">
+            <div className="border-t border-studio-line pt-4 flex flex-col gap-3">
                 <h4 className="text-sm text-gray-100 font-semibold">Checkpoint D: approve the episode for YouTube</h4>
                 <ul className="text-xs text-gray-400 flex flex-col gap-0.5">
                     <li>Title: <span className="text-gray-200">{view?.title ?? "—"}</span></li>
@@ -302,7 +314,7 @@ export function Thumbnails({ episodeId, enabled, report, revision }: { episodeId
                     </div>
                 )}
                 <div className="flex flex-wrap items-center gap-3">
-                    <button onClick={approve} disabled={!choice || blockers.length > 0 || approving || working || !family} className={approveButton}>
+                    <button onClick={approve} disabled={!choice || !kinds.includes(choice) || blockers.length > 0 || approving || working || !family} className={approveButton}>
                         {approving ? "Approving…" : approval ? "Approve again with this thumbnail" : "Approve episode"}
                     </button>
                     {approval && <button onClick={withdraw} className={secondary}>Withdraw approval</button>}

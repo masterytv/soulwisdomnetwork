@@ -14,6 +14,7 @@ import type { Episode } from '../../../types/episode';
 import { loadAlert } from './config';
 import { draftNotes, type Draft, type Effort, type ReviewedLine } from './notesDraft';
 import { sendEmail } from './notify';
+import { loadSettings } from './settings';
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -30,7 +31,9 @@ const runs = (process.env.NOTES_RUNS || 'claude-opus-5:high,claude-opus-5-5:medi
         const [model, effort = 'high'] = r.split(':').map(s => s.trim());
         if (!/^claude-[a-z0-9-]+$/.test(model) || !EFFORTS.includes(effort as Effort)) throw new Error(`Not a valid run: ${r}`);
         return { model, effort: effort as Effort, label: `${model} · ${effort}` };
-    });
+    })
+    // The same model and effort twice shows how much one draft varies from the next.
+    .map((r, i, all) => (all.filter(o => o.label === r.label).length > 1 ? { ...r, label: `${r.label} · ${i + 1}` } : r));
 if (!runs.length || runs.length > 6) throw new Error('Give between one and six runs');
 initializeApp({
     credential: cert(JSON.parse(required('PODCAST_SA_JSON'))),
@@ -65,10 +68,11 @@ table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px;text-
 h2{margin-top:32px}h3{font-size:13px;color:#555;margin:0 0 8px}.meta{color:#777;font-size:12px}p{white-space:pre-wrap}
 </style></head><body>
 <h1>Show notes comparison: ${esc(episode.title)}</h1>
-<p class="meta">Same transcript and prompt for every run. "Unverified" counts quotes and clips not found word for word in the transcript.</p>
+<p class="meta">Same transcript, prompt and Studio settings for every run; the last column is the episode's notes as they are now, from the prompt they were drafted with. "Unverified" counts quotes and clips not found word for word in the transcript.</p>
 <table><tr><th>Run</th><th>Model that answered</th><th>Time</th><th>Input tokens</th><th>Output tokens</th><th>Cost</th><th>Quotes</th><th>Clips</th><th>Chapters</th><th>Unverified</th></tr>${stats}</table>
 ${section('"In this episode" clips', columns, n => list(n.teaserClips.map(c =>
-        `<span class="meta">${mmss(c.startMs)}, ${secs(c.startMs, c.endMs)}, ${esc(c.speaker)}</span><br>${esc(c.text)}`)))}
+        `<span class="meta">${mmss(c.startMs)}, ${secs(c.startMs, c.endMs)}, ${esc(c.speaker)}${c.beat ? `, <b>${esc(c.beat)}</b>` : ''}</span><br>` +
+        `${esc(c.text)}${c.why ? `<br><span class="meta">${esc(c.why)}</span>` : ''}`)))}
 ${section('Titles', columns, n => list(n.titles.map(esc)))}
 ${section('YouTube description', columns, n => `<p>${esc(n.description)}</p><p class="meta">${esc(n.hashtags.join(' '))}</p>`)}
 ${section('Website summary', columns, n => `<p>${esc(n.summary)}</p>`)}
@@ -92,8 +96,10 @@ async function main() {
     console.log(`📝 ${episode.title}: ${lines.length} lines; ${runs.map(r => r.label).join(', ')}`);
 
     const client = new Anthropic({ apiKey: required('ANTHROPIC_API_KEY') });
+    // The show's own settings (its writing instructions and kind of recording), as notes.ts drafts with.
+    const settings = await loadSettings(getFirestore());
     const results = await Promise.allSettled(runs.map(async r => {
-        const draft = await draftNotes(client, episode, lines, r.model, r.effort);
+        const draft = await draftNotes(client, episode, lines, r.model, r.effort, settings);
         console.log(`✅ ${r.label}: ${draft.model}, ${draft.seconds}s, ${draft.inputTokens} in, ${draft.outputTokens} out, $${draft.usd}`);
         return draft;
     }));
@@ -104,9 +110,11 @@ async function main() {
         if (res.status === 'fulfilled') columns.push({ label: runs[i].label, notes: res.value.notes, draft: res.value });
         else failures.push(`${runs[i].label}: ${(res.reason as Error).message}`);
     });
-    // What the producer approved, for reference.
+    // The episode's notes as they are now, for reference: what the producer approved, or else the draft.
     const approved = episode.notes?.status === 'approved' ? StoredShowNotesSchema.safeParse(episode.notes.approved) : null;
+    const current = !approved?.success && episode.notes?.draft ? StoredShowNotesSchema.safeParse(episode.notes.draft) : null;
     if (approved?.success) columns.push({ label: 'Approved notes', notes: approved.data });
+    else if (current?.success) columns.push({ label: 'Current draft', notes: current.data });
     if (!columns.some(c => c.draft)) throw new Error(`Every run failed. ${failures.join('; ')}`);
 
     const html = report(episode, columns);

@@ -16,11 +16,11 @@ const PILL: Record<StageStatus, [string, string] | null> = {
 };
 
 const CARD: Record<StageStatus, string> = {
-    done: "border-white/10",
+    done: "border-studio-line",
     next: "border-amber-400/60 shadow-[0_10px_40px_-18px_rgba(245,158,11,0.55)]",
     working: "border-sky-400/40",
     failed: "border-2 border-red-500/70",
-    waiting: "border-white/5",
+    waiting: "border-studio-hairline",
 };
 
 export function StatusBadge({ status, n, small = false }: { status: StageStatus; n: number; small?: boolean }) {
@@ -30,7 +30,7 @@ export function StatusBadge({ status, n, small = false }: { status: StageStatus;
         next: "bg-amber-500 text-black",
         working: "bg-sky-500/10 text-sky-200",
         failed: "bg-red-500 text-white",
-        waiting: "bg-white/5 text-gray-400 ring-1 ring-white/10",
+        waiting: "bg-white/5 text-gray-400 ring-1 ring-studio-line",
     }[status];
     return (
         <span aria-hidden className={`relative shrink-0 inline-flex items-center justify-center rounded-full font-bold tabular-nums ${size} ${tone}`}>
@@ -46,7 +46,7 @@ export function Stage({ id, n, title, checkpoint, status, summary, links, open, 
 }) {
     const pill = PILL[status];
     return (
-        <section id={id} aria-labelledby={`${id}-title`} className={`rounded-2xl border bg-[#1E1035]/50 scroll-mt-20 transition-colors ${CARD[status]}`}>
+        <section id={id} aria-labelledby={`${id}-title`} className={`rounded-2xl border bg-studio-card/50 scroll-mt-20 transition-colors ${CARD[status]}`}>
             {/* The whole header folds and unfolds; the button inside is what keyboards and screen readers use. */}
             <div onClick={onToggle} className="flex items-center gap-3 sm:gap-4 px-4 py-3.5 sm:px-5 cursor-pointer select-none group">
                 <StatusBadge status={status} n={n} />
@@ -58,10 +58,10 @@ export function Stage({ id, n, title, checkpoint, status, summary, links, open, 
                                 {title}
                             </button>
                         </h2>
-                        {pill && <span className={`text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${pill[1]}`}>{pill[0]}</span>}
+                        {pill && <span className={`text-2xs font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full ${pill[1]}`}>{pill[0]}</span>}
                         {checkpoint && (
                             <span title="A person checks and approves here before anything goes further"
-                                className="text-[11px] font-medium px-2 py-0.5 rounded-full ring-1 ring-white/15 text-gray-300">
+                                className="text-2xs font-medium px-2 py-0.5 rounded-full ring-1 ring-studio-edge text-gray-300">
                                 Checkpoint {checkpoint}
                             </span>
                         )}
@@ -80,7 +80,7 @@ export function Stage({ id, n, title, checkpoint, status, summary, links, open, 
                 </svg>
             </div>
             {/* Folded stages stay mounted: each keeps loading and reporting its step. */}
-            <div id={`${id}-body`} className={open ? "flex flex-col gap-5 border-t border-white/5 px-4 pt-4 pb-5 sm:px-5" : "hidden"}>
+            <div id={`${id}-body`} className={open ? "flex flex-col gap-5 border-t border-studio-hairline px-4 pt-4 pb-5 sm:px-5" : "hidden"}>
                 {intro && <p className="text-sm text-gray-400 leading-relaxed max-w-3xl">{intro}</p>}
                 {children}
             </div>
@@ -91,7 +91,7 @@ export function Stage({ id, n, title, checkpoint, status, summary, links, open, 
 // A part of a stage, e.g. the chapters within the show notes.
 export function Part({ id, title, hint, aside, children }: { id?: string; title: string; hint?: ReactNode; aside?: ReactNode; children: ReactNode }) {
     return (
-        <div id={id} className="flex flex-col gap-3 scroll-mt-36 border-t border-white/5 pt-5 first:border-t-0 first:pt-0">
+        <div id={id} className="flex flex-col gap-3 scroll-mt-36 border-t border-studio-hairline pt-5 first:border-t-0 first:pt-0">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                 <h3 className="text-base font-semibold text-gray-100">{title}</h3>
                 {aside}

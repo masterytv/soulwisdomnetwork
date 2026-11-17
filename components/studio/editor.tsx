@@ -1185,7 +1185,7 @@ export function Editor({
 
     // Transcript
     const transcript = (
-        <div ref={transcriptRef} className={`${workspace ? 'flex-1 min-h-0' : 'md:w-1/2 h-[calc(100vh-220px)] min-h-[400px]'} overflow-y-auto rounded-lg bg-[#130b29] p-4`}>
+        <div ref={transcriptRef} className={`${workspace ? 'flex-1 min-h-0' : 'md:w-1/2 h-[calc(100vh-220px)] min-h-[400px]'} overflow-y-auto rounded-lg bg-studio-page p-4`}>
                 {paras.map((para, pi) => (
                     <div key={pi} className="mb-4" style={{ contentVisibility: 'auto' }}>
                         <p className="text-sm font-bold text-amber-400 mb-1">
@@ -1329,7 +1329,7 @@ export function Editor({
     // bottom and the On screen panel (Part I) beside the preview.
     if (workspace) {
         return (
-            <div ref={containerRef} tabIndex={0} className="outline-none">
+            <div ref={containerRef} tabIndex={0} data-focus-container className="outline-none">
                 <Workspace
                     header={<>
                         {heading}
@@ -1574,7 +1574,7 @@ export function Editor({
 
     // The quick edit, in step 3 of the pipeline.
     return (
-        <div ref={containerRef} tabIndex={0} className="flex flex-col gap-4 outline-none">
+        <div ref={containerRef} tabIndex={0} data-focus-container className="flex flex-col gap-4 outline-none">
             {/* Help line: how to edit, and the keys on Undo and Redo. */}
             <p className={hint}>Click a word, or drag across words, to select · Delete or Backspace cuts them · Double-click a cut word to bring it back, or a kept word to retype it · Space plays and pauses · Ctrl or ⌘ + Z undoes, Ctrl or ⌘ + Y redoes</p>
             {/* What only the Studio editor shows (spec 020): it stays as it is, and word cuts still work here. */}
@@ -1597,7 +1597,7 @@ export function Editor({
 
             {/* Help panel: the editing help and the hint line, opened by the "?" button. */}
             {helpOpen && (
-                <div className={`${hint} rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 flex flex-col gap-1`}>
+                <div className={`${hint} rounded-lg border border-studio-line bg-white/[0.03] px-3 py-2 flex flex-col gap-1`}>
                     <p>{helpLine}</p>
                     <p>Amber = suggested · Grey = your cuts · Enter in search: next match</p>
                 </div>

@@ -26,7 +26,7 @@ import type { FinalSource } from "@/components/studio/steps";
 const COLORS = ["#f59e0b", "#38bdf8", "#a78bfa", "#34d399", "#f472b6", "#fb7185", "#facc15", "#2dd4bf", "#c084fc", "#94a3b8"];
 const button = "text-xs px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-40 disabled:cursor-not-allowed";
 const primary = `${button} border-amber-500/40 text-amber-300 hover:bg-amber-500/10`;
-const secondary = `${button} border-white/10 text-gray-300 hover:bg-white/10`;
+const secondary = `${button} border-studio-line text-gray-300 hover:bg-white/10`;
 
 type SaveState = "saved" | "unsaved" | "saving" | "error";
 
@@ -293,7 +293,7 @@ export default function SpeakerReviewPage() {
 
     if (!allowed) {
         return (
-            <div className="min-h-screen bg-[#130b29] flex items-center justify-center p-4">
+            <div className="min-h-screen bg-studio-page flex items-center justify-center p-4">
                 <div className="bg-red-900/20 border border-red-500/50 rounded-xl p-8 max-w-md text-center">
                     <h1 className="text-2xl font-bold text-red-400 mb-2">Access Denied</h1>
                     <p className="text-gray-300">The Podcast Studio is for admins and producers.</p>
@@ -309,7 +309,7 @@ export default function SpeakerReviewPage() {
 
     return (
         <AuthGuard>
-            <div className="min-h-screen bg-[#130b29] text-gray-100 p-4 pb-28 sm:p-8 sm:pb-28">
+            <div className="min-h-screen bg-studio-page text-gray-100 p-4 pb-28 sm:p-8 sm:pb-28">
                 <div className="max-w-7xl mx-auto flex flex-col gap-6">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                         <div className="min-w-0">
@@ -374,7 +374,7 @@ export default function SpeakerReviewPage() {
                             </div>
 
                             <section className="flex flex-col gap-2 min-w-0">
-                                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 pb-2 border-b border-white/5">
+                                <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 pb-2 border-b border-studio-hairline">
                                     <span>{lines.length} lines</span>
                                     <span className={flags.size ? "text-orange-300" : ""}>
                                         {flags.size} flagged
@@ -418,7 +418,7 @@ export default function SpeakerReviewPage() {
                 </div>
                 {/* Always in view: where your changes are, and the button that finishes the review. */}
                 {review && (
-                    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-white/10 bg-[#130b29]/95 backdrop-blur">
+                    <div className="fixed bottom-0 inset-x-0 z-40 border-t border-studio-line bg-studio-page/95 backdrop-blur">
                         <div className="max-w-7xl mx-auto px-4 sm:px-8 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                             <span className={`text-sm ${saveState === "error" ? "text-red-300" : saveState === "saved" ? "text-green-300" : "text-gray-400"}`}>
                                 {saveState === "saved" ? "✓ " : ""}{saveLabel}

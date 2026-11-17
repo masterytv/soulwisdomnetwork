@@ -123,7 +123,7 @@ export function Youtube({ episodeId, enabled, report, revision }: { episodeId: s
                         <dt className="text-gray-500">Made for kids</dt><dd>No</dd>
                         <dt className="text-gray-500">Tags</dt><dd>{p.tags.join(", ")}</dd>
                         <dt className="text-gray-500">Description</dt>
-                        <dd><pre className="whitespace-pre-wrap font-sans text-gray-300 bg-[#130b29] border border-white/5 rounded-lg p-3">{p.description}</pre></dd>
+                        <dd><pre className="whitespace-pre-wrap font-sans text-gray-300 bg-studio-page border border-studio-hairline rounded-lg p-3">{p.description}</pre></dd>
                     </dl>
                 </details>
             )}
