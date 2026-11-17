@@ -9,7 +9,7 @@ import { crc32 as zlibCrc32 } from 'node:zlib';
 import { z } from 'zod';
 import { meetingDocx } from './meetingDoc';
 import {
-    chooseDescription, mergeRedraft, notesSchemaFor, redraftDirection, ShowNotesSchema, StoredShowNotesSchema, type ShowNotes,
+    chooseDescription, mergeRedraft, notesSchemaFor, redraftDirection, ShowNotesSchema, StoredShowNotesSchema, TEASER_BEATS, type ShowNotes,
 } from './showNotes';
 import { DEFAULT_SETTINGS, withDefaults } from './studioSettings';
 
@@ -154,4 +154,35 @@ test('meeting notes download: a Word document with every part, text made safe', 
     assert.match(doc, /1:01/);
     assert.match(doc, /Budget/);
     assert.match(new TextDecoder().decode(files.get('[Content_Types].xml')), /wordprocessingml\.document\.main\+xml/);
+});
+
+test('the opening: every kind of recording asks for a sequence in beats, cut before the payoff, with no answer', () => {
+    for (const format of ['podcast', 'meeting', 'talk'] as const) {
+        const j = json(notesSchemaFor(withDefaults({ format })));
+        for (const beat of TEASER_BEATS) assert.match(j, new RegExp(`"${beat}"`), `${format}: ${beat}`);
+        assert.match(j, /"why"/);
+        assert.match(j, /25-40 seconds/);
+        assert.match(j, /Never include an answer/);
+    }
+    assert.match(json(ShowNotesSchema), /I think the meaning of life is\.\.\./);
+    assert.match(json(notesSchemaFor(withDefaults({ format: 'meeting' }))), /The one thing we changed was\.\.\./);
+});
+
+test('the opening: clips stored before beats, or added by a producer, still load', () => {
+    const n = StoredShowNotesSchema.parse({ ...legacy, teaserClips: [
+        { text: 'old clip', speaker: 'Sam', startMs: 1000, endMs: 3000 },
+        { text: 'new clip', speaker: 'Sam', startMs: 4000, endMs: 6000, beat: 'cliffhanger', why: 'Stops before the answer.' },
+    ] });
+    assert.equal(n.teaserClips[0].beat, undefined);
+    assert.equal(n.teaserClips[1].beat, 'cliffhanger');
+    assert.throws(() => StoredShowNotesSchema.parse({ ...legacy, teaserClips: [{ text: 'x', speaker: 'S', startMs: 0, endMs: 1, beat: 'ending' }] }));
+});
+
+test('redraft: only the opening\'s clips, with or without direction', () => {
+    const current = notes({ titles: ['Kept'], teaserClips: [{ text: 'old', speaker: 'Sam', startMs: 0, endMs: 1000 }] });
+    const fresh = notes({ titles: ['New'], teaserClips: [{ text: 'new', speaker: 'Sam', startMs: 2000, endMs: 3000, beat: 'hook', why: 'Grabs.' }] });
+    const t = mergeRedraft(current, fresh, 'teasers');
+    assert.deepEqual(t.teaserClips, fresh.teaserClips);
+    assert.deepEqual(t.titles, ['Kept']);
+    assert.match(redraftDirection({ instruction: '', only: 'teasers' }), /In this episode/);
 });
