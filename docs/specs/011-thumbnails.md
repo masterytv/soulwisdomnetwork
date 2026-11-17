@@ -6,13 +6,14 @@
 
 ## Goal
 
-Three thumbnail options per episode, as spec 005 asks:
+Thumbnail options per episode; spec 005 asks for three:
 
 - a **frame** from the episode
 - an **AI image**
 - a **brand template**
 
-Each carries a short text. A person picks one at **Checkpoint D** and approves the episode for
+and, since 17 November 2026, a fourth: the **host over the AI image**, the host cut out of a frame
+(rembg) and stood over the AI background. Each carries a short text. A person picks one at **Checkpoint D** and approves the episode for
 the YouTube upload (step 13). Thumbnails drive more views than anything else in the pipeline,
 so this checkpoint stays human.
 
@@ -20,7 +21,7 @@ so this checkpoint stays human.
 
 - **Text:** a short hook of 2 to 5 words, not the title. YouTube shows the title beside the
   thumbnail, and 70 characters cannot be read at thumbnail size. Claude suggests five, and the
-  producer picks one or edits it. Words in `*asterisks*` are drawn in gold. All three options
+  producer picks one or edits it. Words in `*asterisks*` are drawn in gold. All the options
   carry the same text.
 - **Frame:** the producer picks from about eight frames of the final cut, taken at the
   strongest quotes. A single automatic frame too often catches a blink or a word.
@@ -43,15 +44,30 @@ so this checkpoint stays human.
      is 2.5 s into its quote. ffmpeg reads each one straight from Storage through a signed
      URL, so the episode is not downloaded. Frames are 1280×720 JPEGs, and one that fails is
      skipped.
+   - **Cut-outs.** The people in each frame are cut out over transparency by
+     `agent/src/podcast/cutout.py`: rembg (MIT) with its `u2net_human_seg` model (Apache-2.0),
+     trained on people only, so the room behind a host stays out. One Python run does every
+     frame: the model loads in about 3 s and each frame takes under a second on the runner's CPU,
+     no GPU. Each cut-out is a PNG cropped to its people, saved beside its frame as
+     `cutout-NN-{ts}.png` (`ThumbnailFrame.cutoutPath`). A frame where people cover under 3 % of
+     the picture gets none. The workflow installs rembg into a venv from the pinned
+     `agent/requirements-cutout.txt` (about 30 s, plus the model, about 180 MB, from rembg's
+     GitHub releases); if that or the cut-out fails, the run carries on without the option.
    - **AI background.** `gpt-image-2`, like the b-roll, with the brand style and palette. The
      prompt (`thumbnailImagePrompt`) asks for one bold subject in the right half and a calm
      left third for the text, and applies the same content rules as the b-roll: no text, no
      real likenesses, God as light.
    - It saves `thumbnails.*`, adds the costs (`thumbnail_text`, `thumbnail_image`) and emails a
      link. A new run replaces the earlier picks.
-3. The page draws the three options on canvases in the browser
+3. The page draws the four options on canvases in the browser
    (`components/studio/thumbnailCanvas.ts`), so a text edit or a new frame shows at once:
    - **Frame:** the frame fills the picture, with the text along the bottom and the logo top right.
+   - **Host over AI image:** the AI image fills the picture, darkened towards the left; the
+     picked frame's cut-out stands on the bottom edge on the right, as large as fits
+     (`cutoutBox` in `lib/thumbnail.ts`: at most 58 % of the width and 96 % of the height, never
+     enlarged past 1.6×), lit from behind by a soft gold glow; the text sits on the left and the
+     logo top left. The option shows only when the picked frame has a cut-out and there is an
+     AI image; episodes made before it get it with **Make new options**.
    - **AI image:** the image fills the picture, with the text in the left third and the logo top right.
    - **Brand template:** a violet ground with a gold border, the logo top left, the text on the
      left and the frame in a gold-edged panel on the right. It is the same layout every
@@ -87,5 +103,7 @@ About $0.20 an episode: Claude about $0.03, one image $0.165. A new AI image alo
 
 ## Later
 
-- Upload your own thumbnail (for example from Canva) as a fourth option.
+- Upload your own thumbnail (for example from Canva) as another option.
+- Sharpen the frame before it is cut out (Real-ESRGAN, `docs/ENHANCEMENTS.md`), if 720p
+  recordings look soft at thumbnail size.
 - Measure click-through per option type once episodes are public, and drop the weakest.

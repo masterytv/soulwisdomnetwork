@@ -279,6 +279,7 @@ export interface ThumbnailFrame {
     atMs: number;                         // in the final cut
     speaker: string;                      // the quote it was taken at
     text: string;
+    cutoutPath?: string;                  // Cloud Storage, PNG: its people over transparency, cropped to them (rembg)
 }
 
 export interface EpisodeThumbnails {

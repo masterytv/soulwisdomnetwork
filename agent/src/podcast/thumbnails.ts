@@ -1,9 +1,10 @@
-// Spec 005 step 12: the raw material for three thumbnail options, made from the final cut and
+// Spec 005 step 12: the raw material for four thumbnail options, made from the final cut and
 // the approved show notes:
 //   - five short texts for the image, from Claude
-//   - frames from the final cut at the strongest quotes, for the producer to pick from
+//   - frames from the final cut at the strongest quotes, for the producer to pick from, each with
+//     its people cut out where rembg finds any (cutout.py), for the "Host over AI image" option
 //   - one AI background in the brand look
-// The Studio draws the three options from these (components/studio/thumbnailCanvas.ts) and the
+// The Studio draws the four options from these (components/studio/thumbnailCanvas.ts) and the
 // producer picks one at Checkpoint D. Runs in GitHub Actions (.github/workflows/podcast_thumbnails.yml).
 // docs/specs/011-thumbnails.md
 //
@@ -25,6 +26,7 @@ import { loadAlert } from './config';
 import { withRetry } from './errors';
 import { grabFrame } from './media';
 import { claudeUsd, priceOf } from './claudeCost';
+import { cutOutPeople } from './cutout';
 import { NOTES_EFFORT, NOTES_MODEL } from './notesDraft';
 import { describeError, failureSubject, sendEmail } from './notify';
 import { loadSettings, storageBucket } from './settings';
@@ -99,6 +101,7 @@ async function grabFrames(episode: Episode, stamp: number): Promise<ThumbnailFra
     const [url] = await bucket.file(videoPath).getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60_000 });
     const durationMs = (episode.final!.durationSeconds ?? 0) * 1000;
     const frames: ThumbnailFrame[] = [];
+    const locals: string[] = [];
     for (const [i, t] of frameTimes(episode).entries()) {
         const atMs = Math.min(t.atMs, Math.max(0, durationMs - 1000));
         const local = path.join(workDir, `frame-${i}.jpg`);
@@ -112,10 +115,30 @@ async function grabFrames(episode: Episode, stamp: number): Promise<ThumbnailFra
         const dest = `episodes/${episodeId}/thumbnails/frame-${String(i + 1).padStart(2, '0')}-${stamp}.jpg`;
         await withRetry('Storage upload', () => bucket.upload(local, { destination: dest, metadata: { contentType: 'image/jpeg' } }));
         frames.push({ path: dest, atMs, speaker: t.speaker, text: t.text.slice(0, 200) });
+        locals.push(local);
         console.log(`  ✅ Frame ${frames.length} at ${Math.round(atMs / 1000)}s (${t.speaker})`);
     }
     if (!frames.length) throw new Error('The final cut has no quotes to take frames from');
+    await addCutouts(frames, locals);
     return frames;
+}
+
+// The people in each frame cut out over transparency (cutout.py, rembg), for the "Host over AI
+// image" option. A frame with nobody found, or a run where rembg could not start, has no cut-out.
+async function addCutouts(frames: ThumbnailFrame[], locals: string[]) {
+    const pairs = locals.map(input => ({ input, output: input.replace(/frame-(\d+)\.jpg$/, 'cutout-$1.png') }));
+    const made = await cutOutPeople(pairs);
+    for (const [i, { input, output }] of pairs.entries()) {
+        if (!made.has(input)) continue;
+        const dest = frames[i].path.replace('/frame-', '/cutout-').replace(/\.jpg$/, '.png');
+        try {
+            await withRetry('Storage upload', () => bucket.upload(output, { destination: dest, metadata: { contentType: 'image/png' } }));
+            frames[i].cutoutPath = dest;
+        } catch (error) {
+            console.warn(`  ⚠️ Cut-out ${i + 1} not saved: ${(error as Error).message}`);
+        }
+    }
+    console.log(`  ✅ People cut out of ${frames.filter(f => f.cutoutPath).length} of ${frames.length} frames`);
 }
 
 async function makeImage(idea: string, style: BrollStyle, stamp: number): Promise<NonNullable<EpisodeThumbnails['image']>> {
@@ -200,7 +223,7 @@ async function main() {
     });
 
     await sendEmail({ alert }, `Thumbnail options ready: ${episode.title}`, [
-        `Three thumbnail options for "${episode.title}" are ready to pick from (Checkpoint D):`,
+        `Thumbnail options for "${episode.title}" are ready to pick from (Checkpoint D):`,
         `${settings.studioUrl}/admin/podcast/${episodeId}/notes#thumbnail`,
         '',
         'Suggested texts:',

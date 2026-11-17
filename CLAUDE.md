@@ -34,6 +34,8 @@ agent/src/    podcast/ingest.ts — spec 005 steps 1-3, runs in GitHub Actions, 
               podcast/descript.ts — spec 005 step 8 part 2 (Descript project via its API), GitHub Actions only
               podcast/final.ts — spec 005 steps 10-11 (final cut from Descript, loudness, re-timed chapters), GitHub Actions only
               podcast/thumbnails.ts — spec 005 step 12 (thumbnail texts, frames and AI background), GitHub Actions only;
+              the hosts are cut out of the frames by podcast/cutout.py (rembg, pinned in agent/requirements-cutout.txt,
+              a venv the workflow makes) for the "Host over AI image" option;
               the Studio draws the options (components/studio/thumbnailCanvas.ts) and approves them (Checkpoint D)
               podcast/youtube.ts — spec 005 step 13 (YouTube upload via podcast/youtubeApi.ts), GitHub Actions only
               podcast/podcastAudio.ts — spec 019 item 5.1 (the audio podcast feed's MP3 at −16 LUFS with chapters and artwork;

@@ -10,13 +10,25 @@ export const THUMB_WIDTH = 1280;
 export const THUMB_HEIGHT = 720;
 export const THUMB_MAX_BYTES = 2 * 1024 * 1024;
 
-export const THUMB_KINDS = ['frame', 'ai', 'template'] as const;
+export const THUMB_KINDS = ['frame', 'cutout', 'ai', 'template'] as const;
 export type ThumbKind = (typeof THUMB_KINDS)[number];
 export const THUMB_LABELS: Record<ThumbKind, string> = {
     frame: 'Frame from the episode',
+    cutout: 'Host over AI image',
     ai: 'AI image',
     template: 'Brand template',
 };
+
+// "Host over AI image": where the frame's cut-out (its people, cropped to them) stands, on the right,
+// on the bottom edge, as large as fits; and how wide the text beside it on the left may be.
+export const CUTOUT_LAYOUT = { maxWidth: 0.58, maxHeight: 0.96, maxScale: 1.6, right: 40, textLeft: 64, gap: 32, minText: 440 } as const;
+export function cutoutBox(width: number, height: number) {
+    const L = CUTOUT_LAYOUT;
+    const scale = Math.min((THUMB_WIDTH * L.maxWidth) / width, (THUMB_HEIGHT * L.maxHeight) / height, L.maxScale);
+    const w = Math.round(width * scale), h = Math.round(height * scale);
+    const x = THUMB_WIDTH - L.right - w, y = THUMB_HEIGHT - h;
+    return { x, y, w, h, textWidth: Math.max(L.minText, x - L.gap - L.textLeft) };
+}
 
 // Up to this many frames are offered to pick from, taken at the strongest quotes.
 export const FRAME_CANDIDATES = 8;
