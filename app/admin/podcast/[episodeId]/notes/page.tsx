@@ -29,7 +29,7 @@ import { useAuth } from "@/context/AuthContext";
 import { BROLL_STYLE_IDS, BROLL_STYLES, BROLL_USD_PER_IMAGE, type BrollStyle } from "@/lib/broll";
 import { pickTeaserWord, wordsAround } from "@/lib/programme";
 import { preciseTime } from "@/lib/timeline";
-import { chooseDescription, cueTime, locate, mmss, notesChanges, sameNotes, youtubeDescription, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
+import { chooseDescription, cueTime, locate, mmss, notesChanges, sameNotes, youtubeDescription, type RedraftScope, type ShowNotes, type TeaserClip } from "@/lib/showNotes";
 import { meetingDocx } from "@/lib/meetingDoc";
 import { TranscriptDownloads, WritingExtras } from "@/components/studio/extras";
 import { Translations } from "@/components/studio/translations";
@@ -176,6 +176,11 @@ const stageFor = (anchor: string): StageId | undefined =>
 const sameStep = (a: StepState | undefined, b: StepState) => !!a && a.done === b.done && a.failed === b.failed && a.working === b.working
     && a.summary === b.summary && a.key === b.key && a.link?.href === b.link?.href && a.link?.label === b.link?.label;
 
+// What "Draft again" names when it rewrites only one part.
+const REDRAFT_PART: Record<Exclude<RedraftScope, "all">, string> = {
+    description: "description", titles: "titles", broll: "b-roll ideas", teasers: "“In this episode” clips",
+};
+
 export default function ShowNotesPage() {
     const { episodeId } = useParams<{ episodeId: string }>();
     const { profile, loading } = useAuth();
@@ -193,7 +198,7 @@ export default function ShowNotesPage() {
     const [notice, setNotice] = useState("");
     const [busy, setBusy] = useState(false);
     const [redraftDirection, setRedraftDirection] = useState("");
-    const [redraftOnly, setRedraftOnly] = useState<"all" | "description" | "titles" | "broll">("all");
+    const [redraftOnly, setRedraftOnly] = useState<RedraftScope>("all");
     const video = useRef<HTMLVideoElement>(null);
 
     const save = useCallback(async (value: ShowNotes, version: number) => {
@@ -708,7 +713,7 @@ export default function ShowNotesPage() {
                                         </Part>
 
                                         <Part id="notes-teaser" title="“In this episode” clips"
-                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Leave them wanting more: end on a question or cut before the answer. Click a word under a clip to start or end it there; fine-tune it on the Studio editor’s timeline."
+                                            hint="Played in order at the start, tagged “In this episode” with the speaker’s name. Build a short arc: a hook, the big question, something intriguing, and a last line cut before its payoff. Never the answer. Click a word under a clip to start or end it there; fine-tune it on the Studio editor’s timeline."
                                             aside={notes.teaserClips.length > 0 && (
                                                 <span className="flex items-center gap-3">
                                                     <span className={`text-xs ${teaserSeconds < 20 || teaserSeconds > 40 ? "text-orange-300" : "text-gray-400"}`}>{teaserSeconds}s in total; aim for 20–40</span>
@@ -734,6 +739,12 @@ export default function ShowNotesPage() {
                                                             <button onClick={() => edit(n => ({ ...n, teaserClips: n.teaserClips.filter((_, j) => j !== i) }))} className="text-gray-500 hover:text-red-300">Remove</button>
                                                         </span>
                                                     </div>
+                                                    {(c.beat || c.why) && (
+                                                        <p className="text-xs text-gray-400">
+                                                            {c.beat && <span className="uppercase tracking-wide text-amber-300/80 mr-2">{c.beat}</span>}
+                                                            {c.why}
+                                                        </p>
+                                                    )}
                                                     {view.words.length > 0 && <ClipWords words={view.words} clip={c} onPick={w => editClip(i, pickTeaserWord(view.words, c, w))} />}
                                                     <textarea value={c.text} onChange={e => editClip(i, anchored(e.target.value, c.startMs, true))} rows={2} className={field} />
                                                     {!findInTranscript(c.text) && (
@@ -970,13 +981,14 @@ export default function ShowNotesPage() {
                                             <select
                                                 aria-label="What to draft again"
                                                 value={redraftOnly}
-                                                onChange={e => setRedraftOnly(e.target.value as "all" | "description" | "titles" | "broll")}
+                                                onChange={e => setRedraftOnly(e.target.value as RedraftScope)}
                                                 className={`${field} w-48`}
                                             >
                                                 <option value="all">Everything</option>
                                                 <option value="description">Only the description</option>
                                                 <option value="titles">Only the titles</option>
                                                 <option value="broll">Only the b-roll ideas</option>
+                                                <option value="teasers">Only the “In this episode” clips</option>
                                             </select>
                                             <div className="flex flex-wrap items-center gap-3">
                                                 <button
@@ -994,7 +1006,7 @@ export default function ShowNotesPage() {
                                                             await load();
                                                             return redraftOnly === "all"
                                                                 ? "Claude is drafting the show notes again. This usually takes two to five minutes."
-                                                                : `Claude is rewriting the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]}. Everything else stays as it is. This usually takes two to five minutes.`;
+                                                                : `Claude is rewriting the ${REDRAFT_PART[redraftOnly as Exclude<RedraftScope, "all">]}. Everything else stays as it is. This usually takes two to five minutes.`;
                                                         });
                                                     }}
                                                     disabled={busy || drafting}
@@ -1003,7 +1015,7 @@ export default function ShowNotesPage() {
                                                 <span className={small}>
                                                     {redraftOnly === "all"
                                                         ? "Everything is replaced: Claude's new draft replaces everything in this stage, including your edits."
-                                                        : `Only the ${{ description: "description", titles: "titles", broll: "b-roll ideas" }[redraftOnly as "description" | "titles" | "broll"]} ${redraftOnly === "broll" ? "are" : "is"} replaced; everything else stays as you left it.`}
+                                                        : `Only the ${REDRAFT_PART[redraftOnly as Exclude<RedraftScope, "all">]} ${redraftOnly === "description" ? "is" : "are"} replaced; everything else stays as you left it.`}
                                                     {" "}Either way it is a full Claude draft, about $0.50.
                                                 </span>
                                             </div>

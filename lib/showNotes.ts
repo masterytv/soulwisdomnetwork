@@ -21,6 +21,29 @@ const clip = z.object({
     endMs: ms,
 });
 
+// The "In this episode" cold open (docs/specs/007-show-notes.md, "The opening"): built as one short sequence in
+// beats, so the viewer needs the whole episode, rather than a list of good lines. `cliffhanger` is the example of
+// a line cut off before its payoff, worded for the kind of recording.
+export const TEASER_BEATS = ['hook', 'question', 'intrigue', 'cliffhanger'] as const;
+export type TeaserBeat = (typeof TEASER_BEATS)[number];
+export function teaserGuide(cliffhanger: string) {
+    return 'The "In this episode" cold open, the first thing a viewer sees: three or four clips, 25-40 seconds in all, each ' +
+        '4-15 seconds, listed in the order they should play (not necessarily the order they were said). Build one short ' +
+        'sequence that makes someone need to watch the whole episode, not a list of good lines. Its beats: ' +
+        '"hook", the most human or surprising moment (personal stakes, a confession, a vivid story or a bold claim), so the ' +
+        'first five seconds grab; "question", the tension or big question the episode wrestles with, in a speaker\'s own words; ' +
+        '"intrigue", a striking idea, piece of evidence or strange detail, shown only in part; "cliffhanger", last, cut off ' +
+        `just before its payoff, mid-sentence if need be (for example "${cliffhanger}"). With three clips, leave out ` +
+        '"intrigue". Never include an answer, a conclusion or the resolution: those are the reason to watch. Mix feeling and ' +
+        'ideas, and use more than one voice when there is more than one speaker. Every clip must make sense to someone who has ' +
+        'seen nothing yet: no "as I said", "your book", "that" or names the viewer has not met, and do not start on "So", ' +
+        '"And", "Yeah" or "Well". The opening should promise what the first title promises.';
+}
+const teaserClip = clip.extend({
+    beat: z.enum(TEASER_BEATS).describe('Its place in the sequence'),
+    why: z.string().describe('One short sentence: what it makes the viewer feel or wonder'),
+});
+
 // What Claude returns. Every field is required: structured outputs are strict.
 export const ShowNotesSchema = z.object({
     titles: z.array(z.string()).describe('Five YouTube title options, best first, under 70 characters, curiosity-led and specific, no clickbait or all caps.'),
@@ -42,11 +65,7 @@ export const ShowNotesSchema = z.object({
         'Up to twenty quotable moments for shorts and social posts, in episode order. Aim for twenty; ' +
         'fewer only if there are not that many good ones. Every guest gets at least one or two, including ' +
         'guests heard in recordings played during the episode. Each should stand on its own without context.'),
-    teaserClips: z.array(clip).describe(
-        'The "In this episode" cold open: three or four short clips from the episode played in order under an ' +
-        '"In this episode" title, 20-40 seconds in total. Pick striking lines that make people want to watch; ' +
-        'at least one should end on an unanswered question or cut off just before the answer (for example ' +
-        '"I think the meaning of life is..."). Never give away the conclusion.'),
+    teaserClips: z.array(teaserClip).describe(teaserGuide('I think the meaning of life is...')),
     tags: z.array(z.string()).describe('10-15 YouTube tags, lower case'),
     themes: z.array(z.string()).describe('Three to five broad themes, e.g. "purpose", "life review"'),
     topics: z.array(z.string()).describe('Specific people, books, studies, places and ideas discussed'),
@@ -100,11 +119,7 @@ export function notesSchemaFor(s: StudioSettings) {
             })).describe(
                 'Up to twenty quotable moments for shorts and social posts, in order. ' +
                 'Every speaker who says something worth keeping gets at least one. Each should stand on its own without context.'),
-            teaserClips: z.array(clip).describe(
-                'The "In this episode" cold open: three or four short clips from the recording played in order under an ' +
-                '"In this episode" title, 20-40 seconds in total. Pick striking lines that make people want to watch; ' +
-                'at least one should end on an unanswered question or cut off just before the answer (for example ' +
-                '"The one thing we changed was..."). Never give away the conclusion.'),
+            teaserClips: z.array(teaserClip).describe(teaserGuide('The one thing we changed was...')),
             themes: z.array(z.string()).describe('Three to five broad themes'),
             broll: z.array(ShowNotesSchema.shape.broll.element.extend({ style: z.enum(BROLL_STYLE_IDS).describe(
                 '"photo" (photorealistic) for most ideas; "digital" (luminous digital painting) for abstract ideas') })
@@ -137,7 +152,8 @@ export const StoredShowNotesSchema = ShowNotesSchema.extend({
     actionItems: z.array(actionItem).default([]),
     quotes: z.array(clip.extend({ endMs: ms.default(-1) })),
     hashtags: z.array(z.string()).default([]),
-    teaserClips: z.array(clip).default([]),
+    // Clips drafted before the opening was built in beats, and clips a producer adds, have neither beat nor why.
+    teaserClips: z.array(clip.extend({ beat: z.enum(TEASER_BEATS).optional(), why: z.string().optional() })).default([]),
     // B-roll ideas drafted before styles existed are photoreal until someone picks.
     // B-roll ideas drafted before stock b-roll (docs/specs/023-stock-broll.md) have no search words: the idea is searched.
     broll: z.array(ShowNotesSchema.shape.broll.element.extend({
@@ -159,27 +175,30 @@ export function chooseDescription(notes: ShowNotes, index: number): ShowNotes {
     return { ...notes, description: options[index], descriptionOptions: next };
 }
 
-// What a redraft replaces: everything, only the description, or only the titles.
-export type RedraftScope = 'all' | 'description' | 'titles' | 'broll';
+// What a redraft replaces: everything, or only the description, the titles, the b-roll ideas or the opening's clips.
+export const REDRAFT_SCOPES = ['all', 'description', 'titles', 'broll', 'teasers'] as const;
+export type RedraftScope = (typeof REDRAFT_SCOPES)[number];
 
 // Merges a fresh draft into the current notes, replacing only the chosen part. 'description'
 // takes the description and its options; 'titles' takes the titles and resets chosenTitle; 'broll' the b-roll ideas;
-// 'all' takes everything.
+// 'teasers' the "In this episode" clips; 'all' takes everything.
 export function mergeRedraft(current: ShowNotes, fresh: ShowNotes, only: RedraftScope): ShowNotes {
     if (only === 'all') return fresh;
     if (only === 'description') return { ...current, description: fresh.description, descriptionOptions: fresh.descriptionOptions ?? [] };
     if (only === 'broll') return { ...current, broll: fresh.broll };
+    if (only === 'teasers') return { ...current, teaserClips: fresh.teaserClips };
     return { ...current, titles: fresh.titles, chosenTitle: 0 };
 }
 
 // Turns a redraft request into the direction line appended to the prompt. Empty when there
 // is no request or the instruction is blank; otherwise names the part to focus on.
 export function redraftDirection(r: { instruction: string; only: RedraftScope } | null | undefined): string {
-    if (!r || (!r.instruction.trim() && r.only !== 'broll')) return '';
+    if (!r || (!r.instruction.trim() && r.only !== 'broll' && r.only !== 'teasers')) return '';
     const lines = r.instruction.trim() ? [`The producer asked for a new draft with this direction:\n${r.instruction.trim()}`] : [];
     if (r.only === 'description') lines.push('This draft is for the YouTube description: put the most care there.');
     if (r.only === 'titles') lines.push('This draft is for the titles: put the most care there.');
     if (r.only === 'broll') lines.push('This draft is for the b-roll ideas and their cue words: put the most care there.');
+    if (r.only === 'teasers') lines.push('This draft is for the "In this episode" opening: put the most care there.');
     return lines.join('\n');
 }
 

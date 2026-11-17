@@ -1,21 +1,22 @@
 import { requestNotes } from '@/lib/server/notes';
+import { REDRAFT_SCOPES, type RedraftScope } from '@/lib/showNotes';
 import { handle, HttpError, requireRole, STUDIO_ROLES } from '@/lib/server/staff';
 
 export const dynamic = 'force-dynamic';
 
 type Context = { params: Promise<{ id: string }> };
 
-// Body: { force?: boolean, instruction?: string, only?: 'all' | 'description' | 'titles' | 'broll' }.
+// Body: { force?: boolean, instruction?: string, only?: 'all' | 'description' | 'titles' | 'broll' | 'teasers' }.
 // `force` replaces approved notes' draft; `instruction` and `only` ask for a redraft of one part.
 export const POST = handle<Context>(async (request, { params }) => {
     await requireRole(request, STUDIO_ROLES);
     const { force, instruction, only } = await request.json().catch(() => ({})) as {
         force?: unknown; instruction?: unknown; only?: unknown;
     };
-    let onlyValue: 'all' | 'description' | 'titles' | 'broll' = 'all';
+    let onlyValue: RedraftScope = 'all';
     if (only !== undefined) {
-        if (only !== 'all' && only !== 'description' && only !== 'titles' && only !== 'broll') throw new HttpError(400, 'Unknown part to draft');
-        onlyValue = only;
+        if (!REDRAFT_SCOPES.includes(only as RedraftScope)) throw new HttpError(400, 'Unknown part to draft');
+        onlyValue = only as RedraftScope;
     }
     let instructionText = '';
     if (instruction !== undefined && instruction !== null) {
