@@ -16,7 +16,10 @@ const WHITE = "#ffffff";
 
 const rgbList = (hex: string) => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(", ");
 
-function applyPalette(colors: StudioSettings["colors"]) {
+// The palette as set by applyPalette, for other drawings in the same look (components/studio/clipThumbnail.ts).
+export const palette = () => ({ ink: INK, gold: GOLD, glow: GLOW, inkRgb: INK_RGB, goldRgb: GOLD_RGB });
+
+export function applyPalette(colors: StudioSettings["colors"]) {
     const d = DEFAULT_SETTINGS.colors;
     INK = colors.background;
     GOLD = colors.accent;
@@ -32,10 +35,10 @@ export interface ThumbImages {
     logo: ImageBitmap | null;
 }
 
-type Word = { text: string; gold: boolean };
+export type Word = { text: string; gold: boolean };
 
 // Fills the box with the image, cropping the overflow around the focus point.
-function cover(ctx: CanvasRenderingContext2D, img: ImageBitmap, x: number, y: number, w: number, h: number, focusX = 0.5) {
+export function cover(ctx: CanvasRenderingContext2D, img: ImageBitmap, x: number, y: number, w: number, h: number, focusX = 0.5) {
     const scale = Math.max(w / img.width, h / img.height);
     const sw = w / scale, sh = h / scale;
     const sx = Math.min(Math.max(0, img.width * focusX - sw / 2), img.width - sw);
@@ -43,7 +46,7 @@ function cover(ctx: CanvasRenderingContext2D, img: ImageBitmap, x: number, y: nu
 }
 
 // Largest size at which the words wrap into at most `maxLines` lines of `maxWidth`.
-function fit(ctx: CanvasRenderingContext2D, words: Word[], family: string, maxWidth: number, maxLines: number, maxSize: number, minSize: number) {
+export function fit(ctx: CanvasRenderingContext2D, words: Word[], family: string, maxWidth: number, maxLines: number, maxSize: number, minSize: number) {
     for (let size = maxSize; ; size -= 4) {
         ctx.font = `900 ${size}px ${family}`;
         const space = ctx.measureText(" ").width;
@@ -67,7 +70,7 @@ function fit(ctx: CanvasRenderingContext2D, words: Word[], family: string, maxWi
 
 // Text block with its top at `top`; returns its height. A dark outline and glow keep it
 // readable over any picture.
-function drawText(ctx: CanvasRenderingContext2D, lines: Word[][], size: number, family: string, x: number, top: number) {
+export function drawText(ctx: CanvasRenderingContext2D, lines: Word[][], size: number, family: string, x: number, top: number) {
     const lineHeight = size * 1.02;
     ctx.font = `900 ${size}px ${family}`;
     ctx.textBaseline = "alphabetic";
@@ -97,7 +100,7 @@ function accent(ctx: CanvasRenderingContext2D, x: number, y: number) {
     ctx.fillRect(x, y, 110, 9);
 }
 
-function logo(ctx: CanvasRenderingContext2D, img: ImageBitmap | null, x: number, y: number, size: number) {
+export function logo(ctx: CanvasRenderingContext2D, img: ImageBitmap | null, x: number, y: number, size: number) {
     if (!img) return;
     ctx.save();
     ctx.shadowColor = "rgba(0, 0, 0, 0.5)";

@@ -91,6 +91,8 @@ export const StudioSettingsSchema = z.object({
     highlightDensity: z.enum(HIGHLIGHT_DENSITIES),
     suggestOnBuild: z.boolean(),
     highlightLayouts: z.array(z.enum(HIGHLIGHT_LAYOUTS)).max(HIGHLIGHT_LAYOUTS.length),
+    // Clips (spec 025): how many days apart they go out on YouTube.
+    clipsEveryDays: z.number().int().min(1).max(7),
 });
 
 export type StudioSettings = z.infer<typeof StudioSettingsSchema>;
@@ -138,6 +140,7 @@ export const DEFAULT_SETTINGS: StudioSettings = {
     highlightDensity: 'normal',
     suggestOnBuild: false,
     highlightLayouts: [...HIGHLIGHT_LAYOUTS],
+    clipsEveryDays: 2,
 };
 
 // Who makes the final cut is saved as `finalCutBy` (spec 020 item E15). The Studio editor became the default then;

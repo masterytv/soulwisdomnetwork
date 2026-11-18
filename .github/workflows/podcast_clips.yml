@@ -1,6 +1,8 @@
 # Spec 025: clips of 5 to 15 minutes beside the Shorts (agent/src/podcast/clips.ts, docs/specs/025-clips.md).
 # mode "pick": Claude suggests topics from the final cut; "titles": Claude writes each clip's title, description,
-# thumbnail title and feeling. Started from the show notes page, or by hand from the Actions tab with the episode ID.
+# thumbnail title and feeling; "render": cuts the clips that changed; "moments": finds each clip's thumbnail moments
+# (with "moment" set to <clip>@<ms>, the one frame chosen by hand); "upload": schedules the clips approved at
+# Checkpoint F on YouTube. Started from the show notes page, or by hand from the Actions tab with the episode ID.
 
 name: Podcast Clips
 # The episode ID in the run name ties each run to its episode on the Usage page (lib/server/usage.ts).
@@ -13,9 +15,13 @@ on:
         description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
         required: true
       mode:
-        description: 'pick or titles'
+        description: 'pick, titles, render, moments or upload'
         required: true
         default: 'pick'
+      moment:
+        description: 'moments only: one frame chosen by hand, as <clip id>@<ms on the final cut>'
+        required: false
+        default: ''
 
 # One run per episode at a time; a second request for the same episode waits.
 concurrency:
@@ -29,7 +35,8 @@ permissions:
 jobs:
   clips:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Making the clips takes a few minutes each; twenty of fifteen minutes is the longest run.
+    timeout-minutes: ${{ inputs.mode == 'render' && 180 || 45 }}
 
     steps:
     - name: Checkout Code
@@ -46,12 +53,33 @@ jobs:
     - name: Install Dependencies
       run: npm ci
 
+    - name: Install ffmpeg
+      if: inputs.mode == 'render' || inputs.mode == 'moments'
+      uses: ./.github/actions/ffmpeg
+
+    # The speaker cut out of the thumbnail moments (agent/src/podcast/cutout.py: rembg, pinned in
+    # agent/requirements-cutout.txt; its model, about 180 MB, downloads on first use). About 30 s. Never fatal:
+    # without it no moment has a cut-out, and the run says so.
+    - name: Install rembg
+      if: inputs.mode == 'moments'
+      continue-on-error: true
+      run: |
+        python3 -m venv "$RUNNER_TEMP/rembg"
+        "$RUNNER_TEMP/rembg/bin/pip" install --quiet --disable-pip-version-check -r agent/requirements-cutout.txt
+
     - name: Clips
       env:
         EPISODE_ID: ${{ inputs.episode_id }}
         CLIPS_MODE: ${{ inputs.mode }}
+        CLIPS_MOMENT: ${{ inputs.moment }}
+        CUTOUT_PYTHON: ${{ runner.temp }}/rembg/bin/python
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        YOUTUBE_PLAYLIST_ID: ${{ vars.YOUTUBE_PLAYLIST_ID }}
+        YOUTUBE_CLIPS_PLAYLIST_ID: ${{ vars.YOUTUBE_CLIPS_PLAYLIST_ID }}
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

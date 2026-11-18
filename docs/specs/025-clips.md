@@ -1,7 +1,7 @@
 # Spec 025: Clips
 
 **Date:** 18 November 2026
-**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). Stages 1 and 2 built; stages 3 and 4 to come
+**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). All four stages built
 **Related:** `docs/specs/013-shorts.md` (Shorts, which this follows step for step), `docs/specs/010-final-cut.md` (the final cut and
 its re-timed chapters), `docs/specs/011-thumbnails.md` (the thumbnail drawing), `docs/specs/012-youtube-upload.md` (the YouTube
 sign-in, captions and playlist), `docs/BACKLOG.md` ("Post shorts (and episode clips) to other platforms")
@@ -103,7 +103,7 @@ Changes save as they go (`PATCH .../clips`, with a version number, as Shorts do)
 - A render records what it was made from: the ends, the final cut (`finalAt`) and `CLIP_RENDER_VERSION`. A change to any
   of them means it needs making again. A title, description or thumbnail change does not.
 - Show library sounds in the final cut are logged against the clip (`uses`, kind `clip`), as for Shorts.
-- About a minute per clip (re-encoding, no drawing), then an email.
+- A few minutes per clip (x264 `veryfast` at CRF 19 on a runner), then an email. The run may take up to three hours.
 
 ### 4. The thumbnail: "Soul Wisdom Clips"
 
@@ -154,11 +154,12 @@ settings, as the other thumbnails are):
 - YouTube shows its time stamp in the bottom-right corner, so nothing that matters goes there.
 
 **In the Studio**, under each clip:
-- The four moments as finished thumbnails, each with its time, emotion and **▶** to hear it.
-- Choose one and a background.
-- **Use this moment:** scrub the clip's preview to any frame and take it instead (`mode: 'moments'` with `atMs`: one
-  grab and one cut-out, no Claude, free).
-- The thumbnail title can be edited here too, and the drawing updates as it is typed.
+- The thumbnail as it will be uploaded, and beside it the moments found, each as its frame with the emotion, time and
+  fit.
+- Choose one, a background, and the speaker (whoever speaks most, or another).
+- **Use the player's frame:** pause the notes page's player on any frame inside the clip and take it instead
+  (`mode: 'moments'` with `clip` and `atMs`: one grab and one cut-out of the whole frame, no Claude, free).
+- The thumbnail title is edited on the clip, and the drawing updates as it is typed.
 - The chosen thumbnail is saved as a JPEG through `PUT .../clips/{clip}/thumbnail`, as Checkpoint D saves the episode's,
   at `episodes/{id}/clips/{clip}-thumb-{time}.jpg` (under 2 MB).
 
@@ -339,8 +340,39 @@ looking at 24 small frames is about 8,000 image tokens a clip, so a few cents.
    before", Add as a clip, Write titles and descriptions, and the feeling chips on each clip. A suggestion keeps its
    opening where it was found, even when a nearer thought starts close by.
 3. **Make and approve:** `mode: render`, `mode: moments`, the "Soul Wisdom Clips" theme, and Checkpoint F.
+   Built:
+   - `lib/clips.ts`: the thumbnail fields on each clip, the render inputs and `withClipDefaults`.
+   - `lib/clipThumbs.ts`: turns, cues, candidates, `MomentLookSchema`, ranking, the crop and `standOn`.
+   - `agent/src/podcast/clipsRender.ts`: the cut, the loudness (read as ffmpeg prints it) and the frames.
+   - `agent/src/podcast/clipMoments.ts`, and `cutOutWithBoxes` in `cutout.ts`.
+   - The `render` and `moments` modes, and ffmpeg and rembg in the workflow.
+   - The routes for the thumbnail (`PUT .../clips/[clip]/thumbnail`), its images (`GET .../clips/[clip]/image`) and the
+     approval (`POST .../clips` with `approve`).
+   - `components/studio/clipThumbnail.ts` (the theme) and `clipThumb.tsx` (the thumbnail editor).
+
+   As built:
+   - **"Use the player's frame"** takes the frame the notes page's player is paused on, inside the clip. With no
+     Claude look there is no box to crop to, so the whole frame is cut out: in Zoom's gallery view both people.
+   - **A moments search bumps the clips' version**, since it sets the moment the thumbnail uses, so an open page
+     reloads instead of saving over it.
+   - **The title's side is kept to 40% of the width at least:** with a very wide cut-out, the title is drawn over the
+     speaker's inner edge.
 4. **Schedule:** `mode: upload`, captions, thumbnail, playlist, the shared schedule view, the `YOUTUBE_CLIPS_PLAYLIST_ID`
    variable.
+   Built:
+   - `lib/publishing.ts` (`episodeLink`, now also used by Shorts, `slotAt` and `suggestedFirstSlot`).
+   - `clipChapters`, `clipMetadata` and `clipWords` in `lib/clips.ts`, and `clipsEveryDays` in the Studio settings
+     (a Clips section, every day to every seven days).
+   - The `upload` mode, with the YouTube secrets and the `YOUTUBE_PLAYLIST_ID` and `YOUTUBE_CLIPS_PLAYLIST_ID` variables
+     in the workflow.
+   - Scheduling in `requestClips`, and the Schedule section on the page: the slots with the Shorts already going out
+     the same day, the link and end-screen notes, and the quota.
+
+   As built:
+   - A clip on YouTube is kept as it is on every save and can no longer be made again, given new moments, re-titled,
+     re-approved or removed here.
+   - The episode's chapters inside a clip go in its description only when YouTube will show them: three or more, the
+     first at 0:00, each at least 10 seconds.
 
 The job runs only from `main` (`lib/server/github.ts`, `ref: 'main'`), so stages 2 to 4 can be tested on staging's
 pages but not their runs until they reach `main`.

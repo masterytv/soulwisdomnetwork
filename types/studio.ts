@@ -5,7 +5,8 @@ import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { TimedWord } from '@/lib/retime';
 import type { ShortSuggestion } from '@/lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '@/lib/shorts';
-import type { ClipEdit } from '@/lib/clips';
+import type { ClipEdit, ClipRenderInputs } from '@/lib/clips';
+import type { MomentInputs } from '@/lib/clipThumbs';
 import type { ClipSuggestion } from '@/lib/clipPicks';
 import type { ReviewUtterance } from '@/lib/transcript';
 import type { FixOp } from '@/lib/wordFixes';
@@ -301,6 +302,17 @@ export interface ShortsView {
 export interface ClipItemView extends ClipEdit {
     startWords: TimedWord[];            // the final cut's words around each end, for moving it
     endWords: TimedWord[];
+    render: { key: string; url: string; durationMs: number; inputs: ClipRenderInputs } | null;
+    // The moments found for the thumbnail; images by name from .../clips/image (frame-N, cutout-N).
+    moments: {
+        key: string; inputs: MomentInputs; speakers: string[];
+        found: { atMs: number; emotion: string; expression: number; fit: number; side: 'left' | 'right'; cue: string; chosenByHand: boolean; cutout: boolean }[];
+    } | null;
+    thumbnail: { key: string } | null;  // the saved thumbnail
+    approved: { by: string; at: number } | null;    // of the clip as it is made now
+    publishAt: number | null;           // the slot it was given, until it is on YouTube
+    youtube: { url: string; publishAt: number; warnings: string[] } | null;
+    error: string | null;               // the last upload attempt for this one failed
 }
 
 // Clips on the show notes page: the chapters offered as clips, and the producer's clips.
@@ -314,6 +326,11 @@ export interface ClipsView {
     direction: string;                  // the direction given for them
     blocker: string | null;             // why clips cannot be made yet
     version: number;
+    finalAt: number;                    // the final cut now; a clip made from another is out of date
+    lastSlot: number | null;            // the latest time any episode's clip is scheduled for
+    shortsSlots: number[];              // the Shorts scheduled ahead, on any episode (they share YouTube's quota)
+    everyDays: number;                  // the Studio settings' days between clips
+    episodeUrl: string | null;          // the episode on YouTube, which each clip links to once it is there
     finalUrl: string | null;            // the final cut, to preview a clip
     durationMs: number;
     chapters: { index: number; title: string; startMs: number; endMs: number }[];
