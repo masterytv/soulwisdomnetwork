@@ -42,7 +42,7 @@ test('chapterClip: one chapter or two joined, and none past the last', () => {
     const spans = chapterSpans([{ title: 'A', originalMs: 0, startMs: 0 }, { title: 'B', originalMs: 0, startMs: 4 * MIN }], 12 * MIN);
     assert.deepEqual(chapterClip(spans, 0, 2, 'abcd1234'), {
         id: 'abcd1234', source: { kind: 'chapter', index: 0, count: 2 }, startMs: 0, endMs: 12 * MIN,
-        title: '', description: '', thumbText: '', synthetic: false,
+        title: '', description: '', thumbText: '', thumbFeeling: [], synthetic: false,
     });
     assert.equal(chapterClip(spans, 1, 2, 'abcd1234'), null);
     const items = [chapterClip(spans, 0, 2, 'abcd1234')!];
@@ -80,12 +80,14 @@ test('wordSnap: whole words, the first heard after the start and the last before
 
 test('ClipEditSchema: what the page sends', () => {
     const clip: ClipEdit = {
-        id: 'abcd1234', source: { kind: 'own' }, startMs: 0, endMs: 5 * MIN, title: 'T', description: 'D', thumbText: '*Big* idea', synthetic: false,
+        id: 'abcd1234', source: { kind: 'own' }, startMs: 0, endMs: 5 * MIN, title: 'T', description: 'D', thumbText: '*Big* idea', thumbFeeling: ['wonder'], synthetic: false,
     };
     assert.equal(ClipEditSchema.safeParse(clip).success, true);
     assert.equal(ClipEditSchema.safeParse({ ...clip, source: { kind: 'chapter', index: 0, count: 4 } }).success, false);
     assert.equal(ClipEditSchema.safeParse({ ...clip, title: 'x'.repeat(101) }).success, false);
     assert.equal(ClipEditSchema.safeParse({ ...clip, id: 'no' }).success, false);
+    assert.equal(ClipEditSchema.safeParse({ ...clip, thumbFeeling: ['wonder', 'surprise', 'anger'] }).success, false);
+    assert.equal(ClipEditSchema.safeParse({ ...clip, thumbFeeling: ['boredom'] }).success, false);
 });
 
 test('clipShowsBroll: each end mapped back through its chapter', () => {

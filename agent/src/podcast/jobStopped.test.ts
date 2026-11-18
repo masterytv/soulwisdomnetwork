@@ -21,7 +21,7 @@ test('every podcast workflow with an episode job marks it stopped, naming a fiel
     const dir = path.resolve('.github/workflows');
     const expected: Record<string, string> = {
         'podcast_audio.yml': 'podcast', 'podcast_broll.yml': 'broll', 'podcast_descript.yml': 'descript', 'podcast_final.yml': 'final',
-        'podcast_package.yml': 'package', 'podcast_shorts.yml': 'shorts', 'podcast_thumbnails.yml': 'thumbnails', 'podcast_youtube.yml': 'youtube',
+        'podcast_package.yml': 'package', 'podcast_shorts.yml': 'shorts', 'podcast_clips.yml': 'clips', 'podcast_thumbnails.yml': 'thumbnails', 'podcast_youtube.yml': 'youtube',
     };
     for (const [file, field] of Object.entries(expected)) {
         const yml = fs.readFileSync(path.join(dir, file), 'utf8');

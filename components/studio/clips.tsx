@@ -1,18 +1,21 @@
 "use client";
 
-// Clips on the show notes page (docs/specs/025-clips.md), stage 1: 5 to 15 minute stretches of the final cut,
-// each about one topic, for posting on YouTube beside the Shorts. The chapters are offered as clips (one, or
-// joined with the next); the producer can also mark their own on the player. Each clip's ends move by clicking
-// a word near them; its title, description and thumbnail title are typed here. Edits save as they go.
-// Claude's picks and titles, making the clips, their thumbnails and scheduling come in later stages.
+// Clips on the show notes page (docs/specs/025-clips.md): 5 to 15 minute stretches of the final cut, each about
+// one topic, for posting on YouTube beside the Shorts. The chapters are offered as clips (one, or joined with the
+// next), and Claude suggests topics on request; the producer can also mark their own on the player. Each clip's
+// ends move by clicking a word near them; its title, description, thumbnail title and the feeling its thumbnail
+// shows are typed here or written by Claude. Edits save as they go. Making the clips, their thumbnails and
+// scheduling come in later stages.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorNote } from "@/components/studio/ErrorNote";
+import { ago } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
-import { secondary } from "@/components/studio/ui";
+import { chosen, secondary } from "@/components/studio/ui";
+import { CLIP_DIRECTION_MAX, isTakenClip, suggestionToClip, type ClipSuggestion } from "@/lib/clipPicks";
 import {
-    chapterClip, CLIP_DESCRIPTION_MAX, CLIP_MIN_MS, CLIP_TITLE_MAX, clipLength, hasChapterClip, MAX_CLIPS, THUMB_TEXT_MAX,
-    type ClipEdit, type ClipLength,
+    chapterClip, CLIP_DESCRIPTION_MAX, CLIP_FEELINGS, CLIP_MIN_MS, CLIP_TITLE_MAX, clipLength, hasChapterClip, MAX_CLIPS, MAX_FEELINGS,
+    THUMB_TEXT_MAX, type ClipEdit, type ClipFeeling, type ClipLength,
 } from "@/lib/clips";
 import { mmss } from "@/lib/showNotes";
 import { wordBounds } from "@/lib/shorts";
@@ -24,8 +27,11 @@ const input = "bg-black/30 border border-studio-line rounded-lg px-3 py-1.5 text
 
 const pick = (i: ClipEdit): ClipEdit => ({
     id: i.id, source: i.source, startMs: i.startMs, endMs: i.endMs, title: i.title, description: i.description,
-    thumbText: i.thumbText, synthetic: i.synthetic,
+    thumbText: i.thumbText, thumbFeeling: i.thumbFeeling, synthetic: i.synthetic,
 });
+
+const WORKING: Record<string, string> = { pick: "Suggesting clips…", titles: "Writing titles and descriptions…" };
+const needsTexts = (i: ClipEdit) => !i.title.trim() || !i.description.trim() || !i.thumbText.trim() || !i.thumbFeeling.length;
 
 const LENGTH_NOTE: Record<ClipLength, string> = {
     "too short": "under 2 minutes: too short to make",
@@ -47,6 +53,9 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
     const [previewing, setPreviewing] = useState<string | null>(null);
     // The start of a clip being marked on the player, until its end is marked.
     const [marking, setMarking] = useState<number | null>(null);
+    const [starting, setStarting] = useState(false);
+    // The producer's direction for Claude's suggestions; null until loaded, then set once from the view.
+    const [direction, setDirection] = useState<string | null>(null);
     const player = useRef<HTMLVideoElement | null>(null);
     const stopAt = useRef<number | null>(null);
     const base = `/api/studio/episodes/${episodeId}/clips`;
@@ -68,6 +77,7 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
             reset(next.version);
         }
         setFinalUrl(url => url ?? next.finalUrl);
+        setDirection(value => value ?? next.direction);
     }, [reset]);
     const load = useCallback(async (force = false) => {
         try {
@@ -81,6 +91,31 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         if (!enabled) return;
         studioFetch<ClipsView>(base).then(next => apply(next, true), e => setError((e as Error).message));
     }, [enabled, base, apply]);
+
+    // While a job runs, the page asks again every 10 seconds; the last answer brings its results.
+    const working = view?.status === "queued" || view?.status === "working";
+    useEffect(() => {
+        if (!working) return;
+        const timer = setInterval(() => void load(), 10_000);
+        return () => clearInterval(timer);
+    }, [working, load]);
+
+    async function start(mode: "pick" | "titles") {
+        setStarting(true);
+        try {
+            if (!(await flush())) throw new Error("Your changes could not be saved; fix that first");
+            await studioFetch(base, { method: "POST", body: JSON.stringify(mode === "pick" ? { mode, direction: direction ?? "" } : { mode }) });
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
+        } finally {
+            setStarting(false);
+        }
+    }
+
+    function addSuggestion(s: ClipSuggestion) {
+        void commit([...items, suggestionToClip(s, newId())]);
+    }
 
     function update(next: ClipEdit[]) {
         setItems(next);
@@ -124,7 +159,7 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         }
         setMarking(null);
         setError("");
-        void commit([...items, { id: newId(), source: { kind: "own" }, startMs: marking, endMs, title: "", description: "", thumbText: "", synthetic: false }]);
+        void commit([...items, { id: newId(), source: { kind: "own" }, startMs: marking, endMs, title: "", description: "", thumbText: "", thumbFeeling: [], synthetic: false }]);
     }
 
     // Plays a stretch of the final cut.
@@ -147,6 +182,7 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
 
     const byId = new Map((view?.items ?? []).map(i => [i.id, i]));
     const full = items.length >= MAX_CLIPS;
+    const needText = items.filter(needsTexts).length;
 
     if (!view) return <ErrorNote message={error} />;
     if (view.blocker) return <p className="text-xs text-gray-400">{view.blocker}</p>;
@@ -154,14 +190,24 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
     return (
         <div className="flex flex-col gap-4">
             <p className="text-xs text-gray-400">
-                Add a chapter as a clip, join it with the next, or mark your own on the player. 5 to 15 minutes about one topic
-                is the aim. Click a word near either end to move that end there. Titles and descriptions can be typed now;
-                Claude writing them, making the clips and scheduling them on YouTube come next.
+                Add a chapter as a clip, join it with the next, add one of Claude&apos;s suggestions, or mark your own on the player.
+                5 to 15 minutes about one topic is the aim. Click a word near either end to move that end there. Making the clips
+                and scheduling them on YouTube come next.
                 <span className="ml-2">
                     {saveState === "saving" ? "Saving…" : saveState === "unsaved" ? "Unsaved" : saveState === "error" ? "" : items.length ? "Saved" : ""}
                 </span>
             </p>
             <ErrorNote title="Your changes were not saved" message={saveError} />
+            {view.status === "failed" && <ErrorNote title="The clips job failed" message={view.error} />}
+            {view.warnings.map(w => <p key={w} className="text-xs text-amber-300">{w}</p>)}
+            <div className="flex flex-wrap items-center gap-3">
+                <button onClick={() => start("titles")} disabled={working || starting || !needText} className={secondary}
+                    title="Claude writes the title, description, thumbnail title and feeling of each clip missing any; clear a field to have it rewritten">
+                    {working && view.job === "titles" ? WORKING.titles : `Write titles and descriptions${needText ? ` (${needText})` : ""}`}
+                </button>
+                {working && <span className="text-xs text-sky-300">{WORKING[view.job ?? ""] ?? "Working…"} This page updates by itself.</span>}
+                {view.finishedAt && !working && <span className="text-xs text-gray-400">Last job {ago(view.finishedAt)}</span>}
+            </div>
 
             {finalUrl && (
                 <div className="flex flex-col gap-2">
@@ -220,6 +266,46 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
                 </div>
             )}
 
+            <div className="flex flex-col gap-2">
+                <p className="text-sm text-gray-300">
+                    Claude&apos;s suggestions <span className="text-xs text-gray-400">(topics that stand on their own, best first, each with a score out of 10 and why)</span>
+                </p>
+                <textarea value={direction ?? ""} maxLength={CLIP_DIRECTION_MAX} rows={2} aria-label="Direction for Claude's suggestions"
+                    placeholder="Optional: e.g. favour the personal stories, or keep them under 10 minutes"
+                    disabled={working} onChange={e => setDirection(e.target.value)} className={input} />
+                <div>
+                    <button onClick={() => start("pick")} disabled={working || starting} className={secondary}>
+                        {working && view.job === "pick" ? WORKING.pick : view.suggestions.length ? "Suggest clips again" : "Suggest clips"}
+                    </button>
+                </div>
+                {view.suggestions.length > 0 && (
+                    <ul className="flex flex-col gap-1 max-h-[32rem] overflow-y-auto pr-1">
+                        {view.suggestions.map(s => {
+                            const taken = isTakenClip(s, items);
+                            const length = clipLength(s.endMs - s.startMs);
+                            return (
+                                <li key={s.id} className={`flex flex-wrap items-start gap-2 text-xs rounded-lg px-2 py-1.5 ${taken ? "bg-amber-500/10" : "hover:bg-white/5"}`}>
+                                    <span className="text-amber-300 font-medium">{s.score}/10</span>
+                                    <div className="flex-1 min-w-[12rem]">
+                                        <p className="text-gray-200 font-medium">{s.title}</p>
+                                        <p className="text-gray-400">
+                                            {mmss(s.startMs)}–{mmss(s.endMs)} · <span className={lengthClass(length)}>{minutesOf(s.endMs - s.startMs)}</span>
+                                            {!s.standsAlone && <span className="text-amber-300"> · needs what came before</span>}
+                                        </p>
+                                        <p className="text-gray-300">&ldquo;{s.opening}&rdquo;</p>
+                                        <p className="text-gray-400">{s.reason}</p>
+                                    </div>
+                                    <button onClick={() => preview(s.id, s.startMs, s.endMs)} className={secondary} aria-label={`Preview ${s.title}`}>▶</button>
+                                    <button onClick={() => addSuggestion(s)} disabled={taken || full || working} className={secondary}>
+                                        {taken ? "Added" : "Add as a clip"}
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+            </div>
+
             {items.map((item, n) => (
                 <ClipCard key={item.id} n={n} count={items.length} item={item} view={byId.get(item.id)}
                     chapterTitles={item.source.kind === "chapter"
@@ -270,6 +356,18 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
                 <span>Thumbnail title <span className="text-gray-500">(two to six words; *asterisks* make words gold)</span></span>
                 <input value={item.thumbText} maxLength={THUMB_TEXT_MAX} onChange={e => onChange({ thumbText: e.target.value })} className={input} />
             </label>
+            <div className="text-xs text-gray-400 flex flex-col gap-1">
+                <span>The thumbnail&apos;s feeling <span className="text-gray-500">(up to {MAX_FEELINGS}: the speaker&apos;s face is chosen to show it)</span></span>
+                <div className="flex flex-wrap gap-1.5">
+                    {CLIP_FEELINGS.map(f => {
+                        const on = item.thumbFeeling.includes(f);
+                        const toggle = (): ClipFeeling[] => (on ? item.thumbFeeling.filter(x => x !== f) : [...item.thumbFeeling, f].slice(-MAX_FEELINGS));
+                        return (
+                            <button key={f} onClick={() => onChange({ thumbFeeling: toggle() })} aria-pressed={on} className={on ? chosen : secondary}>{f}</button>
+                        );
+                    })}
+                </div>
+            </div>
             <label className="text-xs text-gray-400 flex items-center gap-2">
                 <input type="checkbox" checked={item.synthetic} onChange={e => onChange({ synthetic: e.target.checked })} />
                 Shows AI imagery (YouTube&rsquo;s &ldquo;altered or synthetic content&rdquo;)
