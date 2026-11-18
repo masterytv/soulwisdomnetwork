@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Compass, Heart, MessagesSquare, Mic, Play, Users } from 'lucide-react';
 import HomeCta from '@/components/HomeCta';
 import ListenLinks from '@/components/ListenLinks';
+import NewsletterSignup from '@/components/NewsletterSignup';
 
 // The home page: the podcast, the community, the site, and what we hold to.
 
@@ -93,6 +94,9 @@ export default function Home() {
                             <div className="flex flex-wrap items-center gap-3">
                                 <span className="text-sm text-gray-400">Or listen on</span>
                                 <ListenLinks tone="home" />
+                            </div>
+                            <div className="w-full max-w-xl">
+                                <NewsletterSignup tone="home" />
                             </div>
                         </div>
                     </div>
