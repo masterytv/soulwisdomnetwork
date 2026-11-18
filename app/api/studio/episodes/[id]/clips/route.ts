@@ -1,4 +1,4 @@
-import { getClips, requestClips, saveClips } from '@/lib/server/clips';
+import { approveClip, getClips, requestClips, saveClips } from '@/lib/server/clips';
 import { handle, requireRole, STUDIO_ROLES } from '@/lib/server/staff';
 
 export const dynamic = 'force-dynamic';
@@ -11,10 +11,17 @@ export const GET = handle<Context>(async (request, { params }) => {
     return Response.json(await getClips((await params).id));
 });
 
-// Starts the clips job: { mode: 'pick' | 'titles', direction? }.
+// Starts the clips job: { mode: 'pick' | 'titles' | 'render' | 'moments', direction?, clip?, atMs? },
+// or approves one made clip at Checkpoint F: { approve: clipId, approved: boolean }.
 export const POST = handle<Context>(async (request, { params }) => {
-    await requireRole(request, STUDIO_ROLES);
-    await requestClips((await params).id, (await request.json().catch(() => null)) ?? {});
+    const user = await requireRole(request, STUDIO_ROLES);
+    const id = (await params).id;
+    const body = (await request.json().catch(() => null)) ?? {};
+    if (typeof body.approve === 'string') {
+        await approveClip(id, { item: body.approve, approved: body.approved === true }, user);
+        return Response.json({ approved: body.approved === true });
+    }
+    await requestClips(id, body);
     return Response.json({ started: true });
 });
 

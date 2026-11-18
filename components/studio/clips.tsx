@@ -4,19 +4,23 @@
 // one topic, for posting on YouTube beside the Shorts. The chapters are offered as clips (one, or joined with the
 // next), and Claude suggests topics on request; the producer can also mark their own on the player. Each clip's
 // ends move by clicking a word near them; its title, description, thumbnail title and the feeling its thumbnail
-// shows are typed here or written by Claude. Edits save as they go. Making the clips, their thumbnails and
-// scheduling come in later stages.
+// shows are typed here or written by Claude. Edits save as they go. Make clips cuts them from the final cut; Find
+// thumbnail moments finds the main speaker's most expressive moments that fit each title, and the "Soul Wisdom Clips"
+// thumbnail is drawn here from one of them (ClipThumb) and saved; each made clip is approved at Checkpoint F.
+// Scheduling on YouTube is stage 4.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ErrorNote } from "@/components/studio/ErrorNote";
 import { ago } from "@/components/studio/format";
 import { useAutosave } from "@/components/studio/useAutosave";
-import { chosen, secondary } from "@/components/studio/ui";
+import { approveButton, chosen, primary, secondary } from "@/components/studio/ui";
 import { CLIP_DIRECTION_MAX, isTakenClip, suggestionToClip, type ClipSuggestion } from "@/lib/clipPicks";
 import {
-    chapterClip, CLIP_DESCRIPTION_MAX, CLIP_FEELINGS, CLIP_MIN_MS, CLIP_TITLE_MAX, clipLength, hasChapterClip, MAX_CLIPS, MAX_FEELINGS,
-    THUMB_TEXT_MAX, type ClipEdit, type ClipFeeling, type ClipLength,
+    canMake, chapterClip, CLIP_DESCRIPTION_MAX, CLIP_FEELINGS, CLIP_MIN_MS, CLIP_TITLE_MAX, clipLength, clipRenderInputs, hasChapterClip, MAX_CLIPS,
+    MAX_FEELINGS, sameClipRender, THUMB_TEXT_MAX, withClipDefaults, type ClipEdit, type ClipFeeling, type ClipLength,
 } from "@/lib/clips";
+import { momentInputs, sameMoments } from "@/lib/clipThumbs";
+import { ClipThumb, useBrand } from "@/components/studio/clipThumb";
 import { mmss } from "@/lib/showNotes";
 import { wordBounds } from "@/lib/shorts";
 import { studioFetch } from "@/lib/studioClient";
@@ -27,10 +31,13 @@ const input = "bg-black/30 border border-studio-line rounded-lg px-3 py-1.5 text
 
 const pick = (i: ClipEdit): ClipEdit => ({
     id: i.id, source: i.source, startMs: i.startMs, endMs: i.endMs, title: i.title, description: i.description,
-    thumbText: i.thumbText, thumbFeeling: i.thumbFeeling, synthetic: i.synthetic,
+    thumbText: i.thumbText, thumbFeeling: i.thumbFeeling, thumbSpeaker: i.thumbSpeaker, thumbMoment: i.thumbMoment,
+    thumbBackground: i.thumbBackground, synthetic: i.synthetic,
 });
 
-const WORKING: Record<string, string> = { pick: "Suggesting clips…", titles: "Writing titles and descriptions…" };
+const WORKING: Record<string, string> = {
+    pick: "Suggesting clips…", titles: "Writing titles and descriptions…", render: "Making the clips…", moments: "Finding thumbnail moments…",
+};
 const needsTexts = (i: ClipEdit) => !i.title.trim() || !i.description.trim() || !i.thumbText.trim() || !i.thumbFeeling.length;
 
 const LENGTH_NOTE: Record<ClipLength, string> = {
@@ -100,16 +107,26 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         return () => clearInterval(timer);
     }, [working, load]);
 
-    async function start(mode: "pick" | "titles") {
+    async function start(mode: "pick" | "titles" | "render" | "moments", hand?: { clip: string; atMs: number }) {
         setStarting(true);
         try {
             if (!(await flush())) throw new Error("Your changes could not be saved; fix that first");
-            await studioFetch(base, { method: "POST", body: JSON.stringify(mode === "pick" ? { mode, direction: direction ?? "" } : { mode }) });
+            const body = mode === "pick" ? { mode, direction: direction ?? "" } : hand ? { mode, ...hand } : { mode };
+            await studioFetch(base, { method: "POST", body: JSON.stringify(body) });
             await load();
         } catch (e) {
             setError((e as Error).message);
         } finally {
             setStarting(false);
+        }
+    }
+
+    async function approve(id: string, approved: boolean) {
+        try {
+            await studioFetch(base, { method: "POST", body: JSON.stringify({ approve: id, approved }) });
+            await load();
+        } catch (e) {
+            setError((e as Error).message);
         }
     }
 
@@ -159,7 +176,7 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         }
         setMarking(null);
         setError("");
-        void commit([...items, { id: newId(), source: { kind: "own" }, startMs: marking, endMs, title: "", description: "", thumbText: "", thumbFeeling: [], synthetic: false }]);
+        void commit([...items, { id: newId(), source: { kind: "own" }, startMs: marking, endMs, ...withClipDefaults({ title: "", description: "", thumbText: "" }), synthetic: false }]);
     }
 
     // Plays a stretch of the final cut.
@@ -183,6 +200,11 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
     const byId = new Map((view?.items ?? []).map(i => [i.id, i]));
     const full = items.length >= MAX_CLIPS;
     const needText = items.filter(needsTexts).length;
+    const finalAt = view?.finalAt ?? 0;
+    const made = (i: ClipEdit) => sameClipRender(byId.get(i.id)?.render?.inputs, clipRenderInputs(i, finalAt));
+    const toMake = items.filter(i => !made(i) && canMake(i.endMs - i.startMs)).length;
+    const toFind = items.filter(i => i.thumbText.trim() && !sameMoments(byId.get(i.id)?.moments?.inputs, momentInputs(i, finalAt))).length;
+    const brand = useBrand();
 
     if (!view) return <ErrorNote message={error} />;
     if (view.blocker) return <p className="text-xs text-gray-400">{view.blocker}</p>;
@@ -205,7 +227,15 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
                     title="Claude writes the title, description, thumbnail title and feeling of each clip missing any; clear a field to have it rewritten">
                     {working && view.job === "titles" ? WORKING.titles : `Write titles and descriptions${needText ? ` (${needText})` : ""}`}
                 </button>
-                {working && <span className="text-xs text-sky-300">{WORKING[view.job ?? ""] ?? "Working…"} This page updates by itself.</span>}
+                <button onClick={() => start("render")} disabled={working || starting || !toMake} className={primary}
+                    title="Cuts each clip that changed from the final cut, with a half-second fade at each end">
+                    {working && view.job === "render" ? WORKING.render : `Make ${toMake || ""} clip${toMake === 1 ? "" : "s"}`.replace("  ", " ")}
+                </button>
+                <button onClick={() => start("moments")} disabled={working || starting || !toFind} className={secondary}
+                    title="For each clip with a thumbnail title: Claude looks at the main speaker's most expressive moments and the best are cut out">
+                    {working && view.job === "moments" ? WORKING.moments : `Find thumbnail moments${toFind ? ` (${toFind})` : ""}`}
+                </button>
+                {working && <span className="text-xs text-sky-300">{WORKING[view.job ?? ""] ?? "Working…"} {view.job === "render" ? "A few minutes a clip; you get an email. " : ""}This page updates by itself.</span>}
                 {view.finishedAt && !working && <span className="text-xs text-gray-400">Last job {ago(view.finishedAt)}</span>}
             </div>
 
@@ -311,7 +341,13 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
                     chapterTitles={item.source.kind === "chapter"
                         ? view.chapters.slice(item.source.index, item.source.index + item.source.count).map(c => c.title) : []}
                     onChange={patch => setItem(item.id, patch)} onEnds={patch => void commit(items.map(i => (i.id === item.id ? { ...i, ...patch } : i)))}
-                    onMove={by => move(item.id, by)} onRemove={() => remove(item)} onPreview={() => preview(item.id, item.startMs, item.endMs)} />
+                    onMove={by => move(item.id, by)} onRemove={() => remove(item)} onPreview={() => preview(item.id, item.startMs, item.endMs)}
+                    made={made(item)} finalAt={finalAt} working={working || starting} saved={saveState === "saved"}
+                    thumb={<ClipThumb episodeId={episodeId} item={item} view={byId.get(item.id)} finalAt={finalAt} brand={brand} working={working || starting}
+                        playerMs={() => (player.current ? Math.round(player.current.currentTime * 1000) : null)}
+                        onChange={patch => setItem(item.id, patch)} onUseMoment={atMs => start("moments", { clip: item.id, atMs })}
+                        onSaved={() => load()} onError={setError} />}
+                    onApprove={ok => approve(item.id, ok)} />
             ))}
             {full && <p className="text-xs text-amber-300">{MAX_CLIPS} clips is the most an episode can have.</p>}
 
@@ -320,10 +356,11 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
     );
 }
 
-function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMove, onRemove, onPreview }: {
+function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMove, onRemove, onPreview, made, working, saved, thumb, onApprove }: {
     n: number; count: number; item: ClipEdit; view: ClipItemView | undefined; chapterTitles: string[];
     onChange: (patch: Partial<ClipEdit>) => void; onEnds: (patch: Partial<ClipEdit>) => void;
     onMove: (by: number) => void; onRemove: () => void; onPreview: () => void;
+    made: boolean; finalAt: number; working: boolean; saved: boolean; thumb: React.ReactNode; onApprove: (approved: boolean) => void;
 }) {
     const duration = item.endMs - item.startMs;
     const length = clipLength(duration);
@@ -378,6 +415,35 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
                     <EndWords label="End" words={view.endWords} item={item} edge="end" onEnds={onEnds} />
                 </div>
             )}
+            <div className="flex flex-col gap-1.5 max-w-xl">
+                <span className="text-xs text-gray-400">The clip as made</span>
+                {view?.render ? (
+                    <video key={view.render.key} src={view.render.url} controls preload="metadata" playsInline
+                        className={`w-full aspect-video rounded-lg bg-black ${made ? "" : "opacity-50"}`} />
+                ) : (
+                    <div className="w-full aspect-video rounded-lg bg-black/40 border border-dashed border-studio-line flex items-center justify-center text-xs text-gray-400">
+                        Not made yet: Make clips
+                    </div>
+                )}
+                {view?.render && !made && <p className="text-xs text-amber-300">Changed since it was made; make it again.</p>}
+            </div>
+            {thumb}
+            <div className="flex flex-wrap items-center gap-3 text-xs border-t border-studio-hairline pt-2">
+                {view?.approved && made ? (
+                    <>
+                        <p className="text-emerald-300">Approved by {view.approved.by}, {ago(view.approved.at)}</p>
+                        <button onClick={() => onApprove(false)} disabled={working} className={secondary}>Withdraw approval</button>
+                    </>
+                ) : made ? (
+                    <button onClick={() => onApprove(true)} disabled={working || !saved || !item.title.trim() || !item.description.trim() || !view?.thumbnail}
+                        className={approveButton}>
+                        {!item.title.trim() || !item.description.trim() ? "Add a title and description to approve"
+                            : !view?.thumbnail ? "Save its thumbnail to approve" : "Approve this clip"}
+                    </button>
+                ) : (
+                    <span className="text-gray-400">Checkpoint F: make the clip, watch it, save its thumbnail, then approve it.</span>
+                )}
+            </div>
         </div>
     );
 }

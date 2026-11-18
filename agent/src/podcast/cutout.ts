@@ -33,6 +33,19 @@ export function parseCutoutLines(stdout: string): Map<string, CutoutLine> {
     return out;
 }
 
+// What cutout.py said about each input (with the cut-out's box, for its size), by input path. Never throws:
+// an empty map when rembg could not run at all.
+export async function cutOutWithBoxes(pairs: { input: string; output: string }[]): Promise<Map<string, CutoutLine>> {
+    if (!pairs.length) return new Map();
+    try {
+        const { stdout } = await runWithLog(python(), ['-I', SCRIPT, ...pairs.flatMap(p => [p.input, p.output])], TIMEOUT_MS);
+        return parseCutoutLines(stdout);
+    } catch (error) {
+        console.warn(`  ⚠️ No cut-outs: ${(error as Error).message}`);
+        return new Map();
+    }
+}
+
 // Returns the outputs that were made, by input path. Never throws.
 export async function cutOutPeople(pairs: { input: string; output: string }[]): Promise<Set<string>> {
     if (!pairs.length) return new Set();

@@ -25,6 +25,7 @@ export const ESTIMATE_USD = {
     shortsPick: 0.4,      // Claude reads the whole final cut and picks moments for Shorts (same model as the notes)
     clipsPick: 0.45,      // Claude reads the whole final cut and suggests topics for clips (spec 025)
     clipsTitlesPerClip: 0.05,  // Claude reads each clip's words (up to 15 minutes) and writes its texts
+    clipsMomentsPerClip: 0.15,  // Claude looks at up to 24 small frames of a clip for its thumbnail moment
     finalPerHour: 0.21,   // transcribing the final cut (WORDS_USD_PER_HOUR in agent/src/podcast/final.ts)
     upload: 0.90,         // transcribing a recording uploaded in the Studio: 3 hours at ASSEMBLYAI_USD_PER_HOUR + KEYTERMS_USD_PER_HOUR
     extras: 0.1,          // Claude's social posts and follow-up email

@@ -5,7 +5,7 @@
 // 20 minutes, and overlap no better one by more than half.
 
 import { z } from 'zod';
-import { canMake, sentenceBounds, type ClipEdit } from './clips';
+import { canMake, CLIP_DEFAULTS, sentenceBounds, type ClipEdit } from './clips';
 import type { TimedWord } from './retime';
 import { overlapping } from './shortPicks';
 
@@ -124,6 +124,6 @@ export const isTakenClip = (s: { startMs: number; endMs: number }, items: { star
 export function suggestionToClip(s: ClipSuggestion, id: string): ClipEdit {
     return {
         id, source: { kind: 'pick', id: s.id }, startMs: s.startMs, endMs: s.endMs,
-        title: '', description: '', thumbText: '', thumbFeeling: [], synthetic: false,
+        title: '', description: '', thumbText: '', ...CLIP_DEFAULTS, thumbFeeling: [], synthetic: false,
     };
 }

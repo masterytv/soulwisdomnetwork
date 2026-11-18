@@ -20,6 +20,11 @@ export const THUMB_TEXT_MAX = 60;                // with asterisks
 export const CLIP_FEELINGS = ['surprise', 'excitement', 'wonder', 'delight', 'conviction', 'concern', 'anger'] as const;
 export type ClipFeeling = (typeof CLIP_FEELINGS)[number];
 export const MAX_FEELINGS = 2;
+// The thumbnail's background: the brand's violet, or the moment's own frame, blurred and washed violet.
+export const THUMB_BACKGROUNDS = ['brand', 'clip'] as const;
+export type ThumbBackground = (typeof THUMB_BACKGROUNDS)[number];
+// How many moments the search keeps for the thumbnail.
+export const MAX_MOMENTS = 4;
 // How far around each end the Studio shows words, so the end can be moved. Never the whole clip:
 // a 15-minute stretch is about 2,500 words.
 export const END_WINDOW_MS = 30_000;
@@ -45,9 +50,32 @@ export const ClipEditSchema = z.object({
     description: z.string().max(CLIP_DESCRIPTION_MAX),
     thumbText: z.string().max(THUMB_TEXT_MAX),
     thumbFeeling: z.array(z.enum(CLIP_FEELINGS)).max(MAX_FEELINGS),
+    thumbSpeaker: z.string().max(100).nullable(),          // null: whoever speaks most of the clip
+    thumbMoment: z.number().int().min(0).max(MAX_MOMENTS).nullable(),   // which found moment the thumbnail uses (the last may be one chosen by hand)
+    thumbBackground: z.enum(THUMB_BACKGROUNDS),
     synthetic: z.boolean(),
 });
 export type ClipEdit = z.infer<typeof ClipEditSchema>;
+
+// The new fields a clip saved before them reads as (stage 2 added thumbFeeling, stage 3 the rest).
+export const CLIP_DEFAULTS: Pick<ClipEdit, 'thumbSpeaker' | 'thumbMoment' | 'thumbBackground'> = { thumbSpeaker: null, thumbMoment: null, thumbBackground: 'brand' };
+export function withClipDefaults<T extends Partial<ClipEdit>>(i: T) {
+    return {
+        ...i, thumbFeeling: i.thumbFeeling ?? [], thumbSpeaker: i.thumbSpeaker ?? null, thumbMoment: i.thumbMoment ?? null,
+        thumbBackground: i.thumbBackground ?? 'brand',
+    };
+}
+
+// What a made clip was cut from. It is current while all of this still matches; a title, description or
+// thumbnail change does not need it made again. Bumped when the cutting itself changes.
+export const CLIP_RENDER_VERSION = 1;
+export interface ClipRenderInputs { version: number; startMs: number; endMs: number; finalAt: number }
+export const clipRenderInputs = (i: { startMs: number; endMs: number }, finalAt: number): ClipRenderInputs =>
+    ({ version: CLIP_RENDER_VERSION, startMs: i.startMs, endMs: i.endMs, finalAt });
+export const sameClipRender = (a: ClipRenderInputs | null | undefined, b: ClipRenderInputs) =>
+    !!a && a.version === b.version && a.startMs === b.startMs && a.endMs === b.endMs && a.finalAt === b.finalAt;
+// Picture and sound fade in and out over this long at each end.
+export const CLIP_FADE_S = 0.5;
 
 // What Claude returns for the texts of each clip (mode titles). No .min()/.max(): Claude's output format
 // does not take them; the job trims and checks.
@@ -131,7 +159,7 @@ export function chapterClip(spans: ReturnType<typeof chapterSpans>, index: numbe
     if (!from || !to) return null;
     return {
         id, source: { kind: 'chapter', index, count }, startMs: from.startMs, endMs: to.endMs,
-        title: '', description: '', thumbText: '', thumbFeeling: [], synthetic: false,
+        title: '', description: '', thumbText: '', ...CLIP_DEFAULTS, thumbFeeling: [], synthetic: false,
     };
 }
 
