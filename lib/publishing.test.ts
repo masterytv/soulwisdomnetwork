@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DAY_MS, episodeLink, slotAt, suggestedFirstSlot } from './publishing';
+import { DAY_MS, episodeLink, slotAt, suggestedFirstSlot, withUtm } from './publishing';
 
 test('episodeLink: the episode, else the podcast playlist, else the site', () => {
     assert.deepEqual(episodeLink({ episodeUrl: 'https://youtu.be/x', playlistId: 'PL1', siteUrl: 'https://s' }), { url: 'https://youtu.be/x', linkText: 'Watch the full conversation' });
@@ -26,4 +26,14 @@ test('suggestedFirstSlot: after the last one taken, else tomorrow at its time of
     const old = new Date(2026, 10, 1, 17, 15).getTime();
     assert.equal(suggestedFirstSlot(old, 2, 11, now), new Date(2026, 10, 19, 17, 15).getTime());
     assert.equal(suggestedFirstSlot(null, 2, 11, now), new Date(2026, 10, 19, 11, 0).getTime());
+});
+
+test('withUtm: tags links to the website with the short or clip, never YouTube links', () => {
+    assert.equal(withUtm('https://soulwisdomcollective.com', 'shorts', 's1'),
+        'https://soulwisdomcollective.com/?utm_source=youtube&utm_medium=shorts&utm_campaign=s1');
+    assert.equal(withUtm('https://soulwisdomcollective.com/videos?x=1', 'clips', 'c1'),
+        'https://soulwisdomcollective.com/videos?x=1&utm_source=youtube&utm_medium=clips&utm_campaign=c1');
+    assert.equal(withUtm('https://youtu.be/x', 'shorts', 's1'), 'https://youtu.be/x');
+    assert.equal(withUtm('https://www.youtube.com/playlist?list=PL1', 'clips', 'c1'), 'https://www.youtube.com/playlist?list=PL1');
+    assert.equal(withUtm('', 'shorts', 's1'), '');
 });

@@ -11,6 +11,22 @@ export function episodeLink(o: { episodeUrl?: string | null; playlistId?: string
     return { url: o.siteUrl ?? '', linkText: 'Full episodes' };
 }
 
+// Which Short or clip a visit to the website came from (marketing plan step 2, 2026-11-18): utm tags on links to the
+// site only. YouTube drops them from its own links and reports where its viewers came from itself.
+export function withUtm(url: string, medium: 'shorts' | 'clips', id: string) {
+    let u: URL;
+    try {
+        u = new URL(url);
+    } catch {
+        return url;
+    }
+    if (/(^|\.)(youtube\.com|youtu\.be)$/.test(u.hostname)) return url;
+    u.searchParams.set('utm_source', 'youtube');
+    u.searchParams.set('utm_medium', medium);
+    u.searchParams.set('utm_campaign', id);
+    return u.toString();
+}
+
 // The n-th item of a batch goes out `everyDays` days after the one before.
 export const slotAt = (firstAt: number, n: number, everyDays = 1) => firstAt + n * everyDays * DAY_MS;
 
