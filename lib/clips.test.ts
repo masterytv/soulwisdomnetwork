@@ -5,7 +5,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    canMake, chapterClip, chapterSpans, ClipEditSchema, clipLength, clipShowsBroll, hasChapterClip, sentenceBounds, wordSnap, type ClipEdit,
+    canMake, chapterClip, chapterSpans, ClipEditSchema, clipLength, clipRenderInputs, clipShowsBroll, hasChapterClip, sameClipRender, sentenceBounds,
+    withClipDefaults, wordSnap, type ClipEdit,
 } from './clips';
 
 const w = (text: string, start: number, end: number) => ({ text, start, end });
@@ -42,7 +43,7 @@ test('chapterClip: one chapter or two joined, and none past the last', () => {
     const spans = chapterSpans([{ title: 'A', originalMs: 0, startMs: 0 }, { title: 'B', originalMs: 0, startMs: 4 * MIN }], 12 * MIN);
     assert.deepEqual(chapterClip(spans, 0, 2, 'abcd1234'), {
         id: 'abcd1234', source: { kind: 'chapter', index: 0, count: 2 }, startMs: 0, endMs: 12 * MIN,
-        title: '', description: '', thumbText: '', thumbFeeling: [], synthetic: false,
+        title: '', description: '', thumbText: '', thumbFeeling: [], thumbSpeaker: null, thumbMoment: null, thumbBackground: 'brand', synthetic: false,
     });
     assert.equal(chapterClip(spans, 1, 2, 'abcd1234'), null);
     const items = [chapterClip(spans, 0, 2, 'abcd1234')!];
@@ -80,7 +81,7 @@ test('wordSnap: whole words, the first heard after the start and the last before
 
 test('ClipEditSchema: what the page sends', () => {
     const clip: ClipEdit = {
-        id: 'abcd1234', source: { kind: 'own' }, startMs: 0, endMs: 5 * MIN, title: 'T', description: 'D', thumbText: '*Big* idea', thumbFeeling: ['wonder'], synthetic: false,
+        id: 'abcd1234', source: { kind: 'own' }, startMs: 0, endMs: 5 * MIN, title: 'T', description: 'D', thumbText: '*Big* idea', thumbFeeling: ['wonder'], thumbSpeaker: null, thumbMoment: null, thumbBackground: 'brand', synthetic: false,
     };
     assert.equal(ClipEditSchema.safeParse(clip).success, true);
     assert.equal(ClipEditSchema.safeParse({ ...clip, source: { kind: 'chapter', index: 0, count: 4 } }).success, false);
@@ -99,4 +100,19 @@ test('clipShowsBroll: each end mapped back through its chapter', () => {
     assert.equal(clipShowsBroll(still(9.5 * MIN), chapters, 9 * MIN, 14 * MIN), false);
     assert.equal(clipShowsBroll([], chapters, 0, 5 * MIN), false);
     assert.equal(clipShowsBroll(still(0), [], 9 * MIN, 14 * MIN), true);   // no way to tell
+});
+
+test('clip renders: current while the ends and the final cut match', () => {
+    const inputs = clipRenderInputs({ startMs: 1000, endMs: 5 * MIN }, 42);
+    assert.equal(sameClipRender(inputs, clipRenderInputs({ startMs: 1000, endMs: 5 * MIN }, 42)), true);
+    assert.equal(sameClipRender(inputs, clipRenderInputs({ startMs: 1000, endMs: 5 * MIN + 1 }, 42)), false);
+    assert.equal(sameClipRender(inputs, clipRenderInputs({ startMs: 1000, endMs: 5 * MIN }, 43)), false);
+    assert.equal(sameClipRender({ ...inputs, version: 0 }, inputs), false);
+    assert.equal(sameClipRender(null, inputs), false);
+});
+
+test('withClipDefaults: a clip saved before stage 3 reads with the new fields', () => {
+    const old = { id: 'abcd1234', startMs: 0, endMs: 1, title: '', description: '', thumbText: '', synthetic: false };
+    assert.deepEqual(withClipDefaults(old), { ...old, thumbFeeling: [], thumbSpeaker: null, thumbMoment: null, thumbBackground: 'brand' });
+    assert.equal(withClipDefaults({ ...old, thumbBackground: 'clip' as const }).thumbBackground, 'clip');
 });

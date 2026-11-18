@@ -1,7 +1,8 @@
 import type { BrollStyle } from '../lib/broll';
 import type { ShortSuggestion } from '../lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '../lib/shorts';
-import type { ClipEdit } from '../lib/clips';
+import type { ClipEdit, ClipRenderInputs } from '../lib/clips';
+import type { ClipMoment, MomentInputs } from '../lib/clipThumbs';
 import type { ClipSuggestion } from '../lib/clipPicks';
 import type { ShowNotes } from '../lib/showNotes';
 import type { RedraftScope } from '../lib/showNotes';
@@ -361,13 +362,20 @@ export interface EpisodeShorts {
     direction?: string | null;            // the producer's direction for the last picks
 }
 
-// One clip (docs/specs/025-clips.md): the producer's edit. Later stages add its render, thumbnail,
-// approval at Checkpoint F and the scheduled YouTube upload. Clips saved before stage 2 have no thumbFeeling.
-export type ClipItem = Omit<ClipEdit, 'thumbFeeling'> & { thumbFeeling?: ClipEdit['thumbFeeling'] };
+// One clip (docs/specs/025-clips.md): the producer's edit, the video made from it, the moments found for its
+// thumbnail and the thumbnail saved, and its approval at Checkpoint F (of that video). Stage 4 adds the YouTube
+// upload. Clips saved before stages 2 and 3 lack their fields; lib/clips.ts withClipDefaults fills them in.
+export type ClipItem = Omit<ClipEdit, 'thumbFeeling' | 'thumbSpeaker' | 'thumbMoment' | 'thumbBackground'> &
+    Partial<Pick<ClipEdit, 'thumbFeeling' | 'thumbSpeaker' | 'thumbMoment' | 'thumbBackground'>> & {
+    render?: ClipRenderInputs & { path: string; renderedAt: number; durationMs: number } | null;
+    moments?: { inputs: MomentInputs; found: ClipMoment[]; speakers: string[]; madeAt: number } | null;
+    thumbnail?: { path: string; savedAt: number } | null;
+    approved?: { by: { uid: string; name: string }; at: number; renderedAt: number } | null;
+};
 
 export interface EpisodeClips {
     status: 'queued' | 'working' | 'ready' | 'failed';
-    job: 'pick' | 'titles' | null;        // what was asked for last (podcast_clips.yml)
+    job: 'pick' | 'titles' | 'render' | 'moments' | null;   // what was asked for last (podcast_clips.yml)
     requestedAt?: unknown;
     startedAt?: unknown;
     finishedAt?: unknown;

@@ -121,7 +121,7 @@ components/studio/readability.tsx  the Studio's readability (docs/specs/024-stud
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-025 (025, clips of 5 to 15 minutes beside Shorts, stages 1 and 2 built: lib/clips.ts, lib/clipPicks.ts, lib/server/clips.ts, components/studio/clips.tsx in the Shorts stage, and podcast_clips.yml (agent/src/podcast/clips.ts: mode pick, Claude's suggested topics, and titles, each clip's texts; paid runs); 024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
+docs/specs/   numbered specs, 001-025 (025, clips of 5 to 15 minutes beside Shorts, stages 1 to 3 built: lib/clips.ts, lib/clipPicks.ts, lib/clipThumbs.ts, lib/server/clips.ts, components/studio/clips.tsx in the Shorts stage with the "Soul Wisdom Clips" thumbnail (clipThumbnail.ts, clipThumb.tsx) and Checkpoint F, and podcast_clips.yml (agent/src/podcast/clips.ts: modes pick, Claude's suggested topics; titles, each clip's texts; render, the clips cut with ffmpeg in clipsRender.ts; moments, the main speaker's most expressive faces found by loudness and word cues, judged by Claude and cut out with rembg in clipMoments.ts); 024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
@@ -248,7 +248,7 @@ are the show library's music and effects with their licence records (spec 020 it
 `docs/specs/014-usage.md`, Admin SDK only).
 
 **Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, clips suggestions and titles, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
+transcript, thumbnails, shorts picks and titles, clips suggestions, titles and thumbnail moments, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
 (`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
