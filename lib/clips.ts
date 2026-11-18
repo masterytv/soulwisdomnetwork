@@ -183,3 +183,64 @@ export function clipShowsBroll(broll: { startMs: number; durationSeconds: number
     const from = original(startMs), to = original(endMs);
     return broll.some(b => b.startMs < to && b.startMs + b.durationSeconds * 1000 > from);
 }
+
+// ─── On YouTube (stage 4) ───────────────────────────────────────────────────
+
+const mmssOf = (ms: number) => {
+    const s = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
+
+// The episode's chapters inside a clip, timed from the clip's start: the one it starts in becomes 0:00. YouTube shows
+// chapters only when there are three or more, the first at 0:00, each at least 10 seconds long, so anything less is
+// none at all (an empty list).
+export function clipChapters(chapters: { title: string; startMs: number }[], startMs: number, endMs: number) {
+    const sorted = [...chapters].sort((a, b) => a.startMs - b.startMs);
+    const opening = [...sorted].reverse().find(c => c.startMs <= startMs);
+    const inside = [
+        ...(opening ? [{ title: opening.title, ms: 0 }] : []),
+        ...sorted.filter(c => c.startMs > startMs && c.startMs < endMs).map(c => ({ title: c.title, ms: c.startMs - startMs })),
+    ];
+    if (!inside.length || inside[0].ms !== 0) return [];
+    const kept: { title: string; ms: number }[] = [];
+    for (const c of inside) {
+        const prev = kept[kept.length - 1];
+        if (prev && c.ms - prev.ms < 10_000) continue;
+        kept.push(c);
+    }
+    if (kept.length && endMs - startMs - kept[kept.length - 1].ms < 10_000) kept.pop();
+    return kept.length >= 3 ? kept.map(c => `${mmssOf(c.ms)} ${c.title.replace(/[<>]/g, '').trim()}`) : [];
+}
+
+const TEXT_CLEAN = (s: string) => s.replace(/[<>]/g, '').replace(/[ \t]+/g, ' ').trim();
+
+// What goes to YouTube for one clip: its title; its description, then the link to the full conversation, its
+// chapters, the credits for the show library's sounds in the final cut, and two of the episode's hashtags; the
+// episode's tags; the AI imagery flag.
+export function clipMetadata(item: { title: string; description: string; synthetic: boolean }, o: {
+    url: string; linkText: string; chapters: string[]; hashtags: string[]; tags: string[]; credits?: string[];
+}) {
+    const hashtags = o.hashtags.map(h => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '')).slice(0, 2);
+    const parts = [
+        TEXT_CLEAN(item.description),
+        o.url ? `${o.linkText}: ${o.url}` : '',
+        o.chapters.length ? `Chapters\n${o.chapters.join('\n')}` : '',
+        o.credits?.length ? `Music and sound\n${o.credits.map(c => c.replace(/[<>]/g, '')).join('\n')}` : '',
+        hashtags.join(' '),
+    ].filter(Boolean);
+    return {
+        title: TEXT_CLEAN(item.title).replace(/\s+/g, ' ').slice(0, CLIP_TITLE_MAX),
+        description: parts.join('\n\n').slice(0, 5000),
+        tags: o.tags.slice(0, 15),
+        containsSyntheticMedia: item.synthetic,
+    };
+}
+
+// The words heard in a clip, timed from its start, for its caption track.
+export const clipWords = (words: TimedWord[], startMs: number, endMs: number) =>
+    words.filter(w => w.start >= startMs - 50 && w.start < endMs)
+        .map(w => ({ ...w, start: Math.max(0, w.start - startMs), end: Math.max(0, Math.min(endMs, w.end) - startMs) }));
+
+// Clips go out this many days apart by default (the Studio settings' clipsEveryDays), at 11 am by default.
+export const CLIP_DEFAULT_HOUR = 11;

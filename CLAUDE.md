@@ -121,7 +121,7 @@ components/studio/readability.tsx  the Studio's readability (docs/specs/024-stud
 lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Zoom settings, equipment and habits for two
               hosts, ticked in each person's browser (components/studio/recordingChecklist.tsx)
 scripts/      make_admin.ts
-docs/specs/   numbered specs, 001-025 (025, clips of 5 to 15 minutes beside Shorts, stages 1 to 3 built: lib/clips.ts, lib/clipPicks.ts, lib/clipThumbs.ts, lib/server/clips.ts, components/studio/clips.tsx in the Shorts stage with the "Soul Wisdom Clips" thumbnail (clipThumbnail.ts, clipThumb.tsx) and Checkpoint F, and podcast_clips.yml (agent/src/podcast/clips.ts: modes pick, Claude's suggested topics; titles, each clip's texts; render, the clips cut with ffmpeg in clipsRender.ts; moments, the main speaker's most expressive faces found by loudness and word cues, judged by Claude and cut out with rembg in clipMoments.ts); 024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
+docs/specs/   numbered specs, 001-025 (025, clips of 5 to 15 minutes beside Shorts, all four stages built: lib/clips.ts, lib/clipPicks.ts, lib/clipThumbs.ts, lib/server/clips.ts, components/studio/clips.tsx in the Shorts stage with the "Soul Wisdom Clips" thumbnail (clipThumbnail.ts, clipThumb.tsx) and Checkpoint F, and podcast_clips.yml (agent/src/podcast/clips.ts: modes pick, Claude's suggested topics; titles, each clip's texts; render, the clips cut with ffmpeg in clipsRender.ts; moments, the main speaker's most expressive faces found by loudness and word cues, judged by Claude and cut out with rembg in clipMoments.ts; upload, the approved clips scheduled on YouTube every clipsEveryDays (a Studio setting) with captions, thumbnail and the Clips playlist, repo variable YOUTUBE_CLIPS_PLAYLIST_ID; lib/publishing.ts is shared with Shorts); 024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
@@ -227,7 +227,7 @@ short must be 5 seconds to 3 minutes, a floor the Studio's save also holds) and 
 service accounts have no My Drive storage and cannot create files there. Secrets: `PODCAST_SA_JSON`,
 `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, and `AUPHONIC_API_KEY` (the clean-up comparison, and renders with Auphonic as
 the voice clean-up: free plan only, its 2 hours a month counted in `studio/spending`). Repo variables: `DRIVE_TO_PROCESS_FOLDER_ID`,
-`DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`.
+`DRIVE_PROCESSED_FOLDER_ID`, `ALERT_EMAIL`, `YOUTUBE_PLAYLIST_ID` (the podcast playlist) and `YOUTUBE_CLIPS_PLAYLIST_ID` (the Clips playlist, spec 025).
 
 ### Firestore
 

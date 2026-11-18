@@ -1,8 +1,8 @@
 # Spec 025: clips of 5 to 15 minutes beside the Shorts (agent/src/podcast/clips.ts, docs/specs/025-clips.md).
 # mode "pick": Claude suggests topics from the final cut; "titles": Claude writes each clip's title, description,
 # thumbnail title and feeling; "render": cuts the clips that changed; "moments": finds each clip's thumbnail moments
-# (with "moment" set to <clip>@<ms>, the one frame chosen by hand). Started from the show notes page, or by hand from
-# the Actions tab with the episode ID.
+# (with "moment" set to <clip>@<ms>, the one frame chosen by hand); "upload": schedules the clips approved at
+# Checkpoint F on YouTube. Started from the show notes page, or by hand from the Actions tab with the episode ID.
 
 name: Podcast Clips
 # The episode ID in the run name ties each run to its episode on the Usage page (lib/server/usage.ts).
@@ -15,7 +15,7 @@ on:
         description: 'Episode ID (the Drive file ID in the Podcast Studio URL)'
         required: true
       mode:
-        description: 'pick, titles, render or moments'
+        description: 'pick, titles, render, moments or upload'
         required: true
         default: 'pick'
       moment:
@@ -75,6 +75,11 @@ jobs:
         CUTOUT_PYTHON: ${{ runner.temp }}/rembg/bin/python
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        YOUTUBE_PLAYLIST_ID: ${{ vars.YOUTUBE_PLAYLIST_ID }}
+        YOUTUBE_CLIPS_PLAYLIST_ID: ${{ vars.YOUTUBE_CLIPS_PLAYLIST_ID }}
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
         ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}

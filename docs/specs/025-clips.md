@@ -1,7 +1,7 @@
 # Spec 025: Clips
 
 **Date:** 18 November 2026
-**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). Stages 1 to 3 built; stage 4 to come
+**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). All four stages built
 **Related:** `docs/specs/013-shorts.md` (Shorts, which this follows step for step), `docs/specs/010-final-cut.md` (the final cut and
 its re-timed chapters), `docs/specs/011-thumbnails.md` (the thumbnail drawing), `docs/specs/012-youtube-upload.md` (the YouTube
 sign-in, captions and playlist), `docs/BACKLOG.md` ("Post shorts (and episode clips) to other platforms")
@@ -359,6 +359,20 @@ looking at 24 small frames is about 8,000 image tokens a clip, so a few cents.
      speaker's inner edge.
 4. **Schedule:** `mode: upload`, captions, thumbnail, playlist, the shared schedule view, the `YOUTUBE_CLIPS_PLAYLIST_ID`
    variable.
+   Built:
+   - `lib/publishing.ts` (`episodeLink`, now also used by Shorts, `slotAt` and `suggestedFirstSlot`).
+   - `clipChapters`, `clipMetadata` and `clipWords` in `lib/clips.ts`, and `clipsEveryDays` in the Studio settings
+     (a Clips section, every day to every seven days).
+   - The `upload` mode, with the YouTube secrets and the `YOUTUBE_PLAYLIST_ID` and `YOUTUBE_CLIPS_PLAYLIST_ID` variables
+     in the workflow.
+   - Scheduling in `requestClips`, and the Schedule section on the page: the slots with the Shorts already going out
+     the same day, the link and end-screen notes, and the quota.
+
+   As built:
+   - A clip on YouTube is kept as it is on every save and can no longer be made again, given new moments, re-titled,
+     re-approved or removed here.
+   - The episode's chapters inside a clip go in its description only when YouTube will show them: three or more, the
+     first at 0:00, each at least 10 seconds.
 
 The job runs only from `main` (`lib/server/github.ts`, `ref: 'main'`), so stages 2 to 4 can be tested on staging's
 pages but not their runs until they reach `main`.

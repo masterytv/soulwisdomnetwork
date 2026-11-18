@@ -1,7 +1,8 @@
 // Clips (docs/specs/025-clips.md): the chapters and Claude's suggestions offered as clips, the producer's clips
 // with their ends and texts, saved as they go with a version number as Shorts are; the clips job (podcast_clips.yml:
 // Claude's suggestions and texts, making the clips, finding their thumbnail moments); the thumbnail as drawn in the
-// Studio; and Checkpoint F, the approval of each made clip. Scheduling is stage 4.
+// Studio; Checkpoint F, the approval of each made clip; and scheduling the approved ones on YouTube, spaced by the
+// Studio settings' clipsEveryDays. A clip on YouTube can no longer be changed or removed here.
 
 import { isAiBroll } from '@/lib/broll';
 import { CLIP_DIRECTION_MAX } from '@/lib/clipPicks';
@@ -10,6 +11,7 @@ import {
     withClipDefaults, wordSnap, type ClipEdit,
 } from '@/lib/clips';
 import { momentInputs, sameMoments } from '@/lib/clipThumbs';
+import { slotAt } from '@/lib/publishing';
 import { THUMB_MAX_BYTES } from '@/lib/thumbnail';
 import { finalIsCurrent } from '@/lib/finalCut';
 import { wordsBetween } from '@/lib/shorts';
@@ -21,6 +23,7 @@ import { adminBucket, adminDb } from './firebaseAdmin';
 import { startClips } from './github';
 import { finalWords } from './shorts';
 import { ESTIMATE_USD, withinDailyLimit } from './spending';
+import { getSettings } from './studioSettings';
 import { HttpError } from './staff';
 
 const LINK_MS = 3 * 60 * 60_000;
@@ -28,11 +31,14 @@ const LINK_MS = 3 * 60 * 60_000;
 // 180 minutes for making clips and 45 for the rest.
 const staleMs = (job: string | null | undefined) => (job === 'render' ? 200 : 55) * 60_000;
 
-type Mode = 'pick' | 'titles' | 'render' | 'moments';
-const MODES: Mode[] = ['pick', 'titles', 'render', 'moments'];
+type Mode = 'pick' | 'titles' | 'render' | 'moments' | 'upload';
+const MODES: Mode[] = ['pick', 'titles', 'render', 'moments', 'upload'];
 const LABELS: Record<Mode, string> = {
     pick: 'Suggesting clips', titles: "Writing the clips' titles", render: 'Making the clips', moments: 'Finding thumbnail moments',
+    upload: 'Scheduling the clips',
 };
+const MIN_LEAD_MS = 30 * 60_000;    // the first scheduled clip, at the earliest
+const MAX_LEAD_MS = 180 * 24 * 60 * 60_000;
 
 function millis(t: unknown): number | null {
     return t && typeof (t as { toMillis?: unknown }).toMillis === 'function' ? (t as { toMillis: () => number }).toMillis() : null;
@@ -47,6 +53,7 @@ function busy(c: Episode['clips']) {
 const finalAt = (episode: Episode) => millis(episode.final?.finishedAt) ?? 0;
 const renderCurrent = (i: ClipItem, episode: Episode) => !!i.render && sameClipRender(i.render, clipRenderInputs(i, finalAt(episode)));
 const approvedNow = (i: ClipItem, episode: Episode) => renderCurrent(i, episode) && i.approved?.renderedAt === i.render?.renderedAt;
+const readyToSchedule = (i: ClipItem, episode: Episode) => !i.youtube && approvedNow(i, episode) && !!i.thumbnail;
 const momentsCurrent = (i: ClipItem, episode: Episode) => sameMoments(i.moments?.inputs, momentInputs(withClipDefaults(i), finalAt(episode)));
 
 const needsTexts = (i: ClipItem) => !i.title.trim() || !i.description.trim() || !i.thumbText.trim() || !i.thumbFeeling?.length;
@@ -104,6 +111,7 @@ export async function saveClips(id: string, body: unknown) {
         const broll = Object.values(episode.broll?.images ?? {}).filter(isAiBroll);
         const next: ClipItem[] = items.map(edit => {
             const known = old.get(edit.id);
+            if (known?.youtube) return known;      // on YouTube: changed there, not here
             let { startMs, endMs } = edit;
             if (!known) {
                 if (edit.source.kind === 'chapter' && !spans[edit.source.index + edit.source.count - 1]) throw new HttpError(400, 'There is no such chapter');
@@ -123,6 +131,8 @@ export async function saveClips(id: string, body: unknown) {
                 title: edit.title.replace(/\s+/g, ' '), thumbText: edit.thumbText.replace(/\s+/g, ' '),
             } satisfies ClipEdit;
         });
+        // A clip already on YouTube stays listed even if the page left it out.
+        for (const o of old.values()) if (o.youtube && !next.some(i => i.id === o.id)) next.push(o);
         const nextVersion = version + 1;
         tx.update(ref, {
             ...(clips?.status ? {} : { 'clips.status': 'ready', 'clips.job': null }),
@@ -137,9 +147,15 @@ export async function saveClips(id: string, body: unknown) {
 // the clips missing any; { mode: 'render' } to make the clips that changed; { mode: 'moments' } to find the
 // thumbnail moments of the clips whose moments are missing or stale, or { mode: 'moments', clip, atMs } for one
 // frame chosen by hand. Suggestions, texts and moments found by Claude are paid runs, held to the daily limit.
-export async function requestClips(id: string, body: { mode?: unknown; direction?: unknown; clip?: unknown; atMs?: unknown }) {
+export async function requestClips(id: string, body: { mode?: unknown; direction?: unknown; clip?: unknown; atMs?: unknown; firstAt?: unknown; timeZone?: unknown }) {
     const mode = body.mode as Mode;
     if (!MODES.includes(mode)) throw new HttpError(400, 'Not a clips job');
+    const firstAt = Number(body.firstAt);
+    if (mode === 'upload' && (!Number.isFinite(firstAt) || firstAt < Date.now() + MIN_LEAD_MS || firstAt > Date.now() + MAX_LEAD_MS)) {
+        throw new HttpError(400, 'Pick a time for the first clip at least half an hour from now');
+    }
+    const timeZone = typeof body.timeZone === 'string' && /^[\w/+-]{1,64}$/.test(body.timeZone) ? body.timeZone : 'UTC';
+    const everyDays = mode === 'upload' ? (await getSettings()).clipsEveryDays : 1;
     const direction = body.direction;
     if (direction !== undefined && (typeof direction !== 'string' || direction.length > CLIP_DIRECTION_MAX)) {
         throw new HttpError(400, `Keep the direction under ${CLIP_DIRECTION_MAX} characters`);
@@ -167,17 +183,25 @@ export async function requestClips(id: string, body: { mode?: unknown; direction
         } else if (!items.length) {
             throw new HttpError(409, 'Add some clips first');
         } else if (mode === 'titles') {
-            todo = items.filter(needsTexts).length;
+            todo = items.filter(i => !i.youtube && needsTexts(i)).length;
             if (!todo) throw new HttpError(409, 'Every clip already has its texts; clear one to have it rewritten');
+        } else if (mode === 'upload') {
+            // In the order on the page, `everyDays` apart; a clip not ready loses any slot it had.
+            let n = 0;
+            const scheduled = items.map(i => (i.youtube ? i
+                : { ...i, publishAt: readyToSchedule(i, episode) ? slotAt(firstAt, n++, everyDays) : null, error: null }));
+            if (!n) throw new HttpError(409, 'Approve at least one clip first');
+            Object.assign(update, { 'clips.items': scheduled, 'clips.timeZone': timeZone });
         } else if (mode === 'render') {
-            todo = items.filter(i => !renderCurrent(i, episode) && canMake(i.endMs - i.startMs)).length;
+            todo = items.filter(i => !i.youtube && !renderCurrent(i, episode) && canMake(i.endMs - i.startMs)).length;
             if (!todo) throw new HttpError(409, 'Every clip is already made');
         } else if (hand) {
             const item = items.find(i => i.id === hand.clip);
             if (!item) throw new HttpError(404, 'No such clip');
+            if (item.youtube) throw new HttpError(409, 'This clip is already on YouTube');
             if (hand.atMs < item.startMs || hand.atMs > item.endMs) throw new HttpError(400, 'That frame is not inside the clip');
         } else {
-            todo = items.filter(i => i.thumbText.trim() && !momentsCurrent(i, episode)).length;
+            todo = items.filter(i => !i.youtube && i.thumbText.trim() && !momentsCurrent(i, episode)).length;
             if (!todo) throw new HttpError(409, items.some(i => i.thumbText.trim())
                 ? 'Every clip already has its moments; change its thumbnail title or feeling to look again'
                 : 'Give the clips a thumbnail title first');
@@ -211,6 +235,7 @@ export async function saveClipThumbnail(id: string, clipId: string, body: { imag
         const clips = ((await tx.get(ref)).data() as Episode | undefined)?.clips;
         const item = clips?.items.find(i => i.id === clipId);
         if (!clips || !item) throw new HttpError(404, 'No such clip');
+        if (item.youtube) throw new HttpError(409, 'This clip is already on YouTube; change its thumbnail in YouTube Studio');
         previous = item.thumbnail?.path;
         tx.update(ref, {
             'clips.items': clips.items.map(i => (i.id === clipId ? { ...i, thumbnail: { path, savedAt } } : i)),
@@ -236,6 +261,7 @@ export async function approveClip(id: string, body: { item?: unknown; approved?:
         const clips = episode?.clips;
         const item = clips?.items.find(i => i.id === body.item);
         if (!episode || !clips || !item) throw new HttpError(404, 'No such clip');
+        if (item.youtube) throw new HttpError(409, 'This clip is already on YouTube');
         if (body.approved) {
             if (!renderCurrent(item, episode)) throw new HttpError(409, 'Make this clip again first; it changed since it was made');
             if (!item.title.trim() || !item.description.trim()) throw new HttpError(409, 'Give the clip a YouTube title and description first');
@@ -243,7 +269,7 @@ export async function approveClip(id: string, body: { item?: unknown; approved?:
         }
         const approval = body.approved ? { by, at: Date.now(), renderedAt: item.render!.renderedAt } : null;
         tx.update(ref, {
-            'clips.items': clips.items.map(i => (i.id === item.id ? { ...i, approved: approval } : i)),
+            'clips.items': clips.items.map(i => (i.id === item.id ? { ...i, approved: approval, publishAt: null } : i)),
             updatedAt: FieldValue.serverTimestamp(),
         });
     });
@@ -267,6 +293,25 @@ function sameTime(a: unknown, b: unknown) {
     return ms(a) === ms(b);
 }
 
+// Upcoming slots across every episode: the clips' latest (so a new batch follows on) and the Shorts' (shown beside
+// the clips' slots, since both share YouTube's upload quota).
+async function schedules() {
+    const snap = await adminDb().collection('episodes').select('clips.items', 'shorts.items').get();
+    let lastClip: number | null = null;
+    const shorts: number[] = [];
+    for (const doc of snap.docs) {
+        for (const i of ((doc.get('clips.items') ?? []) as ClipItem[])) {
+            const at = i.youtube?.publishAt ?? null;
+            if (at && (lastClip === null || at > lastClip)) lastClip = at;
+        }
+        for (const i of ((doc.get('shorts.items') ?? []) as { youtube?: { publishAt?: number } | null }[])) {
+            const at = i.youtube?.publishAt;
+            if (at && at > Date.now()) shorts.push(at);
+        }
+    }
+    return { lastClip, shorts: shorts.sort((a, b) => a - b) };
+}
+
 const signed = (path: string) => adminBucket().file(path).getSignedUrl({ action: 'read', expires: Date.now() + LINK_MS }).then(([url]) => url);
 
 export async function getClips(id: string): Promise<ClipsView> {
@@ -275,9 +320,11 @@ export async function getClips(id: string): Promise<ClipsView> {
     const episode = snap.data() as Episode;
     const blocker = finalProblem(episode);
     const durationMs = durationOf(episode);
-    const [words, finalUrl] = await Promise.all([
+    const [words, finalUrl, slots, settings] = await Promise.all([
         blocker ? Promise.resolve([]) : finalWords(episode),
         !blocker && episode.final?.videoPath ? signed(episode.final.videoPath) : Promise.resolve(null),
+        schedules(),
+        getSettings(),
     ]);
     const clips = episode.clips;
     const lost = (clips?.status === 'queued' || clips?.status === 'working') && !busy(clips);
@@ -293,6 +340,10 @@ export async function getClips(id: string): Promise<ClipsView> {
         direction: clips?.direction ?? '',
         blocker,
         version: clips?.version ?? 0,
+        lastSlot: slots.lastClip,
+        shortsSlots: slots.shorts,
+        everyDays: settings.clipsEveryDays,
+        episodeUrl: episode.youtube?.url ?? null,
         finalAt: finalAt(episode),
         finalUrl,
         durationMs,
@@ -317,7 +368,10 @@ export async function getClips(id: string): Promise<ClipsView> {
                     })),
                 } : null,
                 thumbnail: i.thumbnail ? { key: String(i.thumbnail.savedAt) } : null,
-                approved: approvedNow(raw, episode) && i.approved ? { by: i.approved.by.name, at: i.approved.at } : null,
+                approved: (approvedNow(raw, episode) || !!raw.youtube) && i.approved ? { by: i.approved.by.name, at: i.approved.at } : null,
+                publishAt: raw.publishAt ?? null,
+                youtube: raw.youtube ? { url: raw.youtube.url, publishAt: raw.youtube.publishAt, warnings: raw.youtube.warnings ?? [] } : null,
+                error: raw.error ?? null,
             };
         })),
     };

@@ -366,6 +366,16 @@ export default function StudioSettingsPage() {
                                 </fieldset>
                             </Section>
 
+                            <Section title="Clips" intro="Clips of 5 to 15 minutes beside the Shorts (spec 025), scheduled on YouTube from each episode's show notes page.">
+                                <label className="flex flex-col gap-1 text-sm text-gray-200">
+                                    Days between clips
+                                    <select className={`${field} !w-auto`} value={s.clipsEveryDays} disabled={off} onChange={e => set("clipsEveryDays", Number(e.target.value))}>
+                                        {[1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>{n === 1 ? "Every day" : `Every ${n} days`}</option>)}
+                                    </select>
+                                    <span className={hint}>A batch of approved clips is spaced this far apart, in the order on the page. Shorts keep their own one a day.</span>
+                                </label>
+                            </Section>
+
                             <Section title="Podcast feed" intro="Finished episodes as an audio podcast on this site, for Apple Podcasts, Spotify and other apps (spec 019 item 5.1). Each episode goes in from its show notes page.">
                                 <label className="flex items-start gap-2 text-sm text-gray-200">
                                     <input type="checkbox" checked={s.podcastFeed} onChange={e => set("podcastFeed", e.target.checked)} disabled={off} className="mt-1" />

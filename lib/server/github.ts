@@ -136,9 +136,9 @@ export async function startShorts(episodeId: string, mode: 'pick' | 'titles' | '
     });
 }
 
-// Suggests clips, writes their texts, makes them or finds their thumbnail moments, for one episode
+// Suggests clips, writes their texts, makes them, finds their thumbnail moments or schedules them, for one episode
 // (docs/specs/025-clips.md). `moment` is one frame chosen by hand, as <clip id>@<ms>.
-export async function startClips(episodeId: string, mode: 'pick' | 'titles' | 'render' | 'moments', moment = '') {
+export async function startClips(episodeId: string, mode: 'pick' | 'titles' | 'render' | 'moments' | 'upload', moment = '') {
     await github('/actions/workflows/podcast_clips.yml/dispatches', {
         method: 'POST',
         body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId, mode, ...(moment ? { moment } : {}) } }),
