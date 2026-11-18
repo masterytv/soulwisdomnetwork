@@ -1,7 +1,7 @@
 # Spec 025: Clips
 
 **Date:** 18 November 2026
-**Status:** Approved (option 2: a Clips feature beside Shorts); not built
+**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions); not built
 **Related:** `docs/specs/013-shorts.md` (Shorts, which this follows step for step), `docs/specs/010-final-cut.md` (the final cut and
 its re-timed chapters), `docs/specs/011-thumbnails.md` (the thumbnail drawing), `docs/specs/012-youtube-upload.md` (the YouTube
 sign-in, captions and playlist), `docs/BACKLOG.md` ("Post shorts (and episode clips) to other platforms")
@@ -14,8 +14,9 @@ Between the full episode and the Shorts: **clips of 5 to 15 minutes, each about 
 1. The Studio offers clips: the episode's chapters, and the topics Claude suggests.
 2. The producer adds the ones they want, moves their ends, removes them, or adds their own.
 3. Claude writes a title, a description and thumbnail text for each, or the producer does.
-4. Our own job cuts them from the final cut.
-5. The producer chooses a thumbnail, watches each clip and approves it (Checkpoint F).
+4. Our own job cuts them from the final cut, and finds the main speaker's most expressive moments that fit the title.
+5. The producer picks the thumbnail ("Soul Wisdom Clips": the title beside the speaker cut out of that moment), watches each
+   clip and approves it (Checkpoint F).
 6. The approved clips are scheduled on YouTube with captions, thumbnail and playlist.
 
 ## Decisions (18 November 2026)
@@ -33,18 +34,17 @@ Between the full episode and the Shorts: **clips of 5 to 15 minutes, each about 
   already reviewed topics. Each is offered as a clip, and two or three neighbours can be joined into one. Claude's
   suggestions cover topics that cross chapter lines.
 - **16:9, as the final cut is.** No crop and no burned-in text; a half-second fade in and out.
-- **Captions as a YouTube caption track**, not burned in: made from the final cut's words, as the episode's are.
-- **A thumbnail of its own**, drawn in the Studio by the episode's thumbnail drawing (`components/studio/thumbnailCanvas.ts`)
-  with the clip's own text and a frame from inside the clip. No new AI image: the episode's AI background
-  (`thumbnails.image`), when there is one, may be reused.
-- **Their own schedule.** One clip every two days by default, at its own time of day. YouTube's upload quota is shared
-  with Shorts, so the page shows both (see Limits).
-- **A Clips playlist**, from a new repo variable `YOUTUBE_CLIPS_PLAYLIST_ID`. If it is not set, the clips go in no playlist.
+- **Captions as a YouTube caption track**, not burned in: made from the final cut's words, as the episode's are (Tom).
+- **A thumbnail theme of its own, "Soul Wisdom Clips"** (Tom). It shows the clip's compelling title beside the main
+  speaker, cut out of a real frame of the clip (rembg, `podcast/cutout.py`, as for "Host over AI image"). The frame is a
+  high-expression moment that fits the title: surprise, excitement, wonder, delight, conviction, anger. See
+  **The thumbnail** below.
+- **Their own schedule** (Tom). One clip every two days by default, at 11 am, apart from the 5 pm Shorts slot. YouTube's
+  upload quota is shared with Shorts, so the page shows both (see Limits).
+- **A separate Clips playlist** (Tom), from a new repo variable `YOUTUBE_CLIPS_PLAYLIST_ID`. If it is not set, the job
+  warns and adds the clips to no playlist.
 - **Length:** the page aims for 5 to 15 minutes and marks anything outside that. A clip must run 2 to 20 minutes or it is
   not made.
-
-The thumbnail source, captions, schedule and playlist choices are proposals in this spec. Tom confirms them, or changes
-them, before stage 3.
 
 ## Flow
 
@@ -82,7 +82,10 @@ Changes save as they go (`PATCH .../clips`, with a version number, as Shorts do)
 - **Write titles** (`mode: 'titles'`, a paid run reserving $0.10). Claude reads each clip's words and writes:
   - a title, under 70 characters, specific to the clip rather than the episode
   - a description of two or three sentences
-  - the thumbnail text, two to five words with `*marked*` words in gold
+  - the thumbnail title: the compelling title in two to six words, read at a glance, with one or two `*marked*` words
+    in gold
+  - the feeling the thumbnail should show, as one or two of surprise, excitement, wonder, delight, conviction, concern
+    or anger (`thumbFeeling`). It guides the search for the moment (step 4) and can be changed.
 
   As with Shorts, it fills only empty fields, so clear one to have it rewritten. Or type them.
 - **AI imagery:** ticked when an AI b-roll still falls inside the clip, as for Shorts (`showsBroll`), mapped through the
@@ -96,26 +99,79 @@ Changes save as they go (`PATCH .../clips`, with a version number, as Shorts do)
 - ffmpeg reads only that stretch of the final cut from Storage (signed URL), cutting at the exact time, with a half-second
   fade of picture and sound at each end. The output is H.264 at the final cut's size and frame rate, with AAC at 48 kHz.
   The level is not re-measured: it is a stretch of a final cut already at −14 LUFS.
-- **Frames for the thumbnail:** four frames inside the clip, 1280x720. They come from the moments a key quote starts
-  where there are any, and otherwise from 10%, 35%, 60% and 85% of the way through. They are saved beside the render.
-- Stored as `episodes/{id}/clips/{clip}-{time}.mp4` and `…/{clip}-{time}-frame-N.jpg`. The previous render's files are
-  deleted.
+- Stored as `episodes/{id}/clips/{clip}-{time}.mp4`. The previous render is deleted.
 - A render records what it was made from: the ends, the final cut (`finalAt`) and `CLIP_RENDER_VERSION`. A change to any
   of them means it needs making again. A title, description or thumbnail change does not.
 - Show library sounds in the final cut are logged against the clip (`uses`, kind `clip`), as for Shorts.
 - About a minute per clip (re-encoding, no drawing), then an email.
 
-### 4. Thumbnail and Checkpoint F
+### 4. The thumbnail: "Soul Wisdom Clips"
 
-- **Thumbnail:** choose a frame (one of the four) and a kind: **Frame from the episode**, **AI image** (only if the
-  episode has one) or **Brand template**. "Host over AI image" needs a cut-out of the frame, which is left for later.
-  The Studio draws it with `drawThumbnail`, with the clip's thumbnail text, and saves the JPEG through
-  `PUT .../clips/{clip}/thumbnail`, as Checkpoint D does, at `episodes/{id}/clips/{clip}-thumb-{time}.jpg` (under 2 MB).
-- **Approve this clip** needs a title, a description and a saved thumbnail. The approval belongs to that render, so
-  making the clip again clears it. A new thumbnail or text after approving does not clear it: those are sent as they
-  stand when the clip is scheduled.
+**Find thumbnail moments** (`mode: 'moments'`, a paid run reserving $0.15 a clip) works on every clip that has a thumbnail
+title and no current moments. It reads the final cut directly, so it does not wait for **Make clips**. Moments are current
+while the clip's ends, thumbnail title, feeling and final cut are unchanged.
 
-### 5. Schedule on YouTube
+1. **The main speaker** is whoever speaks most of the clip's words. The producer can choose the other host or a guest
+   instead (`thumbSpeaker`).
+2. **Candidates.** Up to 24 moments inside the main speaker's own turns, at least 10 seconds apart, never in the first or
+   last 5 seconds. The cues that point to an expressive face come first:
+   - loud moments in the speaker's voice: the final cut's momentary loudness (ffmpeg `ebur128`), at least 4 LU above the
+     speaker's median in the clip
+   - laughter, exclamations and short reactions in the words ("wow", "oh my god", "!"), and the end of a question
+   - the key quotes and Claude's suggested opening words that fall inside the clip
+   - the words of the thumbnail title, where the speaker says them
+   - if there are too few, evenly spaced moments in the speaker's turns
+
+   Each is grabbed 300 ms after the cue, as a small 640x360 frame.
+3. **Claude looks at them** (the show notes model and effort, with images) with the clip's title, thumbnail title and
+   feeling. For each frame it returns:
+   - `expression`: 1 to 10, how strong and readable the face is at thumbnail size
+   - `fit`: 1 to 10, how well the face matches the title and feeling
+   - `emotion`: one word
+   - where the main speaker is in the frame (a box), and which way they face
+   - `usable: false` for eyes closed, a blurred or mid-word mouth, a hand over the face, the wrong person, a screen
+     share, or b-roll covering the picture
+
+   Code then keeps the usable frames, ranks them by `fit` and then `expression`, keeps them 20 seconds apart, and takes
+   the best four.
+4. **Cut out.** Each of the four is grabbed again at the final cut's full size. It is cropped to the speaker's box with a
+   margin, so in Zoom's gallery view only the main speaker is kept. Then rembg (`podcast/cutout.py`, `u2net_human_seg`)
+   cuts them out over transparency. A cut-out that covers too little of its crop (`MIN_SHARE`), or is under 600 pixels
+   tall, is dropped, and the next ranked frame takes its place.
+5. **Saved** as `episodes/{id}/clips/{clip}-moment-N.jpg` (the frame) and `…-moment-N.png` (the cut-out), with the time,
+   emotion, scores and side.
+
+**The theme** (`components/studio/clipThumbnail.ts` `drawClipThumbnail`, 1280x720, in the Studio's colours from the
+settings, as the other thumbnails are):
+- **The speaker**, cut out, stands on the bottom edge, as large as fits (up to about 95% of the height). They stand on
+  the side that has them facing the title, and are never mirrored. They have a soft gold rim light and a dark shadow
+  behind, so they stand off the background.
+- **The thumbnail title** on the other side: Outfit Black, two to four lines, as large as fits its half, white with the
+  `*marked*` words in gold, with a dark outline for small screens.
+- **The mark** at the top on the title's side: the oval logo and "SOUL WISDOM CLIPS" in gold capitals.
+- **The background:** **Brand** (deep violet gradient, gold rules, the starlight texture) by default, or **From the clip**
+  (that frame, blurred, darkened and washed violet, so the room behind the speaker shows through).
+- YouTube shows its time stamp in the bottom-right corner, so nothing that matters goes there.
+
+**In the Studio**, under each clip:
+- The four moments as finished thumbnails, each with its time, emotion and **▶** to hear it.
+- Choose one and a background.
+- **Use this moment:** scrub the clip's preview to any frame and take it instead (`mode: 'moments'` with `atMs`: one
+  grab and one cut-out, no Claude, free).
+- The thumbnail title can be edited here too, and the drawing updates as it is typed.
+- The chosen thumbnail is saved as a JPEG through `PUT .../clips/{clip}/thumbnail`, as Checkpoint D saves the episode's,
+  at `episodes/{id}/clips/{clip}-thumb-{time}.jpg` (under 2 MB).
+
+If no frame of the speaker could be cut out (a speaker off camera, a screen share), the clip offers the theme without a
+person: the title larger, centred, on the Brand background. The page says why.
+
+### 5. Checkpoint F
+
+**Approve this clip** needs a title, a description and a saved thumbnail. The approval belongs to that render, so making
+the clip again clears it. A new thumbnail or text after approving does not clear it: those are sent as they stand when
+the clip is scheduled.
+
+### 6. Schedule on YouTube
 
 `mode: 'upload'`, with the first time and the producer's time zone.
 - **Slots:** the server gives each approved clip a slot `clipsEveryDays` after the one before, in page order (default 2;
@@ -141,7 +197,7 @@ Changes save as they go (`PATCH .../clips`, with a version number, as Shorts do)
   - The caption track is added (`insertCaption`, the episode's `CAPTION_NAME`), built with `lib/captions.ts` `buildCues`
     from the clip's words moved to start at 0.
   - The thumbnail is set (`setThumbnail`).
-  - The clip is added to the Clips playlist.
+  - The clip is added to the Clips playlist (`YOUTUBE_CLIPS_PLAYLIST_ID`), not the podcast playlist.
 
   A failure in one of those three is a warning on that clip, not a failed upload.
 - A clip on YouTube can no longer be edited or removed on the page. Change or delete it in YouTube Studio.
@@ -160,15 +216,29 @@ interface ClipEdit {
     startMs: number; endMs: number;                // on the final cut
     title: string;                                 // ≤ 100
     description: string;                           // ≤ 1,000
-    thumbText: string;                             // ≤ 60, with asterisks
-    thumbKind: 'frame' | 'ai' | 'template';
-    thumbFrame: number;                            // 0-3, of the render's frames
+    thumbText: string;                             // the thumbnail title, ≤ 60, with asterisks
+    thumbFeeling: string[];                        // up to 2, of CLIP_FEELINGS
+    thumbSpeaker: string | null;                   // null: whoever speaks most
+    thumbMoment: number | null;                    // which of `moments.found`
+    thumbBackground: 'brand' | 'clip';
     synthetic: boolean;
+}
+
+// A moment found for the thumbnail (lib/clipThumbs.ts).
+interface ClipMoment {
+    atMs: number;                                  // on the final cut
+    framePath: string; cutoutPath: string | null;  // Storage: JPEG at full size, PNG with alpha
+    emotion: string; expression: number; fit: number;
+    side: 'left' | 'right';                        // where the speaker stands on the thumbnail
+    chosenByHand?: boolean;                        // "Use this moment"
 }
 
 interface ClipItem extends ClipEdit {
     render?: { version: number; startMs: number; endMs: number; finalAt: number;
-               path: string; frames: string[]; renderedAt: number; durationMs: number } | null;
+               path: string; renderedAt: number; durationMs: number } | null;
+    moments?: { inputs: { startMs: number; endMs: number; thumbText: string; feeling: string[];
+                          speaker: string; finalAt: number };
+                found: ClipMoment[]; madeAt: number } | null;
     thumbnail?: { path: string; savedAt: number } | null;
     approved?: { by: { uid: string; name: string }; at: number; renderedAt: number } | null;
     publishAt?: number | null;
@@ -179,7 +249,7 @@ interface ClipItem extends ClipEdit {
 
 interface EpisodeClips {
     status: 'queued' | 'working' | 'ready' | 'failed';
-    job: 'pick' | 'titles' | 'render' | 'upload' | null;
+    job: 'pick' | 'titles' | 'render' | 'moments' | 'upload' | null;
     requestedAt?: unknown; startedAt?: unknown; finishedAt?: unknown;
     error?: string | null;
     items: ClipItem[];                             // at most 20
@@ -199,18 +269,21 @@ interface EpisodeClips {
 | `lib/clips.ts` | Limits (`CLIP_MIN_MS` 2 min, `CLIP_TARGET` 5–15 min, `CLIP_MAX_MS` 20 min, `MAX_CLIPS` 20), `ClipEditSchema`, `ClipTextsSchema`, `chapterCandidates` (chapters to snapped clips, joins), `sentenceBounds`, render inputs and `sameClipRender`, `clipChapters` (the description's chapters), `clipMetadata` |
 | `lib/clipPicks.ts` | `ClipPicksSchema`, the prompt's rules, snapping, overlap and verification (reusing `pickingTranscript` from `lib/shortPicks.ts`) |
 | `lib/publishing.ts` | Moved from Shorts and shared: the link to the full episode (`episodeLink`), `publishSlot` with a gap in days, the next free slot across episodes |
-| `lib/server/clips.ts` | Save (version check), start a job (spending reservation for pick and titles; slots for upload), the thumbnail save |
+| `lib/clipThumbs.ts` | `CLIP_FEELINGS`, the candidate cues and spacing, `ClipMomentsSchema` (what Claude returns per frame), ranking, the crop box with its margin, and when moments are current |
+| `lib/server/clips.ts` | Save (version check), start a job (spending reservation for pick, titles and moments; slots for upload), the thumbnail save |
 | `app/api/studio/episodes/[id]/clips/route.ts`, `.../clips/[clip]/thumbnail/route.ts` | `requireRole(request, STUDIO_ROLES)` on each, as every route |
-| `agent/src/podcast/clips.ts`, `clipsRender.ts` | The job's four modes; the ffmpeg cut, fades and frames |
-| `.github/workflows/podcast_clips.yml` | As `podcast_shorts.yml`: ffmpeg through `.github/actions/ffmpeg`, the same secrets, plus `YOUTUBE_CLIPS_PLAYLIST_ID` |
+| `agent/src/podcast/clips.ts`, `clipsRender.ts`, `clipMoments.ts` | The job's five modes; the ffmpeg cut and fades; the moments: loudness, candidate frames, Claude's look, the crop and `cutOutPeople` (`podcast/cutout.ts`) |
+| `components/studio/clipThumbnail.ts` | `drawClipThumbnail`: the "Soul Wisdom Clips" theme, drawn in the browser like `thumbnailCanvas.ts` and sharing its text fitting |
+| `.github/workflows/podcast_clips.yml` | As `podcast_shorts.yml`: ffmpeg through `.github/actions/ffmpeg`, the same secrets, plus `YOUTUBE_CLIPS_PLAYLIST_ID`; for `moments`, the rembg venv from `agent/requirements-cutout.txt`, as `podcast_thumbnails.yml` makes it |
 | `lib/server/github.ts` | `startClips(id, mode)` |
-| `lib/server/spending.ts` | `ESTIMATE_USD.clipsPick` 0.45, `clipsTitles` 0.10 |
+| `lib/server/spending.ts` | `ESTIMATE_USD.clipsPick` 0.45, `clipsTitles` 0.10, `clipsMoments` 0.15 a clip |
 | `lib/studioSettings.ts` | `clipsEveryDays` (default 2), through `withDefaults` |
 | `components/studio/clips.tsx` | The section; `Journey.tsx` shows it as an optional step after the final cut |
 | `lib/episodeReset.ts`, `lib/server/episodeReset.ts` | Start over and Delete clear `clips` and `episodes/{id}/clips/`; both are refused while a clips job is working |
 | `types/episode.ts` | `EpisodeClips`, and `clips?` on `Episode` |
 
-Costs go on the episode (`clips_pick`, `clips_titles`) and in the usage report, as for Shorts.
+Costs go on the episode (`clips_pick`, `clips_titles`, `clips_moments`) and in the usage report, as for Shorts. Claude
+looking at 24 small frames is about 8,000 image tokens a clip, so a few cents.
 
 ## Limits and failure
 
@@ -237,6 +310,15 @@ Costs go on the episode (`clips_pick`, `clips_titles`) and in the usage report, 
   - metadata
   - slots `clipsEveryDays` apart
 - `lib/clipPicks.test.ts`: overlap, verification, lengths.
+- `lib/clipThumbs.test.ts`:
+  - candidates only in the main speaker's turns, spaced, never at the clip's ends
+  - loudness cues ranked first
+  - unusable frames dropped
+  - ranking by fit, then expression
+  - the crop box kept inside the frame
+  - when moments go stale
+- `components/studio/clipThumbnail.test.ts`: the speaker on the side they face, the title fitting its half at the longest
+  allowed text, and nothing in YouTube's time-stamp corner.
 - `lib/publishing.test.ts`; and Shorts' existing tests, unchanged, after the move.
 - `agent/src/podcast/clipsRender.test.ts`: a short synthetic clip cut with ffmpeg has the right length and fades.
 
@@ -244,7 +326,7 @@ Costs go on the episode (`clips_pick`, `clips_titles`) and in the usage report, 
 
 1. **Offer and edit:** the data, the route, the section with chapters and your own clips, saving and preview. No job.
 2. **Claude:** `mode: pick` and `mode: titles`, the workflow, the spending estimates.
-3. **Make and approve:** `mode: render`, frames, the thumbnail and Checkpoint F.
+3. **Make and approve:** `mode: render`, `mode: moments`, the "Soul Wisdom Clips" theme, and Checkpoint F.
 4. **Schedule:** `mode: upload`, captions, thumbnail, playlist, the shared schedule view, the `YOUTUBE_CLIPS_PLAYLIST_ID`
    variable.
 
@@ -255,7 +337,8 @@ pages but not their runs until they reach `main`.
 
 - **Clips in the Studio editor** (option 3): "Open in editor" makes the clip its own edit for the same stretch, with its
   own title card, lower thirds and tighter cuts, rendered by `editRender`.
-- "Host over AI image" thumbnails (a cut-out of the chosen frame by `podcast/cutout.py`).
+- Two speakers on one thumbnail: both hosts cut out of an exchange where both react.
+- The same moment search for the episode's own thumbnail (spec 011), in place of frames at the key quotes.
 - A short branded sting at the start, and a "Full episode" end card.
 - "Update links" once the episode is on YouTube.
 - The same files to other platforms (`docs/BACKLOG.md`, Distribution).
