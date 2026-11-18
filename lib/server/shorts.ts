@@ -204,7 +204,7 @@ export async function approveShort(id: string, body: { item?: unknown; approved?
 // The final cut's words, kept between requests while the page polls.
 const wordCache = new Map<string, TimedWord[]>();
 
-async function finalWords(episode: Episode) {
+export async function finalWords(episode: Episode) {
     const path = episode.final?.wordsPath;
     if (!path) return [];
     const key = `${path}@${finalAt(episode)}`;

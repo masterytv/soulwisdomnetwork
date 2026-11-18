@@ -17,6 +17,7 @@ const JOBS: { key: keyof Episode; label: string; working: string[] }[] = [
     { key: 'thumbnails', label: 'Thumbnails', working: ['queued', 'working'] },
     { key: 'youtube', label: 'YouTube upload', working: ['queued', 'uploading', 'processing'] },
     { key: 'shorts', label: 'Shorts', working: ['queued', 'working'] },
+    { key: 'clips', label: 'Clips', working: ['queued', 'working'] },
     { key: 'extras', label: 'Social posts', working: ['queued', 'working'] },
     { key: 'translations', label: 'Translations', working: ['queued', 'working'] },
     { key: 'retakes', label: 'Retakes', working: ['queued', 'working'] },

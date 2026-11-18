@@ -5,6 +5,7 @@ import type { ShowNotes, SpokenWord } from '@/lib/showNotes';
 import type { TimedWord } from '@/lib/retime';
 import type { ShortSuggestion } from '@/lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '@/lib/shorts';
+import type { ClipEdit } from '@/lib/clips';
 import type { ReviewUtterance } from '@/lib/transcript';
 import type { FixOp } from '@/lib/wordFixes';
 import type { ThumbKind } from '@/lib/thumbnail';
@@ -293,6 +294,22 @@ export interface ShortsView {
     lastSlot: number | null;             // the latest time any episode's short is scheduled for
     warnings: string[];
     finishedAt: number | null;
+}
+
+// One clip on the show notes page (docs/specs/025-clips.md).
+export interface ClipItemView extends ClipEdit {
+    startWords: TimedWord[];            // the final cut's words around each end, for moving it
+    endWords: TimedWord[];
+}
+
+// Clips on the show notes page: the chapters offered as clips, and the producer's clips.
+export interface ClipsView {
+    blocker: string | null;             // why clips cannot be made yet
+    version: number;
+    finalUrl: string | null;            // the final cut, to preview a clip
+    durationMs: number;
+    chapters: { index: number; title: string; startMs: number; endMs: number }[];
+    items: ClipItemView[];
 }
 
 // The highlights run's state for the editor (spec 021 item M4); the suggestions themselves are the
