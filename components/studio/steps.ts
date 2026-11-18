@@ -27,7 +27,7 @@ export const STAGES = [
     { id: "package", title: "Edit package and Descript", steps: ["package", "descript"] },
     { id: "final", title: "Final cut", steps: ["final"] },
     { id: "thumbnail", title: "Thumbnail and upload", steps: ["thumbnail", "youtube"], checkpoint: "D" },
-    { id: "shorts", title: "Shorts", steps: ["shorts"], checkpoint: "E" },
+    { id: "shorts", title: "Shorts and clips", steps: ["shorts"], checkpoint: "E" },
 ] as const satisfies readonly { id: string; title: string; steps: readonly StepId[]; checkpoint?: string }[];
 
 export type StageId = (typeof STAGES)[number]["id"];
@@ -107,7 +107,7 @@ const EDITOR_LIGHT_STAGES: readonly FlowStage[] = [
     { id: "broll", title: "B-roll", steps: ["broll"] },
     { id: "final", title: "Build edit package", steps: ["final"] },
     { id: "thumbnail", title: "Thumbnail and upload", steps: ["thumbnail", "youtube"], checkpoint: "D" },
-    { id: "shorts", title: "Shorts", steps: ["shorts"], checkpoint: "E" },
+    { id: "shorts", title: "Shorts and clips", steps: ["shorts"], checkpoint: "E" },
 ];
 
 // The flow for the chosen source: the Descript steps and stages only when Descript is chosen; the Studio editor's

@@ -1,7 +1,7 @@
 # Spec 025: Clips
 
 **Date:** 18 November 2026
-**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions); not built
+**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). Stage 1 built; stages 2 to 4 to come
 **Related:** `docs/specs/013-shorts.md` (Shorts, which this follows step for step), `docs/specs/010-final-cut.md` (the final cut and
 its re-timed chapters), `docs/specs/011-thumbnails.md` (the thumbnail drawing), `docs/specs/012-youtube-upload.md` (the YouTube
 sign-in, captions and playlist), `docs/BACKLOG.md` ("Post shorts (and episode clips) to other platforms")
@@ -278,7 +278,7 @@ interface EpisodeClips {
 | `lib/server/github.ts` | `startClips(id, mode)` |
 | `lib/server/spending.ts` | `ESTIMATE_USD.clipsPick` 0.45, `clipsTitles` 0.10, `clipsMoments` 0.15 a clip |
 | `lib/studioSettings.ts` | `clipsEveryDays` (default 2), through `withDefaults` |
-| `components/studio/clips.tsx` | The section; `Journey.tsx` shows it as an optional step after the final cut |
+| `components/studio/clips.tsx` | The section: a part of the Shorts stage (renamed "Shorts and clips") on the notes page, not a step of its own, since clips are optional and an episode is done without them |
 | `lib/episodeReset.ts`, `lib/server/episodeReset.ts` | Start over and Delete clear `clips` and `episodes/{id}/clips/`; both are refused while a clips job is working |
 | `types/episode.ts` | `EpisodeClips`, and `clips?` on `Episode` |
 
@@ -325,6 +325,11 @@ looking at 24 small frames is about 8,000 image tokens a clip, so a few cents.
 ## Stages (each a PR into `staging`)
 
 1. **Offer and edit:** the data, the route, the section with chapters and your own clips, saving and preview. No job.
+   Built: `lib/clips.ts` (limits, `ClipEditSchema`, `chapterSpans`, `chapterClip`, `sentenceBounds`, `wordSnap`,
+   `clipShowsBroll`), `lib/server/clips.ts` and the route (GET and PATCH), `components/studio/clips.tsx`, and Clips in
+   `lib/episodeReset.ts`. A new clip's ends are snapped by the server when it is first saved: to whole sentences (a
+   thought's start and end, within 20 seconds) from chapters, to whole words when marked by hand. Clicking a word then
+   moves an end exactly there. The data has only the edit for now; each later stage adds its own fields.
 2. **Claude:** `mode: pick` and `mode: titles`, the workflow, the spending estimates.
 3. **Make and approve:** `mode: render`, `mode: moments`, the "Soul Wisdom Clips" theme, and Checkpoint F.
 4. **Schedule:** `mode: upload`, captions, thumbnail, playlist, the shared schedule view, the `YOUTUBE_CLIPS_PLAYLIST_ID`

@@ -1,6 +1,7 @@
 import type { BrollStyle } from '../lib/broll';
 import type { ShortSuggestion } from '../lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '../lib/shorts';
+import type { ClipEdit } from '../lib/clips';
 import type { ShowNotes } from '../lib/showNotes';
 import type { RedraftScope } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
@@ -359,6 +360,21 @@ export interface EpisodeShorts {
     direction?: string | null;            // the producer's direction for the last picks
 }
 
+// One clip (docs/specs/025-clips.md): the producer's edit. Later stages add its render, thumbnail,
+// approval at Checkpoint F and the scheduled YouTube upload.
+export type ClipItem = ClipEdit;
+
+export interface EpisodeClips {
+    status: 'queued' | 'working' | 'ready' | 'failed';
+    job: null;                            // no clips job yet (stage 1)
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    items: ClipItem[];
+    version: number;                      // bumped on every edit, as with shorts
+}
+
 // Social posts and follow-up email Claude writes from the approved show notes.
 export interface EpisodeExtras {
     status: 'queued' | 'working' | 'ready' | 'failed';
@@ -473,6 +489,7 @@ export interface Episode {
     youtube?: EpisodeYoutube;             // the upload, spec 005 step 13
     podcast?: EpisodePodcast;             // the audio podcast feed, spec 019 item 5.1
     shorts?: EpisodeShorts;               // shorts and Checkpoint E, spec 005 step 14
+    clips?: EpisodeClips;                 // clips of 5 to 15 minutes beside the shorts, spec 025
     extras?: EpisodeExtras;                // social posts and follow-up email from the approved notes
     translations?: EpisodeTranslations;    // captions, title and description in other languages (Part I)
     retakes?: EpisodeRetakes;              // retakes Claude found, for the editor (Part I)

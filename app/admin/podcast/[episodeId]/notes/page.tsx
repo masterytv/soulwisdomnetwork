@@ -15,6 +15,7 @@ import { EditPackage } from "@/components/studio/editPackage";
 import { FinalCut } from "@/components/studio/finalCut";
 import { BuildPackage } from "@/components/studio/buildPackage";
 import { Shorts } from "@/components/studio/shorts";
+import { Clips } from "@/components/studio/clips";
 import { Thumbnails } from "@/components/studio/thumbnails";
 import { Youtube } from "@/components/studio/youtube";
 import { PodcastFeed } from "@/components/studio/podcastFeed";
@@ -1230,8 +1231,15 @@ export default function ShowNotesPage() {
                                     </div>
                                 </Stage>
 
-                                <Stage {...stageProps("shorts")} intro="Vertical shorts from the key quotes, made here from the final cut (no Descript credits), approved one by one and scheduled on YouTube one a day.">
-                                    <Shorts episodeId={episodeId} enabled={on} report={report} revision={revision} />
+                                <Stage {...stageProps("shorts")} intro="Vertical shorts from the key quotes, made here from the final cut (no Descript credits), approved one by one and scheduled on YouTube one a day; and clips of 5 to 15 minutes, each about one topic.">
+                                    <div className="flex flex-col">
+                                        <Part id="shorts-list" title="Shorts">
+                                            <Shorts episodeId={episodeId} enabled={on} report={report} revision={revision} />
+                                        </Part>
+                                        <Part id="clips" title="Clips" hint="5 to 15 minutes about one topic, posted on YouTube as ordinary videos that lead to the full conversation (spec 025). Optional: the episode is done without them.">
+                                            <Clips episodeId={episodeId} enabled={on} />
+                                        </Part>
+                                    </div>
                                 </Stage>
                             </div>
                         </div>
