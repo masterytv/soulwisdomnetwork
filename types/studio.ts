@@ -6,13 +6,14 @@ import type { TimedWord } from '@/lib/retime';
 import type { ShortSuggestion } from '@/lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '@/lib/shorts';
 import type { ClipEdit } from '@/lib/clips';
+import type { ClipSuggestion } from '@/lib/clipPicks';
 import type { ReviewUtterance } from '@/lib/transcript';
 import type { FixOp } from '@/lib/wordFixes';
 import type { ThumbKind } from '@/lib/thumbnail';
 import type { YoutubeMetadata } from '@/lib/youtube';
 import type { Extras } from '@/lib/extras';
 import type { Retake } from '@/lib/retakes';
-import type { DetectedSpeaker, EpisodeBroll, EpisodeDescript, EpisodeFinal, EpisodePackage, EpisodeNotes, EpisodeStage, EpisodeShorts, EpisodeStatus, EpisodeThumbnails, EpisodeYoutube, TranscriptCorrections } from './episode';
+import type { DetectedSpeaker, EpisodeBroll, EpisodeClips, EpisodeDescript, EpisodeFinal, EpisodePackage, EpisodeNotes, EpisodeStage, EpisodeShorts, EpisodeStatus, EpisodeThumbnails, EpisodeYoutube, TranscriptCorrections } from './episode';
 
 export interface DriveVideo {
     id: string;
@@ -304,6 +305,13 @@ export interface ClipItemView extends ClipEdit {
 
 // Clips on the show notes page: the chapters offered as clips, and the producer's clips.
 export interface ClipsView {
+    status: EpisodeClips['status'] | null;
+    job: EpisodeClips['job'];
+    error: string | null;
+    finishedAt: number | null;
+    warnings: string[];
+    suggestions: ClipSuggestion[];      // Claude's suggested topics, best first
+    direction: string;                  // the direction given for them
     blocker: string | null;             // why clips cannot be made yet
     version: number;
     finalUrl: string | null;            // the final cut, to preview a clip

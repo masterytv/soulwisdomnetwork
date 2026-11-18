@@ -1,7 +1,7 @@
 # Spec 025: Clips
 
 **Date:** 18 November 2026
-**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). Stage 1 built; stages 2 to 4 to come
+**Status:** Approved (option 2: a Clips feature beside Shorts; Tom's choices of 18 November in Decisions). Stages 1 and 2 built; stages 3 and 4 to come
 **Related:** `docs/specs/013-shorts.md` (Shorts, which this follows step for step), `docs/specs/010-final-cut.md` (the final cut and
 its re-timed chapters), `docs/specs/011-thumbnails.md` (the thumbnail drawing), `docs/specs/012-youtube-upload.md` (the YouTube
 sign-in, captions and playlist), `docs/BACKLOG.md` ("Post shorts (and episode clips) to other platforms")
@@ -79,7 +79,7 @@ Changes save as they go (`PATCH .../clips`, with a version number, as Shorts do)
 - **Ends:** the Studio shows only the words within 30 seconds of each end, never the whole clip. A 15-minute stretch is
   about 2,500 words, and the editor's lesson applies: playback must not re-render a transcript that long. Click a word
   to move that end there.
-- **Write titles** (`mode: 'titles'`, a paid run reserving $0.10). Claude reads each clip's words and writes:
+- **Write titles** (`mode: 'titles'`, a paid run reserving $0.05 for each clip it writes for). Claude reads each clip's words and writes:
   - a title, under 70 characters, specific to the clip rather than the episode
   - a description of two or three sentences
   - the thumbnail title: the compelling title in two to six words, read at a glance, with one or two `*marked*` words
@@ -276,7 +276,7 @@ interface EpisodeClips {
 | `components/studio/clipThumbnail.ts` | `drawClipThumbnail`: the "Soul Wisdom Clips" theme, drawn in the browser like `thumbnailCanvas.ts` and sharing its text fitting |
 | `.github/workflows/podcast_clips.yml` | As `podcast_shorts.yml`: ffmpeg through `.github/actions/ffmpeg`, the same secrets, plus `YOUTUBE_CLIPS_PLAYLIST_ID`; for `moments`, the rembg venv from `agent/requirements-cutout.txt`, as `podcast_thumbnails.yml` makes it |
 | `lib/server/github.ts` | `startClips(id, mode)` |
-| `lib/server/spending.ts` | `ESTIMATE_USD.clipsPick` 0.45, `clipsTitles` 0.10, `clipsMoments` 0.15 a clip |
+| `lib/server/spending.ts` | `ESTIMATE_USD.clipsPick` 0.45, `clipsTitlesPerClip` 0.05, `clipsMoments` 0.15 a clip |
 | `lib/studioSettings.ts` | `clipsEveryDays` (default 2), through `withDefaults` |
 | `components/studio/clips.tsx` | The section: a part of the Shorts stage (renamed "Shorts and clips") on the notes page, not a step of its own, since clips are optional and an episode is done without them |
 | `lib/episodeReset.ts`, `lib/server/episodeReset.ts` | Start over and Delete clear `clips` and `episodes/{id}/clips/`; both are refused while a clips job is working |
@@ -331,6 +331,13 @@ looking at 24 small frames is about 8,000 image tokens a clip, so a few cents.
    thought's start and end, within 20 seconds) from chapters, to whole words when marked by hand. Clicking a word then
    moves an end exactly there. The data has only the edit for now; each later stage adds its own fields.
 2. **Claude:** `mode: pick` and `mode: titles`, the workflow, the spending estimates.
+   Built: `lib/clipPicks.ts` (the instructions, `findOpening`, `placePick`, `rankClipPicks`), `ClipTextsSchema` and
+   `CLIP_FEELINGS` in `lib/clips.ts` (each clip now has `thumbFeeling`), `clipsSystemPrompt` in `lib/studioSettings.ts`,
+   `agent/src/podcast/clips.ts` with `.github/workflows/podcast_clips.yml` (no ffmpeg; `jobStopped.ts` marks a killed run),
+   `requestClips` and the POST route, `startClips`, the job and its costs on the Usage page, and on the page: Suggest clips
+   with an optional direction, each suggestion with its score, length, opening words, reason and "needs what came
+   before", Add as a clip, Write titles and descriptions, and the feeling chips on each clip. A suggestion keeps its
+   opening where it was found, even when a nearer thought starts close by.
 3. **Make and approve:** `mode: render`, `mode: moments`, the "Soul Wisdom Clips" theme, and Checkpoint F.
 4. **Schedule:** `mode: upload`, captions, thumbnail, playlist, the shared schedule view, the `YOUTUBE_CLIPS_PLAYLIST_ID`
    variable.

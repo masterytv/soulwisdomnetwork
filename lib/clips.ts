@@ -1,7 +1,7 @@
 // Clips (docs/specs/025-clips.md): 5 to 15 minute stretches of the final cut, each about one topic,
 // posted on YouTube as ordinary 16:9 videos beside the Shorts. Shared by the server and the Studio:
 // the limits, what a clip is as the producer edits it, the chapters offered as clips, and clean
-// ends on whole sentences. Stage 1 of the spec: offering, adding and editing; no job yet.
+// ends on whole sentences, and what Claude writes for each clip.
 
 import { z } from 'zod';
 import type { TimedWord } from './retime';
@@ -15,6 +15,11 @@ export const MAX_CLIPS = 20;
 export const CLIP_TITLE_MAX = 100;
 export const CLIP_DESCRIPTION_MAX = 1000;
 export const THUMB_TEXT_MAX = 60;                // with asterisks
+// The feelings a clip's thumbnail can show (spec 025 step 4): Claude names one or two when it writes the
+// titles, and the search for the thumbnail's moment looks for a face that shows them.
+export const CLIP_FEELINGS = ['surprise', 'excitement', 'wonder', 'delight', 'conviction', 'concern', 'anger'] as const;
+export type ClipFeeling = (typeof CLIP_FEELINGS)[number];
+export const MAX_FEELINGS = 2;
 // How far around each end the Studio shows words, so the end can be moved. Never the whole clip:
 // a 15-minute stretch is about 2,500 words.
 export const END_WINDOW_MS = 30_000;
@@ -39,9 +44,24 @@ export const ClipEditSchema = z.object({
     title: z.string().max(CLIP_TITLE_MAX),
     description: z.string().max(CLIP_DESCRIPTION_MAX),
     thumbText: z.string().max(THUMB_TEXT_MAX),
+    thumbFeeling: z.array(z.enum(CLIP_FEELINGS)).max(MAX_FEELINGS),
     synthetic: z.boolean(),
 });
 export type ClipEdit = z.infer<typeof ClipEditSchema>;
+
+// What Claude returns for the texts of each clip (mode titles). No .min()/.max(): Claude's output format
+// does not take them; the job trims and checks.
+export const ClipTextsSchema = z.object({
+    clips: z.array(z.object({
+        clip: z.number().int().describe('The number of the clip, as given'),
+        title: z.string().describe('YouTube title, under 70 characters: specific to what this clip is about, curiosity-led, no hashtags, no clickbait'),
+        description: z.string().describe('Two or three plain sentences on what the viewer will hear in this clip. No links, hashtags or timestamps: those are added.'),
+        thumbText: z.string().describe(
+            'The thumbnail title: the compelling title in two to six words, read at a glance on a phone. Mark one or two key words ' +
+            'for gold by wrapping them in asterisks, e.g. "Heaven *Felt* Like *Home*". No quotation marks, no emoji.'),
+        feeling: z.array(z.enum(CLIP_FEELINGS)).describe('One or two feelings the speaker\'s face on the thumbnail should show, to fit the title'),
+    })),
+});
 
 export type ClipLength = 'too short' | 'short' | 'good' | 'long' | 'too long';
 
@@ -111,7 +131,7 @@ export function chapterClip(spans: ReturnType<typeof chapterSpans>, index: numbe
     if (!from || !to) return null;
     return {
         id, source: { kind: 'chapter', index, count }, startMs: from.startMs, endMs: to.endMs,
-        title: '', description: '', thumbText: '', synthetic: false,
+        title: '', description: '', thumbText: '', thumbFeeling: [], synthetic: false,
     };
 }
 
