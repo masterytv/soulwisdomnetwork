@@ -21,6 +21,7 @@ in what order to build, and how the plan fits the work already built.
 | `docs/specs/015-editor-light.md` | What Editor Light does today |
 | `docs/specs/021-motion-graphics.md` | Motion graphics: branded templates and highlight moments (items M1–M5; the design in `docs/specs/021-motion-graphics/`) |
 | `docs/specs/022-one-timeline.md` | One timeline: the whole video as ordinary clips, the opening built from the notes, sounds anywhere (approved; stages 2, 3a, 3b) |
+| `docs/specs/025-clips.md` | Clips: 5 to 15 minute topic videos beside Shorts, picked from the chapters and by Claude (approved; stages 1–4) |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
 ## Decisions so far
