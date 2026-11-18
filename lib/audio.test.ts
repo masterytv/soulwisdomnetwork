@@ -114,6 +114,9 @@ test('credits go in the YouTube description before the hashtags, and in a Short\
     assert.equal(youtubeDescription(notes, links), 'About it.\n\nSubscribe.\n\n#soul');
     const meta = shortMetadata({ title: 'T', speaker: 'Ana', synthetic: false }, 'Words.', { url: '', linkText: '', hashtags: ['soul'], tags: [], credits: ['Music: Calm by A'] });
     assert.equal(meta.description, '“Words.” — Ana\n\nMusic and sound\nMusic: Calm by A\n\n#soul #shorts');
+    // The link to the full episode is the first line.
+    const linked = shortMetadata({ title: 'T', speaker: 'Ana', synthetic: false }, 'Words.', { url: 'https://youtu.be/x', linkText: 'Watch the full conversation', hashtags: [], tags: [] });
+    assert.equal(linked.description, 'Watch the full conversation: https://youtu.be/x\n\n“Words.” — Ana\n\n#shorts');
 });
 
 // The teasers' music and whoosh (Studio settings): timed on the programme's clock, before the episode.

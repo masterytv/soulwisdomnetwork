@@ -127,13 +127,13 @@ test('clipChapters: from the clip start, the first at 0:00, three or more, each 
         ['0:00 A', '1:00 C', '2:00 E']);                                           // B: 5 s after A, dropped
 });
 
-test('clipMetadata: the description, the link, the chapters, the credits and two hashtags; clean titles', () => {
+test('clipMetadata: the link first, the description, the chapters, the credits and two hashtags; clean titles', () => {
     const m = clipMetadata({ title: ' The <Soul>  Remembers ', description: 'What she saw.', synthetic: true }, {
         url: 'https://youtu.be/x', linkText: 'Watch the full conversation', chapters: ['0:00 A', '1:00 B', '2:00 C'],
         hashtags: ['NDE', '#Soul', '#Third'], tags: Array.from({ length: 20 }, (_, i) => `t${i}`), credits: ['Music: X'],
     });
     assert.equal(m.title, 'The Soul Remembers');
-    assert.equal(m.description, 'What she saw.\n\nWatch the full conversation: https://youtu.be/x\n\nChapters\n0:00 A\n1:00 B\n2:00 C\n\nMusic and sound\nMusic: X\n\n#NDE #Soul');
+    assert.equal(m.description, 'Watch the full conversation: https://youtu.be/x\n\nWhat she saw.\n\nChapters\n0:00 A\n1:00 B\n2:00 C\n\nMusic and sound\nMusic: X\n\n#NDE #Soul');
     assert.equal(m.tags.length, 15);
     assert.equal(m.containsSyntheticMedia, true);
     assert.equal(clipMetadata({ title: 't', description: 'd', synthetic: false }, { url: '', linkText: '', chapters: [], hashtags: [], tags: [] }).description, 'd');

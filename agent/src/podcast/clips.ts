@@ -29,7 +29,7 @@ import {
 } from '../../../lib/clips';
 import { momentInputs, sameMoments } from '../../../lib/clipThumbs';
 import { buildCues, toSrt } from '../../../lib/captions';
-import { episodeLink } from '../../../lib/publishing';
+import { episodeLink, withUtm } from '../../../lib/publishing';
 import { YOUTUBE_CATEGORY } from '../../../lib/youtube';
 import type { TimedWord } from '../../../lib/retime';
 import { pickingTranscript } from '../../../lib/shortPicks';
@@ -351,7 +351,7 @@ async function schedule(episode: Episode, words: TimedWord[]) {
             continue;
         }
         const meta = clipMetadata(item, {
-            ...link, chapters: clipChapters(episode.final?.chapters ?? [], item.startMs, item.endMs),
+            ...link, url: withUtm(link.url, 'clips', item.id), chapters: clipChapters(episode.final?.chapters ?? [], item.startMs, item.endMs),
             hashtags: notes.hashtags ?? [], tags: notes.tags ?? [], credits: episode.final?.credits ?? [],
         });
         const local = path.join(workDir, `${item.id}.mp4`);
