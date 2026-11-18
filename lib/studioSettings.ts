@@ -277,6 +277,17 @@ export function shortsSystemPrompt(s: StudioSettings): string {
         `Never state as fact what a ${w.speaker} offered as belief or experience.` + producerInstructions(s);
 }
 
+// The clips requests: Claude's suggested topics and each clip's texts (agent/src/podcast/clips.ts, spec 025).
+export function clipsSystemPrompt(s: StudioSettings): string {
+    const w = words(s);
+    return `You choose and title clips from the ${s.showName} ${w.noun}: stretches of 5 to 15 minutes, each about one topic, ` +
+        `posted on YouTube as videos of their own that lead viewers to the full ${w.episode}.` +
+        (s.about ? ` The ${w.noun} ${s.about}.` : '') +
+        ' A good clip opens where its topic is raised, can be followed by someone who has never seen the ' +
+        `${w.episode}, and ends on a line that closes the topic. ` +
+        `Never state as fact what a ${w.speaker} offered as belief or experience.` + producerInstructions(s);
+}
+
 // The thumbnail text request (agent/src/podcast/thumbnails.ts).
 export function thumbnailsSystemPrompt(s: StudioSettings): string {
     const w = words(s);

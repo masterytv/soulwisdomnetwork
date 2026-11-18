@@ -136,6 +136,14 @@ export async function startShorts(episodeId: string, mode: 'pick' | 'titles' | '
     });
 }
 
+// Suggests clips, or writes their texts, for one episode (docs/specs/025-clips.md).
+export async function startClips(episodeId: string, mode: 'pick' | 'titles') {
+    await github('/actions/workflows/podcast_clips.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: { episode_id: episodeId, mode } }),
+    });
+}
+
 export interface PodcastRun {
     workflow: string;           // e.g. "Podcast Final Cut"
     title: string;              // the run name; ends with " · <episode ID>" since 30 Sept 2026

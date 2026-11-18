@@ -34,6 +34,8 @@ const ITEMS: { test: RegExp; label: string; service: string }[] = [
     { test: /^thumbnail_text$/, label: 'Thumbnail texts', service: 'Anthropic (Claude)' },
     { test: /^shorts_titles$/, label: 'Shorts headlines and titles', service: 'Anthropic (Claude)' },
     { test: /^shorts_pick$/, label: "Claude's picks for Shorts", service: 'Anthropic (Claude)' },
+    { test: /^clips_pick$/, label: "Claude's suggested clips", service: 'Anthropic (Claude)' },
+    { test: /^clips_titles$/, label: 'Clips titles and descriptions', service: 'Anthropic (Claude)' },
     { test: /^writing_extras$/, label: 'Social posts and follow-up email', service: 'Anthropic (Claude)' },
     { test: /^broll_\d+$/, label: 'B-roll images', service: 'OpenAI' },
     { test: /^thumbnail_image$/, label: 'Thumbnail AI background', service: 'OpenAI' },
@@ -44,7 +46,7 @@ const classify = (item: string) => ITEMS.find(i => i.test.test(item)) ?? { label
 export const STEP_WORKFLOWS: Record<string, string> = {
     'Podcast Ingest': 'Copy and transcribe', 'Podcast Show Notes': 'Show notes', 'Podcast B-roll': 'B-roll images',
     'Podcast Edit Package': 'Edit package', 'Podcast Descript': 'Descript project', 'Podcast Final Cut': 'Final cut',
-    'Podcast Thumbnails': 'Thumbnails', 'Podcast YouTube Upload': 'YouTube upload', 'Podcast Shorts': 'Shorts',
+    'Podcast Thumbnails': 'Thumbnails', 'Podcast YouTube Upload': 'YouTube upload', 'Podcast Shorts': 'Shorts', 'Podcast Clips': 'Clips',
 };
 
 export function millis(t: unknown): number | null {
@@ -112,6 +114,7 @@ export function analyseEpisode(episodeId: string, e: Episode, runs: RunTime[] = 
             ['Thumbnails', span(e.thumbnails?.startedAt, e.thumbnails?.finishedAt)],
             ['YouTube upload', span(e.youtube?.startedAt, e.youtube?.finishedAt)],
             ['Shorts', span(e.shorts?.startedAt, e.shorts?.finishedAt)],
+            ['Clips', span(e.clips?.startedAt, e.clips?.finishedAt)],
         ];
         const byStep = [...ingestStep, ...jobs.filter((j): j is [string, number] => j[1] != null).map(([step, minutes]) => ({ step, minutes: round(minutes, 1), runs: 1 }))];
         machine = { minutes: round(byStep.reduce((t, j) => t + j.minutes, 0), 1), source: 'records', byStep };

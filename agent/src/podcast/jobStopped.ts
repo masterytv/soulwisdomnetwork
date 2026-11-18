@@ -13,7 +13,7 @@ import { sendEmail } from './notify';
 export const JOB_LABELS: Record<string, string> = {
     notes: 'Show notes', extras: 'Social posts and follow-up email', translations: 'Caption translations', retakes: 'Tighter edit',
     highlights: 'Highlight suggestions', broll: 'B-roll images', package: 'The edit package', descript: 'The Descript project',
-    final: 'The final cut', thumbnails: 'Thumbnail options', youtube: 'The YouTube upload', shorts: 'The shorts job', podcast: 'The podcast MP3',
+    final: 'The final cut', thumbnails: 'Thumbnail options', youtube: 'The YouTube upload', shorts: 'The shorts job', clips: 'The clips job', podcast: 'The podcast MP3',
 };
 
 // Every job ends ready, failed or (show notes) approved; any other status is still in progress.

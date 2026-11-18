@@ -1,6 +1,8 @@
 import type { BrollStyle } from '../lib/broll';
 import type { ShortSuggestion } from '../lib/shortPicks';
 import type { ShortAspect, ShortEdit, ShortRenderInputs } from '../lib/shorts';
+import type { ClipEdit } from '../lib/clips';
+import type { ClipSuggestion } from '../lib/clipPicks';
 import type { ShowNotes } from '../lib/showNotes';
 import type { RedraftScope } from '../lib/showNotes';
 import type { ThumbKind } from '../lib/thumbnail';
@@ -359,6 +361,25 @@ export interface EpisodeShorts {
     direction?: string | null;            // the producer's direction for the last picks
 }
 
+// One clip (docs/specs/025-clips.md): the producer's edit. Later stages add its render, thumbnail,
+// approval at Checkpoint F and the scheduled YouTube upload. Clips saved before stage 2 have no thumbFeeling.
+export type ClipItem = Omit<ClipEdit, 'thumbFeeling'> & { thumbFeeling?: ClipEdit['thumbFeeling'] };
+
+export interface EpisodeClips {
+    status: 'queued' | 'working' | 'ready' | 'failed';
+    job: 'pick' | 'titles' | null;        // what was asked for last (podcast_clips.yml)
+    requestedAt?: unknown;
+    startedAt?: unknown;
+    finishedAt?: unknown;
+    error?: string | null;
+    items: ClipItem[];
+    version: number;                      // bumped on every edit, as with shorts
+    suggestions?: ClipSuggestion[];       // Claude's suggested topics, best first (lib/clipPicks.ts)
+    unverified?: number;                  // suggestions dropped: their opening words were not where Claude said
+    direction?: string | null;            // the producer's direction for the last suggestions
+    warnings?: string[];
+}
+
 // Social posts and follow-up email Claude writes from the approved show notes.
 export interface EpisodeExtras {
     status: 'queued' | 'working' | 'ready' | 'failed';
@@ -473,6 +494,7 @@ export interface Episode {
     youtube?: EpisodeYoutube;             // the upload, spec 005 step 13
     podcast?: EpisodePodcast;             // the audio podcast feed, spec 019 item 5.1
     shorts?: EpisodeShorts;               // shorts and Checkpoint E, spec 005 step 14
+    clips?: EpisodeClips;                 // clips of 5 to 15 minutes beside the shorts, spec 025
     extras?: EpisodeExtras;                // social posts and follow-up email from the approved notes
     translations?: EpisodeTranslations;    // captions, title and description in other languages (Part I)
     retakes?: EpisodeRetakes;              // retakes Claude found, for the editor (Part I)
