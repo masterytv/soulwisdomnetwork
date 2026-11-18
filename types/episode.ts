@@ -371,11 +371,15 @@ export type ClipItem = Omit<ClipEdit, 'thumbFeeling' | 'thumbSpeaker' | 'thumbMo
     moments?: { inputs: MomentInputs; found: ClipMoment[]; speakers: string[]; madeAt: number } | null;
     thumbnail?: { path: string; savedAt: number } | null;
     approved?: { by: { uid: string; name: string }; at: number; renderedAt: number } | null;
+    publishAt?: number | null;            // the slot it was scheduled for, ms
+    youtube?: { videoId: string; url: string; publishAt: number; uploadedAt: number; playlistId: string | null; warnings: string[] } | null;
+    error?: string | null;                // the last upload attempt for this one failed
 };
 
 export interface EpisodeClips {
     status: 'queued' | 'working' | 'ready' | 'failed';
-    job: 'pick' | 'titles' | 'render' | 'moments' | null;   // what was asked for last (podcast_clips.yml)
+    job: 'pick' | 'titles' | 'render' | 'moments' | 'upload' | null;   // what was asked for last (podcast_clips.yml)
+    timeZone?: string;                    // the producer's, for the times in emails
     requestedAt?: unknown;
     startedAt?: unknown;
     finishedAt?: unknown;

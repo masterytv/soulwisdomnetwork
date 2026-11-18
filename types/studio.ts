@@ -310,6 +310,9 @@ export interface ClipItemView extends ClipEdit {
     } | null;
     thumbnail: { key: string } | null;  // the saved thumbnail
     approved: { by: string; at: number } | null;    // of the clip as it is made now
+    publishAt: number | null;           // the slot it was given, until it is on YouTube
+    youtube: { url: string; publishAt: number; warnings: string[] } | null;
+    error: string | null;               // the last upload attempt for this one failed
 }
 
 // Clips on the show notes page: the chapters offered as clips, and the producer's clips.
@@ -324,6 +327,10 @@ export interface ClipsView {
     blocker: string | null;             // why clips cannot be made yet
     version: number;
     finalAt: number;                    // the final cut now; a clip made from another is out of date
+    lastSlot: number | null;            // the latest time any episode's clip is scheduled for
+    shortsSlots: number[];              // the Shorts scheduled ahead, on any episode (they share YouTube's quota)
+    everyDays: number;                  // the Studio settings' days between clips
+    episodeUrl: string | null;          // the episode on YouTube, which each clip links to once it is there
     finalUrl: string | null;            // the final cut, to preview a clip
     durationMs: number;
     chapters: { index: number; title: string; startMs: number; endMs: number }[];

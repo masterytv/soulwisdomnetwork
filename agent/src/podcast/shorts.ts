@@ -26,6 +26,7 @@ import {
     HEADLINE_MAX_CHARS, type ShortAspect,
 } from '../../../lib/shorts';
 import { shortsSystemPrompt, type StudioSettings } from '../../../lib/studioSettings';
+import { episodeLink } from '../../../lib/publishing';
 import { YOUTUBE_CATEGORY } from '../../../lib/youtube';
 import type { Episode, ShortItem } from '../../../types/episode';
 import { loadAlert } from './config';
@@ -281,10 +282,7 @@ async function upload(episode: Episode, words: TimedWord[]) {
     const shorts = episode.shorts!;
     const notes = episode.notes!.approved!;
     // The episode once it is on YouTube; before that, the podcast playlist, then the site.
-    const playlistId = process.env.YOUTUBE_PLAYLIST_ID?.trim();
-    const link = episode.youtube?.url ? { url: episode.youtube.url, linkText: 'Watch the full conversation' }
-        : playlistId ? { url: `https://www.youtube.com/playlist?list=${playlistId}`, linkText: 'Full episodes' }
-            : { url: settings.siteUrl, linkText: 'Full episodes' };
+    const link = episodeLink({ episodeUrl: episode.youtube?.url, playlistId: process.env.YOUTUBE_PLAYLIST_ID, siteUrl: settings.siteUrl });
     const youtube = createYoutube({
         clientId: required('YOUTUBE_CLIENT_ID'),
         clientSecret: required('YOUTUBE_CLIENT_SECRET'),

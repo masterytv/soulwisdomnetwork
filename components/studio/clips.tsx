@@ -17,9 +17,10 @@ import { approveButton, chosen, primary, secondary } from "@/components/studio/u
 import { CLIP_DIRECTION_MAX, isTakenClip, suggestionToClip, type ClipSuggestion } from "@/lib/clipPicks";
 import {
     canMake, chapterClip, CLIP_DESCRIPTION_MAX, CLIP_FEELINGS, CLIP_MIN_MS, CLIP_TITLE_MAX, clipLength, clipRenderInputs, hasChapterClip, MAX_CLIPS,
-    MAX_FEELINGS, sameClipRender, THUMB_TEXT_MAX, withClipDefaults, type ClipEdit, type ClipFeeling, type ClipLength,
+    MAX_FEELINGS, sameClipRender, THUMB_TEXT_MAX, withClipDefaults, CLIP_DEFAULT_HOUR, type ClipEdit, type ClipFeeling, type ClipLength,
 } from "@/lib/clips";
 import { momentInputs, sameMoments } from "@/lib/clipThumbs";
+import { slotAt, suggestedFirstSlot } from "@/lib/publishing";
 import { ClipThumb, useBrand } from "@/components/studio/clipThumb";
 import { mmss } from "@/lib/showNotes";
 import { wordBounds } from "@/lib/shorts";
@@ -37,6 +38,7 @@ const pick = (i: ClipEdit): ClipEdit => ({
 
 const WORKING: Record<string, string> = {
     pick: "Suggesting clips…", titles: "Writing titles and descriptions…", render: "Making the clips…", moments: "Finding thumbnail moments…",
+    upload: "Scheduling on YouTube…",
 };
 const needsTexts = (i: ClipEdit) => !i.title.trim() || !i.description.trim() || !i.thumbText.trim() || !i.thumbFeeling.length;
 
@@ -51,6 +53,14 @@ const lengthClass = (l: ClipLength) => (l === "good" ? "text-gray-300" : l === "
 const minutesOf = (ms: number) => `${Math.floor(ms / 60_000)}:${String(Math.round(ms / 1000) % 60).padStart(2, "0")}`;
 const newId = () => crypto.randomUUID().slice(0, 8);
 
+// <input type="datetime-local"> works in the browser's own time zone.
+function localInput(ms: number) {
+    const d = new Date(ms);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+const whenLocal = (ms: number) => new Date(ms).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
 export function Clips({ episodeId, enabled }: { episodeId: string; enabled: boolean }) {
     const [view, setView] = useState<ClipsView | null>(null);
     const [items, setItems] = useState<ClipEdit[]>([]);
@@ -61,6 +71,8 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
     // The start of a clip being marked on the player, until its end is marked.
     const [marking, setMarking] = useState<number | null>(null);
     const [starting, setStarting] = useState(false);
+    // When the first clip of a batch goes out, as the <input type="datetime-local"> holds it.
+    const [firstAt, setFirstAt] = useState("");
     // The producer's direction for Claude's suggestions; null until loaded, then set once from the view.
     const [direction, setDirection] = useState<string | null>(null);
     const player = useRef<HTMLVideoElement | null>(null);
@@ -85,6 +97,7 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         }
         setFinalUrl(url => url ?? next.finalUrl);
         setDirection(value => value ?? next.direction);
+        setFirstAt(value => value || localInput(suggestedFirstSlot(next.lastSlot, next.everyDays, CLIP_DEFAULT_HOUR)));
     }, [reset]);
     const load = useCallback(async (force = false) => {
         try {
@@ -107,11 +120,12 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
         return () => clearInterval(timer);
     }, [working, load]);
 
-    async function start(mode: "pick" | "titles" | "render" | "moments", hand?: { clip: string; atMs: number }) {
+    async function start(mode: "pick" | "titles" | "render" | "moments" | "upload", hand?: { clip: string; atMs: number }) {
         setStarting(true);
         try {
             if (!(await flush())) throw new Error("Your changes could not be saved; fix that first");
-            const body = mode === "pick" ? { mode, direction: direction ?? "" } : hand ? { mode, ...hand } : { mode };
+            const body = mode === "pick" ? { mode, direction: direction ?? "" } : hand ? { mode, ...hand }
+                : mode === "upload" ? { mode, firstAt: new Date(firstAt).getTime(), timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } : { mode };
             await studioFetch(base, { method: "POST", body: JSON.stringify(body) });
             await load();
         } catch (e) {
@@ -199,12 +213,21 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
 
     const byId = new Map((view?.items ?? []).map(i => [i.id, i]));
     const full = items.length >= MAX_CLIPS;
-    const needText = items.filter(needsTexts).length;
+    const needText = items.filter(i => needsTexts(i) && !byId.get(i.id)?.youtube).length;
     const finalAt = view?.finalAt ?? 0;
     const made = (i: ClipEdit) => sameClipRender(byId.get(i.id)?.render?.inputs, clipRenderInputs(i, finalAt));
-    const toMake = items.filter(i => !made(i) && canMake(i.endMs - i.startMs)).length;
-    const toFind = items.filter(i => i.thumbText.trim() && !sameMoments(byId.get(i.id)?.moments?.inputs, momentInputs(i, finalAt))).length;
+    const onYoutube = (i: ClipEdit) => !!byId.get(i.id)?.youtube;
+    const toMake = items.filter(i => !onYoutube(i) && !made(i) && canMake(i.endMs - i.startMs)).length;
+    const toFind = items.filter(i => !onYoutube(i) && i.thumbText.trim() && !sameMoments(byId.get(i.id)?.moments?.inputs, momentInputs(i, finalAt))).length;
     const brand = useBrand();
+    const waiting = items.filter(i => {
+        const v = byId.get(i.id);
+        return v && !v.youtube && v.approved && made(i) && v.thumbnail;
+    });
+    const firstMs = firstAt ? new Date(firstAt).getTime() : NaN;
+    const everyDays = view?.everyDays ?? 2;
+    // The Shorts going out on the same day as a slot, since both share YouTube's daily upload quota.
+    const shortsThatDay = (ms: number) => (view?.shortsSlots ?? []).filter(at => new Date(at).toDateString() === new Date(ms).toDateString()).length;
 
     if (!view) return <ErrorNote message={error} />;
     if (view.blocker) return <p className="text-xs text-gray-400">{view.blocker}</p>;
@@ -351,6 +374,48 @@ export function Clips({ episodeId, enabled }: { episodeId: string; enabled: bool
             ))}
             {full && <p className="text-xs text-amber-300">{MAX_CLIPS} clips is the most an episode can have.</p>}
 
+            {items.some(i => byId.get(i.id)?.approved || byId.get(i.id)?.youtube) && (
+                <div className="border-t border-studio-line pt-4 flex flex-col gap-3">
+                    <h4 className="text-sm text-gray-100 font-semibold">Schedule the approved clips on YouTube</h4>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <label className="text-xs text-gray-400 flex items-center gap-2">
+                            First one goes out
+                            <input type="datetime-local" value={firstAt} onChange={e => setFirstAt(e.target.value)}
+                                className="bg-black/30 border border-studio-line rounded-lg px-2 py-1 text-xs text-gray-200" />
+                        </label>
+                        <button onClick={() => start("upload")} disabled={working || starting || !waiting.length || !Number.isFinite(firstMs)} className={primary}>
+                            {working && view.job === "upload" ? WORKING.upload : `Schedule ${waiting.length || ""} on YouTube`.replace("  ", " ")}
+                        </button>
+                    </div>
+                    {!!waiting.length && Number.isFinite(firstMs) && (
+                        <ul className="text-xs text-gray-400 flex flex-col gap-0.5">
+                            {waiting.map((i, k) => {
+                                const at = slotAt(firstMs, k, everyDays);
+                                const shorts = shortsThatDay(at);
+                                return (
+                                    <li key={i.id}>
+                                        {whenLocal(at)}: <span className="text-gray-200">{i.title}</span>
+                                        {shorts ? <span className="text-gray-500"> · {shorts} short{shorts === 1 ? "" : "s"} that day</span> : null}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                    <ul className="text-xs text-gray-400 list-disc pl-5 flex flex-col gap-0.5">
+                        <li>
+                            {everyDays === 1 ? "One a day" : `One every ${everyDays} days`} (the Studio settings), in the order above, each Private until its time,
+                            with its captions, thumbnail and the Clips playlist.{view.lastSlot && view.lastSlot > Date.now() ? ` Clips are already scheduled until ${whenLocal(view.lastSlot)}, so this batch follows on.` : ""}
+                        </li>
+                        <li>
+                            {view.episodeUrl ? "Each links to the full episode in its description."
+                                : "The episode is not on YouTube yet, so each clip links to the podcast playlist instead. Upload the episode first to link it directly."}
+                        </li>
+                        <li>The API cannot set an end screen: add &ldquo;Full episode&rdquo; as each clip&apos;s end screen in YouTube Studio.</li>
+                        <li>YouTube allows about six uploads a day, shared with Shorts; if it runs out, the rest keep their slots: press Schedule again the next day.</li>
+                    </ul>
+                </div>
+            )}
+
             <ErrorNote message={error} />
         </div>
     );
@@ -366,6 +431,8 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
     const length = clipLength(duration);
     const from = item.source.kind === "chapter" ? `From ${chapterTitles.map(t => `“${t}”`).join(" and ")}`
         : item.source.kind === "pick" ? "Claude's pick" : "Marked by hand";
+    // On YouTube: changed or removed in YouTube Studio, not here.
+    const locked = !!view?.youtube;
 
     return (
         <div className="flex flex-col gap-2 bg-black/20 border border-studio-hairline rounded-xl p-3 min-w-0">
@@ -376,10 +443,15 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
                 <span className={lengthClass(length)}>{minutesOf(duration)}{LENGTH_NOTE[length] ? ` (${LENGTH_NOTE[length]})` : ""}</span>
                 <span className="grow" />
                 <button onClick={onPreview} className={secondary}>▶ Preview</button>
-                <button onClick={() => onMove(-1)} disabled={n === 0} className={secondary} title="Earlier in the schedule" aria-label="Move earlier">↑</button>
-                <button onClick={() => onMove(1)} disabled={n === count - 1} className={secondary} title="Later in the schedule" aria-label="Move later">↓</button>
-                <button onClick={onRemove} className={secondary}>Remove</button>
+                {!locked && (
+                    <>
+                        <button onClick={() => onMove(-1)} disabled={n === 0} className={secondary} title="Earlier in the schedule" aria-label="Move earlier">↑</button>
+                        <button onClick={() => onMove(1)} disabled={n === count - 1} className={secondary} title="Later in the schedule" aria-label="Move later">↓</button>
+                        <button onClick={onRemove} className={secondary}>Remove</button>
+                    </>
+                )}
             </div>
+            <fieldset disabled={locked} className="contents">
             <label className="text-xs text-gray-400 flex flex-col gap-1">
                 <span>YouTube title <span className="text-gray-500">({item.title.length}/{CLIP_TITLE_MAX})</span></span>
                 <input value={item.title} maxLength={CLIP_TITLE_MAX} onChange={e => onChange({ title: e.target.value.replace(/[<>]/g, "") })} className={input} />
@@ -428,8 +500,17 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
                 {view?.render && !made && <p className="text-xs text-amber-300">Changed since it was made; make it again.</p>}
             </div>
             {thumb}
+            </fieldset>
             <div className="flex flex-wrap items-center gap-3 text-xs border-t border-studio-hairline pt-2">
-                {view?.approved && made ? (
+                {view?.youtube ? (
+                    <div className="flex flex-col gap-1">
+                        <p className="text-emerald-300">
+                            Scheduled for {whenLocal(view.youtube.publishAt)} · <a href={view.youtube.url} target="_blank" rel="noreferrer" className="text-amber-300 hover:underline">On YouTube ↗</a>
+                            <span className="text-gray-400"> · change or remove it in YouTube Studio</span>
+                        </p>
+                        {view.youtube.warnings.map(w => <p key={w} className="text-amber-300">{w}</p>)}
+                    </div>
+                ) : view?.approved && made ? (
                     <>
                         <p className="text-emerald-300">Approved by {view.approved.by}, {ago(view.approved.at)}</p>
                         <button onClick={() => onApprove(false)} disabled={working} className={secondary}>Withdraw approval</button>
@@ -443,6 +524,8 @@ function ClipCard({ n, count, item, view, chapterTitles, onChange, onEnds, onMov
                 ) : (
                     <span className="text-gray-400">Checkpoint F: make the clip, watch it, save its thumbnail, then approve it.</span>
                 )}
+                {view && !view.youtube && view.publishAt && <span className="text-gray-400">Slot: {whenLocal(view.publishAt)}</span>}
+                {view && !view.youtube && <ErrorNote message={view.error} />}
             </div>
         </div>
     );
