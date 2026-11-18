@@ -6,6 +6,7 @@ import { Search, Youtube } from "lucide-react";
 import { YOUTUBE_CHANNEL_URL } from "@/lib/site";
 import type { ChannelVideo } from "@/types/video";
 import VideoCard from "./VideoCard";
+import ListenLinks from "../ListenLinks";
 
 // The Videos pages: Episodes or Shorts, sorted and searched in the browser (the whole channel
 // arrives with the page; app/videos).
@@ -46,10 +47,13 @@ export default function VideoBrowser({ videos, shorts, counts }: {
                             Every conversation from the Soul Wisdom Collective podcast, with Daniel Endy and Tom Wood.
                         </p>
                     </div>
-                    <a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-ocean-200 dark:border-ocean-700 text-sm font-bold text-ocean-700 dark:text-ocean-200 hover:border-gold-500">
-                        <Youtube className="w-4 h-4 text-red-500" /> Subscribe on YouTube
-                    </a>
+                    <div className="flex flex-wrap gap-2">
+                        <a href={YOUTUBE_CHANNEL_URL} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-ocean-200 dark:border-ocean-700 text-sm font-bold text-ocean-700 dark:text-ocean-200 hover:border-gold-500">
+                            <Youtube className="w-4 h-4 text-red-500" /> Subscribe on YouTube
+                        </a>
+                        <ListenLinks tone="videos" />
+                    </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
