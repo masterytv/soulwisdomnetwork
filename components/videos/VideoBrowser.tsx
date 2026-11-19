@@ -7,6 +7,7 @@ import { YOUTUBE_CHANNEL_URL } from "@/lib/site";
 import type { ChannelVideo } from "@/types/video";
 import VideoCard from "./VideoCard";
 import ListenLinks from "../ListenLinks";
+import NewsletterSignup from "../NewsletterSignup";
 
 // The Videos pages: Episodes or Shorts, sorted and searched in the browser (the whole channel
 // arrives with the page; app/videos).
@@ -94,6 +95,9 @@ export default function VideoBrowser({ videos, shorts, counts }: {
                         {shown.map(v => <VideoCard key={v.id} video={v} />)}
                     </div>
                 )}
+                <div className="mt-10 max-w-xl">
+                    <NewsletterSignup tone="videos" />
+                </div>
             </main>
         </div>
     );

@@ -26,7 +26,7 @@ import {
     HEADLINE_MAX_CHARS, type ShortAspect,
 } from '../../../lib/shorts';
 import { shortsSystemPrompt, type StudioSettings } from '../../../lib/studioSettings';
-import { episodeLink } from '../../../lib/publishing';
+import { episodeLink, withUtm } from '../../../lib/publishing';
 import { YOUTUBE_CATEGORY } from '../../../lib/youtube';
 import type { Episode, ShortItem } from '../../../types/episode';
 import { loadAlert } from './config';
@@ -305,7 +305,7 @@ async function upload(episode: Episode, words: TimedWord[]) {
             continue;
         }
         const spoken = wordsBetween(words, item.startMs, item.endMs).map(w => w.text).join(' ');
-        const meta = shortMetadata(item, spoken, { ...link, hashtags: notes.hashtags, tags: notes.tags, credits: episode.final?.credits ?? [] });
+        const meta = shortMetadata(item, spoken, { ...link, url: withUtm(link.url, 'shorts', item.id), hashtags: notes.hashtags, tags: notes.tags, credits: episode.final?.credits ?? [] });
         const local = path.join(workDir, `${item.id}.mp4`);
         await withRetry('Storage download', () => bucket.file(item.render!.path).download({ destination: local }));
         const publishAt = new Date(item.publishAt!).toISOString();

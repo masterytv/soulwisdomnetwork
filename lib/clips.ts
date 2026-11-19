@@ -215,16 +215,16 @@ export function clipChapters(chapters: { title: string; startMs: number }[], sta
 
 const TEXT_CLEAN = (s: string) => s.replace(/[<>]/g, '').replace(/[ \t]+/g, ' ').trim();
 
-// What goes to YouTube for one clip: its title; its description, then the link to the full conversation, its
-// chapters, the credits for the show library's sounds in the final cut, and two of the episode's hashtags; the
+// What goes to YouTube for one clip: its title; the link to the full conversation first (marketing plan step 2,
+// 2026-11-18), then its description, its chapters, the credits for the show library's sounds in the final cut, and two of the episode's hashtags; the
 // episode's tags; the AI imagery flag.
 export function clipMetadata(item: { title: string; description: string; synthetic: boolean }, o: {
     url: string; linkText: string; chapters: string[]; hashtags: string[]; tags: string[]; credits?: string[];
 }) {
     const hashtags = o.hashtags.map(h => (h.startsWith('#') ? h : `#${h}`).replace(/\s+/g, '')).slice(0, 2);
     const parts = [
-        TEXT_CLEAN(item.description),
         o.url ? `${o.linkText}: ${o.url}` : '',
+        TEXT_CLEAN(item.description),
         o.chapters.length ? `Chapters\n${o.chapters.join('\n')}` : '',
         o.credits?.length ? `Music and sound\n${o.credits.map(c => c.replace(/[<>]/g, '')).join('\n')}` : '',
         hashtags.join(' '),
