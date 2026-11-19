@@ -1,6 +1,7 @@
-// The weekly email sign-up (marketing plan step 3, Tom 2026-11-18: one list, on Resend). The form posts straight to
-// Project Profound's sign-up route, where the one list lives (its quiz_leads table, as "newsletter_swc"), so this
-// site needs no API route or secret of its own. PP allows requests from this site's origins.
+// The "Soul Wisdom Video of the Week" sign-up (marketing plan step 3; Tom 2026-11-19: one weekly email per site, this
+// one about Soul Wisdom only). The form posts straight to Project Profound's sign-up route, where both sites' lists
+// live (its quiz_leads table, this one as "newsletter_swc", sent from soulwisdomcollective.com through Resend), so
+// this site needs no API route or secret of its own. PP allows requests from this site's origins.
 
 export const NEWSLETTER_SIGNUP_URL =
     process.env.NEXT_PUBLIC_NEWSLETTER_SIGNUP_URL || 'https://projectprofound.org/api/quiz-lead';

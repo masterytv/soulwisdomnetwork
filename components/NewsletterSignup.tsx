@@ -60,11 +60,10 @@ export default function NewsletterSignup({ tone }: { tone: keyof typeof STYLES }
     return (
         <form onSubmit={submit} className={s.box} aria-label="Weekly email sign-up">
             <h2 className={`flex items-center gap-2 text-lg font-bold ${s.title}`}>
-                <Mail className={`w-5 h-5 ${s.icon}`} aria-hidden /> NDE of the Week
+                <Mail className={`w-5 h-5 ${s.icon}`} aria-hidden /> Soul Wisdom Video of the Week
             </h2>
             <p className={`mt-1 text-sm ${s.text}`}>
-                One email a week: the most-watched near-death experience story, one from the Project Profound archive, and our
-                newest episode.
+                One email a week: the week&apos;s most-watched Soul Wisdom video and our newest podcast episode.
             </p>
             <div className="mt-3 flex flex-col sm:flex-row gap-2">
                 <label className="sr-only" htmlFor={`newsletter-email-${tone}`}>Email address</label>
@@ -87,7 +86,7 @@ export default function NewsletterSignup({ tone }: { tone: keyof typeof STYLES }
                     <span className={message.ok ? "" : "text-red-400"}>{message.text}</span>
                 ) : (
                     <>
-                        Sent with our sister site Project Profound. Unsubscribe anytime.{" "}
+                        Unsubscribe anytime.{" "}
                         <a href={NEWSLETTER_PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="underline">Privacy</a>
                     </>
                 )}
