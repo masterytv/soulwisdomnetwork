@@ -1,0 +1,59 @@
+# "Soul Wisdom Video of the Week" (agent/src/newsletter/run.ts; Tom, 2026-11-19): Soul Wisdom's own newsletter.
+#   sync:   puts new sign-ups (Firestore newsletter_subscribers) into Resend's Soul Wisdom segment, sends their
+#           welcome, and brings unsubscribes back from Resend. Started by the site after a sign-up, and daily.
+#   weekly: the sync, then the week's email scheduled in Resend for 9:00 am ET on Tuesdays, and an email to Tom
+#           (ALERT_EMAIL) with the link to cancel it before then. Repo variable NEWSLETTER_AUTOSEND=off makes it a
+#           draft for Tom to send instead.
+# Runs from `main`, like the podcast jobs. Public logs: counts and titles only, never an address.
+
+name: Newsletter
+run-name: "Newsletter · ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 2' && 'weekly' || 'sync') || inputs.mode }}"
+
+on:
+  schedule:
+    - cron: '41 10 * * 2'   # Tuesdays 10:41 UTC (5:41 am EST, 6:41 am EDT): the weekly email, sent at 9:00 am ET
+    - cron: '17 15 * * *'   # daily 15:17 UTC: the sync, for any sign-up the site's own start missed
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'sync, or weekly (schedules this week''s email for 9:00 am ET)'
+        required: true
+        default: 'sync'
+        type: choice
+        options: [sync, weekly]
+
+concurrency:
+  group: newsletter
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  newsletter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        cache: 'npm'
+
+    - name: Install Dependencies
+      run: npm ci
+
+    - name: Run the newsletter
+      env:
+        NEWSLETTER_MODE: ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 2' && 'weekly' || 'sync') || inputs.mode }}
+        NEWSLETTER_AUTOSEND: ${{ vars.NEWSLETTER_AUTOSEND }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+        GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: npx tsx agent/src/newsletter/run.ts

@@ -29,12 +29,13 @@ const STYLES = {
 export default function NewsletterSignup({ tone }: { tone: keyof typeof STYLES }) {
     const s = STYLES[tone];
     const [email, setEmail] = useState("");
+    const [website, setWebsite] = useState("");
     const [busy, setBusy] = useState(false);
     const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
     async function submit(e: React.FormEvent) {
         e.preventDefault();
-        const body = signupBody(email);
+        const body = signupBody(email, website);
         if (!body) {
             setMessage(signupMessage(400));
             return;
@@ -77,6 +78,9 @@ export default function NewsletterSignup({ tone }: { tone: keyof typeof STYLES }
                     placeholder="you@example.com"
                     className={`flex-1 min-w-0 rounded-full border px-4 py-2 text-sm outline-none ${s.input}`}
                 />
+                {/* Left empty by people (it is hidden); bots fill it in (lib/server/newsletter.ts). */}
+                <input type="text" name="website" value={website} onChange={e => setWebsite(e.target.value)}
+                    tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
                 <button type="submit" disabled={busy} className={`rounded-full px-5 py-2 text-sm font-bold disabled:opacity-60 ${s.button}`}>
                     {busy ? "Signing up…" : "Sign up"}
                 </button>
@@ -87,7 +91,7 @@ export default function NewsletterSignup({ tone }: { tone: keyof typeof STYLES }
                 ) : (
                     <>
                         Unsubscribe anytime.{" "}
-                        <a href={NEWSLETTER_PRIVACY_URL} target="_blank" rel="noopener noreferrer" className="underline">Privacy</a>
+                        <a href={NEWSLETTER_PRIVACY_URL} className="underline">Privacy</a>
                     </>
                 )}
             </p>

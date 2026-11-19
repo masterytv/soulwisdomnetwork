@@ -6,10 +6,3 @@ env:
     availability:
       - BUILD
       - RUNTIME
-  # The weekly email sign-up posts to Project Profound's staging site here (lib/newsletter.ts). The two staging
-  # sites share PP's live database, so a sign-up made here is real.
-  - variable: NEXT_PUBLIC_NEWSLETTER_SIGNUP_URL
-    value: https://staging.projectprofound.org/api/quiz-lead
-    availability:
-      - BUILD
-      - RUNTIME
