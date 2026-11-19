@@ -121,6 +121,15 @@ export async function startThumbnails(episodeId: string, onlyImage: boolean) {
 }
 
 // Uploads the approved episode to YouTube, or updates the video already there (spec 005 step 13).
+// The newsletter's sync (agent/src/newsletter/run.ts, mode sync): puts new sign-ups into Resend and sends their
+// welcome. Started after a sign-up on /newsletter/subscribe (lib/server/newsletter.ts).
+export async function startNewsletterSync() {
+    await github('/actions/workflows/newsletter.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: { mode: 'sync' } }),
+    });
+}
+
 export async function startYoutube(episodeId: string) {
     await github('/actions/workflows/podcast_youtube.yml/dispatches', {
         method: 'POST',

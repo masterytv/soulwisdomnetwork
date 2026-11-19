@@ -92,6 +92,15 @@ service cloud.firestore {
     }
 
     // Each member's recent posts and comments, for the hourly limits (lib/server/community.ts).
+    // The weekly email's list and its sign-up limits (lib/server/newsletter.ts, agent/src/newsletter/run.ts):
+    // server and jobs only, through the Admin SDK.
+    match /newsletter_subscribers/{subscriberId} {
+      allow read, write: if false;
+    }
+    match /newsletter_limits/{key} {
+      allow read, write: if false;
+    }
+
     match /community_limits/{userId} {
       allow read, write: if false;
     }
