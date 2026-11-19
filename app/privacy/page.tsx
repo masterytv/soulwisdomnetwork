@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
     return (
-        <LegalPage title="Privacy Policy" updated="28 September 2026">
+        <LegalPage title="Privacy Policy" updated="19 November 2026">
             <p className="mt-8">
                 Soul Wisdom Collective (&ldquo;we&rdquo;, &ldquo;us&rdquo;) runs the Soul Wisdom Collective podcast and the community
                 website at soulwisdomcollective.com. This policy explains what information we collect, why, and the choices you have.
@@ -38,6 +38,13 @@ export default function PrivacyPage() {
                 The site runs on Google Firebase (Authentication, Cloud Firestore and Cloud Storage), hosted in the United States.
                 Google processes this data on our behalf under its own{" "}
                 <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+            </p>
+
+            <h2>Our weekly email</h2>
+            <p>
+                If you sign up for &ldquo;Soul Wisdom Video of the Week&rdquo;, we keep your email address and when you signed up, in
+                Cloud Firestore, and send the email through Resend, which keeps your address and whether you are subscribed for that
+                purpose only. Every email has an unsubscribe link; once you use it, we send you no more. We never share or sell the list.
             </p>
 
             <h2>Podcast production</h2>

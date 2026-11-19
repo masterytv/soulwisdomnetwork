@@ -242,10 +242,22 @@ Collections: `users`, `posts` and `comments` (the community feed, `docs/specs/01
 each has a `votes` subcollection; server only), `community_limits` (hourly post and comment
 limits, server only), `conversations`, `messages`, `episodes` (podcast pipeline, Admin SDK only; shape in `types/episode.ts`; earlier
 show-notes approvals in its `approvals` subcollection, and the media bin's uploads in its `media` subcollection),
-`studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger (with Auphonic's hours this month), and `media`, whose `items`
+`newsletter_subscribers` and `newsletter_limits` (the weekly email's list and sign-up limits, below; Admin SDK
+only), `studio` (Podcast Studio documents: `settings` (spec 018), the backlog order, the spending ledger (with Auphonic's hours this month), and `media`, whose `items`
 are the show library's music and effects with their licence records (spec 020 item E7); Admin SDK only), `usage_reports`
 (what each episode cost and took, posted by the podcast jobs; the admin Usage page `/admin/usage`,
 `docs/specs/014-usage.md`, Admin SDK only).
+
+**The weekly email, "Soul Wisdom Video of the Week"** (Tom, 2026-11-19; marketing plan steps 3–4): Soul Wisdom's own
+newsletter, on its own system (Project Profound's "NDE of the Week" lives in the profound-archive repo, with its own
+list). The sign-up box (`components/NewsletterSignup.tsx`, home and Videos pages) posts to `/newsletter/subscribe`,
+which records the address in `newsletter_subscribers` (one document per address, its ID a SHA-256 of it) and starts
+`newsletter.yml` at most every two minutes. The job (`agent/src/newsletter/run.ts`; GitHub Actions, the only place
+with `RESEND_API_KEY`, which needs full access) syncs with Resend's "Soul Wisdom Video of the Week" segment (new
+sign-ups in, welcomes sent once, unsubscribes back) after a sign-up and daily, and every Tuesday schedules the week's
+email (`lib/newsletterEmail.ts`: the most-watched video on the channel in 7 days and the newest episode) for 9:00 am ET
+and emails `ALERT_EMAIL` the link to cancel it. Repo variable `NEWSLETTER_AUTOSEND=off` makes it a draft instead.
+Sent from newsletter@soulwisdomcollective.com (verified in Resend). The public logs show counts, never addresses.
 
 **Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
 transcript, thumbnails, shorts picks and titles, clips suggestions, titles and thumbnail moments, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
@@ -282,9 +294,12 @@ Adding a query with `where` + `orderBy` on different fields needs a composite in
 (`firestore.rules`); admins change roles from `/admin`, which calls a server route. The
 browser's role check only decides what to show. **Every API route must call
 `requireRole()`** (`lib/server/staff.ts`), which verifies the ID token and reads the role
-with the Admin SDK, and refuses banned members. The only routes without it are the audio podcast feed's,
-public by design for podcast apps and outside `/api`: `/podcast/feed.xml`, `/podcast/audio/{id}.mp3` and
-`/podcast/art.jpg` (spec 019 item 5.1), which show only episodes put in the feed, and nothing while it is off. Producers get the Podcast Studio
+with the Admin SDK, and refuses banned members. The only routes without it are public by design and outside `/api`:
+the audio podcast feed's, for podcast apps: `/podcast/feed.xml`, `/podcast/audio/{id}.mp3` and
+`/podcast/art.jpg` (spec 019 item 5.1), which show only episodes put in the feed, and nothing while it is off; and
+the weekly email's sign-up, `POST /newsletter/subscribe` (Tom, 2026-11-19; `lib/server/newsletter.ts`), which only
+records an address and guards itself (a hidden field for bots, hourly limits per IP and per address, the same answer
+whether or not the address was on the list). Producers get the Podcast Studio
 (`/admin/podcast`); only admins manage members and ban them (`/api/admin/users/ban`, which also
 disables their Firebase Auth account). Community routes use `requireMember()`
 (`lib/server/community.ts`): `requireRole` with every role, plus a confirmed email and App Check.
