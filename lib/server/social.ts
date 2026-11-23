@@ -4,7 +4,7 @@
 // (UPLOAD_POST_API_KEY in Secret Manager); Post starts the job (social.yml, mode send), which hands the post over.
 
 import {
-    actionsFor, canEdit, editableFields, KIND_LABELS, type EditableField, type ImageContent, type ReelContent, type SocialAction,
+    actionsFor, canEdit, editableFields, KIND_LABELS, type CarouselContent, type EditableField, type ImageContent, type ReelContent, type SocialAction,
     type SocialPost,
 } from '@/lib/social/plan';
 import { INSTAGRAM_CAPTION_MAX, FACEBOOK_TITLE_MAX } from '@/lib/social/captions';
@@ -29,8 +29,9 @@ export interface PostView extends SocialPost {
 const signed = (file: string) => adminBucket().file(file).getSignedUrl({ action: 'read', expires: Date.now() + LINK_MS }).then(([u]) => u).catch(() => '');
 
 async function view(id: string, post: SocialPost, now: number): Promise<PostView> {
-    const c = (post.content ?? {}) as Partial<ReelContent & ImageContent>;
-    const files = [post.kind === 'reel' ? c.coverPath : c.cardPath].filter((f): f is string => !!f);
+    const c = (post.content ?? {}) as Partial<ReelContent & ImageContent & CarouselContent>;
+    const files = (post.kind === 'carousel' ? (c.slides ?? []).map(sl => sl.path) : [post.kind === 'reel' ? c.coverPath : c.cardPath])
+        .filter((f): f is string => !!f);
     return {
         ...post, id,
         actions: actionsFor(post, now),
@@ -134,4 +135,23 @@ export async function editPost(id: string, words: Record<string, unknown>): Prom
         }
     }
     await ref.update({ content: { ...post.content, ...changes }, updatedAt: now });
+}
+
+// "YouTube post" on a carousel: its slides (JPEG, 4:5) and the ready-to-paste text, for posting on the YouTube channel by
+// hand until the posts API opens (docs/specs/026-social-publishing.md). With `slide`, that slide's bytes.
+export async function youtubePost(id: string): Promise<{ text: string; slides: number; title: string }> {
+    const { post } = await load(id);
+    const c = post.content as CarouselContent | null;
+    if (post.kind !== 'carousel' || !c) throw new HttpError(404, 'Only a carousel has a YouTube post');
+    return { text: c.youtube.text, slides: c.slides.length, title: c.title };
+}
+
+export async function youtubeSlide(id: string, slide: number): Promise<Buffer> {
+    const { post } = await load(id);
+    const c = post.content as CarouselContent | null;
+    if (post.kind !== 'carousel' || !c) throw new HttpError(404, 'Only a carousel has a YouTube post');
+    const s = c.slides[slide - 1];
+    if (!s) throw new HttpError(404, 'No such slide');
+    const [bytes] = await adminBucket().file(s.path).download();
+    return bytes;
 }

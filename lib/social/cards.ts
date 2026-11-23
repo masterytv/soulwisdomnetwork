@@ -92,3 +92,61 @@ export function cropAround(frameWidth: number, frameHeight: number, centre: numb
     const x = even(Math.min(frameWidth - width, Math.max(0, c * frameWidth - width / 2)));
     return { x, y: even((frameHeight - height) / 2), width, height };
 }
+
+// Large enough for a phone, by the line's length (5 to 15 words).
+export function lineSize(chars: number): number {
+    if (chars <= 45) return 76;
+    if (chars <= 75) return 68;
+    return 60;
+}
+
+export interface StorySlide {
+    pictureUrl: string | null;      // a frame of the Short's moment, or the episode's b-roll; null: the brand background
+    line: string;                   // 5 to 15 words, retelling the moment
+    gold: string;                   // the key phrase, copied exactly from the line
+    index: number;                  // 1-based, of `total` (the end slide included)
+    total: number;
+    speaker?: string;               // named on the first slide only
+}
+
+// A story carousel's slide: the picture filling it, darkened below, the line over it with one phrase in gold, the logo
+// top left and where it is in the story top right ("2 / 7").
+export function storySlideHtml(slide: StorySlide, assets: CardAssets): string {
+    const size = lineSize(slide.line.length);
+    const css = `
+.photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.shade { position: absolute; inset: 0; background:
+    linear-gradient(180deg, rgba(20,10,46,.5) 0%, rgba(20,10,46,0) 20%, rgba(20,10,46,0) 45%, rgba(20,10,46,.85) 68%, ${NIGHT} 100%); }
+.plain { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 30%, rgba(247,198,91,.16), rgba(247,198,91,0) 70%), linear-gradient(180deg, ${NIGHT_LOW} 0%, ${NIGHT} 70%); }
+.logo { width: 150px; }
+.count { position: absolute; top: 62px; right: 60px; font-family: 'Cinzel', serif; font-size: 28px; letter-spacing: 3px; color: rgba(255,255,255,.85); text-shadow: 0 2px 10px rgba(0,0,0,.6); }
+.words { position: absolute; left: 80px; right: 80px; bottom: 140px; }
+.who { font-family: 'Cinzel', serif; font-size: 30px; letter-spacing: 3px; color: ${GOLD}; margin-bottom: 22px; }
+.line { font-weight: 600; font-size: ${size}px; line-height: 1.16; letter-spacing: -.3px; text-shadow: 0 2px 18px rgba(0,0,0,.45); }
+.swipe { position: absolute; bottom: 52px; right: 64px; font-size: 26px; color: rgba(255,255,255,.7); letter-spacing: 1px; }
+`;
+    const picture = slide.pictureUrl ? `<img class="photo" src="${slide.pictureUrl}" alt=""><div class="shade"></div>` : '<div class="plain"></div>';
+    const who = slide.index === 1 && slide.speaker ? `<p class="who">${escapeHtml(slide.speaker)}</p>` : '';
+    const body = `${picture}<p class="count">${slide.index} / ${slide.total}</p>
+<div class="words">${who}<p class="line">${withGold(slide.line, slide.gold)}</p></div>
+${slide.index < slide.total ? '<p class="swipe">Swipe →</p>' : ''}`;
+    return base(assets, body, css);
+}
+
+// The carousel's last slide, always (Tom, 2026-11-23): where to hear the whole conversation. The logo large on the
+// brand's night, the speaker named, the site in gold.
+export function endSlideHtml(o: { speaker: string; show: string; index: number }, assets: CardAssets): string {
+    const css = `
+.plain { position: absolute; inset: 0; background: radial-gradient(ellipse 75% 50% at 50% 34%, rgba(247,198,91,.2), rgba(247,198,91,0) 70%), linear-gradient(180deg, ${NIGHT_LOW} 0%, ${NIGHT} 75%); }
+.logo { top: 170px; left: 50%; width: 460px; transform: translateX(-50%); }
+.count { position: absolute; top: 62px; right: 60px; font-family: 'Cinzel', serif; font-size: 28px; letter-spacing: 3px; color: rgba(255,255,255,.7); }
+.end { position: absolute; left: 90px; right: 90px; top: 720px; text-align: center; }
+.end h2 { font-weight: 600; font-size: 62px; line-height: 1.15; }
+.end .url { margin-top: 44px; font-family: 'Cinzel', serif; font-size: 46px; letter-spacing: 2px; color: ${GOLD}; }
+.end .note { margin-top: 18px; font-size: 28px; color: rgba(255,255,255,.7); }
+`;
+    const body = `<div class="plain"></div><p class="count">${o.index} / ${o.index}</p>
+<div class="end"><h2>Hear the whole conversation with <span class="gold">${escapeHtml(o.speaker)}</span></h2>
+<p class="url">${SITE}</p><p class="note">Link in the caption</p></div>`;
+    return base(assets, body, css);
+}

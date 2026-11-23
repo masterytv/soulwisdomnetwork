@@ -107,3 +107,31 @@ export function imageCaptions(o: {
         facebookCaption: [scrubDescription(words('facebook')), tags].join('\n\n'),
     };
 }
+
+// The carousel's words: its title, the speaker's credit, the episode's link, the pictures' credits, hashtags.
+export function carouselCaptions(o: {
+    title: string; speaker: string; show: string; episode: { url: string; linkText: string }; shortId: string; hashtags: string[];
+    pictureCredits: string[];       // lib/social/picture.ts pictureCredit, once each
+}): { instagramCaption: string; facebookCaption: string } {
+    const words = (source: string) => [
+        clean(o.title),
+        `A moment with ${creditLine(o.speaker, o.show)}. Swipe through, then hear the whole conversation.`,
+        o.episode.url ? `${o.episode.linkText}: ${tagged(o.episode.url, source, 'carousel', o.shortId)}` : '',
+        [...new Set(o.pictureCredits)].join(' '),
+    ].filter(Boolean).join('\n\n');
+    const tags = hashtags(o.hashtags);
+    return {
+        instagramCaption: fit([scrubDescription(words('instagram')), tags].join('\n\n'), INSTAGRAM_CAPTION_MAX),
+        facebookCaption: [scrubDescription(words('facebook')), tags].join('\n\n'),
+    };
+}
+
+// The text for posting a carousel's slides on the YouTube channel by hand (the posts API isn't open yet): the title,
+// the speaker's credit, the episode's link. Kept on the post, so automatic posting can be added once the API opens.
+export function youtubePostText(o: { title: string; speaker: string; show: string; episode: { url: string; linkText: string } }): string {
+    return [
+        clean(o.title),
+        `— ${creditLine(o.speaker, o.show)}`,
+        o.episode.url ? `${o.episode.linkText}: ${o.episode.url}` : '',
+    ].filter(Boolean).join('\n\n');
+}

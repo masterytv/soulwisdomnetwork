@@ -123,8 +123,9 @@ lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Z
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-026 (026, social publishing: every Short approved at Checkpoint E also goes to Soul Wisdom's
               Instagram and Facebook through Upload-Post as a Reel, an image post and a story carousel, by itself under
-              D-2026-11-23-swc-autopost in DECISIONS.md (Tom's yes, and the log of any other rule he changes); stage 2, Reels, and stage 3,
-              image posts (a quote card: agent/src/social/image.ts, lib/social/quote.ts with the checks on Claude's words, lib/social/cards.ts
+              D-2026-11-23-swc-autopost in DECISIONS.md (Tom's yes, and the log of any other rule he changes); stages 2 to 4: Reels, story
+              carousels (agent/src/social/carousel.ts, lib/social/carousel.ts with the checks on Claude's slides, and the "YouTube post"
+              download, /api/studio/social/[id]/youtube) and image posts (a quote card: agent/src/social/image.ts, lib/social/quote.ts with the checks on Claude's words, lib/social/cards.ts
               the layout drawn in headless Chromium by agent/src/social/cards.ts, agent/src/social/spending.ts the daily limit), built:
               lib/social/ (plan.ts the rules, captions.ts, uploadPost.ts the only file that knows Upload-Post's API), agent/src/social/run.ts
               (social.yml hourly, and after podcast_shorts.yml schedules Shorts), the Studio's Social page /admin/podcast/social

@@ -9,7 +9,7 @@
 //          hands over what is waiting for it (a Post pressed on the Studio's Social page, a failure to try again)
 //   send   hands over one post (POST_ID), after Post on the Social page
 // The rules are lib/social/plan.ts; Upload-Post's API is lib/social/uploadPost.ts. Reels (stage 2), image posts (stage 3,
-// agent/src/social/image.ts); the carousels come in stage 4.
+// agent/src/social/image.ts), story carousels (stage 4, agent/src/social/carousel.ts).
 
 import { spawnSync } from 'node:child_process';
 import * as fs from 'fs';
@@ -23,7 +23,7 @@ import { episodeLink } from '../../../lib/publishing';
 import { reelCaptions } from '../../../lib/social/captions';
 import {
     autopostOn, etLabel, feedPostAt, KIND_LABELS, LIVE_STATUSES, PLANNED_KINDS, PLATFORMS, postId, reelPostAt, scheduleFor,
-    socialStart, statusFromResults, tooLate, whyNot, youtubeVerdict, type ImageContent, type PlatformResult, type PostKind,
+    socialStart, statusFromResults, tooLate, whyNot, youtubeVerdict, type CarouselContent, type ImageContent, type PostContent, type PlatformResult, type PostKind,
     type ReelContent, type SocialPost, type YoutubeState,
 } from '../../../lib/social/plan';
 import { cancelScheduled, configFrom, missingSettings, patchScheduled, postState, sendPhotos, sendReel, type UploadPostConfig } from '../../../lib/social/uploadPost';
@@ -32,6 +32,7 @@ import { withRetry } from '../podcast/errors';
 import { loadSettings, storageBucket } from '../podcast/settings';
 import { createYoutube } from '../podcast/youtubeApi';
 import { closeCards } from './cards';
+import { makeCarousel } from './carousel';
 import { makeImagePost } from './image';
 import { HOST_FRAME_EVERY, hostFrameAllowed, originalMsOf } from '../../../lib/social/picture';
 import { OverLimit } from './spending';
@@ -196,20 +197,27 @@ async function planEpisode(episodeId: string, config: UploadPostConfig | null): 
                     continue;
                 }
                 const postAt = feedPostAt(kind, { lastTaken: await lastTaken(kind), reelAt, now });
-                // A host's own frame one image post in five (Tom, 2026-11-23); b-roll the others use is not used again.
-                const recent = await latestOf('image', HOST_FRAME_EVERY - 1);
-                const episodeCards = (await posts.where('episodeId', '==', episodeId).orderBy('postAt').get()).docs
-                    .map(d => d.data() as SocialPost).filter(p => p.kind === 'image' && p.content);
-                let result: Awaited<ReturnType<typeof makeImagePost>>;
+                const shared = {
+                    db, bucket, episodeId, finalUrl, spoken, show: settings.showName, episode: link, hashtags, workDir,
+                    apiKey: required('ANTHROPIC_API_KEY'),
+                    hosts: settings.hosts, broll: Object.values(episode.broll?.images ?? {}),
+                    at: originalMsOf(item, episode.final?.quotes),
+                };
+                let result: { content: PostContent } | { notMade: string };
                 try {
-                    result = await makeImagePost(item, {
-                        db, bucket, episodeId, finalUrl, spoken, show: settings.showName, episode: link, hashtags, workDir,
-                        apiKey: required('ANTHROPIC_API_KEY'),
-                        hosts: settings.hosts, broll: Object.values(episode.broll?.images ?? {}),
-                        at: originalMsOf(item, episode.final?.quotes),
-                        used: episodeCards.map(p => (p.content as ImageContent).picturePath).filter((x): x is string => !!x),
-                        hostFrameAllowed: hostFrameAllowed(recent.map(p => (p.content as ImageContent | null)?.picture)),
-                    });
+                    if (kind === 'carousel') {
+                        result = await makeCarousel(item, shared);
+                    } else {
+                        // A host's own frame one image post in five (Tom, 2026-11-23); b-roll the others use is not used again.
+                        const recent = await latestOf('image', HOST_FRAME_EVERY - 1);
+                        const episodeCards = (await posts.where('episodeId', '==', episodeId).orderBy('postAt').get()).docs
+                            .map(d => d.data() as SocialPost).filter(p => p.kind === 'image' && p.content);
+                        result = await makeImagePost(item, {
+                            ...shared,
+                            used: episodeCards.map(p => (p.content as ImageContent).picturePath).filter((x): x is string => !!x),
+                            hostFrameAllowed: hostFrameAllowed(recent.map(p => (p.content as ImageContent | null)?.picture)),
+                        });
+                    }
                 } catch (error) {
                     if (error instanceof OverLimit) overLimit = true;
                     console.warn(`  ⚠️ ${KIND_LABELS[kind]} "${item.title}": ${(error as Error).message}`);
@@ -279,7 +287,11 @@ async function send(ref: DocumentReference, config: UploadPostConfig): Promise<v
                 instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, aiPicture: c.aiPicture, at,
             });
         } else {
-            throw new Error(`${post.kind} posts come in a later stage`);
+            const c = post.content as CarouselContent;
+            out = await sendPhotos(config, {
+                requestId, platforms, imageUrls: await Promise.all(c.slides.map(sl => signed(sl.path))), title: c.title,
+                instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, aiPicture: c.aiPicture, at,
+            });
         }
         await update(ref, {
             status: 'sent', reason: null,

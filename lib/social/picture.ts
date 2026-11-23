@@ -70,3 +70,15 @@ export function pictureCredit(p: CardPicture): string | null {
     const site = p.source === 'pexels' ? 'Pexels' : 'Pixabay';
     return p.credit?.name ? `Background photo by ${p.credit.name} on ${site}.` : `Background photo from ${site}.`;
 }
+
+// The episode's b-roll stills nearest a moment (AI images before stock photos at the same distance; never footage), for
+// the carousel to choose from.
+export function nearestBroll(images: BrollImage[], at: number | null, count: number): BrollImage[] {
+    return images.filter(i => (i.kind ?? 'image') === 'image' && !!i.path)
+        .sort((a, b) => (at === null ? a.index - b.index : Math.abs(a.startMs - at) - Math.abs(b.startMs - at))
+            || ((a.source ?? 'ai') === 'ai' ? 0 : 1) - ((b.source ?? 'ai') === 'ai' ? 0 : 1))
+        .slice(0, count);
+}
+
+// The credit for one b-roll picture.
+export const brollCredit = (i: BrollImage) => pictureCredit({ kind: 'broll', path: i.path, source: i.source ?? 'ai', credit: i.credit ?? null });

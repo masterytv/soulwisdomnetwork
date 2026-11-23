@@ -1,7 +1,7 @@
 # Spec 026: Social publishing
 
 **Date:** 23 November 2026
-**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stage 2 (Reels) and stage 3 (image posts) built; stages 4–5 to build
+**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stages 2 (Reels), 3 (image posts) and 4 (story carousels) built; stage 5 to build
 **Related:** `docs/specs/013-shorts.md` (the Shorts this posts), `docs/specs/025-clips.md` (the shared publishing helpers),
 `DECISIONS.md` (D-2026-11-23-swc-autopost), the plan doc's "SWC publishing plan" tab
 (https://claude.ai/artifact/2nQRFNeyJu55zqyrt8GGnu), and Project Profound's finished version in `masterytv/short-maker`
@@ -211,6 +211,30 @@ stage is on `main`.
    picture's credit ("Background image created with AI.", or the stock photographer and site), hashtags. An AI picture
    also sets the platforms' "made with AI" label.
 6. It takes the next free day in the image posts' queue at 7:30 pm ET, after its Short's Reel.
+
+## The story carousel (stage 4)
+
+`agent/src/social/carousel.ts`, rules in `lib/social/carousel.ts`, slides in `lib/social/cards.ts`:
+
+1. Twelve small frames from the final cut, spread over the Short, and the episode's 6 b-roll stills nearest the Short's
+   moment (AI images and stock photos, never footage).
+2. Claude (the notes' model) reads the Short's words and looks at them. It writes 4 to 8 slides in order, each a picture
+   by its id (F frames, B b-roll), a 5 to 15-word line retelling the moment in the third person (now and then a short
+   quote of the speaker's exact words in quotation marks), and its gold phrase. About $0.12 a Short, reserved against
+   the daily limit first.
+3. The code keeps a slide only when its picture exists and isn't used twice, its line has 5 to 15 words and no limited
+   words, anything in quotation marks is the speaker's own words (`isVerbatim`), and its gold phrase (2 to 8 words) is
+   copied exactly from the line. A host's carousel keeps at most 2 frames (`HOST_FRAMES_MAX`), the rest b-roll (Tom,
+   2026-11-23: not our picture on everything). Fewer than 4 slides: noted once as "Not made".
+4. Each slide is the picture (a frame cropped 4:5 around the speaker, or the b-roll) with the line over it, the gold
+   phrase in `#f7c65b`, the logo, "2 / 7" and "Swipe →"; the first names the speaker. The end slide, always: the logo
+   large, "Hear the whole conversation with *Speaker*", soulwisdomcollective.com in gold.
+5. Captions: the title, "A moment with Speaker, on Soul Wisdom Collective", the episode's link (`utm_medium=carousel`),
+   the pictures' credits, hashtags; an AI picture sets the "made with AI" label. Posted as an Instagram carousel and a
+   Facebook multi-photo post, one a day at 7 pm ET.
+6. **YouTube post** on the Social page downloads every slide (`youtube-post-slide-N.jpg`) and `youtube-post.txt` (the
+   title, the speaker's credit, the episode's link) and copies the text (`/api/studio/social/[id]/youtube`). The text
+   is kept on the post as `content.youtube.text` beside the slides, for automatic posting once YouTube's posts API opens.
 
 ## Limits and failure
 
