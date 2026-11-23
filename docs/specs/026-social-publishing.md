@@ -197,9 +197,19 @@ stage is on `main`.
 3. The code keeps it only when the quote's words are the speaker's own, in order (capitals, punctuation, "um"s and a
    stammered word aside: `isVerbatim`), and it has no limited words. A gold phrase not copied exactly from the quote
    becomes its last clause. A quote that fails is noted once as "Not made" (`notMade`), never tried again.
-4. That frame at 1920 × 1080, cropped to 4:5 around the speaker (`cropAround`), under the card: the logo top left, the
-   quote in Outfit with the gold phrase in `#f7c65b`, the speaker's name in Cinzel, soulwisdomcollective.com at the foot.
-5. Captions: the quote, "— Speaker, on Soul Wisdom Collective", the episode's link (tagged `utm_medium=image`), hashtags.
+4. The picture (`lib/social/picture.ts`; Tom, 2026-11-23: "we don't want our picture on every quote card... you can use
+   our photos one in every 5 posts"):
+   - a **guest's** quote goes over their own frame: the chosen frame at 1920 × 1080, cropped to 4:5 around them
+     (`cropAround`);
+   - a **host's** (the Studio settings' hosts, by full or first name) goes over their own frame only when none of the 4
+     image posts before it showed a host (`HOST_FRAME_EVERY` = 5); otherwise over the episode's own b-roll: an AI image
+     first, then a stock photo, the one nearest the Short's moment that no other card of the episode uses (never
+     footage). With no b-roll left, the card's plain brand background (night gradient, a soft gold glow).
+   The card: the logo top left, the quote in Outfit with the gold phrase in `#f7c65b`, the speaker's name in Cinzel,
+   soulwisdomcollective.com at the foot.
+5. Captions: the quote, "— Speaker, on Soul Wisdom Collective", the episode's link (tagged `utm_medium=image`), the
+   picture's credit ("Background image created with AI.", or the stock photographer and site), hashtags. An AI picture
+   also sets the platforms' "made with AI" label.
 6. It takes the next free day in the image posts' queue at 7:30 pm ET, after its Short's Reel.
 
 ## Limits and failure

@@ -33,6 +33,7 @@ import { loadSettings, storageBucket } from '../podcast/settings';
 import { createYoutube } from '../podcast/youtubeApi';
 import { closeCards } from './cards';
 import { makeImagePost } from './image';
+import { HOST_FRAME_EVERY, hostFrameAllowed, originalMsOf } from '../../../lib/social/picture';
 import { OverLimit } from './spending';
 
 type Mode = 'plan' | 'check' | 'send';
@@ -116,12 +117,14 @@ async function makeCover(episodeId: string, item: ShortItem): Promise<string | n
     }
 }
 
-// The day a feed post of this kind last took (posts not made don't take one), for the 1-a-day queue.
-async function lastTaken(kind: PostKind): Promise<number | null> {
-    const recent = await posts.where('kind', '==', kind).orderBy('postAt', 'desc').limit(10).get();
-    const taken = recent.docs.map(d => d.data() as SocialPost).find(p => !p.notMade);
-    return taken ? taken.postAt : null;
+// The latest posts of a kind that took a day in its queue (posts not made don't take one), newest first.
+async function latestOf(kind: PostKind, count = 10): Promise<SocialPost[]> {
+    const recent = await posts.where('kind', '==', kind).orderBy('postAt', 'desc').limit(count + 10).get();
+    return recent.docs.map(d => d.data() as SocialPost).filter(p => !p.notMade).slice(0, count);
 }
+
+// The day a feed post of this kind last took, for the 1-a-day queue.
+const lastTaken = async (kind: PostKind) => (await latestOf(kind, 1))[0]?.postAt ?? null;
 
 // Makes the posts each qualifying Short of one episode still lacks (its Reel, then its image post), in the Shorts'
 // YouTube order, and hands each over unless autopost is off. A post that can't be made is kept as cancelled with the
@@ -193,11 +196,19 @@ async function planEpisode(episodeId: string, config: UploadPostConfig | null): 
                     continue;
                 }
                 const postAt = feedPostAt(kind, { lastTaken: await lastTaken(kind), reelAt, now });
+                // A host's own frame one image post in five (Tom, 2026-11-23); b-roll the others use is not used again.
+                const recent = await latestOf('image', HOST_FRAME_EVERY - 1);
+                const episodeCards = (await posts.where('episodeId', '==', episodeId).orderBy('postAt').get()).docs
+                    .map(d => d.data() as SocialPost).filter(p => p.kind === 'image' && p.content);
                 let result: Awaited<ReturnType<typeof makeImagePost>>;
                 try {
                     result = await makeImagePost(item, {
                         db, bucket, episodeId, finalUrl, spoken, show: settings.showName, episode: link, hashtags, workDir,
                         apiKey: required('ANTHROPIC_API_KEY'),
+                        hosts: settings.hosts, broll: Object.values(episode.broll?.images ?? {}),
+                        at: originalMsOf(item, episode.final?.quotes),
+                        used: episodeCards.map(p => (p.content as ImageContent).picturePath).filter((x): x is string => !!x),
+                        hostFrameAllowed: hostFrameAllowed(recent.map(p => (p.content as ImageContent | null)?.picture)),
                     });
                 } catch (error) {
                     if (error instanceof OverLimit) overLimit = true;
@@ -265,7 +276,7 @@ async function send(ref: DocumentReference, config: UploadPostConfig): Promise<v
             const c = post.content as ImageContent;
             out = await sendPhotos(config, {
                 requestId, platforms, imageUrls: [await signed(c.cardPath)], title: c.title,
-                instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, at,
+                instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, aiPicture: c.aiPicture, at,
             });
         } else {
             throw new Error(`${post.kind} posts come in a later stage`);

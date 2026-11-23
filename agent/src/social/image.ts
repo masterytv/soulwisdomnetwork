@@ -1,6 +1,8 @@
 // The image post (docs/specs/026-social-publishing.md, stage 3): a quote card with the speaker's own words from the
-// Short over a frame of them, taken from the episode's final cut within the Short's startMs–endMs (the rendered Short
-// has captions burned in). Claude picks the quote, its gold phrase and the frame; lib/social/quote.ts checks them.
+// Short. A guest's goes over a frame of them, taken from the episode's final cut within the Short's startMs–endMs (the
+// rendered Short has captions burned in); a host's over their frame one post in five, else over the episode's own b-roll
+// (lib/social/picture.ts, Tom 2026-11-23). Claude picks the quote, its gold phrase and the frame; lib/social/quote.ts
+// checks them.
 
 import * as fs from 'fs';
 import * as path from 'path';
@@ -12,7 +14,8 @@ import { cropAround, quoteCardHtml } from '../../../lib/social/cards';
 import { imageCaptions } from '../../../lib/social/captions';
 import { checkQuote, frameTimes, QUOTE_ESTIMATE_USD, quotePrompt, QuotePickSchema, quoteSystem } from '../../../lib/social/quote';
 import type { ImageContent } from '../../../lib/social/plan';
-import type { ShortItem } from '../../../types/episode';
+import { chooseCardPicture, pictureCredit } from '../../../lib/social/picture';
+import type { BrollImage, ShortItem } from '../../../types/episode';
 import { claudeUsd, priceOf } from '../podcast/claudeCost';
 import { grabClipFrame } from '../podcast/clipsRender';
 import { NOTES_EFFORT, NOTES_MODEL } from '../podcast/notesDraft';
@@ -32,6 +35,11 @@ export interface ImageContext {
     hashtags: string[];
     workDir: string;
     apiKey: string;
+    hosts: string[];                // the Studio settings' hosts
+    broll: BrollImage[];            // the episode's b-roll
+    at: number | null;              // the Short's place in the original recording, for the nearest b-roll
+    used: string[];                 // b-roll pictures the episode's other cards already use
+    hostFrameAllowed: boolean;      // none of the last 4 image posts showed a host
 }
 
 // An image post's content, or why none can be made (kept, so it is never paid for again).
@@ -75,20 +83,35 @@ export async function makeImagePost(item: ShortItem, ctx: ImageContext): Promise
     if (!checked.ok) return { notMade: checked.why };
     console.log(`  💬 "${checked.quote}" (gold: "${checked.gold}"${checked.goldFallback ? ', its last clause' : ''}; $${usd.toFixed(2)})`);
 
-    // The chosen frame again at full size, cropped to 4:5 around the speaker.
-    const crop = cropAround(FRAME_WIDTH, FRAME_HEIGHT, checked.centre);
-    const frame = path.join(dir, 'frame.jpg'), card = path.join(dir, 'image-card.jpg');
-    await grabClipFrame(ctx.finalUrl, frame, times[checked.frame - 1] / 1000, { size: 'full', crop: { x: crop.x, y: crop.y, w: crop.width, h: crop.height } });
-    await drawCard(quoteCardHtml({ pictureUrl: pictureUrl(frame), quote: checked.quote, gold: checked.gold, speaker: item.speaker, show: ctx.show }, ASSETS), card);
+    // The picture: the chosen frame again at full size, cropped to 4:5 around the speaker, or the episode's b-roll.
+    const picture = chooseCardPicture({ speaker: item.speaker, hosts: ctx.hosts, images: ctx.broll, at: ctx.at, used: ctx.used, hostFrameAllowed: ctx.hostFrameAllowed });
     const prefix = `social/${ctx.episodeId}/${item.id}`;
-    await ctx.bucket.upload(frame, { destination: `${prefix}/image-frame.jpg`, contentType: 'image/jpeg' });
+    const card = path.join(dir, 'image-card.jpg');
+    let local: string | null = null, picturePath: string | null = null;
+    if (picture.kind === 'speaker' || picture.kind === 'host') {
+        const crop = cropAround(FRAME_WIDTH, FRAME_HEIGHT, checked.centre);
+        local = path.join(dir, 'frame.jpg');
+        await grabClipFrame(ctx.finalUrl, local, times[checked.frame - 1] / 1000, { size: 'full', crop: { x: crop.x, y: crop.y, w: crop.width, h: crop.height } });
+        picturePath = `${prefix}/image-frame.jpg`;
+        await ctx.bucket.upload(local, { destination: picturePath, contentType: 'image/jpeg' });
+    } else if (picture.kind === 'broll') {
+        local = path.join(dir, `broll${path.extname(picture.path) || '.png'}`);
+        await ctx.bucket.file(picture.path).download({ destination: local });
+        picturePath = picture.path;
+    }
+    console.log(`  🖼️ Picture: ${picture.kind}${picture.kind === 'broll' ? ` (${picture.source}, ${picture.path})` : ''}`);
+    await drawCard(quoteCardHtml({ pictureUrl: local ? pictureUrl(local) : null, quote: checked.quote, gold: checked.gold, speaker: item.speaker, show: ctx.show }, ASSETS), card);
     await ctx.bucket.upload(card, { destination: `${prefix}/image-card.jpg`, contentType: 'image/jpeg' });
     fs.rmSync(dir, { recursive: true, force: true });
     return {
         content: {
-            title: item.title, cardPath: `${prefix}/image-card.jpg`, framePath: `${prefix}/image-frame.jpg`,
+            title: item.title, cardPath: `${prefix}/image-card.jpg`, picture: picture.kind, picturePath,
+            aiPicture: picture.kind === 'broll' && picture.source === 'ai',
             quote: checked.quote, gold: checked.gold,
-            ...imageCaptions({ quote: checked.quote, speaker: item.speaker, show: ctx.show, episode: ctx.episode, shortId: item.id, hashtags: ctx.hashtags }),
+            ...imageCaptions({
+                quote: checked.quote, speaker: item.speaker, show: ctx.show, episode: ctx.episode, shortId: item.id, hashtags: ctx.hashtags,
+                pictureCredit: pictureCredit(picture),
+            }),
         },
     };
 }

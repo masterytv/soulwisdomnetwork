@@ -188,7 +188,9 @@ export interface ReelContent {
 export interface ImageContent {
     title: string;
     cardPath: string;               // the quote card, JPEG 1080 × 1350, in Storage
-    framePath: string;              // the speaker's frame it was drawn on
+    picture: 'speaker' | 'host' | 'broll' | 'none';   // what it was drawn on (lib/social/picture.ts: a host one post in five)
+    picturePath: string | null;     // the frame or b-roll picture it was drawn on
+    aiPicture: boolean;             // an AI b-roll image: the platforms' "made with AI" label
     quote: string;                  // the speaker's own words, copied from the Short
     gold: string;                   // the phrase in gold, copied exactly from the quote
     instagramCaption: string;

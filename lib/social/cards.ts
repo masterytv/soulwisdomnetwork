@@ -51,28 +51,31 @@ ${css}
 }
 
 export interface QuoteCard {
-    pictureUrl: string;             // the speaker's frame, already cropped to 4:5
+    pictureUrl: string | null;      // the speaker's frame cropped to 4:5, or a b-roll picture; null: the brand background
     quote: string;                  // the speaker's own words, copied exactly
     gold: string;                   // the key phrase, copied exactly from the quote
     speaker: string;
     show: string;
 }
 
-// The image post: the speaker's frame filling the card, darkened below, their words over it with one phrase in gold,
-// their name, the logo top left and the site at the foot.
+// The image post: the picture (the speaker's frame, or the episode's b-roll) filling the card, darkened below, the words
+// over it with one phrase in gold, the speaker's name, the logo top left and the site at the foot. With no picture, the
+// brand's night gradient and a soft gold glow, the words higher up.
 export function quoteCardHtml(card: QuoteCard, assets: CardAssets): string {
     const size = quoteSize(card.quote.length);
     const css = `
 .photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .shade { position: absolute; inset: 0; background:
     linear-gradient(180deg, rgba(20,10,46,.55) 0%, rgba(20,10,46,0) 22%, rgba(20,10,46,0) 34%, rgba(20,10,46,.78) 56%, rgba(20,10,46,.96) 76%, ${NIGHT} 100%); }
-.words { position: absolute; left: 84px; right: 84px; bottom: 132px; }
+.words { position: absolute; left: 84px; right: 84px; bottom: ${card.pictureUrl ? 132 : 260}px; }
+.plain { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 30%, rgba(247,198,91,.16), rgba(247,198,91,0) 70%), linear-gradient(180deg, ${NIGHT_LOW} 0%, ${NIGHT} 70%); }
 .mark { font-family: 'Cinzel', serif; font-size: 150px; line-height: 1; color: ${GOLD}; height: 70px; margin-bottom: 6px; }
 .quote { font-weight: 600; font-size: ${size}px; line-height: 1.18; letter-spacing: -.3px; text-shadow: 0 2px 18px rgba(0,0,0,.45); }
 .who { margin-top: 34px; font-family: 'Cinzel', serif; font-size: 34px; letter-spacing: 2px; color: ${GOLD}; }
 .who small { display: block; margin-top: 6px; font-size: 24px; letter-spacing: 3px; color: rgba(255,255,255,.7); }
 `;
-    const body = `<img class="photo" src="${card.pictureUrl}" alt=""><div class="shade"></div>
+    const picture = card.pictureUrl ? `<img class="photo" src="${card.pictureUrl}" alt=""><div class="shade"></div>` : '<div class="plain"></div>';
+    const body = `${picture}
 <div class="words"><div class="mark">“</div><p class="quote">${withGold(card.quote, card.gold)}</p>
 <p class="who">${escapeHtml(card.speaker)}<small>${escapeHtml(card.show)}</small></p></div>
 <p class="site">${SITE}</p>`;
