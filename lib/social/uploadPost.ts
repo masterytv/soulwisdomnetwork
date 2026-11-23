@@ -128,6 +128,7 @@ export interface PhotoSend {
     title: string;
     instagramCaption: string;
     facebookCaption: string;
+    aiPicture?: boolean;            // an AI picture on the card: the platforms' "made with AI" label
     at: number | null;
 }
 
@@ -142,6 +143,10 @@ export function photoForm(o: PhotoSend & { profile: string; facebookPageId: stri
     f.set('instagram_title', o.instagramCaption);
     f.set('facebook_title', o.facebookCaption);
     f.set('facebook_page_id', o.facebookPageId);
+    if (o.aiPicture) {
+        f.set('is_ai_generated', 'true');
+        f.set('facebook_is_ai_generated', 'true');
+    }
     timing(f, o.requestId, o.at);
     return f;
 }

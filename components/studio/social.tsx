@@ -34,7 +34,7 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
     const [words, setWords] = useState<Record<string, string>>({});
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState("");
-    const content = post.content as unknown as Record<string, string>;
+    const content = (post.content ?? {}) as unknown as Record<string, string>;
     const run = async (init: RequestInit) => {
         setBusy(true);
         try {
@@ -57,7 +57,7 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
         <li id={`post-${post.id}`} className="bg-studio-card border border-studio-line rounded-xl p-4 flex flex-col sm:flex-row gap-4">
             {post.pictures[0] && (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={post.pictures[0]} alt="" className="w-28 shrink-0 rounded-lg border border-studio-hairline self-start" />
+                <img src={post.pictures[0]} alt="" className="w-36 shrink-0 rounded-lg border border-studio-hairline self-start" />
             )}
             <div className="flex-1 min-w-0 flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -101,9 +101,9 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
                     <details>
                         <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-200">The words</summary>
                         <div className="mt-2 flex flex-col gap-2">
-                            {["instagramCaption", "facebookTitle", "facebookDescription"].filter(k => content[k]).map(k => (
+                            {["quote", "instagramCaption", "facebookTitle", "facebookDescription", "facebookCaption"].filter(k => content[k]).map(k => (
                                 <div key={k}>
-                                    <p className="text-2xs text-gray-400">{({ instagramCaption: "Instagram", facebookTitle: "Facebook title", facebookDescription: "Facebook description" } as Record<string, string>)[k]}</p>
+                                    <p className="text-2xs text-gray-400">{({ quote: "The quote on the card", instagramCaption: "Instagram", facebookTitle: "Facebook title", facebookDescription: "Facebook description", facebookCaption: "Facebook" } as Record<string, string>)[k]}</p>
                                     <p className="text-sm text-gray-200 whitespace-pre-wrap break-words">{content[k]}</p>
                                 </div>
                             ))}
