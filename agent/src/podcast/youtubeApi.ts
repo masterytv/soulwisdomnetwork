@@ -153,6 +153,18 @@ export function createYoutube(creds: YoutubeCredentials) {
     const getVideo = (id: string) => call<{ items: VideoResource[] }>('GET', `${API}/videos?part=snippet,status&id=${encodeURIComponent(id)}`, { what: 'video lookup' })
         .then(r => r.items[0] ?? null);
 
+    // Several videos' status at once (up to 50 a call), for the social job (docs/specs/026-social-publishing.md): a video
+    // YouTube no longer returns is missing from the map.
+    async function videoStates(ids: string[]) {
+        const out = new Map<string, VideoResource>();
+        for (let i = 0; i < ids.length; i += 50) {
+            const batch = ids.slice(i, i + 50);
+            const r = await call<{ items: VideoResource[] }>('GET', `${API}/videos?part=status&id=${batch.map(encodeURIComponent).join(',')}`, { what: 'video status' });
+            for (const v of r.items) if (v.id) out.set(v.id, v);
+        }
+        return out;
+    }
+
     const updateVideo = (resource: VideoResource) =>
         call<VideoResource>('PUT', `${API}/videos?part=snippet,status`, { body: JSON.stringify(resource), type: 'application/json', what: 'update' });
 
@@ -197,5 +209,5 @@ export function createYoutube(creds: YoutubeCredentials) {
         call<VideoResource>('PUT', `${API}/videos?part=localizations`,
             { body: JSON.stringify({ id: videoId, localizations }), type: 'application/json', what: 'translated title and description' });
 
-    return { upload, getVideo, updateVideo, setThumbnail, listCaptions, deleteCaption, insertCaption, addToPlaylist, setLocalizations };
+    return { upload, getVideo, videoStates, updateVideo, setThumbnail, listCaptions, deleteCaption, insertCaption, addToPlaylist, setLocalizations };
 }

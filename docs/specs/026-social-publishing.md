@@ -1,7 +1,7 @@
 # Spec 026: Social publishing
 
 **Date:** 23 November 2026
-**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stages 2–5 to build
+**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stage 2 (Reels) built; stages 3–5 to build
 **Related:** `docs/specs/013-shorts.md` (the Shorts this posts), `docs/specs/025-clips.md` (the shared publishing helpers),
 `DECISIONS.md` (D-2026-11-23-swc-autopost), the plan doc's "SWC publishing plan" tab
 (https://claude.ai/artifact/2nQRFNeyJu55zqyrt8GGnu), and Project Profound's finished version in `masterytv/short-maker`
@@ -127,7 +127,7 @@ Queries, with their composite indexes in `firestore.indexes.json`:
 - one episode's posts: `episodeId ==` ordered by `postAt` (index `episodeId` + `postAt`);
 - the last day taken by a kind: `kind ==` ordered by `postAt` desc (index `kind` + `postAt`).
 
-Cards and frames live in Storage under `social/{episodeId}/{shortId}/` (Storage stays closed to the browser). Upload-Post
+Each Reel's cover is a still of its Short 1.5 s in (`reel-cover.jpg`). Cards and frames live in Storage under `social/{episodeId}/{shortId}/` (Storage stays closed to the browser). Upload-Post
 gets each file by a signed URL valid for an hour, made when the post is handed over; it copies the media into the job.
 The Studio shows them through signed URLs made when the page loads.
 
@@ -148,11 +148,12 @@ The Studio shows them through signed URLs made when the page loads.
 ## Secrets and settings
 
 - `UPLOAD_POST_API_KEY`: a **repo secret** (the job hands posts over) **and** a Secret Manager secret
-  (`firebase apphosting:secrets:set UPLOAD_POST_API_KEY --project soulwisdomnetwork`; the Social page's Hold, Cancel and
-  Edit). Declared in `apphosting.yaml`.
+  (`firebase apphosting:secrets:set UPLOAD_POST_API_KEY --project soulwisdomnetwork`, then `grantaccess` for the
+  `soulwisdomnetwork-staging` backend too; the Social page's Hold, Cancel and Edit). Declared in `apphosting.yaml`, so
+  the secret must exist before stage 2 reaches `staging`, or the build fails.
 - Repo variables: `UPLOAD_POST_PROFILE` (`soul_wisdom_collective`), `FACEBOOK_PAGE_ID` (Soul Wisdom's Page), and
-  optionally `SOCIAL_START` and `SOCIAL_AUTOPOST`. App Hosting gets the profile and Page ID as plain `value`s in
-  `apphosting.yaml`, since they aren't secret.
+  optionally `SOCIAL_START` (default 2026-11-24 00:00 ET) and `SOCIAL_AUTOPOST`. The Studio only cancels and changes
+  posts, which needs the key alone, so App Hosting gets neither variable.
 
 ## Files
 
