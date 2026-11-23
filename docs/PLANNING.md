@@ -22,6 +22,8 @@ in what order to build, and how the plan fits the work already built.
 | `docs/specs/021-motion-graphics.md` | Motion graphics: branded templates and highlight moments (items M1–M5; the design in `docs/specs/021-motion-graphics/`) |
 | `docs/specs/022-one-timeline.md` | One timeline: the whole video as ordinary clips, the opening built from the notes, sounds anywhere (approved; stages 2, 3a, 3b) |
 | `docs/specs/025-clips.md` | Clips: 5 to 15 minute topic videos beside Shorts, picked from the chapters and by Claude (approved; stages 1–4) |
+| `docs/specs/026-social-publishing.md` | Social publishing: each Short as a Reel, an image post and a story carousel on Instagram and Facebook through Upload-Post (approved 23 November 2026; stages 1–5) |
+| `DECISIONS.md` | Tom's decisions that change a standing rule, with his words and the time in ET (first: D-2026-11-23-swc-autopost) |
 | `docs/BACKLOG.md` | Points to 019 and 020 |
 
 ## Decisions so far
