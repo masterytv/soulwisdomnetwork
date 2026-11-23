@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote } from "@/components/studio/ErrorNote";
 import { field, hint, primary, secondary } from "@/components/studio/ui";
-import { studioFetch } from "@/lib/studioClient";
+import { studioFetch, studioFetchBytes } from "@/lib/studioClient";
 import { etLabel, KIND_LABELS, PLATFORM_NAMES, STATUS_LABELS, type Platform, type PostStatus, type SocialAction } from "@/lib/social/plan";
 import type { PostView } from "@/lib/server/social";
 
@@ -55,11 +55,19 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
     const links = post.platforms.map(p => ({ p, r: post.results[p] })).filter(x => x.r?.url);
     return (
         <li id={`post-${post.id}`} className="bg-studio-card border border-studio-line rounded-xl p-4 flex flex-col sm:flex-row gap-4">
-            {post.pictures[0] && (
+            {post.kind !== "carousel" && post.pictures[0] && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={post.pictures[0]} alt="" className="w-36 shrink-0 rounded-lg border border-studio-hairline self-start" />
             )}
             <div className="flex-1 min-w-0 flex flex-col gap-2">
+                {post.kind === "carousel" && post.pictures.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                        {post.pictures.map((src, i) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={i} src={src} alt={`Slide ${i + 1}`} className="w-28 shrink-0 rounded-lg border border-studio-hairline" />
+                        ))}
+                    </div>
+                )}
                 <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-gray-100">{KIND_LABELS[post.kind]}</span>
                     <span className="text-sm text-gray-300">{etLabel(post.postAt)}</span>
@@ -111,9 +119,10 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
                     </details>
                 )}
                 {error && <ErrorNote message={error} />}
-                {!editing && (post.actions.length > 0 || post.editable.length > 0) && (
+                {!editing && (post.actions.length > 0 || post.editable.length > 0 || (post.kind === "carousel" && post.content)) && (
                     <div className="flex flex-wrap gap-2">
                         {post.editable.length > 0 && <button className={secondary} disabled={busy} onClick={() => setEditing(true)}>Edit</button>}
+                        {post.kind === "carousel" && post.content && <YoutubePost id={post.id} onError={setError} />}
                         {post.actions.map(a => (
                             <button key={a} className={secondary} disabled={busy} onClick={() => act(a)}>{ACTION_LABELS[a]}</button>
                         ))}
@@ -121,6 +130,45 @@ function Post({ post, onChange }: { post: PostView; onChange: () => Promise<void
                 )}
             </div>
         </li>
+    );
+}
+
+// Saves bytes as a file in the browser.
+function save(bytes: BlobPart, name: string, type: string) {
+    const url = URL.createObjectURL(new Blob([bytes], { type }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+// "YouTube post" (YouTube's posts API is open only to launch partners until 2027 and can't schedule): downloads the
+// carousel's slides (JPEG, 4:5) and youtube-post.txt with the title, the speaker's credit and the episode's link, and
+// copies the text, ready to paste into a post in YouTube Studio.
+function YoutubePost({ id, onError }: { id: string; onError: (message: string) => void }) {
+    const [state, setState] = useState<"idle" | "working" | "done">("idle");
+    const run = async () => {
+        setState("working");
+        try {
+            const base = `/api/studio/social/${id}/youtube`;
+            const post = await studioFetch<{ text: string; slides: number; title: string }>(base);
+            for (let n = 1; n <= post.slides; n++) save(await studioFetchBytes(`${base}?slide=${n}`), `youtube-post-slide-${n}.jpg`, "image/jpeg");
+            save(post.text, "youtube-post.txt", "text/plain;charset=utf-8");
+            await navigator.clipboard?.writeText(post.text).catch(() => {});
+            setState("done");
+        } catch (e) {
+            onError((e as Error).message);
+            setState("idle");
+        }
+    };
+    return (
+        <button className={secondary} disabled={state === "working"} onClick={() => void run()}
+            title="Downloads the slides and the text for a post on the YouTube channel, and copies the text">
+            {state === "working" ? "Downloading…" : state === "done" ? "YouTube post ✓ (text copied)" : "YouTube post"}
+        </button>
     );
 }
 

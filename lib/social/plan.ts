@@ -107,7 +107,7 @@ export function feedSlot(kind: PostKind, day: string): number {
 }
 
 // A Short's posts, made in this order: the Reel first (the feed posts wait for it), then the feed posts.
-export const PLANNED_KINDS: PostKind[] = ['reel', 'image'];
+export const PLANNED_KINDS: PostKind[] = ['reel', 'carousel', 'image'];
 
 // The next day for a feed post of one kind: the day after the last day that kind already took, never before its Short's
 // Reel has gone (its own Short must be out first), and never in the past. One a day per kind (Tom, 2026-11-23).
@@ -197,7 +197,26 @@ export interface ImageContent {
     facebookCaption: string;
 }
 
-export type PostContent = ReelContent | ImageContent;
+export interface CarouselSlide {
+    path: string;                   // the slide, JPEG 1080 × 1350, in Storage
+    line: string | null;            // null on the end slide
+    gold: string | null;
+    picture: 'frame' | 'broll' | 'none' | 'end';   // 'none': an idea carousel's closing question
+    picturePath: string | null;
+}
+
+export interface CarouselContent {
+    title: string;
+    mode: 'idea' | 'story';         // lib/social/carousel.ts: an idea unpacked (the usual), or a guest's story
+    slides: CarouselSlide[];        // the story's slides, then the end slide
+    aiPicture: boolean;             // an AI b-roll image on a slide: the platforms' "made with AI" label
+    instagramCaption: string;
+    facebookCaption: string;
+    // For posting on the YouTube channel by hand ("YouTube post" on the Social page) until the posts API opens.
+    youtube: { text: string };
+}
+
+export type PostContent = ReelContent | ImageContent | CarouselContent;
 
 export interface UploadPostRef { jobId: string | null; requestId: string; scheduled: boolean; sentAt: number; sends: number }
 
@@ -212,7 +231,7 @@ export interface SocialPost {
     platforms: Platform[];
     status: PostStatus;
     reason: string | null;
-    content: PostContent | null;    // by kind: ReelContent, ImageContent (stage 4 adds the carousel's); null when not made
+    content: PostContent | null;    // by kind: ReelContent, ImageContent, CarouselContent; null when not made
     notMade?: boolean;              // could not be made (kept as cancelled so it is never tried, or paid for, again)
     uploadPost: UploadPostRef | null;
     results: Record<string, PlatformResult>;

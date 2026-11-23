@@ -90,7 +90,7 @@ test('imageCaptions: the quote, the speaker credited, the episode linked and tag
 });
 
 test('image posts queue one a day at 7:30 pm ET after the Reel', () => {
-    assert.deepEqual(PLANNED_KINDS, ['reel', 'image']);
+    assert.deepEqual(PLANNED_KINDS, ['reel', 'carousel', 'image']);
     const reelAt = Date.parse('2026-11-24T17:00:00Z'), now = Date.parse('2026-11-24T12:00:00Z');
     const first = feedPostAt('image', { lastTaken: null, reelAt, now });
     assert.equal(new Date(first).toISOString(), '2026-11-25T00:30:00.000Z');
