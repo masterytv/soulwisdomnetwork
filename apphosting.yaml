@@ -53,3 +53,12 @@ env:
     value: 1csV5XHU8oUJfBUQcVKihg8reqewme12F
     availability:
       - RUNTIME
+
+  # Social publishing (docs/specs/026-social-publishing.md): the Social page's Hold, Cancel and Edit act on Upload-Post
+  # at once (the job, in GitHub Actions, posts with the repo secret of the same name). Create the secret, and grant
+  # both backends access, BEFORE this reaches staging or main, or the build fails (fah/misconfigured-secret):
+  # firebase apphosting:secrets:set UPLOAD_POST_API_KEY --project soulwisdomnetwork
+  - variable: UPLOAD_POST_API_KEY
+    secret: UPLOAD_POST_API_KEY
+    availability:
+      - RUNTIME

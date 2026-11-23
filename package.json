@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx --test lib/*.test.ts agent/src/podcast/*.test.ts components/studio/*.test.ts"
+    "test": "tsx --test lib/*.test.ts lib/social/*.test.ts agent/src/podcast/*.test.ts components/studio/*.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

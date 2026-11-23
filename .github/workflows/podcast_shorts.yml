@@ -74,6 +74,32 @@ jobs:
         GITHUB_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       run: npx tsx agent/src/podcast/shorts.ts
 
+    # Once Shorts are scheduled on YouTube, their social posts are made and handed to Upload-Post with their times
+    # (docs/specs/026-social-publishing.md). A failure here never undoes the upload; the hourly check (social.yml) plans
+    # whatever is missing.
+    - name: Install ffmpeg for the social posts
+      if: ${{ success() && inputs.mode == 'upload' && inputs.debug_short == '' }}
+      continue-on-error: true
+      uses: ./.github/actions/ffmpeg
+
+    - name: Make social posts
+      if: ${{ success() && inputs.mode == 'upload' && inputs.debug_short == '' }}
+      continue-on-error: true
+      env:
+        SOCIAL_MODE: plan
+        EPISODE_ID: ${{ inputs.episode_id }}
+        SOCIAL_AUTOPOST: ${{ vars.SOCIAL_AUTOPOST }}
+        SOCIAL_START: ${{ vars.SOCIAL_START }}
+        UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+        UPLOAD_POST_PROFILE: ${{ vars.UPLOAD_POST_PROFILE }}
+        FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
+        PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
+        YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+        YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+        YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        YOUTUBE_PLAYLIST_ID: ${{ vars.YOUTUBE_PLAYLIST_ID }}
+      run: npx tsx agent/src/social/run.ts
+
     # A debug run keeps the short's stretch of the final cut, its captions and backdrop for a day, so a hang can be
     # tried again on the very same bytes.
     - name: Keep the debug files
