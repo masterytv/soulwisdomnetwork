@@ -1,7 +1,7 @@
 # Spec 026: Social publishing
 
 **Date:** 23 November 2026
-**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stages 2 (Reels), 3 (image posts) and 4 (story carousels) built; stage 5 to build
+**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; all five stages built (5: the calendar)
 **Related:** `docs/specs/013-shorts.md` (the Shorts this posts), `docs/specs/025-clips.md` (the shared publishing helpers),
 `DECISIONS.md` (D-2026-11-23-swc-autopost), the plan doc's "SWC publishing plan" tab
 (https://claude.ai/artifact/2nQRFNeyJu55zqyrt8GGnu), and Project Profound's finished version in `masterytv/short-maker`
@@ -249,7 +249,19 @@ Steps:
    title, the speaker's credit, the episode's link) and copies the text (`/api/studio/social/[id]/youtube`). The text
    is kept on the post as `content.youtube.text` beside the slides, for automatic posting once YouTube's posts API opens.
 
-## Limits and failure
+## The calendar (stage 5)
+
+`/admin/podcast/social/calendar` (`components/studio/socialCalendar.tsx`, rules in `lib/social/calendar.ts`, the month from
+`GET /api/studio/social/calendar?month=YYYY-MM`), linked from the Social page. Copied in spirit from Short Maker's:
+
+- one month at a time, Sunday first, in Eastern Time, with ← → and "This month", and the month's totals (posted, to go,
+  failed or missed);
+- each day lists its posts by time and kind (Reel, Carousel, Quote) with a dot by status; a post from the last 14 days
+  or ahead opens on the Social page by its anchor (`#post-{id}`);
+- "Links" (or "+N more" on a busy day) lists the whole day below the month: each post's title and speaker, and IG / FB,
+  linked to the live post once posted (red when that platform failed);
+- cancelled posts only with "Show cancelled"; posts not made never; on a phone, a list of the days with posts.
+
 
 - A Reel needs Facebook's limits: 3 to 90 seconds as a Reel; longer Shorts go to Facebook as a Page video, which it shows
   as a Reel (`facebook_media_type`, as Short Maker does). Instagram takes Reels up to 3 minutes; our Shorts never pass 3.
