@@ -39,7 +39,10 @@ export default function SocialPage() {
                                 acts at once.
                             </p>
                         </div>
-                        <Link href="/admin/podcast" className="text-sm text-gray-400 hover:text-white">← Studio</Link>
+                        <div className="flex items-center gap-3">
+                            <Link href="/admin/podcast/social/calendar" className="text-sm text-amber-300 hover:underline">Calendar</Link>
+                            <Link href="/admin/podcast" className="text-sm text-gray-400 hover:text-white">← Studio</Link>
+                        </div>
                     </div>
                     <SocialView />
                 </div>

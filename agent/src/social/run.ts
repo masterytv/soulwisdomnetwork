@@ -8,8 +8,8 @@
 //          YouTube (and moves a Reel whose Short moved), reads back the results of posts whose time has passed, and
 //          hands over what is waiting for it (a Post pressed on the Studio's Social page, a failure to try again)
 //   send   hands over one post (POST_ID), after Post on the Social page
-// The rules are lib/social/plan.ts; Upload-Post's API is lib/social/uploadPost.ts. Stage 2 makes Reels; the image posts
-// and carousels come in stages 3 and 4.
+// The rules are lib/social/plan.ts; Upload-Post's API is lib/social/uploadPost.ts. Reels (stage 2), image posts (stage 3,
+// agent/src/social/image.ts), story carousels (stage 4, agent/src/social/carousel.ts).
 
 import { spawnSync } from 'node:child_process';
 import * as fs from 'fs';
@@ -22,14 +22,20 @@ import { wordsBetween } from '../../../lib/shorts';
 import { episodeLink } from '../../../lib/publishing';
 import { reelCaptions } from '../../../lib/social/captions';
 import {
-    autopostOn, etLabel, LIVE_STATUSES, PLATFORMS, postId, reelPostAt, scheduleFor, socialStart, statusFromResults, tooLate,
-    whyNot, youtubeVerdict, type PlatformResult, type SocialPost, type YoutubeState,
+    autopostOn, etLabel, feedPostAt, KIND_LABELS, LIVE_STATUSES, PLANNED_KINDS, PLATFORMS, postId, reelPostAt, scheduleFor,
+    socialStart, statusFromResults, tooLate, whyNot, youtubeVerdict, type CarouselContent, type ImageContent, type PostContent, type PlatformResult, type PostKind,
+    type ReelContent, type SocialPost, type YoutubeState,
 } from '../../../lib/social/plan';
-import { cancelScheduled, configFrom, missingSettings, patchScheduled, postState, sendReel, type UploadPostConfig } from '../../../lib/social/uploadPost';
+import { cancelScheduled, configFrom, missingSettings, patchScheduled, postState, sendPhotos, sendReel, type UploadPostConfig } from '../../../lib/social/uploadPost';
 import type { Episode, ShortItem } from '../../../types/episode';
 import { withRetry } from '../podcast/errors';
 import { loadSettings, storageBucket } from '../podcast/settings';
 import { createYoutube } from '../podcast/youtubeApi';
+import { closeCards } from './cards';
+import { makeCarousel } from './carousel';
+import { makeImagePost } from './image';
+import { HOST_FRAME_EVERY, hostFrameAllowed, originalMsOf } from '../../../lib/social/picture';
+import { OverLimit } from './spending';
 
 type Mode = 'plan' | 'check' | 'send';
 
@@ -53,6 +59,7 @@ const workDir = path.join(process.env.RUNNER_TEMP || '/tmp', 'social');
 const autopost = autopostOn(process.env.SOCIAL_AUTOPOST);
 const start = socialStart(process.env.SOCIAL_START);
 const LINK_MS = 60 * 60_000;
+const AUTOPOST_OFF = 'Posting by itself is off (SOCIAL_AUTOPOST): press Post';
 
 const finalAtOf = (episode: Episode) => (episode.final?.finishedAt as Timestamp | undefined)?.toMillis?.() ?? 0;
 const signed = (file: string) => bucket.file(file).getSignedUrl({ action: 'read', expires: Date.now() + LINK_MS }).then(([u]) => u);
@@ -111,26 +118,43 @@ async function makeCover(episodeId: string, item: ShortItem): Promise<string | n
     }
 }
 
-// Makes the Reels of one episode's Shorts that qualify and have none yet; hands each over unless autopost is off.
+// The latest posts of a kind that took a day in its queue (posts not made don't take one), newest first.
+async function latestOf(kind: PostKind, count = 10): Promise<SocialPost[]> {
+    const recent = await posts.where('kind', '==', kind).orderBy('postAt', 'desc').limit(count + 10).get();
+    return recent.docs.map(d => d.data() as SocialPost).filter(p => !p.notMade).slice(0, count);
+}
+
+// The day a feed post of this kind last took, for the 1-a-day queue.
+const lastTaken = async (kind: PostKind) => (await latestOf(kind, 1))[0]?.postAt ?? null;
+
+// Makes the posts each qualifying Short of one episode still lacks (its Reel, then its image post), in the Shorts'
+// YouTube order, and hands each over unless autopost is off. A post that can't be made is kept as cancelled with the
+// reason (notMade), so it is never tried, or paid for, again.
 async function planEpisode(episodeId: string, config: UploadPostConfig | null): Promise<number> {
     const snap = await db.collection('episodes').doc(episodeId).get();
     const episode = snap.data() as Episode | undefined;
     const shorts = episode?.shorts;
     if (!episode || !shorts?.items.length) return 0;
     const finalAt = finalAtOf(episode);
-    const candidates = shorts.items.filter(i => !whyNot(i, { aspect: shorts.aspect, finalAt, start }));
-    if (!candidates.length) return 0;
-    const fresh: ShortItem[] = [];
-    for (const item of candidates) if (!(await posts.doc(postId(episodeId, item.id, 'reel')).get()).exists) fresh.push(item);
-    if (!fresh.length) return 0;
+    const candidates = shorts.items.filter(i => !whyNot(i, { aspect: shorts.aspect, finalAt, start }))
+        .sort((a, b) => a.youtube!.publishAt - b.youtube!.publishAt);
+    const todo: { item: ShortItem; kinds: PostKind[] }[] = [];
+    for (const item of candidates) {
+        const kinds: PostKind[] = [];
+        for (const kind of PLANNED_KINDS) if (!(await posts.doc(postId(episodeId, item.id, kind)).get()).exists) kinds.push(kind);
+        if (kinds.length) todo.push({ item, kinds });
+    }
+    if (!todo.length) return 0;
 
-    const states = await youtubeStates(fresh.map(i => i.youtube!.videoId));
+    const states = await youtubeStates(todo.map(t => t.item.youtube!.videoId));
     const settings = await loadSettings(db);
     const words = await loadWords(episode);
     const link = episodeLink({ episodeUrl: episode.youtube?.url, playlistId: process.env.YOUTUBE_PLAYLIST_ID, siteUrl: settings.siteUrl });
-    const notes = episode.notes?.approved;
-    let made = 0;
-    for (const item of fresh) {
+    const hashtags = episode.notes?.approved?.hashtags ?? [];
+    const finalUrl = episode.final?.videoPath
+        ? (await bucket.file(episode.final.videoPath).getSignedUrl({ action: 'read', expires: Date.now() + 3 * LINK_MS }))[0] : null;
+    let made = 0, overLimit = false;
+    for (const { item, kinds } of todo) {
         const yt = item.youtube!;
         const verdict = youtubeVerdict(states.get(yt.videoId), yt.publishAt);
         if (verdict.verdict === 'cancel') {
@@ -138,38 +162,81 @@ async function planEpisode(episodeId: string, config: UploadPostConfig | null): 
             continue;
         }
         const publishAt = verdict.verdict === 'move' ? verdict.publishAt : yt.publishAt;
-        const postAt = reelPostAt(publishAt);
-        if (tooLate(postAt, Date.now())) {
-            console.log(`  ⏭️ "${item.title}": its Reel's time (${etLabel(postAt)}) passed too long ago`);
-            continue;
-        }
+        const reelAt = reelPostAt(publishAt);
         const spoken = wordsBetween(words, item.startMs, item.endMs).map(w => w.text).join(' ');
-        const captions = reelCaptions({
-            title: item.title, speaker: item.speaker, show: settings.showName, spoken, episode: link, shortId: item.id,
-            hashtags: notes?.hashtags ?? [], credits: episode.final?.credits ?? [],
-        });
-        const coverPath = await makeCover(episodeId, item);
-        const now = Date.now();
-        const post: SocialPost = {
-            kind: 'reel', episodeId, shortId: item.id, shortTitle: item.title, speaker: item.speaker,
-            youtube: { videoId: yt.videoId, url: yt.url, publishAt },
-            postAt, platforms: [...PLATFORMS],
-            status: 'waiting', reason: autopost ? null : 'Posting by itself is off (SOCIAL_AUTOPOST): press Post',
-            content: {
-                title: item.title, videoPath: item.render!.path, coverPath, seconds: Math.round(item.render!.durationMs / 1000),
-                synthetic: item.synthetic, ...captions,
-            },
-            uploadPost: null, results: {}, createdAt: now, updatedAt: now,
+        const base = {
+            episodeId, shortId: item.id, shortTitle: item.title, speaker: item.speaker,
+            youtube: { videoId: yt.videoId, url: yt.url, publishAt }, platforms: [...PLATFORMS],
+            uploadPost: null, results: {},
         };
-        const ref = posts.doc(postId(episodeId, item.id, 'reel'));
-        try {
-            await ref.create(post);          // fails if another run made it first
-        } catch {
-            continue;
+        for (const kind of kinds) {
+            const now = Date.now();
+            let post: SocialPost;
+            if (kind === 'reel') {
+                if (tooLate(reelAt, now)) {
+                    console.log(`  ⏭️ "${item.title}": its Reel's time (${etLabel(reelAt)}) passed too long ago`);
+                    continue;
+                }
+                const captions = reelCaptions({
+                    title: item.title, speaker: item.speaker, show: settings.showName, spoken, episode: link, shortId: item.id,
+                    hashtags, credits: episode.final?.credits ?? [],
+                });
+                const coverPath = await makeCover(episodeId, item);
+                post = {
+                    ...base, kind, postAt: reelAt, status: 'waiting', reason: autopost ? null : AUTOPOST_OFF,
+                    content: {
+                        title: item.title, videoPath: item.render!.path, coverPath, seconds: Math.round(item.render!.durationMs / 1000),
+                        synthetic: item.synthetic, ...captions,
+                    },
+                    createdAt: now, updatedAt: now,
+                };
+            } else {
+                if (overLimit) continue;
+                if (!finalUrl) {
+                    console.log(`  ⏭️ "${item.title}": no final cut to take frames from`);
+                    continue;
+                }
+                const postAt = feedPostAt(kind, { lastTaken: await lastTaken(kind), reelAt, now });
+                const shared = {
+                    db, bucket, episodeId, finalUrl, spoken, show: settings.showName, episode: link, hashtags, workDir,
+                    apiKey: required('ANTHROPIC_API_KEY'),
+                    hosts: settings.hosts, broll: Object.values(episode.broll?.images ?? {}),
+                    at: originalMsOf(item, episode.final?.quotes),
+                };
+                let result: { content: PostContent } | { notMade: string };
+                try {
+                    if (kind === 'carousel') {
+                        result = await makeCarousel(item, shared);
+                    } else {
+                        // A host's own frame one image post in five (Tom, 2026-11-23); b-roll the others use is not used again.
+                        const recent = await latestOf('image', HOST_FRAME_EVERY - 1);
+                        const episodeCards = (await posts.where('episodeId', '==', episodeId).orderBy('postAt').get()).docs
+                            .map(d => d.data() as SocialPost).filter(p => p.kind === 'image' && p.content);
+                        result = await makeImagePost(item, {
+                            ...shared,
+                            used: episodeCards.map(p => (p.content as ImageContent).picturePath).filter((x): x is string => !!x),
+                            hostFrameAllowed: hostFrameAllowed(recent.map(p => (p.content as ImageContent | null)?.picture)),
+                        });
+                    }
+                } catch (error) {
+                    if (error instanceof OverLimit) overLimit = true;
+                    console.warn(`  ⚠️ ${KIND_LABELS[kind]} "${item.title}": ${(error as Error).message}`);
+                    continue;
+                }
+                post = 'notMade' in result
+                    ? { ...base, kind, postAt: now, status: 'cancelled', reason: `Not made: ${result.notMade}`, notMade: true, content: null, createdAt: now, updatedAt: now }
+                    : { ...base, kind, postAt, status: 'waiting', reason: autopost ? null : AUTOPOST_OFF, content: result.content, createdAt: now, updatedAt: now };
+            }
+            const ref = posts.doc(postId(episodeId, item.id, kind));
+            try {
+                await ref.create(post);          // fails if another run made it first
+            } catch {
+                continue;
+            }
+            made++;
+            console.log(`  ➕ ${KIND_LABELS[kind]} "${item.title}" ${post.notMade ? `not made (${post.reason})` : `for ${etLabel(post.postAt)}`}`);
+            if (autopost && config && post.status === 'waiting') await send(ref, config);
         }
-        made++;
-        console.log(`  ➕ Reel "${item.title}" for ${etLabel(postAt)}`);
-        if (autopost && config) await send(ref, config);
     }
     return made;
 }
@@ -205,13 +272,27 @@ async function send(ref: DocumentReference, config: UploadPostConfig): Promise<v
     const platforms = post.status === 'partial' ? post.platforms.filter(p => !post.results[p]?.ok) : post.platforms;
     const at = scheduleFor(post.postAt, now);
     try {
-        if (post.kind !== 'reel') throw new Error(`${post.kind} posts come in a later stage`);
-        const c = post.content;
-        const out = await sendReel(config, {
-            requestId, platforms, videoUrl: await signed(c.videoPath), coverUrl: c.coverPath ? await signed(c.coverPath) : null,
-            seconds: c.seconds, synthetic: c.synthetic, title: c.title, instagramCaption: c.instagramCaption,
-            facebookTitle: c.facebookTitle, facebookDescription: c.facebookDescription, at,
-        });
+        let out;
+        if (post.kind === 'reel') {
+            const c = post.content as ReelContent;
+            out = await sendReel(config, {
+                requestId, platforms, videoUrl: await signed(c.videoPath), coverUrl: c.coverPath ? await signed(c.coverPath) : null,
+                seconds: c.seconds, synthetic: c.synthetic, title: c.title, instagramCaption: c.instagramCaption,
+                facebookTitle: c.facebookTitle, facebookDescription: c.facebookDescription, at,
+            });
+        } else if (post.kind === 'image') {
+            const c = post.content as ImageContent;
+            out = await sendPhotos(config, {
+                requestId, platforms, imageUrls: [await signed(c.cardPath)], title: c.title,
+                instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, aiPicture: c.aiPicture, at,
+            });
+        } else {
+            const c = post.content as CarouselContent;
+            out = await sendPhotos(config, {
+                requestId, platforms, imageUrls: await Promise.all(c.slides.map(sl => signed(sl.path))), title: c.title,
+                instagramCaption: c.instagramCaption, facebookCaption: c.facebookCaption, aiPicture: c.aiPicture, at,
+            });
+        }
         await update(ref, {
             status: 'sent', reason: null,
             uploadPost: { jobId: out.jobId, requestId: out.requestId, scheduled: out.scheduled, sentAt: now, sends },
@@ -318,7 +399,7 @@ async function main() {
     await check(config);
 }
 
-main().catch(error => {
+main().then(() => closeCards()).catch(error => {
     console.error(`❌ ${(error as Error).message}`);
     process.exit(1);
 });

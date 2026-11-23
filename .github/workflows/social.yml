@@ -58,9 +58,13 @@ jobs:
     - name: Install Dependencies
       run: npm ci
 
-    # The Reel's cover is a still of the Short.
+    # The Reel's cover is a still of the Short; the image posts' frames come from the final cut.
     - name: Install ffmpeg
       uses: ./.github/actions/ffmpeg
+
+    # The cards are drawn in headless Chromium (agent/src/social/cards.ts).
+    - name: Install Chromium
+      run: npx playwright install --with-deps chromium
 
     - name: Run social publishing
       env:
@@ -70,6 +74,7 @@ jobs:
         SOCIAL_AUTOPOST: ${{ vars.SOCIAL_AUTOPOST }}
         SOCIAL_START: ${{ vars.SOCIAL_START }}
         UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         UPLOAD_POST_PROFILE: ${{ vars.UPLOAD_POST_PROFILE }}
         FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}

@@ -123,15 +123,21 @@ lib/recordingChecklist.ts  the recording checklist (/admin/podcast/recording): Z
 scripts/      make_admin.ts
 docs/specs/   numbered specs, 001-026 (026, social publishing: every Short approved at Checkpoint E also goes to Soul Wisdom's
               Instagram and Facebook through Upload-Post as a Reel, an image post and a story carousel, by itself under
-              D-2026-11-23-swc-autopost in DECISIONS.md (Tom's yes, and the log of any other rule he changes); stage 2, Reels, built:
+              D-2026-11-23-swc-autopost in DECISIONS.md (Tom's yes, and the log of any other rule he changes); stages 2 to 4: Reels, story
+              carousels (agent/src/social/carousel.ts, lib/social/carousel.ts with the checks on Claude's slides, and the "YouTube post"
+              download, /api/studio/social/[id]/youtube) and image posts (a quote card: agent/src/social/image.ts, lib/social/quote.ts with the checks on Claude's words, lib/social/cards.ts
+              the layout drawn in headless Chromium by agent/src/social/cards.ts, agent/src/social/spending.ts the daily limit), built:
               lib/social/ (plan.ts the rules, captions.ts, uploadPost.ts the only file that knows Upload-Post's API), agent/src/social/run.ts
               (social.yml hourly, and after podcast_shorts.yml schedules Shorts), the Studio's Social page /admin/podcast/social
-              (lib/server/social.ts, app/api/studio/social), Firestore `social_posts` (Admin SDK only);
+              (lib/server/social.ts, app/api/studio/social) and its month calendar /admin/podcast/social/calendar (stage 5:
+              lib/social/calendar.ts, components/studio/socialCalendar.tsx), Firestore `social_posts` (Admin SDK only);
               025, clips of 5 to 15 minutes beside Shorts, all four stages built: lib/clips.ts, lib/clipPicks.ts, lib/clipThumbs.ts, lib/server/clips.ts, components/studio/clips.tsx in the Shorts stage with the "Soul Wisdom Clips" thumbnail (clipThumbnail.ts, clipThumb.tsx) and Checkpoint F, and podcast_clips.yml (agent/src/podcast/clips.ts: modes pick, Claude's suggested topics; titles, each clip's texts; render, the clips cut with ffmpeg in clipsRender.ts; moments, the main speaker's most expressive faces found by loudness and word cues, judged by Claude and cut out with rembg in clipMoments.ts; upload, the approved clips scheduled on YouTube every clipsEveryDays (a Studio setting) with captions, thumbnail and the Clips playlist, repo variable YOUTUBE_CLIPS_PLAYLIST_ID; lib/publishing.ts is shared with Shorts); 024, Studio readability; 023, stock b-roll first; 022, one timeline for the whole video, built in stages 2, 3a and 3b); docs/BACKLOG.md lists features agreed for later, docs/ENHANCEMENTS.md ideas not yet agreed;
               019 is Editor Light v2, 020 its full editing page (the Studio editor) and 021 the
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
 docs/research/ dated research reports behind the specs
+docs/MARKETING.md  the marketing plan for Soul Wisdom and Project Profound: status by step, accounts and links, the rules
+              any marketing work follows, the decision log; a copy of the live Claude Doc it names, which is the one to edit
 types/
 ```
 

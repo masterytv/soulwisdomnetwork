@@ -1,7 +1,7 @@
 # Spec 026: Social publishing
 
 **Date:** 23 November 2026
-**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stage 2 (Reels) built; stages 3–5 to build
+**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; all five stages built (5: the calendar)
 **Related:** `docs/specs/013-shorts.md` (the Shorts this posts), `docs/specs/025-clips.md` (the shared publishing helpers),
 `DECISIONS.md` (D-2026-11-23-swc-autopost), the plan doc's "SWC publishing plan" tab
 (https://claude.ai/artifact/2nQRFNeyJu55zqyrt8GGnu), and Project Profound's finished version in `masterytv/short-maker`
@@ -14,8 +14,8 @@ Every Short that goes to YouTube also goes to Soul Wisdom's Instagram and Facebo
 
 1. **Reel**: the Short's own MP4, as on YouTube, 3 hours after YouTube publishes it.
 2. **Image post**: a quote card with the speaker's own words from the Short over a frame of them.
-3. **Story carousel**: up to 9 frames from the Short's stretch of the episode, each with a 5 to 15-word line retelling
-   the moment; the last slide is always soulwisdomcollective.com.
+3. **Carousel**: up to 8 slides about the Short's moment, each a picture with a 5 to 15-word line: an idea unpacked
+   with a question for the reader (the usual), or a guest's story retold; the last slide is always soulwisdomcollective.com.
 
 No data card and no Facebook link post for now. A link post may come later, once each episode has its own page on the site.
 
@@ -186,13 +186,90 @@ The Studio shows them through signed URLs made when the page loads.
 Jobs only run from `main` (the Studio starts them there), so staging can show the pages, but a post is only made once a
 stage is on `main`.
 
-## Limits and failure
+## The image post (stage 3)
+
+`agent/src/social/image.ts`, rules in `lib/social/quote.ts`, layout in `lib/social/cards.ts`:
+
+1. Six small frames from the final cut, spread over the Short's `startMs`–`endMs`.
+2. Claude (the notes' model) reads the Short's words and looks at the frames. It returns the quote (one to three
+   consecutive sentences, 30 to 220 characters), its gold phrase (2 to 6 words), the frame that shows the speaker best,
+   and where their face is across it. About $0.06 a Short, reserved against the daily limit first.
+3. The code keeps it only when the quote's words are the speaker's own, in order (capitals, punctuation, "um"s and a
+   stammered word aside: `isVerbatim`), and it has no limited words. A gold phrase not copied exactly from the quote
+   becomes its last clause. A quote that fails is noted once as "Not made" (`notMade`), never tried again.
+4. The picture (`lib/social/picture.ts`; Tom, 2026-11-23: "we don't want our picture on every quote card... you can use
+   our photos one in every 5 posts"):
+   - a **guest's** quote goes over their own frame: the chosen frame at 1920 × 1080, cropped to 4:5 around them
+     (`cropAround`);
+   - a **host's** (the Studio settings' hosts, by full or first name) goes over their own frame only when none of the 4
+     image posts before it showed a host (`HOST_FRAME_EVERY` = 5); otherwise over the episode's own b-roll: an AI image
+     first, then a stock photo, the one nearest the Short's moment that no other card of the episode uses (never
+     footage). With no b-roll left, the card's plain brand background (night gradient, a soft gold glow).
+   The card: the logo top left, the quote in Outfit with the gold phrase in `#f7c65b`, the speaker's name in Cinzel,
+   soulwisdomcollective.com at the foot.
+5. Captions: the quote, "— Speaker, on Soul Wisdom Collective", the episode's link (tagged `utm_medium=image`), the
+   picture's credit ("Background image created with AI.", or the stock photographer and site), hashtags. An AI picture
+   also sets the platforms' "made with AI" label.
+6. It takes the next free day in the image posts' queue at 7:30 pm ET, after its Short's Reel.
+
+## The carousel (stage 4)
+
+`agent/src/social/carousel.ts`, rules in `lib/social/carousel.ts`, slides in `lib/social/cards.ts`.
+
+**Two kinds** (Tom, 2026-11-23: "SWC doesn't always have a story to tell. Sometimes it's just two guys talking about a
+philosophy… go with 1 plus the automatic switch"). Claude chooses for each Short, and the code holds it to the rules:
+
+- **Idea** (the usual one, and always for a host's Short): the one idea the Short is about, unpacked. A hook, often a
+  question ("What if silence is a teacher?"); two to five slides with the idea as the speakers explain it, in plain
+  words, credited ("Tom says…"), now and then a short exact quote; then **a question for the reader** to sit with
+  ("Where are you still fighting the silence?"), drawn centred on the plain brand background under "For you". It asks;
+  it never claims. An idea carousel without a closing question that passes the checks is not made.
+- **Story**: only when a guest tells something that happened to them. The moment retold in order: the hook, what
+  happened, the turn or what they came back with.
+
+Steps:
+
+1. Twelve small frames from the final cut, spread over the Short, and the episode's 6 b-roll stills nearest the Short's
+   moment (AI images and stock photos, never footage).
+2. Claude (the notes' model) reads the Short's words and looks at them, chooses the kind, and writes 4 to 8 slides,
+   each a picture by its id (F frames, B b-roll; "NONE" for the reader's question), a 5 to 15-word line in the third
+   person, and its gold phrase. About $0.12 a Short, reserved against the daily limit first.
+3. The code keeps a slide only when its picture exists and isn't used twice, its line has 5 to 15 words and no limited
+   words, anything in quotation marks is the speaker's own words (`isVerbatim`), and its gold phrase (2 to 8 words) is
+   copied exactly from the line. A host's carousel keeps at most 2 frames (`HOST_FRAMES_MAX`), the rest b-roll (Tom,
+   2026-11-23: not our picture on everything). Fewer than 4 slides: noted once as "Not made".
+4. Each slide is the picture (a frame cropped 4:5 around the speaker, or the b-roll) with the line over it, the gold
+   phrase in `#f7c65b`, the logo, "2 / 7" and "Swipe →"; the first names the speaker. The end slide, always: the logo
+   large, "Hear the whole conversation with *Speaker*", soulwisdomcollective.com in gold.
+5. Captions: the title; "An idea from Speaker, on Soul Wisdom Collective. Swipe through, sit with the question, then
+   hear the whole conversation." (a story: "A moment with Speaker…"); the episode's link (`utm_medium=carousel`); the
+   pictures' credits; hashtags. An AI picture sets the "made with AI" label. Posted as an Instagram carousel and a
+   Facebook multi-photo post, one a day at 7 pm ET.
+6. **YouTube post** on the Social page downloads every slide (`youtube-post-slide-N.jpg`) and `youtube-post.txt` (the
+   title, the speaker's credit, the episode's link) and copies the text (`/api/studio/social/[id]/youtube`). The text
+   is kept on the post as `content.youtube.text` beside the slides, for automatic posting once YouTube's posts API opens.
+
+## The calendar (stage 5)
+
+`/admin/podcast/social/calendar` (`components/studio/socialCalendar.tsx`, rules in `lib/social/calendar.ts`, the month from
+`GET /api/studio/social/calendar?month=YYYY-MM`), linked from the Social page. Copied in spirit from Short Maker's:
+
+- one month at a time, Sunday first, in Eastern Time, with ← → and "This month", and the month's totals (posted, to go,
+  failed or missed);
+- each day lists its posts by time and kind (Reel, Carousel, Quote) with a dot by status; a post from the last 14 days
+  or ahead opens on the Social page by its anchor (`#post-{id}`);
+- "Links" (or "+N more" on a busy day) lists the whole day below the month: each post's title and speaker, and IG / FB,
+  linked to the live post once posted (red when that platform failed);
+- cancelled posts only with "Show cancelled"; posts not made never; on a phone, a list of the days with posts.
+
 
 - A Reel needs Facebook's limits: 3 to 90 seconds as a Reel; longer Shorts go to Facebook as a Page video, which it shows
   as a Reel (`facebook_media_type`, as Short Maker does). Instagram takes Reels up to 3 minutes; our Shorts never pass 3.
 - Upload-Post's Basic plan has unlimited uploads and up to 20,000 scheduled posts pending; we plan about 120 a month.
 - A refused hand-over (Upload-Post down, a 4xx) marks the post `failed` with Upload-Post's words; the next check tries
   it again while its time is under 6 hours past.
+- A Reel moved later on YouTube keeps its feed posts' days: a moved Short's image post or carousel may then come out
+  before its Reel. Rare (Shorts are rarely moved), and its Short is public by then either way.
 - Each post's ID is sent as Upload-Post's request ID and `Idempotency-Key`, so a retry never posts twice.
 
 ## Tests
