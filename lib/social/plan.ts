@@ -201,12 +201,13 @@ export interface CarouselSlide {
     path: string;                   // the slide, JPEG 1080 × 1350, in Storage
     line: string | null;            // null on the end slide
     gold: string | null;
-    picture: 'frame' | 'broll' | 'none' | 'end';
+    picture: 'frame' | 'broll' | 'none' | 'end';   // 'none': an idea carousel's closing question
     picturePath: string | null;
 }
 
 export interface CarouselContent {
     title: string;
+    mode: 'idea' | 'story';         // lib/social/carousel.ts: an idea unpacked (the usual), or a guest's story
     slides: CarouselSlide[];        // the story's slides, then the end slide
     aiPicture: boolean;             // an AI b-roll image on a slide: the platforms' "made with AI" label
     instagramCaption: string;

@@ -1,6 +1,6 @@
-// The story carousel (docs/specs/026-social-publishing.md, stage 4): Claude looks at frames of the Short's moment in the
-// final cut and the episode's nearest b-roll, writes the slides' lines and picks a picture for each; lib/social/carousel.ts
-// checks them. Each slide is drawn as a 1080 × 1350 JPEG, then the end slide, all saved to Storage.
+// The carousel (docs/specs/026-social-publishing.md, stage 4): Claude looks at frames of the Short's moment in the final
+// cut and the episode's nearest b-roll, chooses an idea carousel (the usual) or a guest's story, writes the slides' lines
+// and picks a picture for each; lib/social/carousel.ts checks them. Each slide is drawn as a 1080 × 1350 JPEG, then the end slide, all saved to Storage.
 
 import { spawnSync } from 'node:child_process';
 import * as fs from 'fs';
@@ -10,7 +10,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { cropAround, endSlideHtml, storySlideHtml } from '../../../lib/social/cards';
 import { carouselCaptions, youtubePostText } from '../../../lib/social/captions';
 import {
-    CAROUSEL_BROLL, CAROUSEL_ESTIMATE_USD, carouselFrameTimes, carouselPrompt, carouselSystem, checkSlides, SlidesSchema,
+    NO_PICTURE, CAROUSEL_BROLL, CAROUSEL_ESTIMATE_USD, carouselFrameTimes, carouselPrompt, carouselSystem, checkSlides, SlidesSchema,
 } from '../../../lib/social/carousel';
 import { brollCredit, isHost, nearestBroll } from '../../../lib/social/picture';
 import type { CarouselContent, CarouselSlide } from '../../../lib/social/plan';
@@ -85,7 +85,7 @@ export async function makeCarousel(item: ShortItem, ctx: CarouselContext): Promi
     const checked = checkSlides(response.parsed_output, { frameIds, brollIds, spoken: ctx.spoken, host });
     for (const d of checked.dropped) console.log(`    ✂️ ${d}`);
     if (!checked.ok) return { notMade: checked.why };
-    console.log(`  🎠 ${checked.slides.length} slides ($${usd.toFixed(2)})`);
+    console.log(`  🎠 ${checked.mode} carousel, ${checked.slides.length} slides ($${usd.toFixed(2)})`);
 
     // Draw each slide on its picture at full size, then the end slide.
     const prefix = `social/${ctx.episodeId}/${item.id}/carousel`;
@@ -94,8 +94,11 @@ export async function makeCarousel(item: ShortItem, ctx: CarouselContext): Promi
     const credits: string[] = [];
     let aiPicture = false;
     for (const [i, s] of checked.slides.entries()) {
-        let local: string, picturePath: string | null;
-        if (s.picture.startsWith('F')) {
+        let local: string | null, picturePath: string | null;
+        if (s.picture === NO_PICTURE) {
+            local = null;
+            picturePath = null;
+        } else if (s.picture.startsWith('F')) {
             const crop = cropAround(FRAME_WIDTH, FRAME_HEIGHT, s.centre);
             local = path.join(dir, `frame-${i + 1}.jpg`);
             await grabClipFrame(ctx.finalUrl, local, times[Number(s.picture.slice(1)) - 1] / 1000, { size: 'full', crop: { x: crop.x, y: crop.y, w: crop.width, h: crop.height } });
@@ -110,9 +113,15 @@ export async function makeCarousel(item: ShortItem, ctx: CarouselContext): Promi
             if ((b.source ?? 'ai') === 'ai') aiPicture = true;
         }
         const out = path.join(dir, `slide-${i + 1}.jpg`);
-        await drawCard(storySlideHtml({ pictureUrl: pictureUrl(local), line: s.line, gold: s.gold, index: i + 1, total, speaker: item.speaker }, ASSETS), out);
+        await drawCard(storySlideHtml({
+            pictureUrl: local ? pictureUrl(local) : null, line: s.line, gold: s.gold, index: i + 1, total, speaker: item.speaker,
+            question: s.picture === NO_PICTURE,
+        }, ASSETS), out);
         await ctx.bucket.upload(out, { destination: `${prefix}/slide-${i + 1}.jpg`, contentType: 'image/jpeg' });
-        slides.push({ path: `${prefix}/slide-${i + 1}.jpg`, line: s.line, gold: s.gold, picture: s.picture.startsWith('F') ? 'frame' : 'broll', picturePath });
+        slides.push({
+            path: `${prefix}/slide-${i + 1}.jpg`, line: s.line, gold: s.gold, picturePath,
+            picture: s.picture === NO_PICTURE ? 'none' : s.picture.startsWith('F') ? 'frame' : 'broll',
+        });
     }
     const end = path.join(dir, `slide-${total}.jpg`);
     await drawCard(endSlideHtml({ speaker: item.speaker, show: ctx.show, index: total }, ASSETS), end);
@@ -122,8 +131,11 @@ export async function makeCarousel(item: ShortItem, ctx: CarouselContext): Promi
 
     return {
         content: {
-            title: item.title, slides, aiPicture,
-            ...carouselCaptions({ title: item.title, speaker: item.speaker, show: ctx.show, episode: ctx.episode, shortId: item.id, hashtags: ctx.hashtags, pictureCredits: credits }),
+            title: item.title, mode: checked.mode, slides, aiPicture,
+            ...carouselCaptions({
+                title: item.title, speaker: item.speaker, show: ctx.show, episode: ctx.episode, shortId: item.id, hashtags: ctx.hashtags,
+                pictureCredits: credits, mode: checked.mode,
+            }),
             youtube: { text: youtubePostText({ title: item.title, speaker: item.speaker, show: ctx.show, episode: ctx.episode }) },
         },
     };

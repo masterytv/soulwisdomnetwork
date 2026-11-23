@@ -112,10 +112,13 @@ export function imageCaptions(o: {
 export function carouselCaptions(o: {
     title: string; speaker: string; show: string; episode: { url: string; linkText: string }; shortId: string; hashtags: string[];
     pictureCredits: string[];       // lib/social/picture.ts pictureCredit, once each
+    mode?: 'idea' | 'story';        // an idea unpacked (the usual), or a guest's story
 }): { instagramCaption: string; facebookCaption: string } {
     const words = (source: string) => [
         clean(o.title),
-        `A moment with ${creditLine(o.speaker, o.show)}. Swipe through, then hear the whole conversation.`,
+        o.mode === 'story'
+            ? `A moment with ${creditLine(o.speaker, o.show)}. Swipe through, then hear the whole conversation.`
+            : `An idea from ${creditLine(o.speaker, o.show)}. Swipe through, sit with the question, then hear the whole conversation.`,
         o.episode.url ? `${o.episode.linkText}: ${tagged(o.episode.url, source, 'carousel', o.shortId)}` : '',
         [...new Set(o.pictureCredits)].join(' '),
     ].filter(Boolean).join('\n\n');

@@ -107,6 +107,7 @@ export interface StorySlide {
     index: number;                  // 1-based, of `total` (the end slide included)
     total: number;
     speaker?: string;               // named on the first slide only
+    question?: boolean;             // an idea carousel's closing question for the reader: centred on the plain background
 }
 
 // A story carousel's slide: the picture filling it, darkened below, the line over it with one phrase in gold, the logo
@@ -124,11 +125,17 @@ export function storySlideHtml(slide: StorySlide, assets: CardAssets): string {
 .who { font-family: 'Cinzel', serif; font-size: 30px; letter-spacing: 3px; color: ${GOLD}; margin-bottom: 22px; }
 .line { font-weight: 600; font-size: ${size}px; line-height: 1.16; letter-spacing: -.3px; text-shadow: 0 2px 18px rgba(0,0,0,.45); }
 .swipe { position: absolute; bottom: 52px; right: 64px; font-size: 26px; color: rgba(255,255,255,.7); letter-spacing: 1px; }
+.ask { position: absolute; left: 100px; right: 100px; top: 50%; transform: translateY(-50%); text-align: center; }
+.ask .over { font-family: 'Cinzel', serif; font-size: 30px; letter-spacing: 4px; color: ${GOLD}; margin-bottom: 36px; }
+.ask .line { font-size: ${size + 6}px; line-height: 1.2; }
 `;
     const picture = slide.pictureUrl ? `<img class="photo" src="${slide.pictureUrl}" alt=""><div class="shade"></div>` : '<div class="plain"></div>';
     const who = slide.index === 1 && slide.speaker ? `<p class="who">${escapeHtml(slide.speaker)}</p>` : '';
-    const body = `${picture}<p class="count">${slide.index} / ${slide.total}</p>
-<div class="words">${who}<p class="line">${withGold(slide.line, slide.gold)}</p></div>
+    const words = slide.question
+        ? `<div class="ask"><p class="over">For you</p><p class="line">${withGold(slide.line, slide.gold)}</p></div>`
+        : `<div class="words">${who}<p class="line">${withGold(slide.line, slide.gold)}</p></div>`;
+    const body = `${slide.question ? '<div class="plain"></div>' : picture}<p class="count">${slide.index} / ${slide.total}</p>
+${words}
 ${slide.index < slide.total ? '<p class="swipe">Swipe →</p>' : ''}`;
     return base(assets, body, css);
 }

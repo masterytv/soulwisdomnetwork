@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { carouselFrameTimes, carouselPrompt, carouselSystem, checkSlides, HOST_FRAMES_MAX, MAX_STORY_SLIDES } from './carousel';
+import { carouselFrameTimes, carouselPrompt, carouselSystem, checkSlides, HOST_FRAMES_MAX, isQuestion, MAX_STORY_SLIDES, NO_PICTURE } from './carousel';
 import { endSlideHtml, lineSize, storySlideHtml } from './cards';
 import { carouselCaptions, youtubePostText } from './captions';
 import { brollCredit, nearestBroll } from './picture';
@@ -24,9 +24,10 @@ const good = [
 ];
 
 test('checkSlides: keeps slides that pass, with their pictures and centres', () => {
-    const c = checkSlides({ slides: good }, { frameIds, brollIds, spoken, host: false });
+    const c = checkSlides({ mode: 'story', slides: good }, { frameIds, brollIds, spoken, host: false });
     assert.ok(c.ok);
     if (!c.ok) return;
+    assert.equal(c.mode, 'story');
     assert.equal(c.slides.length, 4);
     assert.deepEqual(c.slides[0], { picture: 'F1', line: 'Jo Ann was sure she had nothing left to give.', gold: 'nothing left to give', centre: 0.4 });
     assert.deepEqual(c.dropped, []);
@@ -42,7 +43,7 @@ test('checkSlides: drops a slide with a missing or reused picture, wrong length,
         s('F6', '"I saw angels everywhere," she says about that day.', 'saw angels everywhere'),
         s('B3', 'Then one morning she stopped fighting the silence.', 'Stopped Fighting'),
     ];
-    const c = checkSlides({ slides: [...good, ...bad] }, { frameIds, brollIds, spoken, host: false });
+    const c = checkSlides({ mode: 'story', slides: [...good, ...bad] }, { frameIds, brollIds, spoken, host: false });
     assert.ok(c.ok);
     if (!c.ok) return;
     assert.equal(c.slides.length, 4);
@@ -58,11 +59,11 @@ test('checkSlides: drops a slide with a missing or reused picture, wrong length,
 });
 
 test('checkSlides: fewer than 4 good slides make no carousel; more than 8 are cut', () => {
-    const few = checkSlides({ slides: good.slice(0, 3) }, { frameIds, brollIds, spoken, host: false });
+    const few = checkSlides({ mode: 'story', slides: good.slice(0, 3) }, { frameIds, brollIds, spoken, host: false });
     assert.deepEqual(few, { ok: false, why: 'only 3 slides passed the checks (at least 4)', dropped: [] });
     const ids = ['F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'B1', 'B2', 'B3'];
     const many = ids.map(id => s(id, 'Then one morning she stopped fighting the silence.', 'fighting the silence'));
-    const c = checkSlides({ slides: many }, { frameIds, brollIds, spoken, host: false });
+    const c = checkSlides({ mode: 'story', slides: many }, { frameIds, brollIds, spoken, host: false });
     assert.ok(c.ok && c.slides.length === MAX_STORY_SLIDES);
 });
 
@@ -74,18 +75,23 @@ test('checkSlides: a host\'s carousel keeps at most 2 frames', () => {
         s('B1', 'The quiet started teaching him who he really was.', 'who he really was'),
         s('B2', 'Then one morning he stopped fighting the silence.', 'one morning'),
         s('B3', 'Tom was sure he had nothing left to give.', 'nothing left'),
+        s('F4', 'Where are you still fighting the silence in your life?', 'still fighting the silence'),
     ];
-    const c = checkSlides({ slides }, { frameIds, brollIds, spoken, host: true });
+    const c = checkSlides({ mode: 'story', slides }, { frameIds, brollIds, spoken, host: true });
     assert.ok(c.ok);
     if (!c.ok) return;
+    assert.equal(c.mode, 'idea');                     // a host's Short is always an idea
     assert.equal(c.slides.filter(x => x.picture.startsWith('F')).length, HOST_FRAMES_MAX);
+    assert.equal(c.slides[c.slides.length - 1].picture, NO_PICTURE);
     assert.deepEqual(c.dropped, [`Slide 3: more than ${HOST_FRAMES_MAX} frames of a host`]);
-    assert.match(carouselPrompt({ title: 'T', speaker: 'Tom', spoken, frames: 6, broll: 3, host: true }), /at most 2 frames/);
+    assert.match(carouselPrompt({ title: 'T', speaker: 'Tom', spoken, frames: 6, broll: 3, host: true }), /this is an "idea" carousel\. Use at most 2 frames/);
     assert.doesNotMatch(carouselPrompt({ title: 'T', speaker: 'Jo', spoken, frames: 6, broll: 0, host: false }), /at most/);
 });
 
-test('the system prompt carries the rules and the limited words', () => {
+test('the system prompt carries both kinds, the rules and the limited words', () => {
     assert.match(carouselSystem(), /4 to 8 slides/);
+    assert.match(carouselSystem(), /"idea" \(the usual one\)/);
+    assert.match(carouselSystem(), /only when a guest tells something that happened to them/);
     assert.match(carouselSystem(), /unalive/);
 });
 
@@ -124,7 +130,7 @@ test('slides: the logo, the gold phrase, the count, the speaker on the first onl
 
 test('carouselCaptions and the YouTube post text: credit, link, picture credits once', () => {
     const episode = { url: 'https://soulwisdomcollective.com/videos', linkText: 'Full episodes' };
-    const c = carouselCaptions({ title: 'Coming home', speaker: 'Jo Ann H', show: 'Soul Wisdom Collective', episode, shortId: 's1', hashtags: ['nde'],
+    const c = carouselCaptions({ mode: 'story', title: 'Coming home', speaker: 'Jo Ann H', show: 'Soul Wisdom Collective', episode, shortId: 's1', hashtags: ['nde'],
         pictureCredits: ['Background image created with AI.', 'Background image created with AI.'] });
     assert.equal(c.instagramCaption, 'Coming home\n\nA moment with Jo Ann H, on Soul Wisdom Collective. Swipe through, then hear the whole conversation.\n\n'
         + 'Full episodes: https://soulwisdomcollective.com/videos?utm_source=instagram&utm_medium=carousel&utm_campaign=s1\n\nBackground image created with AI.\n\n#nde #soulwisdom');
@@ -138,4 +144,57 @@ test('carousels are planned with each Short, one a day at 7 pm ET', () => {
     const at = feedPostAt('carousel', { lastTaken: null, reelAt: Date.parse('2026-11-24T17:00:00Z'), now: Date.parse('2026-11-24T12:00:00Z') });
     assert.equal(new Date(at).toISOString(), '2026-11-25T00:00:00.000Z');
     assert.deepEqual(carouselFrameTimes(0, 130_000, 12).slice(0, 2), [10_000, 20_000]);
+});
+
+const idea = [
+    s('F1', 'What if the silence is a teacher, not an enemy?', 'silence is a teacher'),
+    s('B1', 'Tom says the quiet is where we finally hear ourselves.', 'finally hear ourselves'),
+    s('F2', 'Daniel calls it stopping the fight with your own mind.', 'stopping the fight'),
+    s('B2', '"It was all love," Tom says of the first quiet morning.', 'It was all love'),
+    s('F3', 'Where are you still fighting the silence in your life?', 'still fighting the silence'),
+];
+
+test('checkSlides, idea: ends on the reader\'s question, drawn without a picture whatever was chosen', () => {
+    const c = checkSlides({ mode: 'idea', slides: idea }, { frameIds, brollIds, spoken, host: false });
+    assert.ok(c.ok);
+    if (!c.ok) return;
+    assert.equal(c.mode, 'idea');
+    assert.equal(c.slides.length, 5);
+    assert.deepEqual(c.slides[4], { picture: NO_PICTURE, line: 'Where are you still fighting the silence in your life?', gold: 'still fighting the silence', centre: 0.5 });
+    // F3 was the question's choice, so it is still free for nothing else; the points keep their pictures.
+    assert.deepEqual(c.slides.slice(0, 4).map(x => x.picture), ['F1', 'B1', 'F2', 'B2']);
+});
+
+test('checkSlides, idea: no closing question, no carousel; a NONE picture anywhere else is dropped', () => {
+    const noQuestion = idea.slice(0, 4).concat(s('B3', 'Tom says the quiet is where we finally hear ourselves.', 'the quiet'));
+    assert.deepEqual(checkSlides({ mode: 'idea', slides: noQuestion }, { frameIds, brollIds, spoken, host: false }),
+        { ok: false, why: 'the idea carousel has no closing question for the reader', dropped: [] });
+    const stray = [s(NO_PICTURE, 'Tom says the quiet is where we finally hear ourselves.', 'the quiet'), ...idea];
+    const c = checkSlides({ mode: 'idea', slides: stray }, { frameIds, brollIds, spoken, host: false });
+    assert.ok(c.ok);
+    if (!c.ok) return;
+    assert.deepEqual(c.dropped, ['Slide 1: no picture']);
+});
+
+test('checkSlides, idea: a question that fails the checks makes no carousel', () => {
+    const bad = idea.slice(0, 4).concat(s('F3', 'Why?', 'Why'));
+    const c = checkSlides({ mode: 'idea', slides: bad }, { frameIds, brollIds, spoken, host: false });
+    assert.deepEqual(c, { ok: false, why: 'the idea carousel has no closing question for the reader', dropped: ['Slide 5: 1 words'] });
+    assert.equal(isQuestion('Where are you?'), true);
+    assert.equal(isQuestion('“Where are you?”'), true);
+    assert.equal(isQuestion('You are here.'), false);
+});
+
+test('the question slide: centred on the plain background, "For you"', () => {
+    const html = storySlideHtml({ pictureUrl: 'P', line: 'Where are you still fighting?', gold: 'still fighting', index: 5, total: 6, question: true }, ASSETS);
+    assert.match(html, /class="plain"/);
+    assert.doesNotMatch(html, /class="photo"/);
+    assert.match(html, /For you/);
+    assert.match(html, /<span class="gold">still fighting<\/span>/);
+});
+
+test('carouselCaptions by kind: an idea, or a moment from a story', () => {
+    const o = { title: 'T', speaker: 'Tom Wood', show: 'Soul Wisdom Collective', episode: { url: '', linkText: '' }, shortId: 's', hashtags: [], pictureCredits: [] };
+    assert.match(carouselCaptions({ ...o, mode: 'idea' }).instagramCaption, /An idea from Tom Wood, on Soul Wisdom Collective\. Swipe through, sit with the question/);
+    assert.match(carouselCaptions({ ...o, mode: 'story' }).instagramCaption, /A moment with Tom Wood/);
 });
