@@ -8,6 +8,7 @@ import {
     type SocialPost,
 } from '@/lib/social/plan';
 import { INSTAGRAM_CAPTION_MAX, FACEBOOK_TITLE_MAX } from '@/lib/social/captions';
+import type { CalendarPost } from '@/lib/social/calendar';
 import { cancelScheduled, CHANGING_SETTINGS, configFrom, FIELD_NAMES, missingSettings, patchScheduled, UploadPostError } from '@/lib/social/uploadPost';
 import { hasLimitedWords } from '@/lib/social/limitedWords';
 import { adminBucket, adminDb } from './firebaseAdmin';
@@ -154,4 +155,16 @@ export async function youtubeSlide(id: string, slide: number): Promise<Buffer> {
     if (!s) throw new HttpError(404, 'No such slide');
     const [bytes] = await adminBucket().file(s.path).download();
     return bytes;
+}
+
+// The posts in a month, for the calendar (one field, so no composite index): what the calendar shows of each.
+export async function postsBetween(from: number, to: number): Promise<CalendarPost[]> {
+    const snap = await posts().where('postAt', '>=', from).where('postAt', '<', to).orderBy('postAt').limit(3000).get();
+    return snap.docs.map(d => {
+        const p = d.data() as SocialPost;
+        return {
+            id: d.id, kind: p.kind, status: p.status, postAt: p.postAt, platforms: p.platforms, results: p.results ?? {},
+            shortTitle: p.shortTitle, speaker: p.speaker, notMade: p.notMade,
+        };
+    });
 }
