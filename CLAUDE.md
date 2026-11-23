@@ -126,6 +126,8 @@ docs/specs/   numbered specs, 001-025 (025, clips of 5 to 15 minutes beside Shor
               motion graphics and highlight moments, all built;
               docs/PLANNING.md is the entry point for that plan (decisions, order, overlaps)
 docs/research/ dated research reports behind the specs
+docs/MARKETING.md  the marketing plan for Soul Wisdom and Project Profound: status by step, accounts and links, the rules
+              any marketing work follows, the decision log; a copy of the live Claude Doc it names, which is the one to edit
 types/
 ```
 
