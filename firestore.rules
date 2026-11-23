@@ -101,6 +101,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Social publishing (docs/specs/026-social-publishing.md): one document per post, made by the social job and read
+    // and changed by the Studio's routes, all through the Admin SDK.
+    match /social_posts/{postId} {
+      allow read, write: if false;
+    }
+
     match /community_limits/{userId} {
       allow read, write: if false;
     }

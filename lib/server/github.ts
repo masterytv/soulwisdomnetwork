@@ -182,3 +182,12 @@ export async function podcastRuns(since: Date): Promise<PodcastRun[]> {
     }
     return out;
 }
+
+// Social publishing (docs/specs/026-social-publishing.md): hands one post to Upload-Post (`send`, after Post on the
+// Social page), or plans an episode's posts (`plan`). The hourly check runs on its own schedule.
+export async function startSocial(o: { mode: 'send'; postId: string } | { mode: 'plan'; episodeId: string }) {
+    await github('/actions/workflows/social.yml/dispatches', {
+        method: 'POST',
+        body: JSON.stringify({ ref: 'main', inputs: o.mode === 'send' ? { mode: 'send', post_id: o.postId } : { mode: 'plan', episode_id: o.episodeId } }),
+    });
+}

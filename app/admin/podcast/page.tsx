@@ -217,6 +217,7 @@ export default function PodcastStudioPage() {
                             <button onClick={load} className={secondary}>Refresh</button>
                             <Link href="/admin/podcast/settings" className={secondary}>Studio settings</Link>
                             <Link href="/admin/podcast/library" className={secondary}>Music and effects</Link>
+                            <Link href="/admin/podcast/social" className={secondary}>Social</Link>
                             <Link href="/admin/podcast/recording" className={secondary}>Recording checklist</Link>
                             {profile?.role === "admin" && (
                                 <>
