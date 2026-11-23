@@ -106,6 +106,9 @@ export function feedSlot(kind: PostKind, day: string): number {
     return kind === FEED_ORDER[0] ? at : at + FEED_SECOND_OFFSET_MINUTES * 60_000;
 }
 
+// A Short's posts, made in this order: the Reel first (the feed posts wait for it), then the feed posts.
+export const PLANNED_KINDS: PostKind[] = ['reel', 'image'];
+
 // The next day for a feed post of one kind: the day after the last day that kind already took, never before its Short's
 // Reel has gone (its own Short must be out first), and never in the past. One a day per kind (Tom, 2026-11-23).
 export function feedPostAt(kind: PostKind, o: { lastTaken: number | null; reelAt: number; now: number }): number {
@@ -182,6 +185,18 @@ export interface ReelContent {
     facebookDescription: string;
 }
 
+export interface ImageContent {
+    title: string;
+    cardPath: string;               // the quote card, JPEG 1080 × 1350, in Storage
+    framePath: string;              // the speaker's frame it was drawn on
+    quote: string;                  // the speaker's own words, copied from the Short
+    gold: string;                   // the phrase in gold, copied exactly from the quote
+    instagramCaption: string;
+    facebookCaption: string;
+}
+
+export type PostContent = ReelContent | ImageContent;
+
 export interface UploadPostRef { jobId: string | null; requestId: string; scheduled: boolean; sentAt: number; sends: number }
 
 export interface SocialPost {
@@ -195,7 +210,8 @@ export interface SocialPost {
     platforms: Platform[];
     status: PostStatus;
     reason: string | null;
-    content: ReelContent;           // later stages add the image post's and carousel's
+    content: PostContent | null;    // by kind: ReelContent, ImageContent (stage 4 adds the carousel's); null when not made
+    notMade?: boolean;              // could not be made (kept as cancelled so it is never tried, or paid for, again)
     uploadPost: UploadPostRef | null;
     results: Record<string, PlatformResult>;
     createdAt: number;
@@ -203,7 +219,7 @@ export interface SocialPost {
 }
 
 // The words a producer can change on a post: what each platform shows.
-export type EditableField = 'instagramCaption' | 'facebookTitle' | 'facebookDescription';
+export type EditableField = 'instagramCaption' | 'facebookTitle' | 'facebookDescription' | 'facebookCaption';
 export function editableFields(kind: PostKind): { key: EditableField; label: string }[] {
     if (kind === 'reel') {
         return [
@@ -212,7 +228,10 @@ export function editableFields(kind: PostKind): { key: EditableField; label: str
             { key: 'facebookDescription', label: 'Facebook description' },
         ];
     }
-    return [];
+    return [
+        { key: 'instagramCaption', label: 'Instagram caption' },
+        { key: 'facebookCaption', label: 'Facebook text' },
+    ];
 }
 
 export type SocialAction = 'post' | 'hold' | 'cancel';

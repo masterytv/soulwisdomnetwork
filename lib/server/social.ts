@@ -4,7 +4,8 @@
 // (UPLOAD_POST_API_KEY in Secret Manager); Post starts the job (social.yml, mode send), which hands the post over.
 
 import {
-    actionsFor, canEdit, editableFields, KIND_LABELS, type EditableField, type SocialAction, type SocialPost,
+    actionsFor, canEdit, editableFields, KIND_LABELS, type EditableField, type ImageContent, type ReelContent, type SocialAction,
+    type SocialPost,
 } from '@/lib/social/plan';
 import { INSTAGRAM_CAPTION_MAX, FACEBOOK_TITLE_MAX } from '@/lib/social/captions';
 import { cancelScheduled, CHANGING_SETTINGS, configFrom, FIELD_NAMES, missingSettings, patchScheduled, UploadPostError } from '@/lib/social/uploadPost';
@@ -28,7 +29,8 @@ export interface PostView extends SocialPost {
 const signed = (file: string) => adminBucket().file(file).getSignedUrl({ action: 'read', expires: Date.now() + LINK_MS }).then(([u]) => u).catch(() => '');
 
 async function view(id: string, post: SocialPost, now: number): Promise<PostView> {
-    const files = post.kind === 'reel' && post.content.coverPath ? [post.content.coverPath] : [];
+    const c = (post.content ?? {}) as Partial<ReelContent & ImageContent>;
+    const files = [post.kind === 'reel' ? c.coverPath : c.cardPath].filter((f): f is string => !!f);
     return {
         ...post, id,
         actions: actionsFor(post, now),
@@ -109,7 +111,7 @@ export async function act(id: string, action: SocialAction, who: string): Promis
 export async function editPost(id: string, words: Record<string, unknown>): Promise<void> {
     const { ref, post } = await load(id);
     const now = Date.now();
-    if (!canEdit(post, now)) throw new HttpError(409, `This post can't be changed now (${post.status})`);
+    if (!post.content || !canEdit(post, now)) throw new HttpError(409, `This post can't be changed now (${post.status})`);
     const changes: Partial<Record<EditableField, string>> = {};
     for (const { key, label } of editableFields(post.kind)) {
         const v = words[key];

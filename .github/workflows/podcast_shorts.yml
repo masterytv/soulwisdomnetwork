@@ -82,6 +82,11 @@ jobs:
       continue-on-error: true
       uses: ./.github/actions/ffmpeg
 
+    - name: Install Chromium for the social cards
+      if: ${{ success() && inputs.mode == 'upload' && inputs.debug_short == '' }}
+      continue-on-error: true
+      run: npx playwright install --with-deps chromium
+
     - name: Make social posts
       if: ${{ success() && inputs.mode == 'upload' && inputs.debug_short == '' }}
       continue-on-error: true
@@ -91,6 +96,7 @@ jobs:
         SOCIAL_AUTOPOST: ${{ vars.SOCIAL_AUTOPOST }}
         SOCIAL_START: ${{ vars.SOCIAL_START }}
         UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
+        ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         UPLOAD_POST_PROFILE: ${{ vars.UPLOAD_POST_PROFILE }}
         FACEBOOK_PAGE_ID: ${{ vars.FACEBOOK_PAGE_ID }}
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}

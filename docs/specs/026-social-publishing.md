@@ -1,7 +1,7 @@
 # Spec 026: Social publishing
 
 **Date:** 23 November 2026
-**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stage 2 (Reels) built; stages 3–5 to build
+**Status:** Approved (Tom's answers of 23 November, 2:54 pm ET, in Decisions). Stage 1 (this spec) written; stage 2 (Reels) and stage 3 (image posts) built; stages 4–5 to build
 **Related:** `docs/specs/013-shorts.md` (the Shorts this posts), `docs/specs/025-clips.md` (the shared publishing helpers),
 `DECISIONS.md` (D-2026-11-23-swc-autopost), the plan doc's "SWC publishing plan" tab
 (https://claude.ai/artifact/2nQRFNeyJu55zqyrt8GGnu), and Project Profound's finished version in `masterytv/short-maker`
@@ -186,6 +186,22 @@ The Studio shows them through signed URLs made when the page loads.
 Jobs only run from `main` (the Studio starts them there), so staging can show the pages, but a post is only made once a
 stage is on `main`.
 
+## The image post (stage 3)
+
+`agent/src/social/image.ts`, rules in `lib/social/quote.ts`, layout in `lib/social/cards.ts`:
+
+1. Six small frames from the final cut, spread over the Short's `startMs`–`endMs`.
+2. Claude (the notes' model) reads the Short's words and looks at the frames. It returns the quote (one to three
+   consecutive sentences, 30 to 220 characters), its gold phrase (2 to 6 words), the frame that shows the speaker best,
+   and where their face is across it. About $0.06 a Short, reserved against the daily limit first.
+3. The code keeps it only when the quote's words are the speaker's own, in order (capitals, punctuation, "um"s and a
+   stammered word aside: `isVerbatim`), and it has no limited words. A gold phrase not copied exactly from the quote
+   becomes its last clause. A quote that fails is noted once as "Not made" (`notMade`), never tried again.
+4. That frame at 1920 × 1080, cropped to 4:5 around the speaker (`cropAround`), under the card: the logo top left, the
+   quote in Outfit with the gold phrase in `#f7c65b`, the speaker's name in Cinzel, soulwisdomcollective.com at the foot.
+5. Captions: the quote, "— Speaker, on Soul Wisdom Collective", the episode's link (tagged `utm_medium=image`), hashtags.
+6. It takes the next free day in the image posts' queue at 7:30 pm ET, after its Short's Reel.
+
 ## Limits and failure
 
 - A Reel needs Facebook's limits: 3 to 90 seconds as a Reel; longer Shorts go to Facebook as a Page video, which it shows
@@ -193,6 +209,8 @@ stage is on `main`.
 - Upload-Post's Basic plan has unlimited uploads and up to 20,000 scheduled posts pending; we plan about 120 a month.
 - A refused hand-over (Upload-Post down, a 4xx) marks the post `failed` with Upload-Post's words; the next check tries
   it again while its time is under 6 hours past.
+- A Reel moved later on YouTube keeps its feed posts' days: a moved Short's image post or carousel may then come out
+  before its Reel. Rare (Shorts are rarely moved), and its Short is public by then either way.
 - Each post's ID is sent as Upload-Post's request ID and `Idempotency-Key`, so a retry never posts twice.
 
 ## Tests

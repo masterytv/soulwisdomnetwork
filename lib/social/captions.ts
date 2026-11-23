@@ -85,3 +85,21 @@ export function reelCaptions(o: ReelWords): { instagramCaption: string; facebook
         facebookDescription: [body('facebook'), tags].filter(Boolean).join('\n\n'),
     };
 }
+
+// The image post's words: the quote, who said it and where, the episode's link, hashtags. Facebook gets the same, its
+// link tagged for Facebook. Every sentence with a limited word is dropped (the quote has none: it is checked first).
+export function imageCaptions(o: { quote: string; speaker: string; show: string; episode: { url: string; linkText: string }; shortId: string; hashtags: string[] }): {
+    instagramCaption: string;
+    facebookCaption: string;
+} {
+    const words = (source: string) => [
+        `“${clean(o.quote)}”`,
+        `— ${creditLine(o.speaker, o.show)}`,
+        o.episode.url ? `${o.episode.linkText}: ${tagged(o.episode.url, source, 'image', o.shortId)}` : '',
+    ].filter(Boolean).join('\n\n');
+    const tags = hashtags(o.hashtags);
+    return {
+        instagramCaption: fit([scrubDescription(words('instagram')), tags].join('\n\n'), INSTAGRAM_CAPTION_MAX),
+        facebookCaption: [scrubDescription(words('facebook')), tags].join('\n\n'),
+    };
+}
