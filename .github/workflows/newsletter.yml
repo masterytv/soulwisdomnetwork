@@ -1,17 +1,19 @@
 # "Soul Wisdom Video of the Week" (agent/src/newsletter/run.ts; Tom, 2026-11-19): Soul Wisdom's own newsletter.
 #   sync:   puts new sign-ups (Firestore newsletter_subscribers) into Resend's Soul Wisdom segment, sends their
 #           welcome, and brings unsubscribes back from Resend. Started by the site after a sign-up, and daily.
-#   weekly: the sync, then the week's email scheduled in Resend for 9:00 am ET on Tuesdays, and an email to Tom
-#           (ALERT_EMAIL) with the link to cancel it before then. Repo variable NEWSLETTER_AUTOSEND=off makes it a
-#           draft for Tom to send instead.
+#   weekly: the sync, then, once Tuesday's send is within 36 hours, the week's email scheduled in Resend for 9:00 am
+#           ET on Tuesday, and an email to Tom (ALERT_EMAIL) with the link to cancel it before then. Repo variable
+#           NEWSLETTER_AUTOSEND=off makes it a draft for Tom to send instead. Google Cloud Scheduler starts it on Monday
+#           evening (Tom, 2026-11-24: GitHub started it hours late); the schedule below, Monday and Tuesday, is the
+#           backup, and a later run for the same Tuesday does nothing.
 # Runs from `main`, like the podcast jobs. Public logs: counts and titles only, never an address.
 
 name: Newsletter
-run-name: "Newsletter · ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 2' && 'weekly' || 'sync') || inputs.mode }}"
+run-name: "Newsletter · ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 1,2' && 'weekly' || 'sync') || inputs.mode }}"
 
 on:
   schedule:
-    - cron: '41 10 * * 2'   # Tuesdays 10:41 UTC (5:41 am EST, 6:41 am EDT): the weekly email, sent at 9:00 am ET
+    - cron: '41 10 * * 1,2' # Mondays and Tuesdays 10:41 UTC (5:41 am EST, 6:41 am EDT): the weekly email, made ahead, sent Tuesday 9:00 am ET
     - cron: '17 15 * * *'   # daily 15:17 UTC: the sync, for any sign-up the site's own start missed
   workflow_dispatch:
     inputs:
@@ -50,7 +52,7 @@ jobs:
 
     - name: Run the newsletter
       env:
-        NEWSLETTER_MODE: ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 2' && 'weekly' || 'sync') || inputs.mode }}
+        NEWSLETTER_MODE: ${{ github.event_name == 'schedule' && (github.event.schedule == '41 10 * * 1,2' && 'weekly' || 'sync') || inputs.mode }}
         NEWSLETTER_AUTOSEND: ${{ vars.NEWSLETTER_AUTOSEND }}
         PODCAST_SA_JSON: ${{ secrets.PODCAST_SA_JSON }}
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}

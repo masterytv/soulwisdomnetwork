@@ -268,9 +268,11 @@ list). The sign-up box (`components/NewsletterSignup.tsx`, home and Videos pages
 which records the address in `newsletter_subscribers` (one document per address, its ID a SHA-256 of it) and starts
 `newsletter.yml` at most every two minutes. The job (`agent/src/newsletter/run.ts`; GitHub Actions, the only place
 with `RESEND_API_KEY`, which needs full access) syncs with Resend's "Soul Wisdom Video of the Week" segment (new
-sign-ups in, welcomes sent once, unsubscribes back) after a sign-up and daily, and every Tuesday schedules the week's
-email (`lib/newsletterEmail.ts`: the most-watched video on the channel in 7 days and the newest episode) for 9:00 am ET
-and emails `ALERT_EMAIL` the link to cancel it. Repo variable `NEWSLETTER_AUTOSEND=off` makes it a draft instead.
+sign-ups in, welcomes sent once, unsubscribes back) after a sign-up and daily, and schedules the week's email
+(`lib/newsletterEmail.ts`: the most-watched video on the channel in 7 days and the newest episode) for Tuesday 9:00 am ET
+on its first weekly run within 36 hours of it (`nextSend`; Tom, 2026-11-24, after GitHub started it hours late), and
+emails `ALERT_EMAIL` the link to cancel it. Google Cloud Scheduler starts the weekly run on Monday evening (a job in this
+project calling GitHub's workflow_dispatch); the workflow's own Monday and Tuesday schedule is the backup. Repo variable `NEWSLETTER_AUTOSEND=off` makes it a draft instead.
 Sent from newsletter@soulwisdomcollective.com (verified in Resend). The public logs show counts, never addresses.
 
 **Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut

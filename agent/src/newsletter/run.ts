@@ -9,11 +9,12 @@
 //        added, already welcomed;
 //     2. puts new and returning sign-ups into the segment, subscribed;
 //     3. sends each new sign-up the welcome email, once.
-//   NEWSLETTER_MODE=weekly  (Tuesdays, early morning ET)
-//     the sync, then the week's email as a Resend broadcast scheduled for 9:00 am ET (lib/newsletterEmail.ts), and
+//   NEWSLETTER_MODE=weekly  (Monday evening from Google Cloud Scheduler; Monday and Tuesday mornings from GitHub)
+//     the sync, then, once Tuesday's send is within 36 hours (nextSend; Tom 2026-11-24, after GitHub started it hours
+//     late), the week's email as a Resend broadcast scheduled for Tuesday 9:00 am ET (lib/newsletterEmail.ts), and
 //     an email to Tom (ALERT_EMAIL) with the link to cancel it before then. With the repo variable
 //     NEWSLETTER_AUTOSEND=off, a draft for Tom to send by hand. Nothing is made when there is nothing to put in it
-//     (Tom gets an alert). One broadcast a day: a second run the same day does nothing.
+//     (Tom gets an alert). One broadcast per Tuesday: a later run for the same Tuesday does nothing; earlier ones too.
 //
 // The repository is public, and so are these logs: they show counts and titles, never an address.
 
@@ -23,7 +24,7 @@ import { createHash } from 'node:crypto';
 import { loadAlert } from '../podcast/config';
 import { sendEmail } from '../podcast/notify';
 import {
-    channelFeedUrl, NEWSLETTER_FROM, NEWSLETTER_REPLY_TO, newestEpisode, parseChannelFeed, PODCAST_FEED_URL, sendTime,
+    channelFeedUrl, NEWSLETTER_FROM, NEWSLETTER_REPLY_TO, newestEpisode, nextSend, parseChannelFeed, PODCAST_FEED_URL,
     videoOfWeek, weeklyEmail, weeklyHtml, weekName, welcomeHtml,
 } from '../../../lib/newsletterEmail';
 
@@ -168,13 +169,18 @@ const eastern = (d: Date) =>
 async function weekly() {
     await sync();
     const now = new Date();
-    const name = weekName(now);
+    const send = nextSend(now);
+    if (!send) {
+        console.log(`⏭️  Not yet: Tuesday's email is made in the 36 hours before it (next: ${nextSend(now, undefined, undefined, Infinity)?.day}).`);
+        return;
+    }
+    const name = weekName(new Date(`${send.day}T12:00:00Z`));
 
     const list = await resend<{ data: { id: string; name: string; status: string }[] }>('GET', '/broadcasts');
     if (!list.ok) throw new Error(`Resend: could not list broadcasts (${list.status} ${list.error})`);
     const already = list.data?.data.find(b => b.name === name);
     if (already) {
-        console.log(`⏭️  Today's email already exists (${already.status}): https://resend.com/broadcasts/${already.id}`);
+        console.log(`⏭️  This Tuesday's email already exists (${already.status}): https://resend.com/broadcasts/${already.id}`);
         return;
     }
 
@@ -191,7 +197,7 @@ async function weekly() {
     }
 
     const autosend = process.env.NEWSLETTER_AUTOSEND !== 'off';
-    const at = sendTime(now);
+    const at = send.at;
     const created = await resend<{ id: string }>('POST', '/broadcasts', {
         segment_id: SEGMENT_ID, name, from: NEWSLETTER_FROM, reply_to: NEWSLETTER_REPLY_TO,
         subject: email.subject, preview_text: email.previewText, html: weeklyHtml(email, name),
