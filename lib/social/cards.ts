@@ -27,12 +27,34 @@ export function withGold(text: string, phrase: string): string {
     return `${escapeHtml(text.slice(0, at))}<span class="gold">${escapeHtml(phrase)}</span>${escapeHtml(text.slice(at + phrase.length))}`;
 }
 
+// The picture's box on a card with a picture (Tom, 2026-11-24, "option 2 for all images with quotes": a face was cut by
+// the words laid over it): the top of the card, the words on the brand's night panel below, never over the picture.
+export const PICTURE_HEIGHT = 790;
+export const PICTURE_ASPECT = CARD_WIDTH / PICTURE_HEIGHT;
+
+// The picture's box and the panel under it, with a short fade where they meet.
+const SPLIT_CSS = `
+.photo { position: absolute; left: 0; top: 0; width: ${CARD_WIDTH}px; height: ${PICTURE_HEIGHT}px; object-fit: cover; }
+.top { position: absolute; left: 0; top: 0; width: ${CARD_WIDTH}px; height: 220px; background: linear-gradient(180deg, rgba(20,10,46,.5), rgba(20,10,46,0)); }
+.panel { position: absolute; left: 0; right: 0; top: ${PICTURE_HEIGHT}px; bottom: 0; background: linear-gradient(180deg, ${NIGHT} 0%, ${NIGHT_LOW} 100%); }
+.fade { position: absolute; left: 0; top: ${PICTURE_HEIGHT - 150}px; width: ${CARD_WIDTH}px; height: 150px; background: linear-gradient(180deg, rgba(20,10,46,0), ${NIGHT}); }
+`;
+const splitPicture = (url: string) => `<img class="photo" src="${url}" alt=""><div class="top"></div><div class="panel"></div><div class="fade"></div>`;
+
 // Large enough to read on a phone, small enough to fit: by the quote's length.
 export function quoteSize(chars: number): number {
     if (chars <= 70) return 74;
     if (chars <= 110) return 64;
     if (chars <= 160) return 56;
     return 48;
+}
+
+// The same for the panel under a picture, which has less room.
+export function panelQuoteSize(chars: number): number {
+    if (chars <= 70) return 64;
+    if (chars <= 110) return 56;
+    if (chars <= 160) return 50;
+    return 44;
 }
 
 function base(assets: CardAssets, body: string, css: string): string {
@@ -58,23 +80,20 @@ export interface QuoteCard {
     show: string;
 }
 
-// The image post: the picture (the speaker's frame, or the episode's b-roll) filling the card, darkened below, the words
-// over it with one phrase in gold, the speaker's name, the logo top left and the site at the foot. With no picture, the
-// brand's night gradient and a soft gold glow, the words higher up.
+// The image post: the picture (the speaker's frame, or the episode's b-roll) in the top of the card, the words on the
+// night panel below with one phrase in gold, the speaker's name, the logo top left and the site at the foot; the words
+// never cover the picture (Tom, 2026-11-24). With no picture, the brand's night gradient and a soft gold glow.
 export function quoteCardHtml(card: QuoteCard, assets: CardAssets): string {
-    const size = quoteSize(card.quote.length);
-    const css = `
-.photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.shade { position: absolute; inset: 0; background:
-    linear-gradient(180deg, rgba(20,10,46,.55) 0%, rgba(20,10,46,0) 22%, rgba(20,10,46,0) 34%, rgba(20,10,46,.78) 56%, rgba(20,10,46,.96) 76%, ${NIGHT} 100%); }
-.words { position: absolute; left: 84px; right: 84px; bottom: ${card.pictureUrl ? 132 : 260}px; }
+    const size = card.pictureUrl ? panelQuoteSize(card.quote.length) : quoteSize(card.quote.length);
+    const css = `${SPLIT_CSS}
+.words { position: absolute; left: 84px; right: 84px; ${card.pictureUrl ? `top: ${PICTURE_HEIGHT - 20}px` : 'bottom: 260px'}; }
 .plain { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 30%, rgba(247,198,91,.16), rgba(247,198,91,0) 70%), linear-gradient(180deg, ${NIGHT_LOW} 0%, ${NIGHT} 70%); }
 .mark { font-family: 'Cinzel', serif; font-size: 150px; line-height: 1; color: ${GOLD}; height: 70px; margin-bottom: 6px; }
 .quote { font-weight: 600; font-size: ${size}px; line-height: 1.18; letter-spacing: -.3px; text-shadow: 0 2px 18px rgba(0,0,0,.45); }
-.who { margin-top: 34px; font-family: 'Cinzel', serif; font-size: 34px; letter-spacing: 2px; color: ${GOLD}; }
+.who { margin-top: ${card.pictureUrl ? 26 : 34}px; font-family: 'Cinzel', serif; font-size: ${card.pictureUrl ? 30 : 34}px; letter-spacing: 2px; color: ${GOLD}; }
 .who small { display: block; margin-top: 6px; font-size: 24px; letter-spacing: 3px; color: rgba(255,255,255,.7); }
 `;
-    const picture = card.pictureUrl ? `<img class="photo" src="${card.pictureUrl}" alt=""><div class="shade"></div>` : '<div class="plain"></div>';
+    const picture = card.pictureUrl ? splitPicture(card.pictureUrl) : '<div class="plain"></div>';
     const body = `${picture}
 <div class="words"><div class="mark">“</div><p class="quote">${withGold(card.quote, card.gold)}</p>
 <p class="who">${escapeHtml(card.speaker)}<small>${escapeHtml(card.show)}</small></p></div>
@@ -82,12 +101,13 @@ export function quoteCardHtml(card: QuoteCard, assets: CardAssets): string {
     return base(assets, body, css);
 }
 
-// The 4:5 crop of a frame around the speaker: as tall as the frame, centred on them (0 to 1 of the frame's width),
-// kept inside the frame. Whole pixels, even, for ffmpeg.
-export function cropAround(frameWidth: number, frameHeight: number, centre: number): { x: number; y: number; width: number; height: number } {
+// The crop of a frame around the speaker for the picture's box (PICTURE_ASPECT, wider than tall): as tall as the frame,
+// so the whole head and shoulders show, centred on them across (0 to 1 of the frame's width), kept inside the frame.
+// Whole pixels, even, for ffmpeg.
+export function cropAround(frameWidth: number, frameHeight: number, centre: number, aspect = PICTURE_ASPECT): { x: number; y: number; width: number; height: number } {
     const even = (n: number) => Math.floor(n / 2) * 2;
-    const height = even(Math.min(frameHeight, frameWidth * 5 / 4));
-    const width = even(height * 4 / 5);
+    const height = even(Math.min(frameHeight, frameWidth / aspect));
+    const width = even(height * aspect);
     const c = Number.isFinite(centre) ? Math.min(1, Math.max(0, centre)) : 0.5;
     const x = even(Math.min(frameWidth - width, Math.max(0, c * frameWidth - width / 2)));
     return { x, y: even((frameHeight - height) / 2), width, height };
@@ -100,6 +120,13 @@ export function lineSize(chars: number): number {
     return 60;
 }
 
+// The same for the panel under a picture.
+export function panelLineSize(chars: number): number {
+    if (chars <= 45) return 70;
+    if (chars <= 75) return 62;
+    return 56;
+}
+
 export interface StorySlide {
     pictureUrl: string | null;      // a frame of the Short's moment, or the episode's b-roll; null: the brand background
     line: string;                   // 5 to 15 words, retelling the moment
@@ -110,18 +137,16 @@ export interface StorySlide {
     question?: boolean;             // an idea carousel's closing question for the reader: centred on the plain background
 }
 
-// A story carousel's slide: the picture filling it, darkened below, the line over it with one phrase in gold, the logo
-// top left and where it is in the story top right ("2 / 7").
+// A carousel's slide: the picture in the top of the slide, the line on the night panel below with one phrase in gold,
+// never over the picture (Tom, 2026-11-24); the logo top left and where it is in the story top right ("2 / 7").
 export function storySlideHtml(slide: StorySlide, assets: CardAssets): string {
-    const size = lineSize(slide.line.length);
-    const css = `
-.photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.shade { position: absolute; inset: 0; background:
-    linear-gradient(180deg, rgba(20,10,46,.5) 0%, rgba(20,10,46,0) 20%, rgba(20,10,46,0) 45%, rgba(20,10,46,.85) 68%, ${NIGHT} 100%); }
+    const onPanel = !!slide.pictureUrl && !slide.question;
+    const size = onPanel ? panelLineSize(slide.line.length) : lineSize(slide.line.length);
+    const css = `${SPLIT_CSS}
 .plain { position: absolute; inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 30%, rgba(247,198,91,.16), rgba(247,198,91,0) 70%), linear-gradient(180deg, ${NIGHT_LOW} 0%, ${NIGHT} 70%); }
 .logo { width: 150px; }
 .count { position: absolute; top: 62px; right: 60px; font-family: 'Cinzel', serif; font-size: 28px; letter-spacing: 3px; color: rgba(255,255,255,.85); text-shadow: 0 2px 10px rgba(0,0,0,.6); }
-.words { position: absolute; left: 80px; right: 80px; bottom: 140px; }
+.words { position: absolute; left: 80px; right: 80px; ${onPanel ? `top: ${PICTURE_HEIGHT + 50}px` : 'bottom: 140px'}; }
 .who { font-family: 'Cinzel', serif; font-size: 30px; letter-spacing: 3px; color: ${GOLD}; margin-bottom: 22px; }
 .line { font-weight: 600; font-size: ${size}px; line-height: 1.16; letter-spacing: -.3px; text-shadow: 0 2px 18px rgba(0,0,0,.45); }
 .swipe { position: absolute; bottom: 52px; right: 64px; font-size: 26px; color: rgba(255,255,255,.7); letter-spacing: 1px; }
@@ -129,7 +154,7 @@ export function storySlideHtml(slide: StorySlide, assets: CardAssets): string {
 .ask .over { font-family: 'Cinzel', serif; font-size: 30px; letter-spacing: 4px; color: ${GOLD}; margin-bottom: 36px; }
 .ask .line { font-size: ${size + 6}px; line-height: 1.2; }
 `;
-    const picture = slide.pictureUrl ? `<img class="photo" src="${slide.pictureUrl}" alt=""><div class="shade"></div>` : '<div class="plain"></div>';
+    const picture = slide.pictureUrl ? splitPicture(slide.pictureUrl) : '<div class="plain"></div>';
     const who = slide.index === 1 && slide.speaker ? `<p class="who">${escapeHtml(slide.speaker)}</p>` : '';
     const words = slide.question
         ? `<div class="ask"><p class="over">For you</p><p class="line">${withGold(slide.line, slide.gold)}</p></div>`
