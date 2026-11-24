@@ -15,7 +15,7 @@ export const PLATFORM_NAMES: Record<Platform, string> = { instagram: 'Instagram'
 
 export const POST_KINDS = ['reel', 'image', 'carousel'] as const;
 export type PostKind = (typeof POST_KINDS)[number];
-export const KIND_LABELS: Record<PostKind, string> = { reel: 'Reel', image: 'Image post', carousel: 'Story carousel' };
+export const KIND_LABELS: Record<PostKind, string> = { reel: 'Reel', image: 'Image post', carousel: 'Carousel' };
 
 export type PostStatus = 'waiting' | 'sent' | 'posted' | 'partial' | 'failed' | 'held' | 'cancelled' | 'missed';
 export const STATUS_LABELS: Record<PostStatus, string> = {
@@ -119,6 +119,29 @@ export function feedPostAt(kind: PostKind, o: { lastTaken: number | null; reelAt
     }
     while (feedSlot(kind, day) < Math.max(o.reelAt, o.now)) day = nextDay(day);
     return feedSlot(kind, day);
+}
+
+// The feed posts' kinds, each with its own 1-a-day queue.
+export const FEED_KINDS: PostKind[] = ['carousel', 'image'];
+
+// A feed post this close to its time keeps it when the queue is put in order again.
+export const REQUEUE_FREEZE_MS = 2 * 3_600_000;
+
+// One kind's queue put in the Shorts' YouTube order (2026-11-24: the first catch-up queued episode by episode, so a Short
+// out on 15 December had its carousel on 3 January). Posts already out, or within REQUEUE_FREEZE_MS of their time, keep
+// their days; every other post of the kind takes, in its Short's YouTube order, the first free day on or after its
+// Reel's day at the kind's time (and never sooner than REQUEUE_FREEZE_MS from now). Returns each post's new time.
+export function requeueFeed(kind: PostKind, items: { id: string; postAt: number; reelAt: number; publishAt: number; movable: boolean }[], now: number): Map<string, number> {
+    const taken = new Set(items.filter(i => !i.movable).map(i => easternDay(i.postAt)));
+    const out = new Map<string, number>();
+    const earliest = now + REQUEUE_FREEZE_MS;
+    for (const i of items.filter(x => x.movable).sort((a, b) => a.publishAt - b.publishAt || a.id.localeCompare(b.id))) {
+        let day = easternDay(Math.max(i.reelAt, earliest));
+        while (taken.has(day) || feedSlot(kind, day) < Math.max(i.reelAt, earliest)) day = nextDay(day);
+        taken.add(day);
+        out.set(i.id, feedSlot(kind, day));
+    }
+    return out;
 }
 
 // Hand a post over with a time when it is far enough ahead; nearer than that, now.
