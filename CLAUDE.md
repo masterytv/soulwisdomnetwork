@@ -274,8 +274,9 @@ and emails `ALERT_EMAIL` the link to cancel it. Repo variable `NEWSLETTER_AUTOSE
 Sent from newsletter@soulwisdomcollective.com (verified in Resend). The public logs show counts, never addresses.
 
 **Daily spending limit:** the Studio's paid runs (show notes and redrafts, b-roll images, final cut
-transcript, thumbnails, shorts picks and titles, clips suggestions, titles and thumbnail moments, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $10 in any 24 hours
-(`lib/server/spending.ts`, `DAILY_LIMIT_USD`). It counts the costs the jobs recorded and the
+transcript, thumbnails, shorts picks and titles, clips suggestions, titles and thumbnail moments, highlight suggestions, social posts, translations, retakes, transcribing an uploaded recording) can spend at most $20 in any 24 hours
+(`lib/server/spending.ts`, `DAILY_LIMIT_USD`; $10 until Tom raised it on 2026-11-24), social posts at most $5 of it
+(`agent/src/social/spending.ts`, repo variable `SOCIAL_DAILY_USD`). It counts the costs the jobs recorded and the
 estimates reserved in `studio/spending` at each start, whichever is higher; a refused run shows
 the reason in its step. Ingest has its own per-episode cap in the agent's config.
 

@@ -159,7 +159,7 @@ the plan could be checked against it.
 
 - **Explicit job modes**, never "guess from the episode's state": translations and retakes once
   ran the wrong job because the state looked like notes.
-- **Every paid run reserves against the $10/day limit before it starts**, uploads ($0.75) and
+- **Every paid run reserves against the daily limit ($20 since 2026-11-24) before it starts**, uploads ($0.75) and
   Shorts pick ($0.40, raised to cover long episodes) included. Part H was held back because
   Sora (up to ~$7.20 a run) and ElevenLabs reserved nothing.
 - **Translations are capped at 5 languages:** each is a YouTube caption track (450 of the

@@ -13,7 +13,7 @@ export const GOLD_MAX_WORDS = 6;
 // Small frames Claude looks at, spread over the Short.
 export const QUOTE_FRAMES = 6;
 // Rough cost of one quote (a few small frames and the Short's words), reserved against the daily limit.
-export const QUOTE_ESTIMATE_USD = 0.06;
+export const QUOTE_ESTIMATE_USD = 0.03;        // the first runs: $0.02
 
 // What Claude returns. No .min()/.max(): limits are applied after, in code.
 export const QuotePickSchema = z.object({

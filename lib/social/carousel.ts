@@ -27,7 +27,7 @@ export const CAROUSEL_FRAMES = 12;        // frames of the Short Claude looks at
 export const CAROUSEL_BROLL = 6;          // the episode's b-roll pictures offered, nearest the Short first
 export const HOST_FRAMES_MAX = 2;         // frames on a host's carousel
 // Rough cost of one carousel (18 small pictures and the Short's words), reserved against the daily limit.
-export const CAROUSEL_ESTIMATE_USD = 0.12;
+export const CAROUSEL_ESTIMATE_USD = 0.07;     // the first runs: $0.04 to $0.06
 
 export const CAROUSEL_MODES = ['idea', 'story'] as const;
 export type CarouselMode = (typeof CAROUSEL_MODES)[number];

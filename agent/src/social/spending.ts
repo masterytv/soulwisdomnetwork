@@ -1,4 +1,4 @@
-// The Studio's daily spending limit for the social job (docs/specs/026-social-publishing.md): the same $10 in any 24
+// The Studio's daily spending limit for the social job (docs/specs/026-social-publishing.md): the same $20 in any 24
 // hours as the Studio's own paid starts (lib/server/spending.ts, whose rules this follows on the job's Firestore). Each
 // paid call reserves its estimate in studio/spending first; a refused call leaves the post to a later run. The real
 // cost is then recorded on the episode's costs.items, as every job records its own.
@@ -7,7 +7,15 @@ import { randomUUID } from 'node:crypto';
 import { FieldValue, type Firestore } from 'firebase-admin/firestore';
 import type { Episode } from '../../../types/episode';
 
-export const DAILY_LIMIT_USD = 10;          // lib/server/spending.ts DAILY_LIMIT_USD
+export const DAILY_LIMIT_USD = 20;          // lib/server/spending.ts DAILY_LIMIT_USD (Tom, 2026-11-24: $10 → $20)
+// Social posts' own share of it (Tom, 2026-11-24, after the first catch-up spent the whole $10 and held up the Studio's
+// other paid runs for a day). The repo variable SOCIAL_DAILY_USD can change it.
+export const SOCIAL_DAILY_USD = 5;
+export function socialDailyUsd(setting: string | undefined): number {
+    const n = Number(setting);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, DAILY_LIMIT_USD) : SOCIAL_DAILY_USD;
+}
+const SOCIAL = 'social '; // the reservations' prefix ("social carousel: …", "social image post: …")
 const DAY_MS = 24 * 60 * 60_000;
 
 interface Reservation { id: string; at: number; usd: number; what: string }
@@ -28,6 +36,11 @@ export async function reserve(db: Firestore, what: string, usd: number): Promise
     await db.runTransaction(async tx => {
         const entries = (((await tx.get(ledger)).get('entries') as Reservation[] | undefined) ?? []).filter(e => e.at >= since);
         const spent = Math.max(actual, entries.reduce((t, e) => t + e.usd, 0));
+        const social = entries.filter(e => e.what.startsWith(SOCIAL)).reduce((t, e) => t + e.usd, 0);
+        const share = socialDailyUsd(process.env.SOCIAL_DAILY_USD);
+        if (what.startsWith(SOCIAL) && social + usd > share) {
+            throw new OverLimit(`Social posts' daily share: about $${social.toFixed(2)} reserved in the last 24 hours; this would add $${usd.toFixed(2)} (share $${share.toFixed(2)} of the $${DAILY_LIMIT_USD} limit)`);
+        }
         if (spent + usd > DAILY_LIMIT_USD) {
             throw new OverLimit(`Daily spending limit: about $${spent.toFixed(2)} spent in the last 24 hours; this would add $${usd.toFixed(2)} (limit $${DAILY_LIMIT_USD})`);
         }

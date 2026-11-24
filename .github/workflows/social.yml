@@ -1,7 +1,8 @@
 # Social publishing (docs/specs/026-social-publishing.md; D-2026-11-23-swc-autopost in DECISIONS.md): every Short approved
 # at Checkpoint E and scheduled on YouTube goes to Soul Wisdom's Instagram and Facebook through Upload-Post.
-#   check: hourly. Plans what is missing, cancels the posts of a Short no longer scheduled or public on YouTube, moves a
-#          Reel whose Short moved, reads back results, and hands over what waits (Post pressed, a failure to retry).
+#   check: hourly. Plans what is missing (Reels first, then carousels and quote cards in YouTube order, for up to 20
+#          minutes and $5 a day), puts the feed queues in YouTube order, cancels the posts of a Short no longer scheduled
+#          or public on YouTube, moves a Reel whose Short moved, reads back results, and retries what waits.
 #   plan:  one episode's posts (or every episode's), handed over with their times. podcast_shorts.yml runs the same
 #          after it schedules Shorts.
 #   send:  one post (post_id), after Post on the Studio's Social page.
@@ -73,6 +74,7 @@ jobs:
         POST_ID: ${{ inputs.post_id }}
         SOCIAL_AUTOPOST: ${{ vars.SOCIAL_AUTOPOST }}
         SOCIAL_START: ${{ vars.SOCIAL_START }}
+        SOCIAL_DAILY_USD: ${{ vars.SOCIAL_DAILY_USD }}
         UPLOAD_POST_API_KEY: ${{ secrets.UPLOAD_POST_API_KEY }}
         ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         UPLOAD_POST_PROFILE: ${{ vars.UPLOAD_POST_PROFILE }}

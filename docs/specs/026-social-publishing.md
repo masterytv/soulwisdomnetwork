@@ -46,7 +46,8 @@ Settled in the plan, kept here:
   JPEG (Instagram's API takes no other picture format), in the Studio's brand: background `#140a2e`, Outfit and Cinzel.
 - **Every caption credits the speaker and links the episode** (`episodeLink` in `lib/publishing.ts`: the episode on
   YouTube once it is there, else the podcast playlist, else the site).
-- **Paid calls stay within the Studio's $10 daily limit** (`lib/server/spending.ts`). The social job reserves its
+- **Paid calls stay within the Studio's daily limit** (`lib/server/spending.ts`; $20 since Tom raised it on 2026-11-24),
+  and social posts within their own share of it, $5 a day (`SOCIAL_DAILY_USD`, Tom 2026-11-24). The social job reserves its
   estimate in `studio/spending` before calling Claude, as the Studio's own starts do, and records the real cost on the
   episode's `costs.items`. A refused run leaves the post waiting and tries again on a later run.
 
