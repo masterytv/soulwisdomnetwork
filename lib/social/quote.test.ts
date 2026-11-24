@@ -5,7 +5,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { checkQuote, fallbackGold, frameTimes, isVerbatim, quoteSystem, wordsOf } from './quote';
-import { CARD_HEIGHT, CARD_WIDTH, cropAround, escapeHtml, GOLD, quoteCardHtml, quoteSize, withGold } from './cards';
+import { CARD_HEIGHT, CARD_WIDTH, cropAround, escapeHtml, GOLD, panelQuoteSize, PICTURE_ASPECT, PICTURE_HEIGHT, quoteCardHtml, quoteSize, storySlideHtml, withGold } from './cards';
 import { imageCaptions } from './captions';
 import { feedPostAt, feedSlot, PLANNED_KINDS } from './plan';
 
@@ -56,16 +56,34 @@ test('frameTimes: spread over the Short, away from its ends', () => {
     assert.deepEqual(frameTimes(10_000, 80_000, 6), [20_000, 30_000, 40_000, 50_000, 60_000, 70_000]);
 });
 
-test('cropAround: 4:5, as tall as the frame, centred on the speaker and kept inside', () => {
-    assert.deepEqual(cropAround(1920, 1080, 0.5), { x: 528, y: 0, width: 864, height: 1080 });
-    assert.deepEqual(cropAround(1920, 1080, 0), { x: 0, y: 0, width: 864, height: 1080 });
-    assert.deepEqual(cropAround(1920, 1080, 1), { x: 1056, y: 0, width: 864, height: 1080 });
-    assert.deepEqual(cropAround(1920, 1080, NaN), { x: 528, y: 0, width: 864, height: 1080 });
-    const c = cropAround(1920, 1080, 0.3);
-    assert.equal(c.width / c.height, 0.8);
+const ASSETS = { logoUrl: 'L', outfitUrl: 'O', outfitBlackUrl: 'OB', cinzelUrl: 'C' };
+
+test('cropAround: the picture box\'s shape, as tall as the frame, centred on the speaker and kept inside', () => {
+    // 1080 × 790 is a little wider than 4:3: 1476 × 1080 of a 1920 × 1080 frame.
+    assert.deepEqual(cropAround(1920, 1080, 0.5), { x: 222, y: 0, width: 1476, height: 1080 });
+    assert.deepEqual(cropAround(1920, 1080, 0), { x: 0, y: 0, width: 1476, height: 1080 });
+    assert.deepEqual(cropAround(1920, 1080, 1), { x: 444, y: 0, width: 1476, height: 1080 });
+    assert.deepEqual(cropAround(1920, 1080, NaN), { x: 222, y: 0, width: 1476, height: 1080 });
+    assert.ok(Math.abs(cropAround(1920, 1080, 0.3).width / 1080 - PICTURE_ASPECT) < 0.01);
+    // Any other shape still works: 4:5.
+    assert.deepEqual(cropAround(1920, 1080, 0.5, 4 / 5), { x: 528, y: 0, width: 864, height: 1080 });
 });
 
-const ASSETS = { logoUrl: 'L', outfitUrl: 'O', outfitBlackUrl: 'OB', cinzelUrl: 'C' };
+test('quote card and slide with a picture: the picture on top, the words on the panel below, never over it', () => {
+    const card = quoteCardHtml({ pictureUrl: 'P', quote: 'It was all love.', gold: 'all love', speaker: 'Jo', show: 'Soul Wisdom Collective' }, ASSETS);
+    assert.match(card, new RegExp(`\\.photo \\{[^}]*height: ${PICTURE_HEIGHT}px`));
+    assert.match(card, /class="panel"/);
+    assert.match(card, new RegExp(`\\.words \\{[^}]*top: ${PICTURE_HEIGHT - 20}px`));
+    const slide = storySlideHtml({ pictureUrl: 'P', line: 'Tom says the quiet is where we hear ourselves.', gold: 'hear ourselves', index: 2, total: 6 }, ASSETS);
+    assert.match(slide, new RegExp(`\\.words \\{[^}]*top: ${PICTURE_HEIGHT + 50}px`));
+    // No picture: the plain card, words in the middle, as before.
+    const plain = quoteCardHtml({ pictureUrl: null, quote: 'It was all love.', gold: 'all love', speaker: 'Jo', show: 'S' }, ASSETS);
+    assert.match(plain, /class="plain"/);
+    assert.doesNotMatch(plain, /class="photo"/);
+    const ask = storySlideHtml({ pictureUrl: 'P', line: 'Where are you still fighting?', gold: 'still fighting', index: 5, total: 6, question: true }, ASSETS);
+    assert.doesNotMatch(ask, /class="photo"/);
+    assert.ok(panelQuoteSize(50) <= quoteSize(50));
+});
 
 test('quoteCardHtml: the logo, the gold phrase in the accent, the speaker, escaped text', () => {
     const html = quoteCardHtml({ pictureUrl: 'P', quote: 'Love <is> all & more', gold: 'all & more', speaker: 'Jo Ann <H>', show: 'Soul Wisdom Collective' }, ASSETS);
