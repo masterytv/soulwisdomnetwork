@@ -263,14 +263,38 @@ Steps:
   linked to the live post once posted (red when that platform failed);
 - cancelled posts only with "Show cancelled"; posts not made never; on a phone, a list of the days with posts.
 
+## The layout: the picture on top, the words below (Tom, 2026-11-24)
+
+Some of the first cards laid the words over a speaker's mouth and chin. Tom chose, from samples of three layouts,
+"option 2 for all images with quotes": on every quote card and carousel slide with a picture, the picture fills the top
+790 px (`PICTURE_HEIGHT`, a little wider than 4:3) and the words sit on the night panel below, never over it. A frame is
+cropped to that shape as tall as the frame, centred on the speaker, so the whole head and shoulders show. Cards and slides
+with no picture (the reader's question, the end slide, a plain card) are unchanged. Short Maker's quote cards and story
+slides got the same layout the same day.
+
+## The first catch-up (2026-11-24) and what changed
+
+Switched on with about 60 Shorts already scheduled into January, the first runs taught three things, fixed the same day:
+
+- **Order.** Planning went episode by episode, so a Short out on 15 December had its carousel on 3 January. Now every
+  Short's Reel is made first, then the feed posts in the Shorts' YouTube order across episodes, and every hourly check
+  puts each feed queue back in that order (`requeueFeed`): each post not yet out, and more than two hours from its time,
+  takes the first free day on or after its Reel's, its new time sent to Upload-Post (`PATCH`).
+- **Spending.** The catch-up spent the Studio's whole $10 and held up the other paid runs for a day. The limit is now $20
+  (Tom), and social posts may use at most $5 of it in any 24 hours (`SOCIAL_DAILY_USD`); the rest of the backlog waits for
+  later runs.
+- **Time.** One run couldn't make 60 Shorts' posts in the workflow's 30 minutes and was cut off. A run now stops starting
+  paid feed posts after 20 minutes (`FEED_BUDGET_MS`); the next run carries on.
+
+## Limits and failure
 
 - A Reel needs Facebook's limits: 3 to 90 seconds as a Reel; longer Shorts go to Facebook as a Page video, which it shows
   as a Reel (`facebook_media_type`, as Short Maker does). Instagram takes Reels up to 3 minutes; our Shorts never pass 3.
 - Upload-Post's Basic plan has unlimited uploads and up to 20,000 scheduled posts pending; we plan about 120 a month.
 - A refused hand-over (Upload-Post down, a 4xx) marks the post `failed` with Upload-Post's words; the next check tries
   it again while its time is under 6 hours past.
-- A Reel moved later on YouTube keeps its feed posts' days: a moved Short's image post or carousel may then come out
-  before its Reel. Rare (Shorts are rarely moved), and its Short is public by then either way.
+- A Reel moved later on YouTube moves with its Short; its feed posts are put back in order by the next check
+  (`requeueFeed`), never before its Reel.
 - Each post's ID is sent as Upload-Post's request ID and `Idempotency-Key`, so a retry never posts twice.
 
 ## Tests
