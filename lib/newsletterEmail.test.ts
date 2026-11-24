@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    firstParagraph, newestEpisode, parseChannelFeed, sendTime, tagged, videoOfWeek, weeklyEmail, weeklyHtml, weekName, welcomeHtml,
+    firstParagraph, newestEpisode, nextSend, parseChannelFeed, sendTime, tagged, videoOfWeek, weeklyEmail, weeklyHtml, weekName, welcomeHtml,
 } from './newsletterEmail';
 
 const entry = (id: string, title: string, published: string, views: number, kind = 'shorts') => `
@@ -67,4 +67,20 @@ test('the email: our links tagged, Resend\'s unsubscribe, nothing unescaped', ()
     assert.ok(html.includes('A &lt;b&gt;bold&lt;/b&gt; title'));
     assert.ok(!html.includes('<b>bold</b>'));
     assert.match(welcomeHtml(), /Every Tuesday morning/);
+});
+
+test('makes Tuesday\'s email ahead, from Monday, scheduled for 9:00 am ET (Tom, 2026-11-24)', () => {
+    // Monday 2026-11-30, 6:00 pm EST (Cloud Scheduler): Tuesday 9:00 am EST.
+    assert.deepEqual(nextSend(new Date('2026-11-30T23:00:00Z')), { day: '2026-12-01', at: new Date('2026-12-01T14:00:00Z') });
+    // GitHub's Monday run, even hours late, is within 36 hours.
+    assert.equal(nextSend(new Date('2026-11-30T10:41:00Z'))?.day, '2026-12-01');
+    // Earlier in the week: nothing yet.
+    assert.equal(nextSend(new Date('2026-11-29T15:00:00Z')), null);
+    assert.equal(nextSend(new Date('2026-11-25T15:00:00Z')), null);
+    assert.equal(nextSend(new Date('2026-11-25T15:00:00Z'), undefined, undefined, Infinity)?.day, '2026-12-01');
+    // On Tuesday: 9:00, or ten minutes after a late run.
+    assert.equal(nextSend(new Date('2026-12-01T10:41:00Z'))?.at.toISOString(), '2026-12-01T14:00:00.000Z');
+    assert.equal(nextSend(new Date('2026-12-01T16:00:00Z'))?.at.toISOString(), '2026-12-01T16:10:00.000Z');
+    // Across the spring clock change: Tuesday 9:00 am EDT.
+    assert.deepEqual(nextSend(new Date('2027-03-15T22:00:00Z')), { day: '2027-03-16', at: new Date('2027-03-16T13:00:00Z') });
 });

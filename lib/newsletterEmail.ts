@@ -81,7 +81,7 @@ export function tagged(url: string, campaign: string): string {
     return u.toString();
 }
 
-// "swc-video-of-the-week-2026-11-24": the broadcast's name (one a day) and the UTM campaign.
+// "swc-video-of-the-week-2026-11-24": the broadcast's name (one per Tuesday, named for that Tuesday) and the UTM campaign.
 export const weekName = (now: Date) => `swc-video-of-the-week-${now.toISOString().slice(0, 10)}`;
 
 export interface WeeklyEmail { subject: string; previewText: string; video: ChannelVideo | null; episode: PodcastEpisode | null }
@@ -116,6 +116,24 @@ export function sendTime(now: Date, hour = 9): Date {
     let at = wall - newYorkOffsetMinutes(new Date(wall)) * 60_000;
     at = wall - newYorkOffsetMinutes(new Date(at)) * 60_000;
     return new Date(Math.max(at, now.getTime() + 10 * 60_000));
+}
+
+// The email is made ahead (Tom, 2026-11-24): GitHub started Tuesday's job hours late, so a run any time in the 36 hours
+// before the send makes it, scheduled in Resend for 9:00 am ET, and Resend sends it on time. Google Cloud Scheduler
+// starts the job on Monday evening; the workflow's own schedule (Monday and Tuesday) is the backup.
+export const MAKE_AHEAD_HOURS = 36;
+// Tuesday (0 is Sunday).
+export const SEND_WEEKDAY = 2;
+
+// The next send: its New York day (YYYY-MM-DD) and when it goes, or null while it is more than `aheadHours` away. On
+// the send day itself, 9:00 am ET, or ten minutes from now past that (a run that came late still sends that day).
+export function nextSend(now: Date, weekday = SEND_WEEKDAY, hour = 9, aheadHours = MAKE_AHEAD_HOURS): { day: string; at: Date } | null {
+    const ny = new Date(now.getTime() + newYorkOffsetMinutes(now) * 60_000);
+    const days = (weekday - ny.getUTCDay() + 7) % 7;
+    const noon = new Date(Date.UTC(ny.getUTCFullYear(), ny.getUTCMonth(), ny.getUTCDate() + days, 12));
+    const at = days === 0 ? sendTime(now, hour) : sendTime(noon, hour);
+    if (at.getTime() - now.getTime() > aheadHours * 3_600_000) return null;
+    return { day: noon.toISOString().slice(0, 10), at };
 }
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
