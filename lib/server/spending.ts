@@ -1,4 +1,5 @@
-// A limit on what the Studio's paid runs can spend in a day ($10 in any 24 hours), so a
+// A limit on what the Studio's paid runs can spend in a day ($20 in any 24 hours; $10 until Tom raised it on
+// 2026-11-24, when social publishing joined the paid runs), so a
 // runaway loop or a misused account cannot run up a bill. The jobs record what each run cost
 // on its episode (`costs.items`), but only when it finishes, so each paid start also reserves
 // its estimate in `studio/spending`; the limit counts whichever of the two is higher. Runs that
@@ -12,7 +13,7 @@ import { adminDb } from './firebaseAdmin';
 import { HttpError } from './staff';
 import { auphonicRefusal, auphonicUsed, AUPHONIC_FREE_SECONDS, monthOf, type AuphonicHold } from '@/lib/voice';
 
-export const DAILY_LIMIT_USD = 10;
+export const DAILY_LIMIT_USD = 20;
 const DAY_MS = 24 * 60 * 60_000;
 
 // Rough costs of one run, for the reservation; the job records the real one.

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     actionsFor, autopostOn, canEdit, easternDay, easternToUtc, facebookMediaType, feedPostAt, feedSlot, nextDay, postId,
-    reelPostAt, scheduleFor, socialStart, statusFromResults, tooLate, whyNot, youtubeVerdict,
+    reelPostAt, REQUEUE_FREEZE_MS, requeueFeed, scheduleFor, socialStart, statusFromResults, tooLate, whyNot, youtubeVerdict,
 } from './plan';
 import { creditLine, fit, hashtags, INSTAGRAM_CAPTION_MAX, reelCaptions, tagged } from './captions';
 import { missingSettings, parseResults, patchBody, photoForm, reason, reelForm } from './uploadPost';
@@ -214,4 +214,33 @@ test('patchBody, parseResults, settings, refusals', () => {
     assert.deepEqual(missingSettings({ UPLOAD_POST_API_KEY: 'k', UPLOAD_POST_PROFILE: ' ' }), ['UPLOAD_POST_PROFILE', 'FACEBOOK_PAGE_ID']);
     assert.match(reason(401, {}), /UPLOAD_POST_API_KEY/);
     assert.equal(reason(400, { message: 'bad caption' }), 'Upload-Post refused it (400): bad caption');
+});
+
+test('requeueFeed: the queue in YouTube order, days already out kept, never sooner than two hours from now', () => {
+    const now = Date.parse('2026-11-24T15:00:00Z');                       // 10 am ET
+    const reel = (day: string) => Date.parse(`${day}T22:00:00Z`) - 3 * H;  // a Reel at 2 pm ET that day
+    const items = [
+        // Queued episode by episode: a 15 December Short got 3 January, a 2 January Short got 16 December.
+        { id: 'late', postAt: feedSlot('carousel', '2026-12-16'), reelAt: reel('2027-01-02'), publishAt: reel('2027-01-02') - 3 * H, movable: true },
+        { id: 'early', postAt: feedSlot('carousel', '2027-01-03'), reelAt: reel('2026-12-15'), publishAt: reel('2026-12-15') - 3 * H, movable: true },
+        // Already posted on 24 November: its day stays taken.
+        { id: 'done', postAt: feedSlot('carousel', '2026-11-24') - 20 * H, reelAt: reel('2026-11-23'), publishAt: reel('2026-11-23') - 3 * H, movable: false },
+        { id: 'today', postAt: feedSlot('carousel', '2026-11-30'), reelAt: reel('2026-11-24'), publishAt: reel('2026-11-24') - 3 * H, movable: true },
+    ];
+    const out = requeueFeed('carousel', items, now);
+    assert.equal(new Date(out.get('today')!).toISOString(), new Date(feedSlot('carousel', '2026-11-24')).toISOString());
+    assert.equal(new Date(out.get('early')!).toISOString(), new Date(feedSlot('carousel', '2026-12-15')).toISOString());
+    assert.equal(new Date(out.get('late')!).toISOString(), new Date(feedSlot('carousel', '2027-01-02')).toISOString());
+    assert.equal(out.has('done'), false);
+    // Two Shorts on one day: the second's carousel goes the next day.
+    const two = requeueFeed('image', [
+        { id: 'a', postAt: 0, reelAt: reel('2026-12-01'), publishAt: 1, movable: true },
+        { id: 'b', postAt: 0, reelAt: reel('2026-12-01') + H, publishAt: 2, movable: true },
+    ], now);
+    assert.equal(new Date(two.get('b')!).toISOString(), new Date(feedSlot('image', '2026-12-02')).toISOString());
+    // Never within two hours of now: at 6 pm ET, today's 7 pm slot is too close.
+    const evening = Date.parse('2026-11-24T23:00:00Z');
+    const soon = requeueFeed('carousel', [{ id: 'x', postAt: 0, reelAt: reel('2026-11-24'), publishAt: 1, movable: true }], evening);
+    assert.ok(soon.get('x')! - evening >= REQUEUE_FREEZE_MS);
+    assert.equal(new Date(soon.get('x')!).toISOString(), new Date(feedSlot('carousel', '2026-11-25')).toISOString());
 });
